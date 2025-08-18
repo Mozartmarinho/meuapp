@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Editar Pedido - São Geraldo Service{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h1 style="color: var(--gray-800);">Editar Pedido - {{ pedido.numero_pedido }}</h1>
+    <a href="{{ url_for('main.listar_pedidos') }}" class="btn" style="background-color: var(--gray-300); color: var(--gray-800);">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+</div>
+
+<div class="form-container">
+    <form method="POST" action="{{ url_for('main.editar_pedido', id=pedido.id) }}">
+        <div class="form-group">
+            <label for="numero_pedido">Número do Pedido</label>
+            <input type="text" id="numero_pedido" value="{{ pedido.numero_pedido }}" readonly style="background-color: var(--gray-100);">
+        </div>
+        
+        <div class="form-group">
+            <label for="cliente">Cliente *</label>
+            <input type="text" id="cliente" name="cliente" value="{{ pedido.cliente }}" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="tipo_servico">Tipo de Serviço *</label>
+            <select id="tipo_servico" name="tipo_servico" required>
+                <option value="">Selecione...</option>
+                <option value="Manutenção" {% if pedido.tipo_servico == 'Manutenção' %}selected{% endif %}>Manutenção</option>
+                <option value="Instalação" {% if pedido.tipo_servico == 'Instalação' %}selected{% endif %}>Instalação</option>
+                <option value="Reparo" {% if pedido.tipo_servico == 'Reparo' %}selected{% endif %}>Reparo</option>
+                <option value="Configuração" {% if pedido.tipo_servico == 'Configuração' %}selected{% endif %}>Configuração</option>
+                <option value="Outro" {% if pedido.tipo_servico == 'Outro' %}selected{% endif %}>Outro</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="descricao">Descrição *</label>
+            <textarea id="descricao" name="descricao" rows="4" required>{{ pedido.descricao }}</textarea>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="status">Status</label>
+                <select id="status" name="status">
+                    <option value="Pendente" {% if pedido.status == 'Pendente' %}selected{% endif %}>Pendente</option>
+                    <option value="Em Andamento" {% if pedido.status == 'Em Andamento' %}selected{% endif %}>Em Andamento</option>
+                    <option value="Concluído" {% if pedido.status == 'Concluído' %}selected{% endif %}>Concluído</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="prioridade">Prioridade</label>
+                <select id="prioridade" name="prioridade">
+                    <option value="Normal" {% if pedido.prioridade == 'Normal' %}selected{% endif %}>Normal</option>
+                    <option value="Média" {% if pedido.prioridade == 'Média' %}selected{% endif %}>Média</option>
+                    <option value="Alta" {% if pedido.prioridade == 'Alta' %}selected{% endif %}>Alta</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="valor">Valor (R$)</label>
+            <input type="number" id="valor" name="valor" step="0.01" min="0" value="{{ pedido.valor if pedido.valor else '' }}">
+        </div>
+        
+        <div class="form-group">
+            <label for="observacoes">Observações</label>
+            <textarea id="observacoes" name="observacoes" rows="3">{{ pedido.observacoes if pedido.observacoes else '' }}</textarea>
+        </div>
+        
+        <!-- Informações do pedido -->
+        <div style="background-color: var(--gray-100); padding: 1rem; border-radius: 0.375rem; margin: 1.5rem 0;">
+            <h4 style="margin-bottom: 0.5rem; color: var(--gray-800);">Informações do Pedido</h4>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; font-size: 0.875rem;">
+                <div>
+                    <strong>Data de Criação:</strong><br>
+                    {{ pedido.data_criacao.strftime('%d/%m/%Y %H:%M') if pedido.data_criacao else '-' }}
+                </div>
+                {% if pedido.data_conclusao %}
+                <div>
+                    <strong>Data de Conclusão:</strong><br>
+                    {{ pedido.data_conclusao.strftime('%d/%m/%Y %H:%M') }}
+                </div>
+                {% endif %}
+                <div>
+                    <strong>Status Atual:</strong><br>
+                    <span class="status-badge status-{{ pedido.status.lower().replace(' ', '') }}">
+                        {{ pedido.status }}
+                    </span>
+                </div>
+            </div>
+        </div>
+        
+        <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem;">
+            <a href="{{ url_for('main.listar_pedidos') }}" class="btn" style="background-color: var(--gray-300); color: var(--gray-800);">
+                <i class="fas fa-times"></i> Cancelar
+            </a>
+            <button type="submit" class="btn btn-success">
+                <i class="fas fa-save"></i> Salvar Alterações
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Alerta quando o status for alterado para "Concluído"
+document.getElementById('status').addEventListener('change', function() {
+    if (this.value === 'Concluído') {
+        if (confirm('Ao marcar como "Concluído", a data de conclusão será registrada automaticamente. Confirma?')) {
+            // Continua
+        } else {
+            // Reverte para o valor anterior
+            this.value = '{{ pedido.status }}';
+        }
+    }
+});
+
+// Formatação do campo valor
+document.getElementById('valor').addEventListener('input', function(e) {
+    if (this.value.includes('.')) {
+        const parts = this.value.split('.');
+        if (parts[1].length > 2) {
+            this.value = parseFloat(this.value).toFixed(2);
+        }
+    }
+});
+</script>
+{% endblock %}

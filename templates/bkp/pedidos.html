@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block title %}Pedidos - São Geraldo Service{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h1 style="color: var(--gray-800);">Gerenciar Pedidos</h1>
+    <a href="{{ url_for('main.novo_pedido') }}" class="btn btn-success">
+        <i class="fas fa-plus"></i> Novo Pedido
+    </a>
+</div>
+
+<!-- Filters -->
+<div class="form-container" style="margin-bottom: 2rem;">
+    <form method="GET" style="display: flex; gap: 1rem; align-items: end;">
+        <div class="form-group" style="margin-bottom: 0; flex: 1;">
+            <label for="busca">Buscar</label>
+            <input type="text" id="busca" name="busca" value="{{ busca }}" placeholder="Número do pedido, cliente ou tipo de serviço...">
+        </div>
+        
+        <div class="form-group" style="margin-bottom: 0; min-width: 150px;">
+            <label for="status">Status</label>
+            <select id="status" name="status">
+                <option value="">Todos</option>
+                <option value="Pendente" {% if status_filtro == 'Pendente' %}selected{% endif %}>Pendente</option>
+                <option value="Em Andamento" {% if status_filtro == 'Em Andamento' %}selected{% endif %}>Em Andamento</option>
+                <option value="Concluído" {% if status_filtro == 'Concluído' %}selected{% endif %}>Concluído</option>
+            </select>
+        </div>
+        
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-search"></i> Filtrar
+        </button>
+        
+        <a href="{{ url_for('main.listar_pedidos') }}" class="btn" style="background-color: var(--gray-300); color: var(--gray-800);">
+            <i class="fas fa-times"></i> Limpar
+        </a>
+    </form>
+</div>
+
+<!-- Orders Table -->
+<div class="table-container">
+    {% if pedidos %}
+    <table>
+        <thead>
+            <tr>
+                <th>Nº Pedido</th>
+                <th>Cliente</th>
+                <th>Tipo de Serviço</th>
+                <th>Status</th>
+                <th>Prioridade</th>
+                <th>Data Criação</th>
+                <th>Valor</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for pedido in pedidos %}
+            <tr>
+                <td><strong>{{ pedido.numero_pedido }}</strong></td>
+                <td>{{ pedido.cliente }}</td>
+                <td>{{ pedido.tipo_servico }}</td>
+                <td>
+                    <select class="status-select" data-id="{{ pedido.id }}" style="border: none; background: transparent; font-weight: 500;">
+                        <option value="Pendente" {% if pedido.status == 'Pendente' %}selected{% endif %}>Pendente</option>
+                        <option value="Em Andamento" {% if pedido.status == 'Em Andamento' %}selected{% endif %}>Em Andamento</option>
+                        <option value="Concluído" {% if pedido.status == 'Concluído' %}selected{% endif %}>Concluído</option>
+                    </select>
+                </td>
+                <td>
+                    <span class="status-badge 
+                        {% if pedido.prioridade == 'Alta' %}prioridade-alta
+                        {% elif pedido.prioridade == 'Média' %}prioridade-media
+                        {% else %}prioridade-normal{% endif %}">
+                        {{ pedido.prioridade }}
+                    </span>
+                </td>
+                <td>{{ pedido.data_criacao.strftime('%d/%m/%Y %H:%M') if pedido.data_criacao else '-' }}</td>
+                <td>
+                    {% if pedido.valor %}
+                        R$ {{ "%.2f"|format(pedido.valor) }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <a href="{{ url_for('main.editar_pedido', id=pedido.id) }}" class="btn btn-primary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">
+                            <i class="fas fa-edit"></i>
+                        </a>
+                        <button onclick="verDetalhes({{ pedido.id }})" class="btn" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; background-color: var(--gray-300); color: var(--gray-800);">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div style="padding: 2rem; text-align: center; color: var(--gray-600);">
+        <i class="fas fa-search" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;"></i>
+        <p>Nenhum pedido encontrado com os filtros aplicados</p>
+        <a href="{{ url_for('main.listar_pedidos') }}" class="btn btn-primary" style="margin-top: 1rem;">
+            <i class="fas fa-list"></i> Ver Todos os Pedidos
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Modal for Details -->
+<div id="detailsModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 1000;">
+    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 2rem; border-radius: 0.5rem; max-width: 600px; width: 90%;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3>Detalhes do Pedido</h3>
+            <button onclick="fecharModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">&times;</button>
+        </div>
+        <div id="modalContent">
+            <!-- Content will be loaded here -->
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Update status via AJAX
+document.querySelectorAll('.status-select').forEach(select => {
+    select.addEventListener('change', function() {
+        const pedidoId = this.dataset.id;
+        const novoStatus = this.value;
+        
+        fetch('/api/pedidos/' + pedidoId + '/status', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({status: novoStatus})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Show success message
+                showAlert('Status atualizado com sucesso!', 'success');
+            } else {
+                showAlert('Erro ao atualizar status: ' + data.message, 'error');
+                // Revert select
+                location.reload();
+            }
+        })
+        .catch(error => {
+            showAlert('Erro de conexão', 'error');
+            location.reload();
+        });
+    });
+});
+
+function verDetalhes(id) {
+    // This would fetch and display order details
+    document.getElementById('modalContent').innerHTML = 
+        '<p>Funcionalidade de detalhes em desenvolvimento...</p>' +
+        '<p>ID do Pedido: ' + id + '</p>';
+    document.getElementById('detailsModal').style.display = 'block';
+}
+
+function fecharModal() {
+    document.getElementById('detailsModal').style.display = 'none';
+}
+
+function showAlert(message, type) {
+    const alert = document.createElement('div');
+    alert.className = 'alert alert-' + type;
+    alert.textContent = message;
+    alert.style.position = 'fixed';
+    alert.style.top = '20px';
+    alert.style.right = '20px';
+    alert.style.zIndex = '9999';
+    
+    document.body.appendChild(alert);
+    
+    setTimeout(function() {
+        alert.remove();
+    }, 3000);
+}
+</script>
+{% endblock %}

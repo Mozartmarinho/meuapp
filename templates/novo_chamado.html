@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Novo Chamado - São Geraldo Service{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h1 style="color: var(--gray-800);">Novo Chamado</h1>
+    <a href="{{ url_for('main.listar_chamados') }}" class="btn" style="background-color: var(--gray-300); color: var(--gray-800);">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+</div>
+
+<div class="form-container">
+    <form method="POST" action="{{ url_for('main.novo_chamado') }}">
+        <div class="form-group">
+            <label for="cliente">Cliente *</label>
+            <input type="text" id="cliente" name="cliente" required>
+        </div>
+
+        <div class="form-group">
+            <label for="tipo_servico">Tipo de Serviço *</label>
+            <select id="tipo_servico" name="tipo_servico" required>
+                <option value="">Selecione...</option>
+                <option value="Manutenção">Manutenção</option>
+                <option value="Instalação">Instalação</option>
+                <option value="Reparo">Reparo</option>
+                <option value="Configuração">Configuração</option>
+                <option value="Outro">Outro</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="descricao">Descrição *</label>
+            <textarea id="descricao" name="descricao" rows="4" required></textarea>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="prioridade">Prioridade</label>
+                <select id="prioridade" name="prioridade">
+                    <option value="Normal">Normal</option>
+                    <option value="Média">Média</option>
+ <option value="Alta">Alta</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="valor">Valor (R$)</label>
+                <input type="number" id="valor" name="valor" step="0.01" min="0">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="observacoes">Observações</label>
+            <textarea id="observacoes" name="observacoes" rows="3"></textarea>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem;">
+            <button type="reset" class="btn" style="background-color: var(--gray-300); color: var(--gray-800);">
+                <i class="fas fa-undo"></i> Limpar
+            </button>
+            <button type="submit" class="btn btn-success">
+                <i class="fas fa-save"></i> Salvar Chamado
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('valor').addEventListener('input', function(e) {
+    // Limita o número de casas decimais
+    if (this.value.includes('.')) {
+        const parts = this.value.split('.');
+        if (parts[1].length > 2) {
+            this.value = parseFloat(this.value).toFixed(2);
+        }
+    }
+});
+</script>
+{% endblock %}

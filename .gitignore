@@ -1,0 +1,35 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+*.so
+
+# --- Flask/SQL ---
+instance/
+*.sqlite3
+*.db
+
+# --- Ambiente virtual ---
+venv/
+
+# --- Arquivos temporários ---
+*.log
+*.bak
+*.swp
+*.tmp
+
+# --- Configurações locais ---
+.env
+.env.*
+config.py   # (ignorar se tiver senhas/segredos)
+
+# --- IDEs ---
+.vscode/
+.idea/
+
+# --- SO ---
+.DS_Store
+Thumbs.db

@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - São Geraldo Service{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h1 style="color: var(--gray-800);">Dashboard</h1>
+    <div style="color: var(--gray-600);">
+        <i class="fas fa-calendar"></i>
+        {{ moment().format('DD/MM/YYYY') if moment else '' }}
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>Total de Pedidos</h3>
+        <div class="number">{{ stats.total }}</div>
+        <p style="color: var(--gray-600); margin-top: 0.5rem;">
+            <i class="fas fa-clipboard-list"></i>
+            Todos os pedidos
+        </p>
+    </div>
+    
+    <div class="stat-card">
+        <h3>Pendentes</h3>
+        <div class="number" style="color: #F59E0B;">{{ stats.pendentes }}</div>
+        <p style="color: var(--gray-600); margin-top: 0.5rem;">
+            <i class="fas fa-clock"></i>
+            Aguardando atendimento
+        </p>
+    </div>
+    
+    <div class="stat-card">
+        <h3>Em Andamento</h3>
+        <div class="number" style="color: #3B82F6;">{{ stats.em_andamento }}</div>
+        <p style="color: var(--gray-600); margin-top: 0.5rem;">
+            <i class="fas fa-tools"></i>
+            Sendo executados
+        </p>
+    </div>
+    
+    <div class="stat-card">
+        <h3>Concluídos</h3>
+        <div class="number" style="color: #10B981;">{{ stats.concluidos }}</div>
+        <p style="color: var(--gray-600); margin-top: 0.5rem;">
+            <i class="fas fa-check-circle"></i>
+            Finalizados
+        </p>
+    </div>
+</div>
+
+<!-- Recent Orders -->
+<div class="table-container">
+    <div style="padding: 1.5rem; border-bottom: 1px solid var(--gray-200);">
+        <h2 style="color: var(--gray-800); margin: 0;">Pedidos Recentes</h2>
+    </div>
+    
+    {% if pedidos %}
+    <table>
+        <thead>
+            <tr>
+                <th>Nº Pedido</th>
+                <th>Cliente</th>
+                <th>Tipo de Serviço</th>
+                <th>Status</th>
+                <th>Data</th>
+                <th>Valor</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for pedido in pedidos %}
+            <tr>
+                <td><strong>{{ pedido.numero_pedido }}</strong></td>
+                <td>{{ pedido.cliente }}</td>
+                <td>{{ pedido.tipo_servico }}</td>
+                <td>
+                    <span class="status-badge status-{{ pedido.status.lower().replace(' ', '') }}">
+                        {{ pedido.status }}
+                    </span>
+                </td>
+                <td>{{ pedido.data_criacao.strftime('%d/%m/%Y') if pedido.data_criacao else '-' }}</td>
+                <td>
+                    {% if pedido.valor %}
+                        R$ {{ "%.2f"|format(pedido.valor) }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{{ url_for('main.editar_pedido', id=pedido.id) }}" class="btn btn-primary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">
+                        <i class="fas fa-edit"></i>
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div style="padding: 2rem; text-align: center; color: var(--gray-600);">
+        <i class="fas fa-inbox" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;"></i>
+        <p>Nenhum pedido encontrado</p>
+        <a href="{{ url_for('main.novo_pedido') }}" class="btn btn-primary" style="margin-top: 1rem;">
+            <i class="fas fa-plus"></i> Criar Primeiro Pedido
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Quick Actions -->
+<div style="margin-top: 2rem; display: flex; gap: 1rem;">
+    <a href="{{ url_for('main.novo_pedido') }}" class="btn btn-success">
+        <i class="fas fa-plus"></i> Novo Pedido
+    </a>
+    <a href="{{ url_for('main.listar_pedidos') }}" class="btn btn-primary">
+        <i class="fas fa-list"></i> Ver Todos os Pedidos
+    </a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-refresh dashboard every 30 seconds
+setInterval(function() {
+    location.reload();
+}, 30000);
+</script>
+{% endblock %}

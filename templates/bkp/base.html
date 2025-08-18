@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}São Geraldo Service{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <!-- Sidebar -->
+    <nav class="sidebar">
+        <div class="sidebar-logo">
+            <img src="{{ url_for('static', filename='img/logo.jpg') }}" alt="São Geraldo Service" onerror="this.style.display='none'">
+            <h3 style="margin-top: 1rem;">SÃO GERALDO<br>SERVICE</h3>
+        </div>
+        
+        <ul class="sidebar-menu">
+            <li>
+                <a href="{{ url_for('main.dashboard') }}" class="{% if request.endpoint == 'main.dashboard' %}active{% endif %}">
+                    <i class="fas fa-tachometer-alt" style="margin-right: 0.75rem;"></i>
+                    Dashboard
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('main.listar_pedidos') }}" class="{% if request.endpoint == 'main.listar_pedidos' %}active{% endif %}">
+                    <i class="fas fa-clipboard-list" style="margin-right: 0.75rem;"></i>
+                    Pedidos
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('main.novo_pedido') }}" class="{% if request.endpoint == 'main.novo_pedido' %}active{% endif %}">
+                    <i class="fas fa-plus-circle" style="margin-right: 0.75rem;"></i>
+                    Novo Pedido
+                </a>
+            </li>
+            <li>
+                <a href="#" onclick="alert('Funcionalidade em desenvolvimento')">
+                    <i class="fas fa-chart-bar" style="margin-right: 0.75rem;"></i>
+                    Relatórios
+                </a>
+            </li>
+            <li>
+                <a href="#" onclick="alert('Funcionalidade em desenvolvimento')">
+                    <i class="fas fa-users" style="margin-right: 0.75rem;"></i>
+                    Clientes
+                </a>
+            </li>
+            <li>
+                <a href="#" onclick="alert('Funcionalidade em desenvolvimento')">
+                    <i class="fas fa-cog" style="margin-right: 0.75rem;"></i>
+                    Configurações
+                </a>
+            </li>
+        </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'success' if category == 'success' else 'error' }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Page Content -->
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- JavaScript -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
