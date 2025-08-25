@@ -28,4 +28,4 @@ if __name__ == '__main__':
     print("\n=== Sistema São Geraldo - Versão Demo ===")
     print("Acesse http://localhost:5000 no navegador")
     print("Pressione CTRL+C para encerrar\n")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='127.0.0.1', port=5000)

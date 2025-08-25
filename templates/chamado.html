@@ -50,7 +50,7 @@
                 <th>Status</th>
                 <th>Prioridade</th>
                 <th>Data Criação</th>
-                <th>Valor</th>
+               
                 <th>Ações</th>
             </tr>
         </thead>
@@ -77,8 +77,8 @@
                 </td>
                 <td>{{ chamado.data_criacao.strftime('%d/%m/%Y %H:%M') if chamado.data_criacao else '-' }}</td>
                 <td>
-                    {% if chamado.valor %}
-                        R$ {{ "%.2f"|format(chamado.valor) }}
+                    {% if chamado.data_conclusao %}
+                        {{ chamado.data_conclusao.strftime('%d/%m/%Y %H:%M') }}
                     {% else %}
      -
                     {% endif %}
