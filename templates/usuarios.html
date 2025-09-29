@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clientes - São Geraldo Service</title>
+    <title>Usuários - São Geraldo Service</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
@@ -13,35 +13,33 @@
             <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">
                 <i class="fas fa-arrow-left"></i> Voltar ao Dashboard
             </a>
-            <h1>Gerenciar Clientes</h1>
-            <a href="{{ url_for('main.novo_cliente') }}" class="btn btn-success">
-                <i class="fas fa-plus"></i> Novo Cliente
+            <h1>Gerenciar Usuários</h1>
+            <a href="{{ url_for('main.novo_usuario') }}" class="btn btn-success">
+                <i class="fas fa-plus"></i> Novo Usuário
             </a>
         </div>
 
         <div class="table-container">
-            {% if clientes %}
+            {% if usuarios %}
             <table>
                 <thead>
                     <tr>
                         <th>Nome</th>
-                        <th>Endereço</th>
-                        <th>Telefone</th>
-                        <th>Responsável</th>
-                        <th>Telefone Responsável</th>
+                        <th>Email</th>
+                        <th>Tipo</th>
+                        <th>Ativo</th>
                         <th>Ações</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for cliente in clientes %}
+                    {% for usuario in usuarios %}
                     <tr>
-                        <td>{{ cliente.nome }}</td>
-                        <td>{{ cliente.endereco or '-' }}</td>
-                        <td>{{ cliente.telefone or '-' }}</td>
-                        <td>{{ cliente.responsavel or '-' }}</td>
-                        <td>{{ cliente.telefone_responsavel or '-' }}</td>
+                        <td>{{ usuario.nome }}</td>
+                        <td>{{ usuario.email }}</td>
+                        <td>{{ usuario.tipo }}</td>
+                        <td>{{ 'Sim' if usuario.ativo else 'Não' }}</td>
                         <td>
-                            <a href="{{ url_for('main.editar_cliente', id=cliente.id) }}" class="btn btn-primary">
+                            <a href="{{ url_for('main.editar_usuario', id=usuario.id) }}" class="btn btn-primary">
                                 <i class="fas fa-edit"></i> Editar
                             </a>
                         </td>
@@ -51,10 +49,10 @@
             </table>
             {% else %}
             <div class="empty-state">
-                <i class="fas fa-users"></i>
-                <p>Nenhum cliente cadastrado</p>
-                <a href="{{ url_for('main.novo_cliente') }}" class="btn btn-primary">
-                    <i class="fas fa-plus"></i> Cadastrar Primeiro Cliente
+                <i class="fas fa-user-tie"></i>
+                <p>Nenhum usuário cadastrado</p>
+                <a href="{{ url_for('main.novo_usuario') }}" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> Cadastrar Primeiro Usuário
                 </a>
             </div>
             {% endif %}
@@ -82,15 +80,6 @@
             margin-bottom: 20px;
         }
 
-        .btn-secondary {
-            background-color: #6c757d;
-            color: white;
-        }
-
-        .btn-secondary:hover {
-            background-color: #5a6268;
-        }
-
         .header h1 {
             margin: 0;
             color: #333;
@@ -104,6 +93,15 @@
             cursor: pointer;
             text-decoration: none;
             transition: background-color 0.3s;
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background-color: #5a6268;
         }
 
         .btn-success {

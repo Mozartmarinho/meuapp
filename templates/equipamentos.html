@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clientes - São Geraldo Service</title>
+    <title>Equipamentos - São Geraldo Service</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
@@ -13,35 +13,41 @@
             <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">
                 <i class="fas fa-arrow-left"></i> Voltar ao Dashboard
             </a>
-            <h1>Gerenciar Clientes</h1>
-            <a href="{{ url_for('main.novo_cliente') }}" class="btn btn-success">
-                <i class="fas fa-plus"></i> Novo Cliente
+            <h1>Gerenciar Equipamentos</h1>
+            <a href="{{ url_for('main.novo_equipamento') }}" class="btn btn-success">
+                <i class="fas fa-plus"></i> Novo Equipamento
             </a>
         </div>
 
         <div class="table-container">
-            {% if clientes %}
+            {% if equipamentos %}
             <table>
                 <thead>
                     <tr>
                         <th>Nome</th>
-                        <th>Endereço</th>
-                        <th>Telefone</th>
-                        <th>Responsável</th>
-                        <th>Telefone Responsável</th>
+                        <th>Modelo</th>
+                        <th>Nº Série</th>
+                        <th>Patrimônio</th>
+                        <th>Localização</th>
+                        <th>Ativo</th>
+                        <th>Data Compra</th>
+                        <th>Data Manutenção</th>
                         <th>Ações</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for cliente in clientes %}
+                    {% for equipamento in equipamentos %}
                     <tr>
-                        <td>{{ cliente.nome }}</td>
-                        <td>{{ cliente.endereco or '-' }}</td>
-                        <td>{{ cliente.telefone or '-' }}</td>
-                        <td>{{ cliente.responsavel or '-' }}</td>
-                        <td>{{ cliente.telefone_responsavel or '-' }}</td>
+                        <td>{{ equipamento.nome_equipamento }}</td>
+                        <td>{{ equipamento.modelo or '-' }}</td>
+                        <td>{{ equipamento.numero_serie or '-' }}</td>
+                        <td>{{ equipamento.patrimonio or '-' }}</td>
+                        <td>{{ equipamento.localizacao or '-' }}</td>
+                        <td>{{ 'Sim' if equipamento.ativo else 'Não' }}</td>
+                        <td>{{ equipamento.data_compra.strftime('%d/%m/%Y') if equipamento.data_compra else '-' }}</td>
+                        <td>{{ equipamento.data_manutencao.strftime('%d/%m/%Y') if equipamento.data_manutencao else '-' }}</td>
                         <td>
-                            <a href="{{ url_for('main.editar_cliente', id=cliente.id) }}" class="btn btn-primary">
+                            <a href="{{ url_for('main.editar_equipamento', id=equipamento.id) }}" class="btn btn-primary">
                                 <i class="fas fa-edit"></i> Editar
                             </a>
                         </td>
@@ -51,10 +57,10 @@
             </table>
             {% else %}
             <div class="empty-state">
-                <i class="fas fa-users"></i>
-                <p>Nenhum cliente cadastrado</p>
-                <a href="{{ url_for('main.novo_cliente') }}" class="btn btn-primary">
-                    <i class="fas fa-plus"></i> Cadastrar Primeiro Cliente
+                <i class="fas fa-tools"></i>
+                <p>Nenhum equipamento cadastrado</p>
+                <a href="{{ url_for('main.novo_equipamento') }}" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> Cadastrar Primeiro Equipamento
                 </a>
             </div>
             {% endif %}
@@ -82,15 +88,6 @@
             margin-bottom: 20px;
         }
 
-        .btn-secondary {
-            background-color: #6c757d;
-            color: white;
-        }
-
-        .btn-secondary:hover {
-            background-color: #5a6268;
-        }
-
         .header h1 {
             margin: 0;
             color: #333;
@@ -104,6 +101,15 @@
             cursor: pointer;
             text-decoration: none;
             transition: background-color 0.3s;
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background-color: #5a6268;
         }
 
         .btn-success {

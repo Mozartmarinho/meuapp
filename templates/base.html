@@ -12,8 +12,8 @@
     <!-- Sidebar -->
     <nav class="sidebar">
         <div class="sidebar-logo">
-            <img src="{{ url_for('static', filename='img/logo.jpg') }}" alt="São Geraldo Service" onerror="this.style.display='none'">
-            <h3 style="margin-top: 1rem;">SÃO GERALDO<br>SERVICE</h3>
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service" onerror="this.style.display='none'" style="display: block; margin: 0 auto 1rem; width: 250px; max-width: 80%; height: auto; border-radius: 10px;">
+            <h3 style="margin-top: 0; text-align: center;">SÃO GERALDO<br>SERVICE</h3>
         </div>
 
         <ul class="sidebar-menu">
@@ -36,15 +36,27 @@
                 </a>
             </li>
             <li>
-                <a href="#" onclick="alert('Funcionalidade em desenvolvimento')">
-                    <i class="fas fa-chart-bar" style="margin-right: 0.75rem;"></i>
-                    Relatórios
- </a>
+                <a href="{{ url_for('main.listar_clientes') }}" class="{% if request.endpoint == 'main.listar_clientes' %}active{% endif %}">
+                    <i class="fas fa-users" style="margin-right: 0.75rem;"></i>
+                    Clientes
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('main.listar_usuarios') }}" class="{% if request.endpoint == 'main.listar_usuarios' %}active{% endif %}">
+                    <i class="fas fa-user-tie" style="margin-right: 0.75rem;"></i>
+                    Usuários
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('main.listar_equipamentos') }}" class="{% if request.endpoint == 'main.listar_equipamentos' %}active{% endif %}">
+                    <i class="fas fa-tools" style="margin-right: 0.75rem;"></i>
+                    Equipamentos
+                </a>
             </li>
             <li>
                 <a href="#" onclick="alert('Funcionalidade em desenvolvimento')">
-                    <i class="fas fa-users" style="margin-right: 0.75rem;"></i>
-                    Clientes
+                    <i class="fas fa-chart-bar" style="margin-right: 0.75rem;"></i>
+                    Relatórios
                 </a>
             </li>
             <li>

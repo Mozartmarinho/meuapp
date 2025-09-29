@@ -4,20 +4,46 @@ from datetime import datetime
 
 db = SQLAlchemy()
 
+class Cliente(db.Model):
+    __tablename__ = 'clientes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(100), nullable=False)
+    endereco = db.Column(db.String(200))
+    telefone = db.Column(db.String(20))
+    responsavel = db.Column(db.String(100))
+    telefone_responsavel = db.Column(db.String(20))
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<Cliente {self.nome}>'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'nome': self.nome,
+            'endereco': self.endereco,
+            'telefone': self.telefone,
+            'responsavel': self.responsavel,
+            'telefone_responsavel': self.telefone_responsavel,
+            'data_criacao': self.data_criacao.strftime('%d/%m/%Y %H:%M') if self.data_criacao else None
+        }
+
 class Chamado(db.Model):
     __tablename__ = 'chamados'
 
     id = db.Column(db.Integer, primary_key=True)
     numero_chamado = db.Column(db.String(20), unique=True, nullable=False)
-    cliente = db.Column(db.String(100), nullable=False)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False)
+    cliente = db.relationship('Cliente', backref='chamados')
     tipo_servico = db.Column(db.String(50), nullable=False)
     descricao = db.Column(db.Text)
     status = db.Column(db.String(20), default='Pendente')
     prioridade = db.Column(db.String(10), default='Normal')
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     data_conclusao = db.Column(db.DateTime)
-    valor = db.Column(Numeric(10, 2))
     observacoes = db.Column(db.Text)
+    equipamento = db.Column(db.String(100), nullable=True)
 
     def __repr__(self):
         return f'<Chamado {self.numero_chamado}>'
@@ -26,15 +52,15 @@ class Chamado(db.Model):
         return {
             'id': self.id,
             'numero_chamado': self.numero_chamado,
-            'cliente': self.cliente,
+            'cliente': self.cliente.nome if self.cliente else None,
             'tipo_servico': self.tipo_servico,
             'descricao': self.descricao,
             'status': self.status,
             'prioridade': self.prioridade,
             'data_criacao': self.data_criacao.strftime('%d/%m/%Y %H:%M') if self.data_criacao else None,
             'data_conclusao': self.data_conclusao.strftime('%d/%m/%Y %H:%M') if self.data_conclusao else None,
-            'valor': float(self.valor) if self.valor else 0,
-            'observacoes': self.observacoes
+            'observacoes': self.observacoes,
+            'equipamento': self.equipamento
         }
 
 class Usuario(db.Model):
@@ -49,5 +75,36 @@ class Usuario(db.Model):
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __repr__(self):
-        return f'<Usuario {self.email}>'
+        return f'<Usuario {self.email}>' 
+
+
+class Equipamento(db.Model):
+    __tablename__ = 'equipamentos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome_equipamento = db.Column(db.String(100), nullable=False)
+    modelo = db.Column(db.String(100))
+    numero_serie = db.Column(db.String(50), unique=True)
+    patrimonio = db.Column(db.String(50), unique=True)
+    localizacao = db.Column(db.String(100))
+    ativo = db.Column(db.Boolean, default=True)
+    data_compra = db.Column(db.DateTime)
+    data_manutencao = db.Column(db.DateTime)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<Equipamento {self.nome_equipamento}>'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'nome_equipamento': self.nome_equipamento,
+            'modelo': self.modelo,
+            'numero_serie': self.numero_serie,
+            'patrimonio': self.patrimonio,
+            'localizacao': self.localizacao,
+            'ativo': self.ativo,
+            'data_compra': self.data_compra.strftime('%d/%m/%Y') if self.data_compra else None,
+            'data_manutencao': self.data_manutencao.strftime('%d/%m/%Y') if self.data_manutencao else None
+        }
  

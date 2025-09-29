@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Chamados - São Geraldo Service{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="header">
+        <h1>Lista de Chamados</h1>
+        <a href="{{ url_for('main.novo_chamado') }}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Novo Chamado
+        </a>
+        <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">Dashboard</a>
+    </div>
+
+    {% if chamados %}
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Nº Chamado</th>
+                <th>Cliente</th>
+                <th>Tipo Serviço</th>
+                <th>Equipamento</th>
+                <th>Status</th>
+                <th>Prioridade</th>
+                <th>Data Criação</th>
+                <th>Valor</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for chamado in chamados %}
+            <tr>
+                <td>{{ chamado.numero_chamado }}</td>
+                <td>{{ chamado.cliente }}</td>
+                <td>{{ chamado.tipo_servico }}</td>
+                <td>{{ chamado.equipamento or '' }}</td>
+                <td>
+                    <span class="status-{{ chamado.status|lower }}">{{ chamado.status }}</span>
+                </td>
+                <td>
+                    <span class="priority-{{ chamado.prioridade|lower }}">{{ chamado.prioridade }}</span>
+                </td>
+                <td>{{ chamado.data_criacao.strftime('%d/%m/%Y %H:%M') if chamado.data_criacao else '' }}</td>
+                <td>R$ {{ "%.2f"|format(chamado.valor) if chamado.valor else '0.00' }}</td>
+                <td>
+                    <a href="{{ url_for('main.editar_chamado', id=chamado.id) }}" class="btn btn-primary btn-sm">Editar</a>
+                    {% if chamado.status != 'Concluído' %}
+                    <button onclick="updateStatus({{ chamado.id }}, 'Concluído')" class="btn btn-success btn-sm">Concluir</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>Nenhum chamado encontrado.</p>
+    {% endif %}
+</div>
+
+<script>
+function updateStatus(id, status) {
+    fetch('/api/chamados/' + id + '/status', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({status: status})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Erro ao atualizar status');
+        }
+    });
+}
+</script>
+
+<style>
+.container { padding: 20px; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.table { width: 100%; border-collapse: collapse; background: white; border-radius: 5px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+.table th, .table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+.table th { background: #f2f2f2; }
+.table tr:hover { background: #f1f1f1; }
+.status-pendente { color: #ffc107; font-weight: bold; }
+.status-em-andamento { color: #17a2b8; font-weight: bold; }
+.status-concluido { color: #28a745; font-weight: bold; }
+.priority-alta { color: #dc3545; font-weight: bold; }
+.priority-normal { color: #6c757d; }
+.priority-baixa { color: #28a745; }
+.btn { padding: 8px 12px; border: none; border-radius: 4px; text-decoration: none; cursor: pointer; margin-right: 5px; }
+.btn-primary { background: #007bff; color: white; }
+.btn-primary:hover { background: #0056b3; }
+.btn-success { background: #28a745; color: white; }
+.btn-success:hover { background: #218838; }
+.btn-secondary { background: #6c757d; color: white; }
+.btn-secondary:hover { background: #545b62; }
+.btn-sm { padding: 4px 8px; font-size: 12px; }
+</style>
+
+{% endblock %}
