@@ -3,6 +3,7 @@ from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, Chamado, Usuario, Cliente, Equipamento
 from sqlalchemy.orm import joinedload
+from sqlalchemy import func
 from datetime import datetime
 import random
 import string
@@ -288,6 +289,7 @@ def listar_equipamentos():
 @login_required
 def novo_equipamento():
     """Criar novo equipamento"""
+    clientes = Cliente.query.all()
     if request.method == 'POST':
         try:
             data_compra = datetime.strptime(request.form['data_compra'], '%Y-%m-%d') if request.form['data_compra'] else None
@@ -309,7 +311,7 @@ def novo_equipamento():
         except Exception as e:
             flash(f'Erro ao criar equipamento: {str(e)}', 'error')
             db.session.rollback()
-    return render_template('novo_equipamento.html')
+    return render_template('novo_equipamento.html', clientes=clientes)
 
 
 @main.route('/equipamentos/<int:id>/editar', methods=['GET', 'POST'])
@@ -317,6 +319,7 @@ def novo_equipamento():
 def editar_equipamento(id):
     """Editar equipamento existente"""
     equipamento = Equipamento.query.get_or_404(id)
+    clientes = Cliente.query.all()
     if request.method == 'POST':
         try:
             equipamento.nome_equipamento = request.form['nome_equipamento']
@@ -339,4 +342,36 @@ def editar_equipamento(id):
         except Exception as e:
             flash(f'Erro ao atualizar equipamento: {str(e)}', 'error')
             db.session.rollback()
-    return render_template('editar_equipamento.html', equipamento=equipamento)
+    return render_template('editar_equipamento.html', equipamento=equipamento, clientes=clientes)
+
+@main.route('/relatorios')
+#@login_required
+def relatorios():
+    """Página de relatórios gerenciais"""
+    # Top clientes por número de chamados
+    top_clientes = db.session.query(
+        Cliente.nome,
+        func.count(Chamado.id).label('total_chamados')
+    ).join(Chamado).group_by(Cliente.id).order_by(func.count(Chamado.id).desc()).limit(10).all()
+
+    # Top equipamentos por número de chamados
+    top_equipamentos = db.session.query(
+        Chamado.equipamento,
+        func.count(Chamado.id).label('total_chamados')
+    ).filter(Chamado.equipamento.isnot(None)).group_by(Chamado.equipamento).order_by(func.count(Chamado.id).desc()).limit(10).all()
+
+    # Para equipamentos, obter os problemas (tipo_servico e descricao)
+    equipamentos_problemas = {}
+    for eq in top_equipamentos:
+        problemas = Chamado.query.filter_by(equipamento=eq[0]).with_entities(Chamado.tipo_servico, Chamado.descricao).all()
+        equipamentos_problemas[eq[0]] = problemas
+
+    return render_template('relatorios.html', top_clientes=top_clientes, top_equipamentos=top_equipamentos, equipamentos_problemas=equipamentos_problemas)
+
+@main.route('/api/equipamentos_por_cliente/<cliente_nome>', methods=['GET'])
+@login_required
+def equipamentos_por_cliente(cliente_nome):
+    """API para retornar equipamentos filtrados por cliente (localizacao)"""
+    equipamentos = Equipamento.query.filter_by(localizacao=cliente_nome).all()
+    equipamentos_list = [{'patrimonio': e.patrimonio, 'nome_equipamento': e.nome_equipamento} for e in equipamentos]
+    return jsonify(equipamentos_list)

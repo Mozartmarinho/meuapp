@@ -39,7 +39,12 @@
 
             <div class="form-group">
                 <label for="localizacao">Localização</label>
-                <input type="text" id="localizacao" name="localizacao">
+                <select id="localizacao" name="localizacao">
+                    <option value="">Selecione um cliente</option>
+                    {% for cliente in clientes %}
+                    <option value="{{ cliente.nome }}">{{ cliente.nome }}</option>
+                    {% endfor %}
+                </select>
             </div>
 
             <div class="form-group">

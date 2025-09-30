@@ -17,14 +17,21 @@
             <select id="cliente_id" name="cliente_id" required>
                 <option value="">Selecione um cliente...</option>
                 {% for cliente in clientes %}
-                <option value="{{ cliente.id }}">{{ cliente.nome }}</option>
+                <option value="{{ cliente.nome }}">{{ cliente.nome }}</option>
                 {% endfor %}
             </select>
         </div>
 
         <div class="form-group">
+            <label for="patrimonio">Patrimônio</label>
+            <select id="patrimonio" name="patrimonio">
+                <option value="">Selecione um patrimônio...</option>
+            </select>
+        </div>
+
+        <div class="form-group">
             <label for="equipamento">Equipamento</label>
-            <input type="text" id="equipamento" name="equipamento">
+            <input type="text" id="equipamento" name="equipamento" readonly>
         </div>
 
         <div class="form-group">
@@ -68,4 +75,50 @@
         </div>
     </form>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const clienteSelect = document.getElementById('cliente_id');
+    const patrimonioSelect = document.getElementById('patrimonio');
+    const equipamentoInput = document.getElementById('equipamento');
+
+    clienteSelect.addEventListener('change', function() {
+        const clienteNome = this.value;
+        patrimonioSelect.innerHTML = '<option value="">Carregando...</option>';
+        equipamentoInput.value = '';
+
+        if (clienteNome) {
+            fetch(`/api/equipamentos_por_cliente/${encodeURIComponent(clienteNome)}`)
+                .then(response => response.json())
+                .then(data => {
+                    patrimonioSelect.innerHTML = '<option value="">Selecione um patrimônio...</option>';
+                    data.forEach(equip => {
+                        const option = document.createElement('option');
+                        option.value = equip.patrimonio;
+                        option.textContent = `${equip.patrimonio} - ${equip.nome_equipamento}`;
+                        patrimonioSelect.appendChild(option);
+                    });
+                })
+                .catch(error => {
+                    patrimonioSelect.innerHTML = '<option value="">Erro ao carregar patrimônios</option>';
+                    console.error('Erro ao buscar equipamentos:', error);
+                });
+        } else {
+            patrimonioSelect.innerHTML = '<option value="">Selecione um cliente primeiro</option>';
+        }
+    });
+
+    patrimonioSelect.addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+        if (selectedOption && selectedOption.value) {
+            const text = selectedOption.textContent;
+            const nomeEquip = text.substring(text.indexOf('-') + 2);
+            equipamentoInput.value = nomeEquip;
+        } else {
+            equipamentoInput.value = '';
+        }
+    });
+});
+</script>
+
 {% endblock %}

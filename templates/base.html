@@ -54,7 +54,7 @@
                 </a>
             </li>
             <li>
-                <a href="#" onclick="alert('Funcionalidade em desenvolvimento')">
+                <a href="{{ url_for('main.relatorios') }}" class="{% if request.endpoint == 'main.relatorios' %}active{% endif %}">
                     <i class="fas fa-chart-bar" style="margin-right: 0.75rem;"></i>
                     Relatórios
                 </a>
