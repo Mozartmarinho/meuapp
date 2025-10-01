@@ -39,6 +39,18 @@
                     <option value="admin" {% if usuario.tipo == 'admin' %}selected{% endif %}>Administrador</option>
                 </select>
             </div>
+            <div class="form-group">
+                <label>Permissões</label>
+                <div class="permissions-list">
+                    {% for permission in permissions %}
+                    <label>
+                        <input type="checkbox" name="permissions" value="{{ permission.id }}"
+                        {% if permission in usuario.permissions %}checked{% endif %}>
+                        {{ permission.description }}
+                    </label><br>
+                    {% endfor %}
+                </div>
+            </div>
 
             <div class="form-group">
                 <label class="checkbox-label">

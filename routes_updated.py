@@ -69,15 +69,17 @@ def dashboard():
     chamados_em_andamento = Chamado.query.filter_by(status='Em Andamento').count()
     chamados_concluidos = Chamado.query.filter_by(status='Concluído').count()
     
-    # Chamados do técnico logado
-    meus_chamados = Chamado.query.filter_by(tecnico_id=session['user_id']).all()
+    chamados_recentes = Chamado.query.order_by(Chamado.data_criacao.desc()).limit(5).all()
     
     return render_template('dashboard.html', 
-                         total_chamados=total_chamados,
-                         chamados_pendentes=chamados_pendentes,
-                         chamados_em_andamento=chamados_em_andamento,
-                         chamados_concluidos=chamados_concluidos,
-                         meus_chamados=meus_chamados)
+                           user_name=user.nome,
+                           stats={
+                               'total': total_chamados,
+                               'pendentes': chamados_pendentes,
+                               'em_andamento': chamados_em_andamento,
+                               'concluidos': chamados_concluidos
+                           },
+                           chamados=chamados_recentes)
 
 # Rotas de Clientes
 @main.route('/clientes')
@@ -95,9 +97,9 @@ def novo_cliente():
         cliente = Cliente(
             nome=request.form['nome'],
             endereco=request.form['endereco'],
-            telefone_responsavel=request.form['telefone_responsavel'],
-            whatsapp_responsavel=request.form['whatsapp_responsavel'],
-            email_responsavel=request.form['email_responsavel']
+            telefone_responsavel=request.form.get('telefone_responsavel', ''),
+            whatsapp_responsavel=request.form.get('whatsapp_responsavel', ''),
+            email_responsavel=request.form.get('email_responsavel', '')
         )
         db.session.add(cliente)
         db.session.commit()
@@ -191,7 +193,7 @@ def novo_usuario():
     if request.method == 'POST':
         usuario = Usuario(
             nome=request.form['nome'],
-            telefone=request.form['telefone'],
+            telefone=request.form.get('telefone', ''),  # Use get with default empty string
             email=request.form['email'],
             tipo=request.form['tipo']
         )
@@ -208,21 +210,31 @@ def novo_usuario():
 @permission_required('edit_usuario')
 def editar_usuario(id):
     usuario = Usuario.query.get_or_404(id)
+    permissions = Permission.query.all()
     
     if request.method == 'POST':
         usuario.nome = request.form['nome']
-        usuario.telefone = request.form['telefone']
+        usuario.telefone = request.form.get('telefone', '')
         usuario.email = request.form['email']
         usuario.tipo = request.form['tipo']
+        usuario.ativo = 'ativo' in request.form
         
         if request.form.get('senha'):
             usuario.set_password(request.form['senha'])
+        
+        # Atualizar permissões
+        selected_permission_ids = request.form.getlist('permissions')
+        usuario.permissions = []
+        for perm_id in selected_permission_ids:
+            perm = Permission.query.get(int(perm_id))
+            if perm:
+                usuario.permissions.append(perm)
         
         db.session.commit()
         flash('Usuário atualizado com sucesso!', 'success')
         return redirect(url_for('main.listar_usuarios'))
     
-    return render_template('editar_usuario.html', usuario=usuario)
+    return render_template('editar_usuario.html', usuario=usuario, permissions=permissions)
 
 # Rotas de Chamados (atualizadas)
 @main.route('/chamados')

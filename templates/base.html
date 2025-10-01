@@ -54,10 +54,8 @@
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('main.relatorios') }}" class="{% if request.endpoint == 'main.relatorios' %}active{% endif %}">
-                    <i class="fas fa-chart-bar" style="margin-right: 0.75rem;"></i>
-                    Relatórios
-                </a>
+                <!-- Removido link para 'main.relatorios' que não existe para evitar erro BuildError -->
+                <!-- Relatórios removidos da página principal conforme solicitado -->
             </li>
             <li>
                 <a href="#" onclick="alert('Funcionalidade em desenvolvimento')">
@@ -89,4 +87,7 @@
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>
+<footer style="text-align: center; margin: 1rem 0;">
+    &copy; 2025 São Geraldo Service
+</footer>
 </html>
