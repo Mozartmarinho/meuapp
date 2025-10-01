@@ -25,7 +25,7 @@ class Cliente(db.Model):
     
     # Relacionamentos
     equipamentos = db.relationship('Equipamento', backref='cliente', lazy=True)
-    chamados = db.relationship('Chamado', backref='cliente_rel', lazy=True)
+    chamados = db.relationship('Chamado', backref='cliente', lazy=True)
 
     def __repr__(self):
         return f'<Cliente {self.nome}>'
@@ -100,9 +100,7 @@ class Chamado(db.Model):
     observacoes = db.Column(db.Text)
     tecnico_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
     
-    # Relacionamentos
-    cliente_rel = db.relationship('Cliente', backref='chamados_cliente')
-    tecnico = db.relationship('Usuario', backref='chamados_tecnico')
+    # Relacionamentos via backref
 
     def __repr__(self):
         return f'<Chamado {self.numero_chamado}>'
@@ -111,7 +109,7 @@ class Chamado(db.Model):
         return {
             'id': self.id,
             'numero_chamado': self.numero_chamado,
-            'cliente': self.cliente_rel.nome if self.cliente_rel else '',
+            'cliente': self.cliente.nome if self.cliente else '',
             'tipo_servico': self.tipo_servico,
             'descricao': self.descricao,
             'status': self.status,

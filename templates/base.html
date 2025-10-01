@@ -54,8 +54,10 @@
                 </a>
             </li>
             <li>
-                <!-- Removido link para 'main.relatorios' que não existe para evitar erro BuildError -->
-                <!-- Relatórios removidos da página principal conforme solicitado -->
+                <a href="{{ url_for('main.relatorios') }}" class="{% if request.endpoint == 'main.relatorios' %}active{% endif %}">
+                    <i class="fas fa-chart-pie" style="margin-right: 0.75rem;"></i>
+                    Relatórios
+                </a>
             </li>
             <li>
                 <a href="#" onclick="alert('Funcionalidade em desenvolvimento')">

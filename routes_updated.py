@@ -3,6 +3,8 @@ from models_updated import db, Cliente, Equipamento, Usuario, Chamado, Permissio
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from datetime import datetime
+from sqlalchemy import func
+import json
 
 main = Blueprint('main', __name__)
 
@@ -177,6 +179,30 @@ def editar_equipamento(id):
         return redirect(url_for('main.listar_equipamentos'))
     
     return render_template('editar_equipamento.html', equipamento=equipamento, clientes=clientes)
+
+# Rota de Relatórios
+@main.route('/relatorios')
+@login_required
+@permission_required('view_equipamentos')  # Assuming reports require equipment view permission
+def relatorios():
+    # Dados para gráfico de pizza: clientes por quantidade de equipamentos
+    clientes_equip = db.session.query(
+        Cliente.nome,
+        func.count(Equipamento.id).label('equip_count')
+    ).join(Equipamento).group_by(Cliente.id).all()
+
+    # Equipamentos ordenados por cliente com mais chamados (decrescente)
+    equipamentos = db.session.query(
+        Equipamento,
+        Cliente,
+        func.count(Chamado.id).label('chamado_count')
+    ).select_from(Equipamento).join(Cliente).outerjoin(Chamado, Chamado.cliente_id == Cliente.id).group_by(
+        Equipamento.id, Cliente.id
+    ).order_by(func.count(Chamado.id).desc()).all()
+
+    clientes_equip_list = [(row[0], row[1]) for row in clientes_equip]
+    clientes_equip_json = json.dumps(clientes_equip_list)
+    return render_template('relatorios.html', clientes_equip=clientes_equip, equipamentos=equipamentos, clientes_equip_json=clientes_equip_json)
 
 # Rotas de Usuários
 @main.route('/usuarios')

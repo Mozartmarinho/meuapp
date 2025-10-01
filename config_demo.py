@@ -1,9 +1,9 @@
 class Config:
     # Configurações básicas
-    SECRET_KEY = 'sua_chave_secreta_aqui'
+    SECRET_KEY = 'saogeraldo2025'
     
     # Configurações do SQLite para demo
-    SQLALCHEMY_DATABASE_URI = 'mysql+pymysql://root:Br@sil2016@127.0.0.1:3306/meuappdb'
+    SQLALCHEMY_DATABASE_URI = 'mysql+pymysql://root:saogeraldo2025@127.0.0.1:3306/meuappdb'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # Configurações adicionais

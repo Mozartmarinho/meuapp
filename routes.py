@@ -1,377 +1,319 @@
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, session
-from functools import wraps
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, session
+from models_updated import db, Cliente, Equipamento, Usuario, Chamado, Permission
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, Chamado, Usuario, Cliente, Equipamento
-from sqlalchemy.orm import joinedload
-from sqlalchemy import func
+from functools import wraps
 from datetime import datetime
-import random
-import string
 
 main = Blueprint('main', __name__)
 
+# Decorador para verificar login
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
-            flash('Por favor, faça login para acessar esta página.', 'error')
             return redirect(url_for('main.login'))
         return f(*args, **kwargs)
     return decorated_function
 
-def gerar_numero_chamado():
-    """Gera um número único para o chamado"""
-    prefixo = "OS"
-    numero = ''.join(random.choices(string.digits, k=6))
-    return f"{prefixo}{numero}"
+# Decorador para verificar permissões
+def permission_required(permission):
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if 'user_id' not in session:
+                return redirect(url_for('main.login'))
+            
+            user = Usuario.query.get(session['user_id'])
+            if not user or not user.has_permission(permission):
+                flash('Você não tem permissão para acessar esta funcionalidade.', 'error')
+                return redirect(url_for('main.dashboard'))
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
 
+# Rotas de Autenticação
 @main.route('/login', methods=['GET', 'POST'])
 def login():
-    """Página de login"""
     if request.method == 'POST':
         email = request.form['email']
         senha = request.form['senha']
-        user = Usuario.query.filter_by(email=email, ativo=True).first()
-        if user and check_password_hash(user.senha, senha):
+        print(f"Login attempt: email={email}, senha={senha}")
+        
+        user = Usuario.query.filter_by(email=email).first()
+        print(f"User found: {user}")
+        
+        if user and user.check_password(senha) and user.ativo:
+            print("Password correct and user active")
             session['user_id'] = user.id
             session['user_name'] = user.nome
+            session['user_type'] = user.tipo
             flash('Login realizado com sucesso!', 'success')
             return redirect(url_for('main.dashboard'))
         else:
-            flash('Email ou senha incorretos.', 'error')
+            print("Login failed: invalid email or password or inactive user")
+            flash('Email ou senha inválidos!', 'error')
+    
     return render_template('login.html')
 
 @main.route('/logout')
 def logout():
-    """Logout do usuário"""
     session.clear()
-    flash('Você foi deslogado com sucesso.', 'success')
+    flash('Logout realizado com sucesso!', 'success')
     return redirect(url_for('main.login'))
 
+# Dashboard
 @main.route('/')
 @login_required
 def dashboard():
-    """Página principal do dashboard"""
     user = Usuario.query.get(session['user_id'])
-    # Estatísticas básicas
+    
+    # Contadores
     total_chamados = Chamado.query.count()
     chamados_pendentes = Chamado.query.filter_by(status='Pendente').count()
     chamados_em_andamento = Chamado.query.filter_by(status='Em Andamento').count()
     chamados_concluidos = Chamado.query.filter_by(status='Concluído').count()
+    
+    # Chamados do técnico logado
+    meus_chamados = Chamado.query.filter_by(tecnico_id=session['user_id']).all()
+    
+    return render_template('dashboard.html', 
+                         total_chamados=total_chamados,
+                         chamados_pendentes=chamados_pendentes,
+                         chamados_em_andamento=chamados_em_andamento,
+                         chamados_concluidos=chamados_concluidos,
+                         meus_chamados=meus_chamados)
 
-    # Chamados recentes
-    chamados_recentes = Chamado.query.options(joinedload(Chamado.cliente)).order_by(Chamado.data_criacao.desc()).limit(10).all()
-
-    stats = {
-        'total': total_chamados,
-        'pendentes': chamados_pendentes,
-        'em_andamento': chamados_em_andamento,
-        'concluidos': chamados_concluidos
-    }
-
-    return render_template('dashboard.html', stats=stats, user_name=user.nome, chamados=chamados_recentes)
-
-@main.route('/chamados')
-@login_required
-def listar_chamados():
-    """Lista todos os chamados"""
-    chamados = Chamado.query.order_by(Chamado.data_criacao.desc()).all()
-    return render_template('chamados.html', chamados=chamados)
-
-@main.route('/novo_chamado', methods=['GET', 'POST'])
-@login_required
-def novo_chamado():
-    """Criar novo chamado"""
-    clientes = Cliente.query.all()
-    if request.method == 'POST':
-        try:
-            numero_chamado = gerar_numero_chamado()
-            chamado = Chamado(
-                numero_chamado=numero_chamado,
-                cliente_id=int(request.form['cliente_id']),
-                equipamento=request.form.get('equipamento'),
-                tipo_servico=request.form['tipo_servico'],
-                descricao=request.form['descricao'],
-                status=request.form['status'],
-                prioridade=request.form['prioridade'],
-                observacoes=request.form['observacoes']
-            )
-
-            db.session.add(chamado)
-            db.session.commit()
-
-            flash('Chamado criado com sucesso!', 'success')
-            return redirect(url_for('main.listar_chamados'))
-
-        except Exception as e:
-            flash(f'Erro ao criar chamado: {str(e)}', 'error')
-            db.session.rollback()
-
-    return render_template('novo_chamado.html', clientes=clientes)
-
-@main.route('/chamados/<int:id>/editar', methods=['GET', 'POST'])
-@login_required
-def editar_chamado(id):
-    """Editar chamado existente"""
-    chamado = Chamado.query.get_or_404(id)
-    clientes = Cliente.query.all()
-
-    if request.method == 'POST':
-        try:
-            chamado.cliente_id = int(request.form['cliente_id'])
-            chamado.equipamento = request.form.get('equipamento')
-            chamado.tipo_servico = request.form['tipo_servico']
-            chamado.descricao = request.form['descricao']
-            chamado.status = request.form['status']
-            chamado.prioridade = request.form['prioridade']
-            chamado.observacoes = request.form['observacoes']
-
-            if request.form['status'] == 'Concluído' and not chamado.data_conclusao:
-                chamado.data_conclusao = datetime.utcnow()
-
-            db.session.commit()
-            flash('Chamado atualizado com sucesso!', 'success')
-            return redirect(url_for('main.listar_chamados'))
-
-        except Exception as e:
-            flash(f'Erro ao atualizar chamado: {str(e)}', 'error')
-            db.session.rollback()
-
-    return render_template('editar_chamado.html', chamado=chamado, clientes=clientes)
-
+# Rotas de Clientes
 @main.route('/clientes')
 @login_required
+@permission_required('view_clientes')
 def listar_clientes():
-    """Lista todos os clientes"""
-    clientes = Cliente.query.order_by(Cliente.data_criacao.desc()).all()
+    clientes = Cliente.query.filter_by(ativo=True).all()
     return render_template('clientes.html', clientes=clientes)
 
-@main.route('/novo_cliente', methods=['GET', 'POST'])
+@main.route('/clientes/novo', methods=['GET', 'POST'])
 @login_required
+@permission_required('create_cliente')
 def novo_cliente():
-    """Criar novo cliente"""
     if request.method == 'POST':
-        try:
-            cliente = Cliente(
-                nome=request.form['nome'],
-                endereco=request.form['endereco'],
-                telefone=request.form['telefone'],
-                responsavel=request.form['responsavel'],
-                telefone_responsavel=request.form['telefone_responsavel']
-            )
-
-            db.session.add(cliente)
-            db.session.commit()
-
-            flash('Cliente criado com sucesso!', 'success')
-            return redirect(url_for('main.listar_clientes'))
-
-        except Exception as e:
-            flash(f'Erro ao criar cliente: {str(e)}', 'error')
-            db.session.rollback()
-
+        cliente = Cliente(
+            nome=request.form['nome'],
+            endereco=request.form['endereco'],
+            telefone_responsavel=request.form['telefone_responsavel'],
+            whatsapp_responsavel=request.form['whatsapp_responsavel'],
+            email_responsavel=request.form['email_responsavel']
+        )
+        db.session.add(cliente)
+        db.session.commit()
+        flash('Cliente criado com sucesso!', 'success')
+        return redirect(url_for('main.listar_clientes'))
+    
     return render_template('novo_cliente.html')
 
 @main.route('/clientes/<int:id>/editar', methods=['GET', 'POST'])
 @login_required
+@permission_required('edit_cliente')
 def editar_cliente(id):
-    """Editar cliente existente"""
     cliente = Cliente.query.get_or_404(id)
-
+    
     if request.method == 'POST':
-        try:
-            cliente.nome = request.form['nome']
-            cliente.endereco = request.form['endereco']
-            cliente.telefone = request.form['telefone']
-            cliente.responsavel = request.form['responsavel']
-            cliente.telefone_responsavel = request.form['telefone_responsavel']
-
-            db.session.commit()
-            flash('Cliente atualizado com sucesso!', 'success')
-            return redirect(url_for('main.listar_clientes'))
-
-        except Exception as e:
-            flash(f'Erro ao atualizar cliente: {str(e)}', 'error')
-            db.session.rollback()
-
+        cliente.nome = request.form['nome']
+        cliente.endereco = request.form['endereco']
+        cliente.telefone_responsavel = request.form['telefone_responsavel']
+        cliente.whatsapp_responsavel = request.form['whatsapp_responsavel']
+        cliente.email_responsavel = request.form['email_responsavel']
+        
+        db.session.commit()
+        flash('Cliente atualizado com sucesso!', 'success')
+        return redirect(url_for('main.listar_clientes'))
+    
     return render_template('editar_cliente.html', cliente=cliente)
 
-@main.route('/api/chamados/<int:id>/status', methods=['POST'])
-@login_required
-def atualizar_status(id):
-    """API para atualizar status do chamado"""
-    try:
-        chamado = Chamado.query.get_or_404(id)
-        novo_status = request.json.get('status')
-
-        chamado.status = novo_status
-        if novo_status == 'Concluído' and not chamado.data_conclusao:
-            chamado.data_conclusao = datetime.utcnow()
-
-        db.session.commit()
-
-        return jsonify({
-            'success': True,
-            'message': 'Status atualizado com sucesso'
-        })
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({
-            'success': False,
-            'message': str(e)
-        }), 400
-
-
-@main.route('/usuarios')
-@login_required
-def listar_usuarios():
-    """Lista todos os usuários"""
-    usuarios = Usuario.query.order_by(Usuario.data_criacao.desc()).all()
-    return render_template('usuarios.html', usuarios=usuarios)
-
-
-@main.route('/novo_usuario', methods=['GET', 'POST'])
-@login_required
-def novo_usuario():
-    """Criar novo usuário"""
-    if request.method == 'POST':
-        try:
-            hashed_senha = generate_password_hash(request.form['senha'])
-            usuario = Usuario(
-                nome=request.form['nome'],
-                email=request.form['email'],
-                senha=hashed_senha,
-                tipo=request.form.get('tipo', 'operador'),
-                ativo=True
-            )
-            db.session.add(usuario)
-            db.session.commit()
-            flash('Usuário criado com sucesso!', 'success')
-            return redirect(url_for('main.listar_usuarios'))
-        except Exception as e:
-            flash(f'Erro ao criar usuário: {str(e)}', 'error')
-            db.session.rollback()
-    return render_template('novo_usuario.html')
-
-
-@main.route('/usuarios/<int:id>/editar', methods=['GET', 'POST'])
-@login_required
-def editar_usuario(id):
-    """Editar usuário existente"""
-    usuario = Usuario.query.get_or_404(id)
-    if request.method == 'POST':
-        try:
-            usuario.nome = request.form['nome']
-            usuario.email = request.form['email']
-            if request.form['senha']:  # Atualiza senha apenas se fornecida
-                usuario.senha = generate_password_hash(request.form['senha'])
-            usuario.tipo = request.form.get('tipo', 'operador')
-            usuario.ativo = request.form.get('ativo', True) == 'on'
-            db.session.commit()
-            flash('Usuário atualizado com sucesso!', 'success')
-            return redirect(url_for('main.listar_usuarios'))
-        except Exception as e:
-            flash(f'Erro ao atualizar usuário: {str(e)}', 'error')
-            db.session.rollback()
-    return render_template('editar_usuario.html', usuario=usuario)
-
-
+# Rotas de Equipamentos
 @main.route('/equipamentos')
 @login_required
+@permission_required('view_equipamentos')
 def listar_equipamentos():
-    """Lista todos os equipamentos"""
-    equipamentos = Equipamento.query.order_by(Equipamento.data_criacao.desc()).all()
+    equipamentos = Equipamento.query.filter_by(ativo=True).all()
     return render_template('equipamentos.html', equipamentos=equipamentos)
 
-
-@main.route('/novo_equipamento', methods=['GET', 'POST'])
+@main.route('/equipamentos/novo', methods=['GET', 'POST'])
 @login_required
+@permission_required('create_equipamento')
 def novo_equipamento():
-    """Criar novo equipamento"""
-    clientes = Cliente.query.all()
+    clientes = Cliente.query.filter_by(ativo=True).all()
+    
     if request.method == 'POST':
-        try:
-            data_compra = datetime.strptime(request.form['data_compra'], '%Y-%m-%d') if request.form['data_compra'] else None
-            data_manutencao = datetime.strptime(request.form['data_manutencao'], '%Y-%m-%d') if request.form['data_manutencao'] else None
-            equipamento = Equipamento(
-                nome_equipamento=request.form['nome_equipamento'],
-                modelo=request.form['modelo'],
-                numero_serie=request.form['numero_serie'],
-                patrimonio=request.form['patrimonio'],
-                localizacao=request.form['localizacao'],
-                ativo=request.form.get('ativo', True) == 'on',
-                data_compra=data_compra,
-                data_manutencao=data_manutencao
-            )
-            db.session.add(equipamento)
-            db.session.commit()
-            flash('Equipamento criado com sucesso!', 'success')
-            return redirect(url_for('main.listar_equipamentos'))
-        except Exception as e:
-            flash(f'Erro ao criar equipamento: {str(e)}', 'error')
-            db.session.rollback()
+        equipamento = Equipamento(
+            equipamento=request.form['equipamento'],
+            modelo=request.form['modelo'],
+            data_compra=datetime.strptime(request.form['data_compra'], '%Y-%m-%d') if request.form['data_compra'] else None,
+            patrimonio=request.form['patrimonio'],
+            observacoes=request.form['observacoes'],
+            cliente_id=request.form['cliente_id']
+        )
+        db.session.add(equipamento)
+        db.session.commit()
+        flash('Equipamento criado com sucesso!', 'success')
+        return redirect(url_for('main.listar_equipamentos'))
+    
     return render_template('novo_equipamento.html', clientes=clientes)
-
 
 @main.route('/equipamentos/<int:id>/editar', methods=['GET', 'POST'])
 @login_required
+@permission_required('edit_equipamento')
 def editar_equipamento(id):
-    """Editar equipamento existente"""
     equipamento = Equipamento.query.get_or_404(id)
-    clientes = Cliente.query.all()
+    clientes = Cliente.query.filter_by(ativo=True).all()
+    
     if request.method == 'POST':
-        try:
-            equipamento.nome_equipamento = request.form['nome_equipamento']
-            equipamento.modelo = request.form['modelo']
-            equipamento.numero_serie = request.form['numero_serie']
-            equipamento.patrimonio = request.form['patrimonio']
-            equipamento.localizacao = request.form['localizacao']
-            equipamento.ativo = request.form.get('ativo', True) == 'on'
-            if request.form['data_compra']:
-                equipamento.data_compra = datetime.strptime(request.form['data_compra'], '%Y-%m-%d')
-            else:
-                equipamento.data_compra = None
-            if request.form['data_manutencao']:
-                equipamento.data_manutencao = datetime.strptime(request.form['data_manutencao'], '%Y-%m-%d')
-            else:
-                equipamento.data_manutencao = None
-            db.session.commit()
-            flash('Equipamento atualizado com sucesso!', 'success')
-            return redirect(url_for('main.listar_equipamentos'))
-        except Exception as e:
-            flash(f'Erro ao atualizar equipamento: {str(e)}', 'error')
-            db.session.rollback()
+        equipamento.equipamento = request.form['equipamento']
+        equipamento.modelo = request.form['modelo']
+        equipamento.data_compra = datetime.strptime(request.form['data_compra'], '%Y-%m-%d') if request.form['data_compra'] else None
+        equipamento.patrimonio = request.form['patrimonio']
+        equipamento.observacoes = request.form['observacoes']
+        equipamento.cliente_id = request.form['cliente_id']
+        
+        db.session.commit()
+        flash('Equipamento atualizado com sucesso!', 'success')
+        return redirect(url_for('main.listar_equipamentos'))
+    
     return render_template('editar_equipamento.html', equipamento=equipamento, clientes=clientes)
 
-@main.route('/relatorios')
-#@login_required
-def relatorios():
-    """Página de relatórios gerenciais"""
-    # Top clientes por número de chamados
-    top_clientes = db.session.query(
-        Cliente.nome,
-        func.count(Chamado.id).label('total_chamados')
-    ).join(Chamado).group_by(Cliente.id).order_by(func.count(Chamado.id).desc()).limit(10).all()
-
-    # Top equipamentos por número de chamados
-    top_equipamentos = db.session.query(
-        Chamado.equipamento,
-        func.count(Chamado.id).label('total_chamados')
-    ).filter(Chamado.equipamento.isnot(None)).group_by(Chamado.equipamento).order_by(func.count(Chamado.id).desc()).limit(10).all()
-
-    # Para equipamentos, obter os problemas (tipo_servico e descricao)
-    equipamentos_problemas = {}
-    for eq in top_equipamentos:
-        problemas = Chamado.query.filter_by(equipamento=eq[0]).with_entities(Chamado.tipo_servico, Chamado.descricao).all()
-        equipamentos_problemas[eq[0]] = problemas
-
-    return render_template('relatorios.html', top_clientes=top_clientes, top_equipamentos=top_equipamentos, equipamentos_problemas=equipamentos_problemas)
-
-@main.route('/api/equipamentos_por_cliente/<cliente_nome>', methods=['GET'])
+# Rotas de Usuários
+@main.route('/usuarios')
 @login_required
-def equipamentos_por_cliente(cliente_nome):
-    """API para retornar equipamentos filtrados por cliente (localizacao)"""
-    equipamentos = Equipamento.query.filter_by(localizacao=cliente_nome).all()
-    equipamentos_list = [{'patrimonio': e.patrimonio, 'nome_equipamento': e.nome_equipamento} for e in equipamentos]
-    return jsonify(equipamentos_list)
+@permission_required('view_usuarios')
+def listar_usuarios():
+    usuarios = Usuario.query.filter_by(ativo=True).all()
+    return render_template('usuarios.html', usuarios=usuarios)
+
+@main.route('/usuarios/novo', methods=['GET', 'POST'])
+@login_required
+@permission_required('create_usuario')
+def novo_usuario():
+    if request.method == 'POST':
+        usuario = Usuario(
+            nome=request.form['nome'],
+            telefone=request.form['telefone'],
+            email=request.form['email'],
+            tipo=request.form['tipo']
+        )
+        usuario.set_password(request.form['senha'])
+        db.session.add(usuario)
+        db.session.commit()
+        flash('Usuário criado com sucesso!', 'success')
+        return redirect(url_for('main.listar_usuarios'))
+    
+    return render_template('novo_usuario.html')
+
+@main.route('/usuarios/<int:id>/editar', methods=['GET', 'POST'])
+@login_required
+@permission_required('edit_usuario')
+def editar_usuario(id):
+    usuario = Usuario.query.get_or_404(id)
+    
+    if request.method == 'POST':
+        usuario.nome = request.form['nome']
+        usuario.telefone = request.form['telefone']
+        usuario.email = request.form['email']
+        usuario.tipo = request.form['tipo']
+        
+        if request.form.get('senha'):
+            usuario.set_password(request.form['senha'])
+        
+        db.session.commit()
+        flash('Usuário atualizado com sucesso!', 'success')
+        return redirect(url_for('main.listar_usuarios'))
+    
+    return render_template('editar_usuario.html', usuario=usuario)
+
+# Rotas de Chamados (atualizadas)
+@main.route('/chamados')
+@login_required
+@permission_required('view_chamados')
+def listar_chamados():
+    user = Usuario.query.get(session['user_id'])
+    
+    # Buscar cliente associado ao técnico logado
+    cliente = Cliente.query.filter_by(email_responsavel=user.email).first()
+    
+    if user.tipo == 'tecnico' and cliente:
+        # Técnico vê apenas chamados do seu cliente
+        chamados = Chamado.query.filter_by(cliente_id=cliente.id).all()
+    else:
+        # Admin vê todos os chamados
+        chamados = Chamado.query.all()
+    
+    return render_template('chamado.html', chamados=chamados)
+
+@main.route('/chamados/novo', methods=['GET', 'POST'])
+@login_required
+@permission_required('create_chamado')
+def novo_chamado():
+    user = Usuario.query.get(session['user_id'])
+    
+    # Buscar cliente associado ao técnico logado
+    cliente = Cliente.query.filter_by(email_responsavel=user.email).first()
+    
+    if request.method == 'POST':
+        # Gerar número do chamado
+        ultimo_chamado = Chamado.query.order_by(Chamado.id.desc()).first()
+        numero = f"CHM{ultimo_chamado.id + 1:04d}" if ultimo_chamado else "CHM0001"
+        
+        chamado = Chamado(
+            numero_chamado=numero,
+            cliente_id=cliente.id if cliente else request.form['cliente_id'],
+            tipo_servico=request.form['tipo_servico'],
+            descricao=request.form['descricao'],
+            status=request.form['status'],
+            prioridade=request.form['prioridade'],
+            observacoes=request.form['observacoes'],
+            tecnico_id=session['user_id']
+        )
+        db.session.add(chamado)
+        db.session.commit()
+        flash('Chamado criado com sucesso!', 'success')
+        return redirect(url_for('main.listar_chamados'))
+    
+    clientes = Cliente.query.filter_by(ativo=True).all()
+    return render_template('novo_chamado.html', clientes=clientes, cliente_selecionado=cliente)
+
+@main.route('/chamados/<int:id>/editar', methods=['GET', 'POST'])
+@login_required
+@permission_required('edit_chamado')
+def editar_chamado(id):
+    chamado = Chamado.query.get_or_404(id)
+    clientes = Cliente.query.filter_by(ativo=True).all()
+    
+    if request.method == 'POST':
+        chamado.cliente_id = request.form['cliente_id']
+        chamado.tipo_servico = request.form['tipo_servico']
+        chamado.descricao = request.form['descricao']
+        chamado.status = request.form['status']
+        chamado.prioridade = request.form['prioridade']
+        chamado.observacoes = request.form['observacoes']
+        
+        if request.form['status'] == 'Concluído' and not chamado.data_conclusao:
+            chamado.data_conclusao = datetime.utcnow()
+        
+        db.session.commit()
+        flash('Chamado atualizado com sucesso!', 'success')
+        return redirect(url_for('main.listar_chamados'))
+    
+    return render_template('editar_chamado.html', chamado=chamado, clientes=clientes)
+
+# API para atualização de status
+@main.route('/api/chamados/<int:id>/status', methods=['POST'])
+@login_required
+def atualizar_status_chamado(id):
+    chamado = Chamado.query.get_or_404(id)
+    data = request.get_json()
+    
+    chamado.status = data['status']
+    if data['status'] == 'Concluído':
+        chamado.data_conclusao = datetime.utcnow()
+    
+    db.session.commit()
+    
+    return jsonify({'success': True})

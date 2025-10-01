@@ -9,7 +9,8 @@ def create_app():
     
     # Configurações
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'sua-chave-secreta-aqui')
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///saogeraldo.db')
+    # Atualizar para usar MySQL com senha fornecida
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'mysql+pymysql://root:saogeraldo2025@127.0.0.1:3306/meuappdb')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
     # Inicializar extensões

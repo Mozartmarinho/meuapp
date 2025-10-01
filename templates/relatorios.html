@@ -1,108 +1,124 @@
 {% extends "base.html" %}
 
-{% block title %}Relatórios Gerenciais{% endblock %}
+{% block title %}Relatórios - São Geraldo Service{% endblock %}
 
 {% block content %}
-<h1>Relatórios Gerenciais</h1>
+<div class="container">
+    <h1>Relatórios de Equipamentos</h1>
 
-<section>
-    <h2>Clientes que mais abriram chamados</h2>
-    <canvas id="chartClientes" width="400" height="400"></canvas>
-</section>
-
-<section>
-    <h2>Equipamentos que mais tiveram chamados</h2>
-    <canvas id="chartEquipamentos" width="400" height="400"></canvas>
-    <h3>Problemas por equipamento</h3>
-    <div id="problemasEquipamentos">
-        {% for equipamento, problemas in equipamentos_problemas.items() %}
-            <h4>{{ equipamento }}</h4>
-            <ul>
-                {% for tipo_servico, descricao in problemas %}
-                    <li><strong>{{ tipo_servico }}:</strong> {{ descricao }}</li>
-                {% endfor %}
-            </ul>
-        {% endfor %}
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Clientes por Quantidade de Equipamentos</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="clientesChart" width="400" height="400"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Ações</h5>
+                </div>
+                <div class="card-body">
+                    <button onclick="window.print()" class="btn btn-primary">
+                        <i class="fas fa-print"></i> Imprimir Relatório
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
-</section>
 
-<button onclick="window.print()">Imprimir Relatórios</button>
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Lista de Equipamentos (Ordenado por Cliente com Mais Chamados)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Nome do Equipamento</th>
+                                    <th>Patrimônio</th>
+                                    <th>Cliente</th>
+                                    <th>Chamados do Cliente</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for equipamento, cliente, chamado_count in equipamentos %}
+                                <tr>
+                                    <td>{{ equipamento.equipamento }}</td>
+                                    <td>{{ equipamento.patrimonio }}</td>
+                                    <td>{{ cliente.nome }}</td>
+                                    <td>{{ chamado_count }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
-{% endblock %}
+<style>
+@media print {
+    .sidebar, .btn, .card-header {
+        display: none !important;
+    }
+    .container {
+        margin: 0 !important;
+        width: 100% !important;
+    }
+    .card {
+        border: none !important;
+        box-shadow: none !important;
+    }
+    .table {
+        font-size: 12px;
+    }
+}
+</style>
 
-{% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    const ctxClientes = document.getElementById('chartClientes').getContext('2d');
-    const chartClientes = new Chart(ctxClientes, {
-        type: 'pie',
-        data: {
-            labels: [
-                {% for cliente, total in top_clientes %}
-                    '{{ cliente }}'{% if not loop.last %},{% endif %}
-                {% endfor %}
-            ],
-            datasets: [{
-                label: 'Chamados por Cliente',
-                data: [
-                    {% for cliente, total in top_clientes %}
-                        {{ total }}{% if not loop.last %},{% endif %}
-                    {% endfor %}
-                ],
-                backgroundColor: [
-                    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
-                    '#FF9F40', '#66FF66', '#FF6666', '#66B2FF', '#FF66B2'
-                ],
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: {
-                    position: 'right',
-                },
-                title: {
-                    display: true,
-                    text: 'Clientes que mais abriram chamados'
-                }
-            }
-        }
-    });
+document.addEventListener('DOMContentLoaded', function() {
+    const ctx = document.getElementById('clientesChart').getContext('2d');
+    const clientesData = {{ clientes_equip_json | safe }};
 
-    const ctxEquipamentos = document.getElementById('chartEquipamentos').getContext('2d');
-    const chartEquipamentos = new Chart(ctxEquipamentos, {
+    const labels = clientesData.map(item => item[0]);
+    const data = clientesData.map(item => item[1]);
+
+    new Chart(ctx, {
         type: 'pie',
         data: {
-            labels: [
-                {% for equipamento, total in top_equipamentos %}
-                    '{{ equipamento }}'{% if not loop.last %},{% endif %}
-                {% endfor %}
-            ],
+            labels: labels,
             datasets: [{
-                label: 'Chamados por Equipamento',
-                data: [
-                    {% for equipamento, total in top_equipamentos %}
-                        {{ total }}{% if not loop.last %},{% endif %}
-                    {% endfor %}
-                ],
+                data: data,
                 backgroundColor: [
-                    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
-                    '#FF9F40', '#66FF66', '#FF6666', '#66B2FF', '#FF66B2'
-                ],
+                    '#FF6384',
+                    '#36A2EB',
+                    '#FFCE56',
+                    '#4BC0C0',
+                    '#9966FF',
+                    '#FF9F40'
+                ]
             }]
         },
         options: {
             responsive: true,
             plugins: {
                 legend: {
-                    position: 'right',
-                },
-                title: {
-                    display: true,
-                    text: 'Equipamentos que mais tiveram chamados'
+                    position: 'bottom',
                 }
             }
         }
     });
+});
 </script>
 {% endblock %}
