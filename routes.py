@@ -74,14 +74,26 @@ def dashboard():
     chamados_concluidos = Chamado.query.filter_by(status='Concluído').count()
     
     # Chamados do técnico logado
-    meus_chamados = Chamado.query.filter_by(tecnico_id=session['user_id']).all()
+    query = Chamado.query.filter_by(tecnico_id=session['user_id'])
+    
+    # Busca por número do chamado
+    numero_chamado = request.args.get('numero_chamado')
+    if numero_chamado:
+        query = query.filter(Chamado.numero_chamado.like(f'%{numero_chamado}%'))
+    
+    meus_chamados = query.all()
+    
+    stats = {
+        'total': total_chamados,
+        'pendentes': chamados_pendentes,
+        'em_andamento': chamados_em_andamento,
+        'concluidos': chamados_concluidos
+    }
     
     return render_template('dashboard.html', 
-                         total_chamados=total_chamados,
-                         chamados_pendentes=chamados_pendentes,
-                         chamados_em_andamento=chamados_em_andamento,
-                         chamados_concluidos=chamados_concluidos,
-                         meus_chamados=meus_chamados)
+                         stats=stats,
+                         meus_chamados=meus_chamados,
+                         numero_chamado=numero_chamado)
 
 # Rotas de Clientes
 @main.route('/clientes')
@@ -311,7 +323,9 @@ def atualizar_status_chamado(id):
     data = request.get_json()
     
     chamado.status = data['status']
-    if data['status'] == 'Concluído':
+    if data['status'] == 'Em Andamento':
+        chamado.data_atendimento = datetime.utcnow()
+    elif data['status'] == 'Concluído':
         chamado.data_conclusao = datetime.utcnow()
     
     db.session.commit()

@@ -94,10 +94,14 @@ class Chamado(db.Model):
     tipo_servico = db.Column(db.String(50), nullable=False)
     descricao = db.Column(db.Text)
     status = db.Column(db.String(20), default='Pendente')
-    prioridade = db.Column(db.String(10), default='Normal')
+    prioridade = db.Column(db.String(10), default='Baixa')
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    data_atendimento = db.Column(db.DateTime)
     data_conclusao = db.Column(db.DateTime)
     observacoes = db.Column(db.Text)
+    feito = db.Column(db.Text)  # Campo para o que foi realizado
+    patrimonio = db.Column(db.String(50))
+    equipamento = db.Column(db.String(100))
     tecnico_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
     
     # Relacionamentos via backref
@@ -115,7 +119,23 @@ class Chamado(db.Model):
             'status': self.status,
             'prioridade': self.prioridade,
             'data_criacao': self.data_criacao.strftime('%d/%m/%Y %H:%M') if self.data_criacao else None,
+            'data_atendimento': self.data_atendimento.strftime('%d/%m/%Y %H:%M') if self.data_atendimento else None,
             'data_conclusao': self.data_conclusao.strftime('%d/%m/%Y %H:%M') if self.data_conclusao else None,
             'observacoes': self.observacoes,
-            'tecnico': self.tecnico.nome if self.tecnico else ''
+            'feito': self.feito,
+            'tecnico': self.tecnico.nome if self.tecnico else '',
+            'fotos': [{'filename': f.filename} for f in self.fotos]
         }
+
+class ChamadoFoto(db.Model):
+    __tablename__ = 'chamado_fotos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    chamado_id = db.Column(db.Integer, db.ForeignKey('chamados.id'), nullable=False)
+    filename = db.Column(db.String(255), nullable=False)
+    upload_date = db.Column(db.DateTime, default=datetime.utcnow)
+
+    chamado = db.relationship('Chamado', backref=db.backref('fotos', lazy=True))
+
+    def __repr__(self):
+        return f'<ChamadoFoto {self.filename}>'

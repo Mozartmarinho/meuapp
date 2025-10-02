@@ -1,15 +1,6 @@
-# TODO - Correções e Melhorias no Projeto meuapp
+# TODO: Atualizar opções de tipo de usuário
 
-## Passos para Correção e Melhoria
-
-- [ ] Revisar e corrigir bugs no arquivo app.py / app_updated.py
-- [ ] Revisar e corrigir bugs no arquivo routes_updated.py
-- [ ] Revisar e corrigir bugs no arquivo models_updated.py
-- [ ] Revisar e corrigir bugs no arquivo init_db_updated.py
-- [ ] Verificar e corrigir configuração da conexão com banco de dados MySQL
-- [ ] Melhorar organização e legibilidade do código em todos os arquivos revisados
-- [ ] Garantir funcionamento correto das permissões e controle de acesso
-- [ ] Testar funcionalidades principais: login, CRUD de clientes, equipamentos, usuários e chamados
-- [ ] Corrigir eventuais erros em templates HTML se identificados
-- [ ] Documentar todas as correções e melhorias realizadas
-- [ ] Testar a aplicação localmente para garantir que não houve perda de funcionalidades
+- [x] Atualizar templates/novo_usuario.html: alterar opções do select "Tipo de Usuário" para Gestor, Administrativo, Tecnico, Nutricionista
+- [x] Atualizar templates/editar_usuario.html: alterar opções do select "Tipo de Usuário" e ajustar lógica de seleção
+- [x] Verificar se routes_updated.py ou models.py precisam de ajustes para os novos tipos
+- [x] Testar criação e edição de usuários com os novos tipos (recomendado executar o servidor e verificar)

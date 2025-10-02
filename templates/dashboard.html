@@ -39,7 +39,17 @@
         </a>
     </div>
 
-    <h2>Chamados Recentes</h2>
+    <h2>Meus Chamados</h2>
+    <form method="GET" style="margin-bottom: 20px;">
+        <label for="numero_chamado">Buscar por Número do Chamado:</label>
+        <input type="text" name="numero_chamado" id="numero_chamado" value="{{ numero_chamado or '' }}" placeholder="Digite o número do chamado">
+        <label for="cliente_nome">Ou por Nome do Cliente:</label>
+        <input type="text" name="cliente_nome" id="cliente_nome" value="{{ cliente_nome or '' }}" placeholder="Digite o nome do cliente">
+        <button type="submit" class="btn btn-primary">Buscar</button>
+        {% if numero_chamado or cliente_nome %}
+        <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">Limpar Busca</a>
+        {% endif %}
+    </form>
     <table>
         <thead>
             <tr>
@@ -51,7 +61,7 @@
             </tr>
         </thead>
         <tbody>
-            {% for chamado in chamados %}
+            {% for chamado in meus_chamados %}
             <tr>
                 <td>{{ chamado.numero_chamado }}</td>
                 <td>{{ chamado.cliente.nome if chamado.cliente else 'N/A' }}</td>

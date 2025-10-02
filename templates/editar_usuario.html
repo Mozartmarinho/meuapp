@@ -35,8 +35,10 @@
             <div class="form-group">
                 <label for="tipo">Tipo de Usuário</label>
                 <select id="tipo" name="tipo">
-                    <option value="operador" {% if usuario.tipo == 'operador' %}selected{% endif %}>Operador</option>
-                    <option value="admin" {% if usuario.tipo == 'admin' %}selected{% endif %}>Administrador</option>
+                    <option value="gestor" {% if usuario.tipo == 'gestor' %}selected{% endif %}>Gestor</option>
+                    <option value="administrativo" {% if usuario.tipo == 'administrativo' %}selected{% endif %}>Administrativo</option>
+                    <option value="tecnico" {% if usuario.tipo == 'tecnico' %}selected{% endif %}>Técnico</option>
+                    <option value="nutricionista" {% if usuario.tipo == 'nutricionista' %}selected{% endif %}>Nutricionista</option>
                 </select>
             </div>
             <div class="form-group">

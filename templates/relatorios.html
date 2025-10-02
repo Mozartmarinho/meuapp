@@ -10,10 +10,10 @@
         <div class="col-md-6">
             <div class="card">
                 <div class="card-header">
-                    <h5>Clientes por Quantidade de Equipamentos</h5>
+                    <h5>Quantidade de Atendimento por Cliente</h5>
                 </div>
                 <div class="card-body">
-                    <canvas id="clientesChart" width="400" height="400"></canvas>
+                    <canvas id="clientesChart" width="200" height="200"></canvas>
                 </div>
             </div>
         </div>
@@ -85,40 +85,28 @@
 }
 </style>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const ctx = document.getElementById('clientesChart').getContext('2d');
-    const clientesData = {{ clientes_equip_json | safe }};
+<script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+<script type="text/javascript">
+  google.charts.load("current", {packages:["corechart"]});
+  google.charts.setOnLoadCallback(drawChart);
+  function drawChart() {
+    var data = google.visualization.arrayToDataTable([
+      ['Cliente', 'Quantidade'],
+      {% for item in clientes_equip_json %}
+        ['{{ item[0] }}', {{ item[1] }}],
+      {% endfor %}
+    ]);
 
-    const labels = clientesData.map(item => item[0]);
-    const data = clientesData.map(item => item[1]);
+    var options = {
+      title: 'Quantidade de Atendimento por Cliente',
+      is3D: true,
+      width: 300,
+      height: 300,
+      legend: { position: 'bottom' }
+    };
 
-    new Chart(ctx, {
-        type: 'pie',
-        data: {
-            labels: labels,
-            datasets: [{
-                data: data,
-                backgroundColor: [
-                    '#FF6384',
-                    '#36A2EB',
-                    '#FFCE56',
-                    '#4BC0C0',
-                    '#9966FF',
-                    '#FF9F40'
-                ]
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                }
-            }
-        }
-    });
-});
+    var chart = new google.visualization.PieChart(document.getElementById('clientesChart'));
+    chart.draw(data, options);
+  }
 </script>
 {% endblock %}

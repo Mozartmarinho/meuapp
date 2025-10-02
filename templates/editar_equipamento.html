@@ -18,8 +18,8 @@
 
         <form method="POST" class="form-container">
             <div class="form-group">
-                <label for="nome_equipamento">Nome do Equipamento *</label>
-                <input type="text" id="nome_equipamento" name="nome_equipamento" value="{{ equipamento.nome_equipamento }}" required>
+                <label for="equipamento">Nome do Equipamento *</label>
+                <input type="text" id="equipamento" name="equipamento" value="{{ equipamento.equipamento }}" required>
             </div>
 
             <div class="form-group">
@@ -28,21 +28,16 @@
             </div>
 
             <div class="form-group">
-                <label for="numero_serie">Número de Série</label>
-                <input type="text" id="numero_serie" name="numero_serie" value="{{ equipamento.numero_serie or '' }}">
-            </div>
-
-            <div class="form-group">
                 <label for="patrimonio">Patrimônio</label>
                 <input type="text" id="patrimonio" name="patrimonio" value="{{ equipamento.patrimonio or '' }}">
             </div>
 
             <div class="form-group">
-                <label for="localizacao">Localização</label>
-                <select id="localizacao" name="localizacao">
+                <label for="cliente_id">Cliente *</label>
+                <select id="cliente_id" name="cliente_id" required>
                     <option value="">Selecione um cliente</option>
                     {% for cliente in clientes %}
-                    <option value="{{ cliente.nome }}" {% if equipamento.localizacao == cliente.nome %}selected{% endif %}>{{ cliente.nome }}</option>
+                    <option value="{{ cliente.id }}" {% if equipamento.cliente_id == cliente.id %}selected{% endif %}>{{ cliente.nome }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -53,8 +48,8 @@
             </div>
 
             <div class="form-group">
-                <label for="data_manutencao">Data de Manutenção</label>
-                <input type="date" id="data_manutencao" name="data_manutencao" value="{{ equipamento.data_manutencao.strftime('%Y-%m-%d') if equipamento.data_manutencao else '' }}">
+                <label for="observacoes">Observações</label>
+                <textarea id="observacoes" name="observacoes" rows="4">{{ equipamento.observacoes or '' }}</textarea>
             </div>
 
             <div class="form-group">

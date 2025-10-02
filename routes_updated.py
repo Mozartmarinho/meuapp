@@ -1,9 +1,9 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, session
-from models_updated import db, Cliente, Equipamento, Usuario, Chamado, Permission
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, session, current_app
+from models_updated import db, Cliente, Equipamento, Usuario, Chamado, Permission, ChamadoFoto
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from datetime import datetime
-from sqlalchemy import func
+from sqlalchemy import func, case
 import json
 
 main = Blueprint('main', __name__)
@@ -71,7 +71,24 @@ def dashboard():
     chamados_em_andamento = Chamado.query.filter_by(status='Em Andamento').count()
     chamados_concluidos = Chamado.query.filter_by(status='Concluído').count()
     
-    chamados_recentes = Chamado.query.order_by(Chamado.data_criacao.desc()).limit(5).all()
+    # Buscar cliente associado ao técnico logado
+    cliente = Cliente.query.filter_by(email_responsavel=user.email).first()
+    
+    if user.tipo == 'tecnico' and cliente:
+        query = Chamado.query.filter_by(cliente_id=cliente.id)
+    else:
+        query = Chamado.query.filter_by(tecnico_id=session['user_id'])
+    
+    # Busca
+    numero_chamado = request.args.get('numero_chamado')
+    cliente_nome = request.args.get('cliente_nome')
+    
+    if numero_chamado:
+        query = query.filter(Chamado.numero_chamado.like(f'%{numero_chamado}%'))
+    if cliente_nome:
+        query = query.join(Cliente).filter(Cliente.nome.like(f'%{cliente_nome}%'))
+    
+    meus_chamados = query.order_by(Chamado.data_criacao.desc()).limit(10).all()
     
     return render_template('dashboard.html', 
                            user_name=user.nome,
@@ -81,7 +98,9 @@ def dashboard():
                                'em_andamento': chamados_em_andamento,
                                'concluidos': chamados_concluidos
                            },
-                           chamados=chamados_recentes)
+                           meus_chamados=meus_chamados,
+                           numero_chamado=numero_chamado,
+                           cliente_nome=cliente_nome)
 
 # Rotas de Clientes
 @main.route('/clientes')
@@ -145,12 +164,13 @@ def novo_equipamento():
     
     if request.method == 'POST':
         equipamento = Equipamento(
-            equipamento=request.form['equipamento'],
-            modelo=request.form['modelo'],
-            data_compra=datetime.strptime(request.form['data_compra'], '%Y-%m-%d') if request.form['data_compra'] else None,
-            patrimonio=request.form['patrimonio'],
-            observacoes=request.form['observacoes'],
-            cliente_id=request.form['cliente_id']
+            equipamento=request.form.get('equipamento', ''),
+            modelo=request.form.get('modelo', ''),
+            data_compra=datetime.strptime(request.form['data_compra'], '%Y-%m-%d') if request.form.get('data_compra') else None,
+            patrimonio=request.form.get('patrimonio', ''),
+            observacoes=request.form.get('observacoes', ''),
+            cliente_id=request.form.get('cliente_id', None),
+            ativo='ativo' in request.form
         )
         db.session.add(equipamento)
         db.session.commit()
@@ -167,12 +187,15 @@ def editar_equipamento(id):
     clientes = Cliente.query.filter_by(ativo=True).all()
     
     if request.method == 'POST':
-        equipamento.equipamento = request.form['equipamento']
-        equipamento.modelo = request.form['modelo']
-        equipamento.data_compra = datetime.strptime(request.form['data_compra'], '%Y-%m-%d') if request.form['data_compra'] else None
-        equipamento.patrimonio = request.form['patrimonio']
-        equipamento.observacoes = request.form['observacoes']
-        equipamento.cliente_id = request.form['cliente_id']
+        equipamento.equipamento = request.form.get('equipamento') or equipamento.equipamento
+        equipamento.modelo = request.form.get('modelo') or equipamento.modelo
+        if request.form.get('data_compra'):
+            equipamento.data_compra = datetime.strptime(request.form['data_compra'], '%Y-%m-%d')
+        equipamento.patrimonio = request.form.get('patrimonio') or equipamento.patrimonio
+        equipamento.observacoes = request.form.get('observacoes') or equipamento.observacoes
+        if request.form.get('cliente_id'):
+            equipamento.cliente_id = int(request.form['cliente_id'])
+        equipamento.ativo = 'ativo' in request.form
         
         db.session.commit()
         flash('Equipamento atualizado com sucesso!', 'success')
@@ -274,12 +297,32 @@ def listar_chamados():
     
     if user.tipo == 'tecnico' and cliente:
         # Técnico vê apenas chamados do seu cliente
-        chamados = Chamado.query.filter_by(cliente_id=cliente.id).all()
+        chamados = Chamado.query.filter_by(cliente_id=cliente.id).order_by(
+            case(
+                (Chamado.status == 'Pendente', 1),
+                (Chamado.status == 'Em Andamento', 2),
+                (Chamado.status == 'Concluído', 3),
+                else_=4
+            )
+        ).all()
     else:
         # Admin vê todos os chamados
-        chamados = Chamado.query.all()
+        chamados = Chamado.query.order_by(
+            case(
+                (Chamado.status == 'Pendente', 1),
+                (Chamado.status == 'Em Andamento', 2),
+                (Chamado.status == 'Concluído', 3),
+                else_=4
+            )
+        ).all()
     
-    return render_template('chamado.html', chamados=chamados)
+    total_chamados = len(chamados)
+    pendentes = sum(1 for c in chamados if c.status == 'Pendente')
+    em_andamento = sum(1 for c in chamados if c.status == 'Em Andamento')
+    concluidos = sum(1 for c in chamados if c.status == 'Concluído')
+    
+    return render_template('chamados.html', chamados=chamados, total_chamados=total_chamados,
+                           pendentes=pendentes, em_andamento=em_andamento, concluidos=concluidos)
 
 @main.route('/chamados/novo', methods=['GET', 'POST'])
 @login_required
@@ -291,6 +334,14 @@ def novo_chamado():
     cliente = Cliente.query.filter_by(email_responsavel=user.email).first()
     
     if request.method == 'POST':
+        # Validação dos campos obrigatórios
+        required_fields = ['cliente_id', 'tipo_servico', 'status', 'prioridade', 'patrimonio']
+        for field in required_fields:
+            if not request.form.get(field):
+                flash(f'O campo {field.replace("_", " ").capitalize()} é obrigatório.', 'error')
+                clientes = Cliente.query.filter_by(ativo=True).all()
+                return render_template('novo_chamado.html', clientes=clientes, cliente_selecionado=cliente)
+        
         # Gerar número do chamado
         ultimo_chamado = Chamado.query.order_by(Chamado.id.desc()).first()
         numero = f"CHM{ultimo_chamado.id + 1:04d}" if ultimo_chamado else "CHM0001"
@@ -303,6 +354,8 @@ def novo_chamado():
             status=request.form['status'],
             prioridade=request.form['prioridade'],
             observacoes=request.form['observacoes'],
+            patrimonio=request.form['patrimonio'],
+            equipamento=request.form['equipamento'],
             tecnico_id=session['user_id']
         )
         db.session.add(chamado)
@@ -342,12 +395,58 @@ def editar_chamado(id):
 @login_required
 def atualizar_status_chamado(id):
     chamado = Chamado.query.get_or_404(id)
-    data = request.get_json()
-    
-    chamado.status = data['status']
-    if data['status'] == 'Concluído':
-        chamado.data_conclusao = datetime.utcnow()
-    
-    db.session.commit()
-    
-    return jsonify({'success': True})
+
+    if request.content_type.startswith('multipart/form-data'):
+        # Handle form data for Concluído
+        status = request.form['status']
+        feito = request.form['feito']
+        files = request.files.getlist('fotos')
+
+        chamado.status = status
+        chamado.feito = feito
+        if not chamado.data_conclusao:
+            chamado.data_conclusao = datetime.utcnow()
+
+        # Save photos
+        import os
+        upload_folder = os.path.join(current_app.root_path, 'static', 'uploads')
+        os.makedirs(upload_folder, exist_ok=True)
+        for file in files[:4]:  # Up to 4
+            if file and file.filename:
+                filename = f"{chamado.id}_{file.filename}"
+                file_path = os.path.join(upload_folder, filename)
+                file.save(file_path)
+                foto = ChamadoFoto(chamado_id=chamado.id, filename=filename)
+                db.session.add(foto)
+
+        db.session.commit()
+        return jsonify({'success': True})
+    else:
+        # JSON for other statuses
+        data = request.get_json()
+        status = data['status']
+
+        if status == 'Em Andamento':
+            if not chamado.data_atendimento:
+                chamado.data_atendimento = datetime.utcnow()
+
+        chamado.status = status
+        db.session.commit()
+        return jsonify({'success': True})
+
+@main.route('/api/equipamentos_por_cliente/<cliente_nome>')
+@login_required
+def equipamentos_por_cliente(cliente_nome):
+    cliente = Cliente.query.filter_by(nome=cliente_nome, ativo=True).first()
+    if not cliente:
+        return jsonify([])  # Retorna lista vazia se cliente não encontrado
+
+    equipamentos = Equipamento.query.filter_by(cliente_id=cliente.id, ativo=True).all()
+    equipamentos_list = []
+    for equip in equipamentos:
+        equipamentos_list.append({
+            'id': equip.id,
+            'patrimonio': equip.patrimonio,
+            'nome_equipamento': equip.equipamento
+        })
+    return jsonify(equipamentos_list)
