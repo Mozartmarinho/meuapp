@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Configurações do Sistema{% endblock %}
+
+{% block content %}
+<h2>Configurações do Sistema</h2>
+
+<form method="POST" action="{{ url_for('main.sistema') }}">
+    <div>
+        <label for="smtp_server">Servidor SMTP:</label>
+        <input type="text" id="smtp_server" name="smtp_server" value="{{ config.smtp_server or '' }}" required>
+    </div>
+    <div>
+        <label for="smtp_port">Porta SMTP:</label>
+        <input type="number" id="smtp_port" name="smtp_port" value="{{ config.smtp_port or 587 }}" required>
+    </div>
+    <div>
+        <label for="smtp_username">Usuário SMTP:</label>
+        <input type="text" id="smtp_username" name="smtp_username" value="{{ config.smtp_username or '' }}">
+    </div>
+    <div>
+        <label for="smtp_password">Senha SMTP:</label>
+        <input type="password" id="smtp_password" name="smtp_password" value="{{ config.smtp_password or '' }}">
+    </div>
+    <div>
+        <label for="email_from">Email Remetente:</label>
+        <input type="email" id="email_from" name="email_from" value="{{ config.email_from or '' }}" required>
+    </div>
+    <div>
+        <label for="email_subject_prefix">Prefixo Assunto Email:</label>
+        <input type="text" id="email_subject_prefix" name="email_subject_prefix" value="{{ config.email_subject_prefix or '[São Geraldo Service]' }}">
+    </div>
+    <div>
+        <label for="use_tls">
+            <input type="checkbox" id="use_tls" name="use_tls" {% if config.use_tls %}checked{% endif %}>
+            Usar TLS
+        </label>
+    </div>
+    <button type="submit">Salvar Configurações</button>
+</form>
+
+<h3>Log de Erros de Email</h3>
+<textarea readonly rows="10" cols="80">{{ config.email_error_log or 'Nenhum erro registrado.' }}</textarea>
+{% endblock %}

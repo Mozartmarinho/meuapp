@@ -1,7 +1,18 @@
 import pymysql
 
-# Connect without password (assuming root has no password initially)
-conn = pymysql.connect(host='127.0.0.1', user='root')
+# First, try to connect without password
+try:
+    conn = pymysql.connect(host='127.0.0.1', user='root')
+    print("Connected without password")
+except pymysql.err.OperationalError as e:
+    print(f"Failed to connect without password: {e}")
+    # If that fails, try with the expected password
+    try:
+        conn = pymysql.connect(host='127.0.0.1', user='root', password='saogeraldo2025')
+        print("Connected with password")
+    except pymysql.err.OperationalError as e2:
+        print(f"Failed to connect with password: {e2}")
+        exit(1)
 
 with conn.cursor() as cursor:
     # Set password for root

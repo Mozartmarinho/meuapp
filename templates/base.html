@@ -42,12 +42,6 @@
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('main.listar_usuarios') }}" class="{% if request.endpoint == 'main.listar_usuarios' %}active{% endif %}">
-                    <i class="fas fa-user-tie" style="margin-right: 0.75rem;"></i>
-                    Usuários
-                </a>
-            </li>
-            <li>
                 <a href="{{ url_for('main.listar_equipamentos') }}" class="{% if request.endpoint == 'main.listar_equipamentos' %}active{% endif %}">
                     <i class="fas fa-tools" style="margin-right: 0.75rem;"></i>
                     Equipamentos
@@ -59,11 +53,23 @@
                     Relatórios
                 </a>
             </li>
-            <li>
-                <a href="#" onclick="alert('Funcionalidade em desenvolvimento')">
+            <li class="submenu">
+                <a href="#" class="{% if request.endpoint in ['main.listar_usuarios', 'main.sistema'] %}active{% endif %}">
                     <i class="fas fa-cog" style="margin-right: 0.75rem;"></i>
                     Configurações
                 </a>
+                <ul>
+                    <li>
+                        <a href="{{ url_for('main.listar_usuarios') }}" class="{% if request.endpoint == 'main.listar_usuarios' %}active{% endif %}">
+                            Usuários
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('main.sistema') }}" class="{% if request.endpoint == 'main.sistema' %}active{% endif %}">
+                            Sistema
+                        </a>
+                    </li>
+                </ul>
             </li>
         </ul>
     </nav>
@@ -87,6 +93,7 @@
 
     <!-- JavaScript -->
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/menu_submenu_toggle.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>
 <footer style="text-align: center; margin: 1rem 0;">

@@ -1,5 +1,5 @@
 from app_updated import app
-from models_updated import db, Usuario, Cliente, Equipamento, Chamado, Permission
+from models_updated import db, Usuario, Cliente, Equipamento, Chamado, Permission, SistemaConfig
 from datetime import datetime
 
 def init_db():
@@ -80,14 +80,24 @@ def init_db():
             )
             tecnico.set_password('tecnico123')
             db.session.add(tecnico)
-            
+
             # Adicionar permissões básicas ao técnico
             tecnico_perms = ['view_chamados', 'create_chamado', 'edit_chamado', 'view_clientes', 'view_equipamentos']
             for perm_name in tecnico_perms:
                 perm = Permission.query.filter_by(name=perm_name).first()
                 if perm:
                     tecnico.permissions.append(perm)
-        
+
+        # Criar configuração do sistema padrão
+        config = SistemaConfig.query.first()
+        if not config:
+            config = SistemaConfig(
+                smtp_server='smtp.gmail.com',
+                smtp_port=587,
+                email_from='noreply@saogeraldo.com'
+            )
+            db.session.add(config)
+
         db.session.commit()
         print("Banco de dados inicializado com sucesso!")
         print("Usuário admin: admin@saogeraldo.com / admin123")

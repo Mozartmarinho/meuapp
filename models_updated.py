@@ -139,3 +139,21 @@ class ChamadoFoto(db.Model):
 
     def __repr__(self):
         return f'<ChamadoFoto {self.filename}>'
+
+class SistemaConfig(db.Model):
+    __tablename__ = 'sistema_config'
+
+    id = db.Column(db.Integer, primary_key=True)
+    smtp_server = db.Column(db.String(100))
+    smtp_port = db.Column(db.Integer, default=587)
+    smtp_username = db.Column(db.String(100))
+    smtp_password = db.Column(db.String(255))
+    email_from = db.Column(db.String(120))
+    email_subject_prefix = db.Column(db.String(100), default='[São Geraldo Service]')
+    use_tls = db.Column(db.Boolean, default=True)
+    email_error_log = db.Column(db.Text)  # Campo para armazenar logs de erro de email
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    data_atualizacao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<SistemaConfig {self.id}>'

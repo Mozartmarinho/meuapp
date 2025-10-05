@@ -1,0 +1,2 @@
+ALTER TABLE sistema_config
+ADD COLUMN use_tls BOOLEAN DEFAULT TRUE;
