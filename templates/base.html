@@ -1,3 +1,4 @@
+<!-- Desenvolvido por Mozart Marinho -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -9,67 +10,139 @@
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
 </head>
 <body>
+    <!-- Botão Menu Hambúrguer (apenas em telas pequenas) -->
+    <button class="menu-toggle" id="menu-toggle" style="display: none; position: fixed; top: 1rem; left: 1rem; z-index: 1000; background: var(--primary-color); color: white; border: none; padding: 0.5rem; border-radius: 0.375rem; cursor: pointer;">
+        <i class="fas fa-bars"></i>
+    </button>
+
     <!-- Sidebar -->
-    <nav class="sidebar">
+    <nav class="sidebar" id="sidebar">
         <div class="sidebar-logo">
-            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service" onerror="this.style.display='none'" style="display: block; margin: 0 auto 1rem; width: 250px; max-width: 80%; height: auto; border-radius: 10px;">
+            <img src="{{ url_for('static', filename='img/Logo da Manutenção São Geraldo.png') }}" alt="São Geraldo Service" onerror="this.style.display='none'" style="display: block; margin: 0 auto 1rem; width: 150px; max-width: 80%; height: auto; border-radius: 10px;">
             <h3 style="margin-top: 0; text-align: center;">SÃO GERALDO<br>SERVICE</h3>
         </div>
 
         <ul class="sidebar-menu">
             <li>
-                <a href="{{ url_for('main.dashboard') }}" class="{% if request.endpoint == 'main.dashboard' %}active{% endif %}">
+                <a href="{{ safe_url('main.dashboard') }}" class="{% if request.endpoint == 'main.dashboard' %}active{% endif %}">
                     <i class="fas fa-tachometer-alt" style="margin-right: 0.75rem;"></i>
                     Dashboard
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('main.listar_chamados') }}" class="{% if request.endpoint == 'main.listar_chamados' %}active{% endif %}">
+                <a href="{{ safe_url('main.dashboard') }}" class="{% if request.endpoint == 'main.dashboard' %}active{% endif %}">
+                    <i class="fas fa-desktop" style="margin-right: 0.75rem;"></i>
+                    Painel de Controle
+                </a>
+            </li>
+            <li>
+                <a href="{{ safe_url('main.listar_chamados') }}" class="{% if request.endpoint == 'main.listar_chamados' %}active{% endif %}">
                     <i class="fas fa-clipboard-list" style="margin-right: 0.75rem;"></i>
                     Chamados
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('main.novo_chamado') }}" class="{% if request.endpoint == 'main.novo_chamado' %}active{% endif %}">
+                <a href="{{ safe_url('main.novo_chamado') }}" class="{% if request.endpoint == 'main.novo_chamado' %}active{% endif %}">
                     <i class="fas fa-plus-circle" style="margin-right: 0.75rem;"></i>
                     Novo Chamado
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('main.listar_clientes') }}" class="{% if request.endpoint == 'main.listar_clientes' %}active{% endif %}">
+                <a href="{{ safe_url('main.listar_clientes') }}" class="{% if request.endpoint == 'main.listar_clientes' %}active{% endif %}">
                     <i class="fas fa-users" style="margin-right: 0.75rem;"></i>
                     Clientes
                 </a>
             </li>
+            <li class="submenu">
+                <a href="#" class="{% if request.endpoint in ['main.listar_funcionarios', 'main.novo_funcionario', 'main.registro_acessos_estoque', 'main.registro_acessos_refeitorio', 'main.registro_acessos_lavanderia', 'main.registro_acessos_escritorio_novo', 'main.registro_acessos_portaria'] %}active{% endif %}">
+                    <i class="fas fa-id-card" style="margin-right: 0.75rem;"></i>
+                    Controle de Acesso
+                </a>
+                <ul>
+                    <li>
+                         <a href="{% if 'main.listar_funcionarios' in view_functions %}{{ safe_url('main.listar_funcionarios') }}{% else %}#{% endif %}" class="{% if request.endpoint == 'main.listar_funcionarios' %}active{% endif %}">
+                            Cadastro de Funcionários
+                        </a>
+                    </li>
+                    <li class="submenu">
+                        <a href="#" class="{% if request.endpoint in ['main.registro_acessos_estoque', 'main.registro_acessos_refeitorio', 'main.registro_acessos_lavanderia', 'main.registro_acessos_escritorio_novo', 'main.registro_acessos_portaria'] %}active{% endif %}">
+                            Registro de Acessos
+                        </a>
+                        <ul>
+                            <li>
+                                <a href="{% if 'main.registro_acessos_estoque' in view_functions %}{{ safe_url('main.registro_acessos_estoque') }}{% else %}#{% endif %}" class="{% if request.endpoint == 'main.registro_acessos_estoque' %}active{% endif %}">
+                                    Estoque
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{% if 'main.registro_acessos_refeitorio' in view_functions %}{{ safe_url('main.registro_acessos_refeitorio') }}{% else %}#{% endif %}" class="{% if request.endpoint == 'main.registro_acessos_refeitorio' %}active{% endif %}">
+                                    Refeitório
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{% if 'main.registro_acessos_lavanderia' in view_functions %}{{ safe_url('main.registro_acessos_lavanderia') }}{% else %}#{% endif %}" class="{% if request.endpoint == 'main.registro_acessos_lavanderia' %}active{% endif %}">
+                                    Lavanderia
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{% if 'main.registro_acessos_escritorio_novo' in view_functions %}{{ safe_url('main.registro_acessos_escritorio_novo') }}{% else %}#{% endif %}" class="{% if request.endpoint == 'main.registro_acessos_escritorio_novo' %}active{% endif %}">
+                                    Escritório Novo
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{% if 'main.registro_acessos_portaria' in view_functions %}{{ safe_url('main.registro_acessos_portaria') }}{% else %}#{% endif %}" class="{% if request.endpoint == 'main.registro_acessos_portaria' %}active{% endif %}">
+                                    Portaria
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+                </ul>
+            </li>
             <li>
-                <a href="{{ url_for('main.listar_equipamentos') }}" class="{% if request.endpoint == 'main.listar_equipamentos' %}active{% endif %}">
+                <a href="{{ safe_url('main.listar_equipamentos') }}" class="{% if request.endpoint == 'main.listar_equipamentos' %}active{% endif %}">
                     <i class="fas fa-tools" style="margin-right: 0.75rem;"></i>
                     Equipamentos
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('main.relatorios') }}" class="{% if request.endpoint == 'main.relatorios' %}active{% endif %}">
+                <a href="{{ safe_url('main.relatorios') }}" class="{% if request.endpoint == 'main.relatorios' %}active{% endif %}">
                     <i class="fas fa-chart-pie" style="margin-right: 0.75rem;"></i>
                     Relatórios
                 </a>
             </li>
             <li class="submenu">
-                <a href="#" class="{% if request.endpoint in ['main.listar_usuarios', 'main.sistema'] %}active{% endif %}">
+                <a href="#" class="{% if request.endpoint in ['main.listar_usuarios', 'main.sistema', 'main.listar_setores'] %}active{% endif %}">
                     <i class="fas fa-cog" style="margin-right: 0.75rem;"></i>
                     Configurações
                 </a>
                 <ul>
                     <li>
-                        <a href="{{ url_for('main.listar_usuarios') }}" class="{% if request.endpoint == 'main.listar_usuarios' %}active{% endif %}">
+                        <a href="{{ safe_url('main.listar_usuarios') }}" class="{% if request.endpoint == 'main.listar_usuarios' %}active{% endif %}">
                             Usuários
                         </a>
                     </li>
                     <li>
-                        <a href="{{ url_for('main.sistema') }}" class="{% if request.endpoint == 'main.sistema' %}active{% endif %}">
-                            Sistema
+                        <a href="{% if 'main.listar_setores' in view_functions %}{{ safe_url('main.listar_setores') }}{% else %}#{% endif %}" class="{% if request.endpoint == 'main.listar_setores' %}active{% endif %}">
+                            Setores
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ safe_url('main.sistema') }}" class="{% if request.endpoint == 'main.sistema' %}active{% endif %}">
+                            E-mail
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{% if 'main.listar_sistemas_externos' in view_functions %}{{ safe_url('main.listar_sistemas_externos') }}{% else %}#{% endif %}" class="{% if request.endpoint == 'main.listar_sistemas_externos' %}active{% endif %}">
+                            Externo
                         </a>
                     </li>
                 </ul>
+            </li>
+            <li>
+                <a href="{{ safe_url('main.logout') }}" class="logout-btn">
+                    <i class="fas fa-sign-out-alt" style="margin-right: 0.75rem;"></i>
+                    Sair
+                </a>
             </li>
         </ul>
     </nav>
@@ -94,6 +167,26 @@
     <!-- JavaScript -->
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     <script src="{{ url_for('static', filename='js/menu_submenu_toggle.js') }}"></script>
+    <script>
+        // Desenvolvido por Mozart Marinho
+        document.addEventListener('DOMContentLoaded', function() {
+            const menuToggle = document.getElementById('menu-toggle');
+            const sidebar = document.getElementById('sidebar');
+
+            if (menuToggle && sidebar) {
+                menuToggle.addEventListener('click', function() {
+                    sidebar.classList.toggle('active');
+                });
+
+                // Fechar sidebar ao clicar fora dela em dispositivos móveis
+                document.addEventListener('click', function(event) {
+                    if (!sidebar.contains(event.target) && !menuToggle.contains(event.target) && window.innerWidth <= 768) {
+                        sidebar.classList.remove('active');
+                    }
+                });
+            }
+        });
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 <footer style="text-align: center; margin: 1rem 0;">
