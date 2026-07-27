@@ -1,5 +1,6 @@
 from flask import Flask
 from routes import main
+from routes_nutricao import nutricao
 from models import db, Usuario
 
 def create_app():
@@ -10,6 +11,7 @@ def create_app():
 
     db.init_app(app)
     app.register_blueprint(main)
+    app.register_blueprint(nutricao)
 
     return app
 
@@ -22,10 +24,9 @@ if __name__ == '__main__':
             admin = Usuario(
                 nome='Admin',
                 email='admin@example.com',
-                senha=generate_password_hash('admin')  # Hashed password for security
+                senha=generate_password_hash('admin')
             )
             db.session.add(admin)
             db.session.commit()
             print("Default admin user created: email=admin@example.com, password=admin")
     app.run(debug=True)
-

@@ -1,0 +1,109 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1 id="titulo-cadastro">Cadastro de Paciente</h1>
+  <p id="subtitulo-cadastro">Preencha os dados do paciente no formulário acima</p>
+</div>
+
+<div id="msg-paciente" style="display:none;margin-bottom:10px;padding:10px;border-radius:8px;"></div>
+
+<div class="card" style="margin-bottom:12px;padding:12px 14px;">
+  <h3 style="margin:0 0 10px 0;">Paciente</h3>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;">
+    <input type="date" id="pac-admissao" title="Admissão" style="min-width:160px;">
+    <input type="text" id="pac-clinica" placeholder="Clínica" style="min-width:180px;">
+    <input type="text" id="pac-leito" placeholder="Leito" style="min-width:130px;">
+    <input type="text" id="pac-prontuario" placeholder="Prontuário" style="min-width:150px;">
+    <input type="text" id="pac-nome" placeholder="Nome" style="min-width:220px;">
+    <select id="pac-sexo" style="min-width:150px;">
+      <option value="">Sexo</option>
+      <option value="M">Masculino</option>
+      <option value="F">Feminino</option>
+    </select>
+    <input type="date" id="pac-nascimento" title="Data nascimento" style="min-width:170px;" oninput="calcularIdadePaciente()">
+    <input type="text" id="pac-idade" placeholder="Idade" style="min-width:90px;" readonly>
+  </div>
+
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+    <textarea id="pac-diagnostico" placeholder="Diagnóstico" rows="2" style="min-width:320px;flex:1;"></textarea>
+    <textarea id="pac-dieta" placeholder="Dieta" rows="2" style="min-width:260px;flex:1;"></textarea>
+    <textarea id="pac-observacoes" placeholder="Observações" rows="2" style="min-width:320px;flex:1;"></textarea>
+  </div>
+
+  <div style="display:flex;gap:8px;margin-top:8px;">
+    <button class="btn" type="button" onclick="salvarPacienteCadastro()">Salvar Paciente</button>
+    <button class="btn btn-ghost" type="button" onclick="limparPacienteCadastro()">Limpar</button>
+  </div>
+</div>
+
+<script>
+function showMsgPaciente(text, ok=true){
+  const el = document.getElementById('msg-paciente');
+  if (!el) return;
+  el.style.display = '';
+  el.style.background = ok ? '#e8f7ee' : '#fdecec';
+  el.style.color = ok ? '#1f6f43' : '#9f1d1d';
+  el.textContent = text;
+  setTimeout(() => { el.style.display = 'none'; }, 3500);
+}
+
+function calcularIdadePaciente(){
+  const nasc = document.getElementById('pac-nascimento')?.value;
+  const out = document.getElementById('pac-idade');
+  if (!out) return;
+  if (!nasc){
+    out.value = '';
+    return;
+  }
+  const hoje = new Date();
+  const dn = new Date(nasc + 'T00:00:00');
+  let idade = hoje.getFullYear() - dn.getFullYear();
+  const m = hoje.getMonth() - dn.getMonth();
+  if (m < 0 || (m === 0 && hoje.getDate() < dn.getDate())) idade--;
+  out.value = idade >= 0 ? String(idade) : '';
+}
+
+function limparPacienteCadastro(){
+  ['pac-admissao','pac-clinica','pac-leito','pac-prontuario','pac-nome','pac-sexo','pac-nascimento','pac-idade','pac-diagnostico','pac-dieta','pac-observacoes']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+}
+
+async function salvarPacienteCadastro(){
+  const nome = (document.getElementById('pac-nome')?.value || '').trim();
+  if (!nome) return showMsgPaciente('Nome do paciente é obrigatório', false);
+
+  const body = {
+    nome,
+    sexo: document.getElementById('pac-sexo')?.value || '',
+    nascimento: document.getElementById('pac-nascimento')?.value || '',
+    prontuario: document.getElementById('pac-prontuario')?.value || '',
+    clinica: document.getElementById('pac-clinica')?.value || '',
+    leito: document.getElementById('pac-leito')?.value || '',
+    dieta: document.getElementById('pac-dieta')?.value || '',
+    altura_cm: null,
+    peso_kg: null,
+    admissao: document.getElementById('pac-admissao')?.value || '',
+    diagnostico: document.getElementById('pac-diagnostico')?.value || '',
+    observacoes: document.getElementById('pac-observacoes')?.value || ''
+  };
+
+  const r = await fetch('/nutricao/api/pacientes', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  const j = await r.json();
+  if (!r.ok || (j && j.ok === false)) return showMsgPaciente((j && j.error) || 'Falha ao salvar paciente', false);
+
+  showMsgPaciente('Paciente cadastrado com sucesso');
+  limparPacienteCadastro();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const params = new URLSearchParams(window.location.search);
+  const admissao = params.get('admissao');
+  const admInput = document.getElementById('pac-admissao');
+  if (admissao && admInput) admInput.value = admissao;
+});
+</script>
+{% endblock %}

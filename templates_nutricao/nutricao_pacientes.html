@@ -1,0 +1,125 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Pacientes</h1>
+  <p>Cadastro e gerenciamento de pacientes do SCN</p>
+</div>
+<div class="toolbar">
+  <div class="toolbar-search">
+    <span>🔍</span>
+    <input type="text" id="buscaPaciente" placeholder="Buscar paciente..." oninput="filtrarTabela('buscaPaciente','tabelaPacientes')">
+  </div>
+  <div class="toolbar-actions">
+    <button class="btn btn-primary" onclick="abrirModalPaciente()">+ Novo Paciente</button>
+  </div>
+<div class="card" style="padding:0;overflow:hidden">
+  <div style="overflow-x:auto">
+    <table id="tabelaPacientes">
+      <thead><tr>
+        <th>Prontuário</th><th>Nome</th><th>Sexo</th><th>Nascimento</th><th>Clínica</th><th>Leito</th><th>Dieta</th><th style="width:90px">Ações</th>
+      </tr></thead>
+      <tbody>
+        {% for p in pacientes %}
+        <tr>
+          <td>{{ p.prontuario }}</td>
+          <td><strong>{{ p.nome }}</strong></td>
+          <td>{{ p.sexo }}</td>
+          <td>{{ p.nascimento[:10] if p.nascimento else '-' }}</td>
+          <td>{{ p.clinica }}</td>
+          <td>{{ p.leito }}</td>
+          <td><span class="status status-info">{{ p.dieta }}</span></td>
+          <td>
+            <button class="btn btn-ghost btn-sm" onclick="editarPaciente({{ p.id }})" title="Editar">✏️</button>
+            <button class="btn btn-ghost btn-sm" onclick="excluirPaciente({{ p.id }})" title="Excluir">🗑️</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+<script>
+
+let clinicas = {{ clinicas | tojson }};
+let dietas = {{ dietas | tojson }};
+
+function filtrarTabela(inputId, tabelaId){
+  const f = document.getElementById(inputId).value.toLowerCase();
+  const rows = document.getElementById(tabelaId).querySelectorAll('tbody tr');
+  rows.forEach(r => { r.style.display = r.textContent.toLowerCase().includes(f) ? '' : 'none'; });
+}
+
+function abrirModalPaciente(data){
+  const isEdit = !!data;
+  document.getElementById('modalTitle').textContent = isEdit ? 'Editar Paciente' : 'Novo Paciente';
+  document.getElementById('modalBody').innerHTML = `
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Nome *</label><input class="form-control" id="f-nome" value="${data?data.nome:''}"></div>
+      <div class="form-group"><label class="form-label">Sexo</label>
+        <select class="form-control" id="f-sexo">
+          <option value="">Selecione</option>
+          <option value="M" ${data&&data.sexo==='M'?'selected':''}>Masculino</option>
+          <option value="F" ${data&&data.sexo==='F'?'selected':''}>Feminino</option>
+        </select>
+      </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Nascimento</label><input class="form-control" type="date" id="f-nasc" value="${data?data.nascimento:''}"></div>
+      <div class="form-group"><label class="form-label">Prontuário</label><input class="form-control" id="f-pront" value="${data?data.prontuario:''}"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Clínica</label>
+        <select class="form-control" id="f-clinica">
+          <option value="">Selecione</option>
+          ${clinicas.map(c => '<option value="'+c.nome+'" '+(data&&data.clinica===c.nome?'selected':'')+'>'+c.nome+'</option>').join('')}
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Leito</label><input class="form-control" id="f-leito" value="${data?data.leito:''}"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Dieta</label>
+        <select class="form-control" id="f-dieta">
+          <option value="">Selecione</option>
+          ${dietas.map(d => '<option value="'+d.nome+'" '+(data&&data.dieta===d.nome?'selected':'')+'>'+d.nome+'</option>').join('')}
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Altura (cm)</label><input class="form-control" type="number" id="f-altura" value="${data?data.altura_cm:''}"></div>
+    <div class="form-group"><label class="form-label">Peso (kg)</label><input class="form-control" type="number" step="0.1" id="f-peso" value="${data?data.peso_kg:''}"></div>
+  `;
+  document.getElementById('modalFooter').style.display = 'flex';
+  document.getElementById('modalConfirmBtn').textContent = isEdit ? 'Atualizar' : 'Salvar';
+  document.getElementById('modalOverlay').classList.add('open');
+  window._editData = data;
+}
+
+function editarPaciente(id){
+  const p = pacientes.find(x=>x.id===id);
+  if(p) abrirModalPaciente(p);
+}
+function excluirPaciente(id){
+  if(confirm('Excluir paciente #'+id+'?')){
+    fetch('/nutricao/api/pacientes/'+id,{method:'DELETE'})
+    .then(r=>r.json()).then(()=>{showToast('Paciente excluído');setTimeout(()=>location.reload(),800);});
+  }
+}
+document.getElementById('modalConfirmBtn').onclick = function(){
+  const isEdit = !!window._editData;
+  const nome = document.getElementById('f-nome').value.trim();
+  if(!nome){showToast('Nome é obrigatório','error');return;}
+  const body = {
+    nome, sexo: document.getElementById('f-sexo').value,
+    nascimento: document.getElementById('f-nasc').value,
+    prontuario: document.getElementById('f-pront').value,
+    clinica: document.getElementById('f-clinica').value,
+    leito: document.getElementById('f-leito').value,
+    dieta: document.getElementById('f-dieta').value,
+    altura_cm: parseInt(document.getElementById('f-altura').value)||null,
+    peso_kg: parseFloat(document.getElementById('f-peso').value)||null
+  };
+  const url = isEdit ? '/nutricao/api/pacientes/'+window._editData.id : '/nutricao/api/pacientes';
+  const method = isEdit ? 'PUT' : 'POST';
+  fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+  .then(r=>r.json()).then(()=>{
+    showToast(isEdit?'Paciente atualizado!':'Paciente criado!');
+    document.getElementById('modalOverlay').classList.remove('open');
+    setTimeout(()=>location.reload(),800);
+  });
+};
+</script>
+{% endblock %}
