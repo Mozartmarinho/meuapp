@@ -1,0 +1,154 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Análise de Custos</h1>
+  <p>Relatórios de custos, totalização de dietas e faturamento</p>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="mudarAbaRel('custos',this)">Créditos x Débitos</button>
+  <button class="tab" onclick="mudarAbaRel('dietas',this)">Dietas</button>
+  <button class="tab" onclick="mudarAbaRel('clinicas',this)">Clínicas</button>
+  <button class="tab" onclick="mudarAbaRel('consumo',this)">Consumo Mensal</button>
+  <button class="tab" onclick="mudarAbaRel('faturamento_mapa',this)">Faturamento x Mapa</button>
+  <button class="tab" onclick="mudarAbaRel('suplementos',this)">Mapa de Suplementos</button>
+</div>
+
+<div id="painelFiltros" class="filter-panel">
+  <div class="filter-grid">
+    <div class="form-group">
+      <label class="form-label">De:</label>
+      <input class="form-control" type="date" id="filtroDataInicio" value="2025-01-01">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Até:</label>
+      <input class="form-control" type="date" id="filtroDataFim" value="2025-01-31">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Centro de Custo</label>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="centroCusto" value="resumido" checked> Centro de Custo (resumido)</label>
+        <label class="radio-item"><input type="radio" name="centroCusto" value="substituicoes"> Análise das Substituições</label>
+        <label class="radio-item"><input type="radio" name="centroCusto" value="faturamento"> Faturamento Mapa x Realizado</label>
+        <label class="radio-item"><input type="radio" name="centroCusto" value="riscos"> Análise de Riscos</label>
+      </div>
+    <div class="form-group">
+      <label class="form-label">Ordenar por</label>
+      <div class="radio-group">
+        <label class="radio-item"><input type="radio" name="ordenarPor" value="nome" checked> Nome do Centro de Custo</label>
+        <label class="radio-item"><input type="radio" name="ordenarPor" value="valor"> Valor</label>
+      </div>
+  </div>
+  <div style="margin-top:12px;display:flex;gap:8px">
+    <button class="btn btn-primary" onclick="gerarRelatorio()">📊 Visualizar</button>
+    <button class="btn btn-secondary" onclick="exportarRelatorio()">📥 Exportar</button>
+    <button class="btn btn-secondary" onclick="fecharRelatorio()">✕ Fechar</button>
+  </div>
+
+<div id="painelResultados" style="display:none">
+  <div class="card">
+    <div class="card-header">
+      <h3 id="tituloRelatorio">Resultado da Análise</h3>
+      <span class="subtitle" id="subtituloRelatorio">Período: 01/01/2025 a 31/01/2025</span>
+    </div>
+    <div id="conteudoRelatorio" style="overflow-x:auto"></div>
+</div>
+
+<div id="painelCustos">
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-icon green">📈</div>
+      <div class="stat-info"><h4>R$ 142.500</h4><p>Créditos (Receitas)</p></div>
+    <div class="stat-card">
+      <div class="stat-icon red">📉</div>
+      <div class="stat-info"><h4>R$ 98.300</h4><p>Débitos (Custos)</p></div>
+    <div class="stat-card">
+      <div class="stat-icon blue">💹</div>
+      <div class="stat-info"><h4>R$ 44.200</h4><p>Saldo do Período</p></div>
+    <div class="stat-card">
+      <div class="stat-icon yellow">📊</div>
+      <div class="stat-info"><h4>31,0%</h4><p>Margem Líquida</p></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h3>Totalização de Dietas por Clínica</h3></div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr>
+          <th>Clínica</th><th>Dieta</th><th>Desjejum</th><th>Colação</th><th>Almoço</th><th>Merenda</th><th>Jantar</th><th>Ceia</th><th>Total</th>
+        </tr></thead>
+        <tbody>
+          {% for t in totalizacoes %}
+          <tr>
+            <td><strong>{{ t.clinica }}</strong></td>
+            <td><span class="status status-info">{{ t.dieta }}</span></td>
+            <td>{{ t.desjejum }}</td><td>{{ t.colacao }}</td><td>{{ t.almoco }}</td><td>{{ t.merenda }}</td><td>{{ t.jantar }}</td><td>{{ t.ceia }}</td>
+            <td><strong>{{ t.desjejum + t.colacao + t.almoco + t.merenda + t.jantar + t.ceia }}</strong></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  <div class="card">
+    <div class="card-header"><h3>📊 Gráfico - Distribuição de Refeições</h3></div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;justify-content:center;padding:20px">
+      <div style="width:200px;height:200px;border-radius:50%;background:conic-gradient(var(--accent) 0deg 120deg, #34d399 120deg 200deg, #fbbf24 200deg 260deg, #f87171 260deg 300deg, #60a5fa 300deg 340deg, #a78bfa 340deg 360deg); position:relative">
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg-card);border-radius:50%;width:100px;height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <strong style="font-size:18px">189</strong>
+          <small style="font-size:10px;color:var(--text-muted)">Total</small>
+        </div>
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:12px;height:12px;border-radius:3px;background:var(--accent);display:inline-block"></span> Desjejum: 16</div>
+        <div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:12px;height:12px;border-radius:3px;background:#34d399;display:inline-block"></span> Colação: 11</div>
+        <div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:12px;height:12px;border-radius:3px;background:#fbbf24;display:inline-block"></span> Almoço: 20</div>
+        <div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:12px;height:12px;border-radius:3px;background:#f87171;display:inline-block"></span> Merenda: 11</div>
+        <div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:12px;height:12px;border-radius:3px;background:#60a5fa;display:inline-block"></span> Jantar: 17</div>
+        <div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:12px;height:12px;border-radius:3px;background:#a78bfa;display:inline-block"></span> Ceia: 7</div>
+    </div>
+</div>
+
+<script>
+var abaRelAtual = 'custos';
+
+function mudarAbaRel(aba, btn){
+  abaRelAtual = aba;
+  document.querySelectorAll('#mainContent .tab').forEach(function(t){t.classList.remove('active');});
+  if(btn) btn.classList.add('active');
+  document.getElementById('painelCustos').style.display = aba === 'custos' ? '' : 'none';
+  document.getElementById('painelResultados').style.display = 'none';
+}
+
+function gerarRelatorio(){
+  var inicio = document.getElementById('filtroDataInicio').value;
+  var fim = document.getElementById('filtroDataFim').value;
+  var centroCusto = document.querySelector('input[name="centroCusto"]:checked');
+  var ordenar = document.querySelector('input[name="ordenarPor"]:checked');
+  var centroLabel = centroCusto ? centroCusto.parentElement.textContent.trim() : 'Todos';
+  var ordenarLabel = ordenar ? ordenar.parentElement.textContent.trim() : 'Nome';
+
+  document.getElementById('tituloRelatorio').textContent = 'Relatório: ' + centroLabel;
+  document.getElementById('subtituloRelatorio').textContent = 'Ordenado por: ' + ordenarLabel + ' | Período: ' + (inicio||'...') + ' a ' + (fim||'...');
+
+  document.getElementById('conteudoRelatorio').innerHTML = [
+    '<table><thead><tr><th>Centro de Custo</th><th>Receitas</th><th>Despesas</th><th>Saldo</th><th>% Margem</th></tr></thead><tbody>',
+    '<tr><td><strong>Cl\u00ednica M\u00e9dica</strong></td><td>R$ 52.300</td><td>R$ 36.100</td><td style="color:var(--success)">R$ 16.200</td><td>31,0%</td></tr>',
+    '<tr><td><strong>CTI</strong></td><td>R$ 38.700</td><td>R$ 28.200</td><td style="color:var(--success)">R$ 10.500</td><td>27,1%</td></tr>',
+    '<tr><td><strong>Oncologia</strong></td><td>R$ 31.500</td><td>R$ 22.800</td><td style="color:var(--success)">R$ 8.700</td><td>27,6%</td></tr>',
+    '<tr><td><strong>Maternidade</strong></td><td>R$ 20.000</td><td>R$ 11.200</td><td style="color:var(--success)">R$ 8.800</td><td>44,0%</td></tr>',
+    '<tr style="border-top:2px solid var(--border-light);font-weight:700"><td>TOTAL</td><td>R$ 142.500</td><td>R$ 98.300</td><td style="color:var(--success)">R$ 44.200</td><td>31,0%</td></tr>',
+    '</tbody></table>'
+  ].join('');
+
+  document.getElementById('painelCustos').style.display = 'none';
+  document.getElementById('painelResultados').style.display = '';
+}
+
+function exportarRelatorio(){
+  showToast('Relat\u00f3rio exportado em PDF (simulado)','info');
+}
+
+function fecharRelatorio(){
+  document.getElementById('painelResultados').style.display = 'none';
+  document.getElementById('painelCustos').style.display = '';
+}
+</script>
+{% endblock %}

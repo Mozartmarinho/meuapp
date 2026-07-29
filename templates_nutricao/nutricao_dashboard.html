@@ -1,0 +1,215 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Tela Principal</h1>
+  <p>Tabela dinâmica de acompanhamento nutricional</p>
+</div>
+
+<div class="toolbar" style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
+  <div class="toolbar-search">
+    <span>🔍</span>
+    <input type="text" id="filtroPrincipal" placeholder="Buscar por leito, prontuário, diagnóstico, dieta..." oninput="filtrarTabelaPrincipal()">
+  </div>
+
+  <div class="card" style="padding:6px 10px;display:flex;align-items:center;gap:8px;">
+    <button class="btn btn-ghost btn-sm" type="button" onclick="alterarData(-1)" aria-label="Dia anterior">◀</button>
+    <strong id="dataAtualLabel" style="min-width:120px;text-align:center;">-</strong>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="alterarData(1)" aria-label="Próximo dia">▶</button>
+  </div>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden">
+  <div style="overflow:auto">
+    <table id="tabelaPrincipal">
+      <thead>
+        <tr>
+          <th>Entrada</th>
+          <th>Leito</th>
+          <th>Prontuário</th>
+          <th>Idade</th>
+          <th>Diagnóstico</th>
+          <th>Dieta</th>
+          <th>I</th>
+          <th>Peso</th>
+          <th>Altura</th>
+          <th>IMC</th>
+          <th>ASG</th>
+          <th>Observações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in pacientes %}
+        {% set idade = ((2026 - (p.nascimento[0:4] | int)) if p.nascimento else '-') %}
+        {% set altura_m = ((p.altura_cm | float) / 100) if p.altura_cm else 0 %}
+        {% set imc = ((p.peso_kg | float) / (altura_m * altura_m)) if altura_m else 0 %}
+        <tr ondblclick="abrirCadastroPacienteComData()">
+          <td>{{ p.nascimento if p.nascimento else '-' }}</td>
+          <td>{{ p.leito if p.leito else '-' }}</td>
+          <td>{{ p.prontuario if p.prontuario else '-' }}</td>
+          <td>{{ idade }}</td>
+          <td>{{ p.clinica if p.clinica else '-' }}</td>
+          <td>{{ p.dieta if p.dieta else '-' }}</td>
+          <td>{{ 'A' if p.ativo else 'I' }}</td>
+          <td>{{ (p.peso_kg ~ ' kg') if p.peso_kg else '-' }}</td>
+          <td>{{ (p.altura_cm ~ ' cm') if p.altura_cm else '-' }}</td>
+          <td>{{ ('%.1f'|format(imc)) if imc else '-' }}</td>
+          <td>{{ 'A' if p.ativo else 'R' }}</td>
+          <td>-</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden;margin-top:10px;">
+  <div style="overflow:auto">
+    <table id="gradeDinamica">
+      <tbody id="gradeDinamicaBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+let dataAtual = new Date();
+
+function formatDateISO(d){
+  const ano = d.getFullYear();
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+  return `${ano}-${mes}-${dia}`;
+}
+
+function formatDateBR(iso){
+  if (!iso || !iso.includes('-')) return '-';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function atualizarLabelData(){
+  const iso = formatDateISO(dataAtual);
+  const el = document.getElementById('dataAtualLabel');
+  if (el) el.textContent = formatDateBR(iso);
+}
+
+function alterarData(deltaDias){
+  dataAtual.setDate(dataAtual.getDate() + deltaDias);
+  atualizarLabelData();
+  filtrarTabelaPrincipal();
+}
+
+function abrirCadastroPacienteComData(){
+  const data = formatDateISO(dataAtual);
+  const html = `
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <h3 style="margin:0 0 6px 0;">Paciente</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <input type="date" id="modal-pac-admissao" value="${data}" style="min-width:160px;">
+        <input type="text" id="modal-pac-clinica" placeholder="Clínica" style="min-width:180px;">
+        <input type="text" id="modal-pac-leito" placeholder="Leito" style="min-width:130px;">
+        <input type="text" id="modal-pac-prontuario" placeholder="Prontuário" style="min-width:150px;">
+        <input type="text" id="modal-pac-nome" placeholder="Nome" style="min-width:220px;">
+        <select id="modal-pac-sexo" style="min-width:150px;">
+          <option value="">Sexo</option>
+          <option value="M">Masculino</option>
+          <option value="F">Feminino</option>
+        </select>
+        <input type="date" id="modal-pac-nascimento" style="min-width:170px;" oninput="calcularIdadeModalPaciente()">
+        <input type="text" id="modal-pac-idade" placeholder="Idade" style="min-width:90px;" readonly>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <textarea id="modal-pac-diagnostico" placeholder="Diagnóstico" rows="2" style="min-width:320px;flex:1;"></textarea>
+        <textarea id="modal-pac-dieta" placeholder="Dieta" rows="2" style="min-width:260px;flex:1;"></textarea>
+        <textarea id="modal-pac-observacoes" placeholder="Observações" rows="2" style="min-width:320px;flex:1;"></textarea>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" type="button" onclick="salvarPacienteModal()">Salvar Paciente</button>
+        <button class="btn btn-secondary" type="button" onclick="fecharModal()">Cancelar</button>
+      </div>
+    </div>
+  `;
+  abrirModal('Cadastro de Paciente', html, 'Salvar Paciente', salvarPacienteModal);
+}
+
+function calcularIdadeModalPaciente(){
+  const nasc = document.getElementById('modal-pac-nascimento')?.value;
+  const out = document.getElementById('modal-pac-idade');
+  if (!out) return;
+  if (!nasc){ out.value=''; return; }
+  const hoje = new Date();
+  const dn = new Date(nasc + 'T00:00:00');
+  let idade = hoje.getFullYear() - dn.getFullYear();
+  const m = hoje.getMonth() - dn.getMonth();
+  if (m < 0 || (m === 0 && hoje.getDate() < dn.getDate())) idade--;
+  out.value = idade >= 0 ? String(idade) : '';
+}
+
+async function salvarPacienteModal(){
+  const nome = (document.getElementById('modal-pac-nome')?.value || '').trim();
+  if (!nome){
+    showToast('Nome do paciente é obrigatório','error');
+    return;
+  }
+  const body = {
+    nome,
+    sexo: document.getElementById('modal-pac-sexo')?.value || '',
+    nascimento: document.getElementById('modal-pac-nascimento')?.value || '',
+    prontuario: document.getElementById('modal-pac-prontuario')?.value || '',
+    clinica: document.getElementById('modal-pac-clinica')?.value || '',
+    leito: document.getElementById('modal-pac-leito')?.value || '',
+    dieta: document.getElementById('modal-pac-dieta')?.value || '',
+    altura_cm: null,
+    peso_kg: null,
+    admissao: document.getElementById('modal-pac-admissao')?.value || '',
+    diagnostico: document.getElementById('modal-pac-diagnostico')?.value || '',
+    observacoes: document.getElementById('modal-pac-observacoes')?.value || ''
+  };
+  const r = await fetch('/nutricao/api/pacientes', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  const j = await r.json();
+  if (!r.ok || (j && j.ok === false)){
+    showToast((j && j.error) || 'Falha ao salvar paciente','error');
+    return;
+  }
+  fecharModal();
+  showToast('Paciente cadastrado com sucesso','success');
+  location.reload();
+}
+
+function renderGradeDinamica(){
+  const body = document.getElementById('gradeDinamicaBody');
+  if (!body) return;
+  let html = '';
+  for (let i = 0; i < 6; i++){
+    html += '<tr ondblclick="abrirCadastroPacienteComData()">';
+    for (let j = 0; j < 12; j++){
+      html += '<td style="height:36px;border:1px solid #1f2d4d1f;cursor:pointer;"></td>';
+    }
+    html += '</tr>';
+  }
+  body.innerHTML = html;
+}
+
+function filtrarTabelaPrincipal(){
+  const q = (document.getElementById('filtroPrincipal').value || '').toLowerCase();
+  const dataSelecionada = formatDateISO(dataAtual);
+
+  document.querySelectorAll('#tabelaPrincipal tbody tr').forEach(function(tr){
+    const textoLinha = (tr.textContent || '').toLowerCase();
+    const entrada = (tr.cells && tr.cells[0]) ? (tr.cells[0].textContent || '').trim() : '';
+    const matchTexto = textoLinha.includes(q);
+    const matchData = entrada === dataSelecionada;
+    tr.style.display = (matchTexto && matchData) ? '' : 'none';
+  });
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  atualizarLabelData();
+  renderGradeDinamica();
+  filtrarTabelaPrincipal();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,94 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Mapa de Refeições</h1>
+  <p>Cardápio de 31 dias para cada dieta cadastrada</p>
+</div>
+
+<div class="toolbar">
+  <div class="toolbar-search">
+    <span>🔍</span>
+    <input type="text" id="buscaDieta" placeholder="Buscar dieta..." oninput="filtrarTabela('buscaDieta','tabelaDietas')">
+  </div>
+  <div class="toolbar-actions">
+    <button class="btn btn-primary" onclick="abrirModalDieta()">+ Nova Dieta</button>
+  </div>
+
+<div id="listaDietas">
+  {% for d in dietas %}
+  <div class="card" style="margin-bottom:12px;cursor:pointer" onclick="verCardapio({{ d.id }})">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <strong style="font-size:16px">{{ d.nome }}</strong>
+        <span style="font-size:12px;color:var(--text-muted);margin-left:12px">Cardápio de 31 dias</span>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();editarDieta({{ d.id }})">✏️</button>
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();excluirDieta({{ d.id }})">🗑️</button>
+        <span style="color:var(--accent)">▶</span>
+      </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+var dietasDB = {{ dietas | tojson }};
+
+function filtrarTabela(inputId, tabelaId){
+  var f = document.getElementById(inputId).value.toLowerCase();
+  var cards = document.getElementById('listaDietas').querySelectorAll('.card');
+  cards.forEach(function(c){ c.style.display = c.textContent.toLowerCase().includes(f) ? '' : 'none'; });
+}
+
+function abrirModalDieta(data){
+  var isEdit = !!data;
+  document.getElementById('modalTitle').textContent = isEdit ? 'Editar Dieta' : 'Nova Dieta';
+  document.getElementById('modalBody').innerHTML = '<div class="form-group"><label class="form-label">Nome da Dieta *</label><input class="form-control" id="f-dieta-nome" value="'+(data?data.nome:'')+'" placeholder="Ex: BRANDA"></div>';
+  document.getElementById('modalFooter').style.display = 'flex';
+  document.getElementById('modalConfirmBtn').textContent = isEdit ? 'Atualizar' : 'Salvar';
+  document.getElementById('modalOverlay').classList.add('open');
+  window._editData = data;
+}
+
+function editarDieta(id){
+  var d = dietasDB.find(function(x){return x.id===id;});
+  if(d) abrirModalDieta(d);
+}
+
+function excluirDieta(id){
+  if(confirm('Excluir dieta #'+id+'?')){
+    fetch('/nutricao/api/dietas/'+id,{method:'DELETE'})
+    .then(function(r){return r.json();}).then(function(){showToast('Dieta exclu\u00edda');setTimeout(function(){location.reload();},800);});
+  }
+}
+
+function verCardapio(dietaId){
+  var dieta = dietasDB.find(function(d){return d.id===dietaId;});
+  if(!dieta) return;
+  var rows = [];
+  for(var dia=1; dia<=31; dia++){
+    rows.push('<tr><td>Dia '+dia+'</td><td>Op\u00e7\u00e3o padr\u00e3o</td><td>Complemento</td><td>Padr\u00e3o</td><td>-</td><td>Padr\u00e3o</td><td>-</td></tr>');
+  }
+  document.getElementById('modalTitle').textContent = 'Card\u00e1pio - '+dieta.nome+' (31 dias)';
+  document.getElementById('modalBody').innerHTML = '<div style="max-height:400px;overflow-y:auto"><table class="table-sm"><thead><tr><th>Dia</th><th>Desjejum</th><th>Cola\u00e7\u00e3o</th><th>Almo\u00e7o</th><th>Merenda</th><th>Jantar</th><th>Ceia</th></tr></thead><tbody>'+rows.join('')+'</tbody></table></div>';
+  document.getElementById('modalFooter').style.display = 'flex';
+  document.getElementById('modalConfirmBtn').textContent = 'Fechar';
+  document.getElementById('modalOverlay').classList.add('open');
+  window._editData = null;
+}
+
+function confirmarDieta(){
+  var nome = document.getElementById('f-dieta-nome').value.trim().toUpperCase();
+  if(!nome){showToast('Nome \u00e9 obrigat\u00f3rio','error');return;}
+  if(window._editData){
+    window._editData.nome = nome;
+    showToast('Dieta atualizada!');
+    document.getElementById('modalOverlay').classList.remove('open');
+    setTimeout(function(){location.reload();},800);
+  } else {
+    fetch('/nutricao/api/dietas',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nome:nome})})
+    .then(function(r){return r.json();}).then(function(){showToast('Dieta criada!');document.getElementById('modalOverlay').classList.remove('open');setTimeout(function(){location.reload();},800);});
+  }
+}
+</script>
+{% endblock %}

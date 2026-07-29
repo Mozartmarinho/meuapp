@@ -1,0 +1,207 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Estoque</h1>
+  <p>Controle de entrada e saída de produtos, inventário e alertas</p>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="mudarAbaEst('produtos',this)">Produtos</button>
+  <button class="tab" onclick="mudarAbaEst('fornecedores',this)">Fornecedores</button>
+  <button class="tab" onclick="mudarAbaEst('movimentacoes',this)">Movimentações</button>
+  <button class="tab" onclick="mudarAbaEst('alertas',this)">Alertas</button>
+</div>
+
+<div id="estProdutos">
+  <div class="toolbar">
+    <div class="toolbar-search">
+      <span>🔍</span>
+      <input type="text" id="buscaProd" placeholder="Buscar produto..." oninput="filtrarTabela('buscaProd','tabelaProdutos')">
+    </div>
+    <div class="toolbar-actions">
+      <button class="btn btn-primary" onclick="abrirModalProduto()">+ Novo Produto</button>
+    </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div style="overflow-x:auto">
+      <table id="tabelaProdutos">
+        <thead><tr><th>Nome</th><th>Categoria</th><th>Unidade</th><th>Estoque Atual</th><th>Mínimo</th><th>Valor Unit.</th><th>Ações</th></tr></thead>
+        <tbody>
+          {% for p in produtos %}
+          <tr>
+            <td><strong>{{ p.nome }}</strong></td>
+            <td>{{ p.categoria }}</td>
+            <td>{{ p.unidade }}</td>
+            <td>{{ p.estoque_atual }}</td>
+            <td>{{ p.estoque_min }}</td>
+            <td>{{ p.valor_un }}</td>
+            <td>
+              <button class="btn btn-ghost btn-sm" title="Editar">✏️</button>
+              <button class="btn btn-ghost btn-sm" title="Excluir">🗑️</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+</div>
+
+<div id="estFornecedores" style="display:none">
+  <div class="toolbar">
+    <div class="toolbar-search">
+      <span>🔍</span>
+      <input type="text" id="buscaForn" placeholder="Buscar fornecedor..." oninput="filtrarTabela('buscaForn','tabelaFornecedores')">
+    </div>
+    <div class="toolbar-actions">
+      <button class="btn btn-primary" onclick="abrirModalFornecedor()">+ Novo Fornecedor</button>
+    </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div style="overflow-x:auto">
+      <table id="tabelaFornecedores">
+        <thead><tr><th>Nome</th><th>CNPJ</th><th>Contato</th><th>Telefone</th><th>Email</th><th>Ações</th></tr></thead>
+        <tbody>
+          {% for f in fornecedores %}
+          <tr>
+            <td><strong>{{ f.nome }}</strong></td>
+            <td>{{ f.cnpj }}</td>
+            <td>{{ f.contato }}</td>
+            <td>{{ f.telefone }}</td>
+            <td>{{ f.email }}</td>
+            <td><button class="btn btn-ghost btn-sm" title="Excluir">🗑️</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+</div>
+
+<div id="estMovimentacoes" style="display:none">
+  <div class="filter-panel">
+    <div class="filter-grid">
+      <div class="form-group"><label class="form-label">Tipo</label>
+        <select class="form-control"><option value="">Todos</option><option>Entrada</option><option>Saída</option></select>
+      </div>
+      <div class="form-group"><label class="form-label">De:</label><input class="form-control" type="date"></div>
+      <div class="form-group"><label class="form-label">Até:</label><input class="form-control" type="date"></div>
+      <div class="form-group"><label class="form-label">&nbsp;</label><button class="btn btn-primary w-full">Filtrar</button></div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Data</th><th>Produto</th><th>Tipo</th><th>Quantidade</th><th>Responsável</th><th>Observação</th></tr></thead>
+        <tbody>
+          <tr><td>20/01/2025</td><td>Arroz 5kg</td><td><span class="status status-warning">Saída</span></td><td>10</td><td>Cozinha</td><td>Consumo</td></tr>
+          <tr><td>18/01/2025</td><td>Creme de Leite 200g</td><td><span class="status status-success">Entrada</span></td><td>20</td><td>Dist. Alimentos</td><td>Compra</td></tr>
+          <tr><td>16/01/2025</td><td>Soro 500ml</td><td><span class="status status-warning">Saída</span></td><td>30</td><td>CTI</td><td>Consumo CTI</td></tr>
+          <tr><td>15/01/2025</td><td>Suplemento Proteico</td><td><span class="status status-success">Entrada</span></td><td>10</td><td>NutriSupply</td><td>Reposição</td></tr>
+        </tbody>
+      </table>
+    </div>
+</div>
+
+<div id="estAlertas" style="display:none">
+  <div class="card">
+    <div class="card-header"><h3>⚠️ Produtos com Estoque Crítico</h3></div>
+    {% set alertas = produtos | selectattr('estoque_atual','le',15) | list %}
+    {% if alertas %}
+    <table>
+      <thead><tr><th>Produto</th><th>Atual</th><th>Mínimo</th><th>Fornecedor</th><th>Ação</th></tr></thead>
+      <tbody>
+        {% for p in alertas %}
+        <tr>
+          <td><strong>{{ p.nome }}</strong></td>
+          <td><span class="status status-danger">{{ p.estoque_atual }}</span></td>
+          <td>{{ p.estoque_min }}</td>
+          <td>{{ fornecedores | selectattr('id','equalto',p.fornecedor_id) | map(attribute='nome') | first | default('') }}</td>
+          <td><button class="btn btn-sm btn-primary">Solicitar Compra</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">Nenhum alerta no momento.</p>
+    {% endif %}
+  </div>
+
+<script>
+var fornecedoresDB = {{ fornecedores | tojson }};
+
+function mudarAbaEst(aba, btn){
+  document.querySelectorAll('#mainContent .tab').forEach(function(t){t.classList.remove('active');});
+  if(btn) btn.classList.add('active');
+  ['estProdutos','estFornecedores','estMovimentacoes','estAlertas'].forEach(function(id){
+    document.getElementById(id).style.display = id === 'est'+aba.charAt(0).toUpperCase()+aba.slice(1) ? '' : 'none';
+  });
+}
+
+function filtrarTabela(inputId, tabelaId){
+  var f = document.getElementById(inputId).value.toLowerCase();
+  var rows = document.getElementById(tabelaId).querySelectorAll('tbody tr');
+  rows.forEach(function(r){ r.style.display = r.textContent.toLowerCase().includes(f) ? '' : 'none'; });
+}
+
+function abrirModalProduto(){
+  document.getElementById('modalTitle').textContent = 'Novo Produto';
+  document.getElementById('modalBody').innerHTML = [
+    '<div class="form-row">',
+      '<div class="form-group"><label class="form-label">Nome *</label><input class="form-control" id="f-prod-nome"></div>',
+      '<div class="form-group"><label class="form-label">Categoria</label><select class="form-control" id="f-prod-cat"><option>Alimenta\u00e7\u00e3o</option><option>Suplemento</option><option>Medicamento</option></select></div>',
+    '<div class="form-row">',
+      '<div class="form-group"><label class="form-label">Unidade</label><input class="form-control" id="f-prod-unid" placeholder="Ex: Kg, Un, Lata"></div>',
+      '<div class="form-group"><label class="form-label">Valor Unit\u00e1rio</label><input class="form-control" id="f-prod-valor" placeholder="Ex: 22,50"></div>',
+    '<div class="form-row">',
+      '<div class="form-group"><label class="form-label">Estoque M\u00ednimo</label><input class="form-control" type="number" id="f-prod-min" value="10"></div>',
+      '<div class="form-group"><label class="form-label">Estoque Atual</label><input class="form-control" type="number" id="f-prod-atual" value="0"></div>',
+    '<div class="form-group"><label class="form-label">Fornecedor</label><select class="form-control" id="f-prod-forn"><option value="">Selecione</option>',
+    fornecedoresDB.map(function(f){return '<option value="'+f.id+'">'+f.nome+'</option>';}).join(''),
+    '</select></div>'
+  ].join('');
+  document.getElementById('modalFooter').style.display = 'flex';
+  document.getElementById('modalConfirmBtn').textContent = 'Salvar';
+  document.getElementById('modalOverlay').classList.add('open');
+  window._editData = {tipo:'produto'};
+}
+
+function abrirModalFornecedor(){
+  document.getElementById('modalTitle').textContent = 'Novo Fornecedor';
+  document.getElementById('modalBody').innerHTML = [
+    '<div class="form-row">',
+      '<div class="form-group"><label class="form-label">Nome *</label><input class="form-control" id="f-forn-nome"></div>',
+      '<div class="form-group"><label class="form-label">CNPJ</label><input class="form-control" id="f-forn-cnpj" placeholder="00.000.000/0001-00"></div>',
+    '<div class="form-row">',
+      '<div class="form-group"><label class="form-label">Contato</label><input class="form-control" id="f-forn-contato"></div>',
+      '<div class="form-group"><label class="form-label">Telefone</label><input class="form-control" id="f-forn-tel"></div>',
+    '<div class="form-group"><label class="form-label">Email</label><input class="form-control" id="f-forn-email" type="email"></div>'
+  ].join('');
+  document.getElementById('modalFooter').style.display = 'flex';
+  document.getElementById('modalConfirmBtn').textContent = 'Salvar';
+  document.getElementById('modalOverlay').classList.add('open');
+  window._editData = {tipo:'fornecedor'};
+}
+
+function confirmarEstoque(){
+  var d = window._editData;
+  if(!d) return;
+  if(d.tipo === 'produto'){
+    var nome = document.getElementById('f-prod-nome').value.trim();
+    if(!nome){showToast('Nome \u00e9 obrigat\u00f3rio','error');return;}
+    fetch('/nutricao/api/produtos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      nome:nome, categoria:document.getElementById('f-prod-cat').value,
+      unidade:document.getElementById('f-prod-unid').value,
+      valor_un:'R$'+document.getElementById('f-prod-valor').value.replace('R$',''),
+      estoque_min:parseInt(document.getElementById('f-prod-min').value)||0,
+      estoque_atual:parseInt(document.getElementById('f-prod-atual').value)||0,
+      fornecedor_id:parseInt(document.getElementById('f-prod-forn').value)||null
+    })}).then(function(r){return r.json();}).then(function(){showToast('Produto criado!');document.getElementById('modalOverlay').classList.remove('open');setTimeout(function(){location.reload();},800);});
+  } else {
+    var nome = document.getElementById('f-forn-nome').value.trim();
+    if(!nome){showToast('Nome \u00e9 obrigat\u00f3rio','error');return;}
+    fetch('/nutricao/api/fornecedores',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      nome:nome, cnpj:document.getElementById('f-forn-cnpj').value,
+      contato:document.getElementById('f-forn-contato').value,
+      telefone:document.getElementById('f-forn-tel').value,
+      email:document.getElementById('f-forn-email').value
+    })}).then(function(r){return r.json();}).then(function(){showToast('Fornecedor criado!');document.getElementById('modalOverlay').classList.remove('open');setTimeout(function(){location.reload();},800);});
+  }
+}
+</script>
+{% endblock %}

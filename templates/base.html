@@ -70,6 +70,18 @@
 
     <!-- Main Content -->
     <main class="main-content">
+        <div style="display:flex;justify-content:center;align-items:center;margin:0 0 20px 0;">
+            <div style="display:inline-flex;background:#eef3ff;border:1px solid #cfdaf5;border-radius:14px;padding:8px;gap:8px;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+                <a href="{{ url_for('main.dashboard') }}"
+                   style="text-decoration:none;padding:12px 22px;border-radius:10px;font-size:16px;font-weight:700;color:#1f3a6e;background:#ffffff;border:1px solid #d9e4fb;">
+                    Manutenção
+                </a>
+                <a href="{{ url_for('nutricao.dashboard') }}"
+                   style="text-decoration:none;padding:12px 22px;border-radius:10px;font-size:16px;font-weight:700;color:#ffffff;background:#2b6cb0;border:1px solid #2b6cb0;">
+                    Nutrição
+                </a>
+            </div>
+        </div>
         <!-- Flash Messages -->
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
