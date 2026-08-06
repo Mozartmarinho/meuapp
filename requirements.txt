@@ -1,5 +1,8 @@
-click
-Flask
-Flask-SQLAlchemy
-PyMySQL
-SQLAlchemy
+click==8.1.7
+Flask==2.2.5
+Flask-SQLAlchemy==2.5.1
+PyMySQL==1.1.0
+SQLAlchemy==1.4.53
+gunicorn==21.2.0
+Werkzeug==2.2.3
+requests>=2.28
