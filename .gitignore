@@ -11,10 +11,10 @@ __pycache__/
 instance/
 *.sqlite3
 *.db
+*.sock
 
 # --- Ambiente virtual ---
 venv/
-.venv/
 
 # --- Arquivos temporários ---
 *.log
@@ -22,10 +22,28 @@ venv/
 *.swp
 *.tmp
 
+# --- Deploy / CI ---
+logs/
+!logs/deploy/
+!logs/deploy/.gitkeep
+logs/deploy/*.log
+logs/deploy/.deploy.lock
+actions-runner/
+bkp/
+test_reports/
+cookies.txt
+.enable_debug
+.ci_deploy_enabled
+*.msi
+
+# --- Uploads locais (permanecem no servidor) ---
+static/uploads/**
+!static/uploads/.gitkeep
+
 # --- Configurações locais ---
 .env
 .env.*
-config.py   # (ignorar se tiver senhas/segredos)
+config.py
 
 # --- IDEs ---
 .vscode/

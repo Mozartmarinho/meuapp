@@ -1,0 +1,9 @@
+# Instalar no servidor (uma vez):
+#   sudo cp deploy/sudoers.meuapp-deploy /etc/sudoers.d/meuapp-deploy
+#   sudo chmod 440 /etc/sudoers.d/meuapp-deploy
+#   sudo visudo -cf /etc/sudoers.d/meuapp-deploy
+#
+# Permite ao usuário do deploy reiniciar/recarregar serviços sem senha.
+# Ajuste o usuário se o runner não for "administrador".
+
+administrador ALL=(root) NOPASSWD: /bin/systemctl restart meuapp, /bin/systemctl restart meuapp.service, /bin/systemctl status meuapp, /bin/systemctl status meuapp.service, /bin/systemctl is-active meuapp, /bin/systemctl is-active meuapp.service, /bin/systemctl reload nginx, /bin/systemctl restart nginx, /bin/systemctl status nginx, /bin/systemctl is-active nginx, /usr/sbin/nginx -t

@@ -1,0 +1,41 @@
+# ALTERNATIVA: Actions na nuvem (ubuntu-latest) + SSH no servidor.
+# Use só se o servidor tiver IP/porta SSH acessível da internet (ou VPN/túnel).
+#
+# Como ativar:
+# 1. Renomeie este arquivo para deploy-ssh.yml
+# 2. Desabilite/remova deploy.yml (self-hosted) para não duplicar
+# 3. Cadastre os secrets no repositório GitHub:
+#    SSH_HOST, SSH_PORT, SSH_USER, SSH_PRIVATE_KEY
+# 4. Garanta sudo sem senha para systemctl/nginx (ver deploy/sudoers.meuapp-deploy)
+
+name: Deploy Production (SSH)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy via SSH
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Deploy no servidor remoto
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd /home/administrador/meuapp
+            chmod +x scripts/deploy.sh
+            ./scripts/deploy.sh
