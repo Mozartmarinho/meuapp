@@ -4,16 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Nutrição Hospitalar - São Geraldo Service{% endblock %}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
 </head>
 <body>
-    <nav class="sidebar">
+    <header class="app-topbar">
+        <button type="button" class="menu-toggle" id="menuToggle" aria-label="Abrir menu">
+            <i class="fas fa-bars"></i>
+        </button>
+        <img class="brand-logo-compact" src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service">
+    </header>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <nav class="sidebar" id="appSidebar">
         <div class="sidebar-logo">
-            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service" onerror="this.style.display='none'" style="display: block; margin: 0 auto 1rem; width: 250px; max-width: 80%; height: auto; border-radius: 10px;">
-            <h3 style="margin-top: 0; text-align: center;">SÃO GERALDO<br>SERVICE</h3>
-            <p style="text-align:center;font-size:0.8rem;opacity:0.85;margin-top:0.35rem;">Nutrição Hospitalar</p>
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service">
+            <div class="brand-tagline">Transformando vidas</div>
+            <div class="module-label">Nutrição Hospitalar</div>
         </div>
 
         <ul class="sidebar-menu">
@@ -25,15 +35,15 @@
             </li>
             <li>
                 <a href="{{ url_for('nutricao.dashboard') }}" class="{% if active_page == 'dashboard' %}active{% endif %}">
-                    <i class="fas fa-tachometer-alt" style="margin-right: 0.75rem;"></i>
-                    Dashboard
+                    <i class="fas fa-map" style="margin-right: 0.75rem;"></i>
+                    Mapa de Refeições
                 </a>
             </li>
             <li>
                 <a href="javascript:void(0);" onclick="toggleCadastroMenu()" class="{% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas'] %}active{% endif %}">
                     <i class="fas fa-folder-open" style="margin-right: 0.75rem;"></i>
                     Cadastro
-                    <i id="cadastro-chevron" class="fas fa-chevron-right chevron {% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas'] %}open{% endif %}" style="margin-left:auto;"></i>
+                    <i id="cadastro-chevron" class="fas fa-chevron-right chevron {% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas'] %}open{% endif %}"></i>
                 </a>
                 <ul id="cadastro-submenu" class="sidebar-submenu {% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas'] %}open{% endif %}">
                     <li>
@@ -67,12 +77,6 @@
                         </a>
                     </li>
                 </ul>
-            </li>
-            <li>
-                <a href="{{ url_for('nutricao.mapa_refeicoes') }}" class="{% if active_page == 'mapa_refeicoes' %}active{% endif %}">
-                    <i class="fas fa-calendar-alt" style="margin-right: 0.75rem;"></i>
-                    Mapa de Refeições
-                </a>
             </li>
             <li>
                 <a href="{{ url_for('nutricao.estoque') }}" class="{% if active_page == 'estoque' %}active{% endif %}">

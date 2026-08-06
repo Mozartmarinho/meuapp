@@ -3,6 +3,8 @@ from routes import main
 from routes_nutricao import nutricao
 from models import db, Usuario
 from db_config import SQLALCHEMY_DATABASE_URI
+import models_nutricao  # noqa: F401 — registra tabelas de nutrição
+
 
 def create_app():
     app = Flask(__name__)
@@ -20,6 +22,8 @@ if __name__ == '__main__':
     app = create_app()
     with app.app_context():
         db.create_all()
+        from nutricao_service import seed_nutricao
+        seed_nutricao()
         if not Usuario.query.first():
             from werkzeug.security import generate_password_hash
             admin = Usuario(

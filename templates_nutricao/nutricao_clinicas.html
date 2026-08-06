@@ -1,60 +1,116 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
 <div class="page-header">
-  <h1 id="titulo-cadastro">Cadastro de Paciente</h1>
-  <p id="subtitulo-cadastro">Preencha os dados do paciente no formulário acima</p>
+  <h1>Cadastro de Pacientes</h1>
+  <p>Lista de pacientes cadastrados no sistema de nutrição</p>
 </div>
 
-<div id="msg-paciente" style="display:none;margin-bottom:10px;padding:10px;border-radius:8px;"></div>
-
-<div class="card" style="margin-bottom:12px;padding:12px 14px;">
-  <h3 style="margin:0 0 10px 0;">Paciente</h3>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;">
-    <input type="date" id="pac-admissao" title="Admissão" style="min-width:160px;">
-    <input type="text" id="pac-clinica" placeholder="Clínica" style="min-width:180px;">
-    <input type="text" id="pac-leito" placeholder="Leito" style="min-width:130px;">
-    <input type="text" id="pac-prontuario" placeholder="Prontuário" style="min-width:150px;">
-    <input type="text" id="pac-nome" placeholder="Nome" style="min-width:220px;">
-    <select id="pac-sexo" style="min-width:150px;">
-      <option value="">Sexo</option>
-      <option value="M">Masculino</option>
-      <option value="F">Feminino</option>
-    </select>
-    <input type="date" id="pac-nascimento" title="Data nascimento" style="min-width:170px;" oninput="calcularIdadePaciente()">
-    <input type="text" id="pac-idade" placeholder="Idade" style="min-width:90px;" readonly>
+<div class="toolbar">
+  <div class="toolbar-search">
+    <i class="fas fa-search"></i>
+    <input type="text" id="buscaPaciente" placeholder="Buscar por nome, prontuário, clínica ou leito..." oninput="filtrarPacientes()">
   </div>
+</div>
 
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
-    <textarea id="pac-diagnostico" placeholder="Diagnóstico" rows="2" style="min-width:320px;flex:1;"></textarea>
-    <textarea id="pac-dieta" placeholder="Dieta" rows="2" style="min-width:260px;flex:1;"></textarea>
-    <textarea id="pac-observacoes" placeholder="Observações" rows="2" style="min-width:320px;flex:1;"></textarea>
+<div class="card" style="padding:0;overflow:hidden">
+  <div class="table-container" style="box-shadow:none;border-radius:0;">
+    <table id="tabelaPacientes" class="data-table">
+      <thead>
+        <tr>
+          <th>Admissão</th>
+          <th>Prontuário</th>
+          <th>Nome</th>
+          <th>Sexo</th>
+          <th>Nascimento</th>
+          <th>Clínica</th>
+          <th>Leito</th>
+          <th>Dieta</th>
+          <th>Diagnóstico</th>
+          <th style="width:100px">Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tabelaPacientesBody">
+        {% for p in pacientes %}
+        <tr data-id="{{ p.id }}"
+            data-admissao="{{ p.admissao or '' }}"
+            data-prontuario="{{ p.prontuario or '' }}"
+            data-nome="{{ p.nome or '' }}"
+            data-sexo="{{ p.sexo or '' }}"
+            data-nascimento="{{ p.nascimento[:10] if p.nascimento else '' }}"
+            data-clinica="{{ p.clinica or '' }}"
+            data-leito="{{ p.leito or '' }}"
+            data-dieta="{{ p.dieta or '' }}"
+            data-diagnostico="{{ p.diagnostico or '' }}"
+            data-observacoes="{{ p.observacoes or '' }}">
+          <td>{{ p.admissao or '-' }}</td>
+          <td>{{ p.prontuario or '-' }}</td>
+          <td><strong>{{ p.nome }}</strong></td>
+          <td>{{ p.sexo or '-' }}</td>
+          <td>{{ p.nascimento[:10] if p.nascimento else '-' }}</td>
+          <td>{{ p.clinica or '-' }}</td>
+          <td>{{ p.leito or '-' }}</td>
+          <td><span class="status status-info">{{ p.dieta or '-' }}</span></td>
+          <td>{{ p.diagnostico or '-' }}</td>
+          <td>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="editarPacienteLinha(this)" title="Editar">
+              <i class="fas fa-edit"></i>
+            </button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="excluirPaciente({{ p.id }})" title="Excluir">
+              <i class="fas fa-trash"></i>
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr id="linhaVazia">
+          <td colspan="10" style="text-align:center;color:#6B7280;">Nenhum paciente cadastrado.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
+</div>
 
-  <div style="display:flex;gap:8px;margin-top:8px;">
-    <button class="btn" type="button" onclick="salvarPacienteCadastro()">Salvar Paciente</button>
-    <button class="btn btn-ghost" type="button" onclick="limparPacienteCadastro()">Limpar</button>
-  </div>
+<div style="display:flex;justify-content:center;margin-top:1rem;">
+  <button class="btn btn-primary" type="button" onclick="abrirPopupPaciente()">
+    <i class="fas fa-plus"></i> Adicionar Paciente
+  </button>
 </div>
 
 <script>
-function showMsgPaciente(text, ok=true){
-  const el = document.getElementById('msg-paciente');
-  if (!el) return;
-  el.style.display = '';
-  el.style.background = ok ? '#e8f7ee' : '#fdecec';
-  el.style.color = ok ? '#1f6f43' : '#9f1d1d';
-  el.textContent = text;
-  setTimeout(() => { el.style.display = 'none'; }, 3500);
+const clinicasOptions = {{ clinicas | tojson }};
+const dietasOptions = {{ dietas | tojson }};
+
+function filtrarPacientes(){
+  const q = (document.getElementById('buscaPaciente').value || '').toLowerCase();
+  document.querySelectorAll('#tabelaPacientesBody tr').forEach(tr => {
+    if (tr.id === 'linhaVazia') return;
+    tr.style.display = (tr.textContent || '').toLowerCase().includes(q) ? '' : 'none';
+  });
 }
 
-function calcularIdadePaciente(){
-  const nasc = document.getElementById('pac-nascimento')?.value;
-  const out = document.getElementById('pac-idade');
+function editarPacienteLinha(btn){
+  const tr = btn.closest('tr');
+  if (!tr) return;
+  abrirPopupPaciente({
+    id: Number(tr.dataset.id),
+    admissao: tr.dataset.admissao || '',
+    prontuario: tr.dataset.prontuario || '',
+    nome: tr.dataset.nome || '',
+    sexo: tr.dataset.sexo || '',
+    nascimento: tr.dataset.nascimento || '',
+    clinica: tr.dataset.clinica || '',
+    leito: tr.dataset.leito || '',
+    dieta: tr.dataset.dieta || '',
+    diagnostico: tr.dataset.diagnostico || '',
+    observacoes: tr.dataset.observacoes || ''
+  });
+}
+
+function calcularIdadePopup(){
+  const nasc = document.getElementById('f-nasc')?.value;
+  const out = document.getElementById('f-idade');
   if (!out) return;
-  if (!nasc){
-    out.value = '';
-    return;
-  }
+  if (!nasc){ out.value = ''; return; }
   const hoje = new Date();
   const dn = new Date(nasc + 'T00:00:00');
   let idade = hoje.getFullYear() - dn.getFullYear();
@@ -63,47 +119,136 @@ function calcularIdadePaciente(){
   out.value = idade >= 0 ? String(idade) : '';
 }
 
-function limparPacienteCadastro(){
-  ['pac-admissao','pac-clinica','pac-leito','pac-prontuario','pac-nome','pac-sexo','pac-nascimento','pac-idade','pac-diagnostico','pac-dieta','pac-observacoes']
-    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+function abrirPopupPaciente(data){
+  const isEdit = !!(data && data.id);
+  const clinicaOpts = clinicasOptions.map(c =>
+    `<option value="${c.nome}" ${(data && data.clinica === c.nome) ? 'selected' : ''}>${c.nome}</option>`
+  ).join('');
+  const dietaOpts = dietasOptions.map(d =>
+    `<option value="${d.nome}" ${(data && data.dieta === d.nome) ? 'selected' : ''}>${d.nome}</option>`
+  ).join('');
+
+  const html = `
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Admissão</label>
+        <input class="form-control" type="date" id="f-admissao" value="${(data && data.admissao) || ''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Prontuário</label>
+        <input class="form-control" id="f-pront" value="${(data && data.prontuario) || ''}">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Nome *</label>
+        <input class="form-control" id="f-nome" value="${(data && data.nome) || ''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Sexo</label>
+        <select class="form-control" id="f-sexo">
+          <option value="">Selecione</option>
+          <option value="M" ${(data && data.sexo === 'M') ? 'selected' : ''}>Masculino</option>
+          <option value="F" ${(data && data.sexo === 'F') ? 'selected' : ''}>Feminino</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Nascimento</label>
+        <input class="form-control" type="date" id="f-nasc" value="${(data && data.nascimento) ? String(data.nascimento).slice(0,10) : ''}" oninput="calcularIdadePopup()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Idade</label>
+        <input class="form-control" id="f-idade" readonly>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Clínica</label>
+        <select class="form-control" id="f-clinica">
+          <option value="">Selecione</option>
+          ${clinicaOpts}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Leito</label>
+        <input class="form-control" id="f-leito" value="${(data && data.leito) || ''}">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Dieta</label>
+        <select class="form-control" id="f-dieta">
+          <option value="">Selecione</option>
+          ${dietaOpts}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Diagnóstico</label>
+        <input class="form-control" id="f-diagnostico" value="${(data && data.diagnostico) || ''}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Observações</label>
+      <textarea class="form-control" id="f-observacoes" rows="2">${(data && data.observacoes) || ''}</textarea>
+    </div>
+  `;
+
+  window._editPaciente = isEdit ? data : null;
+  abrirModal(isEdit ? 'Editar Paciente' : 'Adicionar Paciente', html, isEdit ? 'Atualizar' : 'Salvar', salvarPacientePopup);
+  calcularIdadePopup();
 }
 
-async function salvarPacienteCadastro(){
-  const nome = (document.getElementById('pac-nome')?.value || '').trim();
-  if (!nome) return showMsgPaciente('Nome do paciente é obrigatório', false);
-
+async function salvarPacientePopup(){
+  const nome = (document.getElementById('f-nome')?.value || '').trim();
+  if (!nome){
+    showToast('Nome do paciente é obrigatório', 'error');
+    return;
+  }
   const body = {
     nome,
-    sexo: document.getElementById('pac-sexo')?.value || '',
-    nascimento: document.getElementById('pac-nascimento')?.value || '',
-    prontuario: document.getElementById('pac-prontuario')?.value || '',
-    clinica: document.getElementById('pac-clinica')?.value || '',
-    leito: document.getElementById('pac-leito')?.value || '',
-    dieta: document.getElementById('pac-dieta')?.value || '',
+    sexo: document.getElementById('f-sexo')?.value || '',
+    nascimento: document.getElementById('f-nasc')?.value || '',
+    prontuario: document.getElementById('f-pront')?.value || '',
+    clinica: document.getElementById('f-clinica')?.value || '',
+    leito: document.getElementById('f-leito')?.value || '',
+    dieta: document.getElementById('f-dieta')?.value || '',
+    admissao: document.getElementById('f-admissao')?.value || '',
+    diagnostico: document.getElementById('f-diagnostico')?.value || '',
+    observacoes: document.getElementById('f-observacoes')?.value || '',
     altura_cm: null,
-    peso_kg: null,
-    admissao: document.getElementById('pac-admissao')?.value || '',
-    diagnostico: document.getElementById('pac-diagnostico')?.value || '',
-    observacoes: document.getElementById('pac-observacoes')?.value || ''
+    peso_kg: null
   };
 
-  const r = await fetch('/nutricao/api/pacientes', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
+  const isEdit = !!(window._editPaciente && window._editPaciente.id);
+  const url = isEdit ? `/nutricao/api/pacientes/${window._editPaciente.id}` : '/nutricao/api/pacientes';
+  const method = isEdit ? 'PUT' : 'POST';
+  const r = await fetch(url, {
+    method,
+    headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(body)
   });
   const j = await r.json();
-  if (!r.ok || (j && j.ok === false)) return showMsgPaciente((j && j.error) || 'Falha ao salvar paciente', false);
-
-  showMsgPaciente('Paciente cadastrado com sucesso');
-  limparPacienteCadastro();
+  if (!r.ok || (j && j.ok === false)){
+    showToast((j && j.error) || 'Falha ao salvar paciente', 'error');
+    return;
+  }
+  fecharModal();
+  showToast(isEdit ? 'Paciente atualizado!' : 'Paciente cadastrado!', 'success');
+  setTimeout(() => location.reload(), 600);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  const params = new URLSearchParams(window.location.search);
-  const admissao = params.get('admissao');
-  const admInput = document.getElementById('pac-admissao');
-  if (admissao && admInput) admInput.value = admissao;
-});
+async function excluirPaciente(id){
+  if (!confirm('Excluir paciente #' + id + '?')) return;
+  const r = await fetch('/nutricao/api/pacientes/' + id, {method: 'DELETE'});
+  const j = await r.json();
+  if (!r.ok){
+    showToast((j && j.error) || 'Falha ao excluir', 'error');
+    return;
+  }
+  showToast('Paciente excluído', 'success');
+  setTimeout(() => location.reload(), 600);
+}
 </script>
 {% endblock %}

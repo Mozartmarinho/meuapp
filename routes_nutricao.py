@@ -3,16 +3,19 @@ from functools import wraps
 from datetime import datetime, date
 import json
 
+from models import db
+from models_nutricao import NutClinica, NutDieta, NutPaciente, NutMapaRefeicao
+from nutricao_service import (
+    seed_nutricao,
+    paciente_from_payload,
+    mapa_from_paciente,
+    garantir_mapa_do_dia,
+    _parse_date,
+)
+
 nutricao = Blueprint('nutricao', __name__, template_folder='templates_nutricao')
 
-# ---- DADOS MOCKADOS ----
-PACIENTES = [
-    {'id':1,'nome':'Maria Silva','sexo':'F','nascimento':'1985-03-15','prontuario':'12345','clinica':'Clínica Médica','leito':'101-A','dieta':'Branda','altura_cm':165,'peso_kg':72,'ativo':True},
-    {'id':2,'nome':'João Santos','sexo':'M','nascimento':'1972-08-22','prontuario':'12346','clinica':'CTI','leito':'05','dieta':'Hiperproteica','altura_cm':175,'peso_kg':80,'ativo':True},
-    {'id':3,'nome':'Ana Oliveira','sexo':'F','nascimento':'1990-12-01','prontuario':'12347','clinica':'Oncologia','leito':'210-B','dieta':'Líquida','altura_cm':160,'peso_kg':58,'ativo':True},
-    {'id':4,'nome':'Carlos Pereira','sexo':'M','nascimento':'1965-06-10','prontuario':'12348','clinica':'Clínica Médica','leito':'102','dieta':'Branda','altura_cm':170,'peso_kg':85,'ativo':True},
-    {'id':5,'nome':'Lucia Mendes','sexo':'F','nascimento':'1995-09-28','prontuario':'12349','clinica':'Maternidade','leito':'305','dieta':'Líquida','altura_cm':162,'peso_kg':65,'ativo':True},
-]
+# ---- DADOS MOCKADOS (módulos ainda não migrados) ----
 CLINICAS = [
     {'id':1,'nome':'Clínica Médica','centro_custo':'CC-1001'},
     {'id':2,'nome':'CTI','centro_custo':'CC-1002'},
@@ -32,7 +35,6 @@ LEITOS = [
     {'id':3,'enfermaria_id':2,'numero_leito':'CTI-05','nome_leito':'Leito Monitorado','ativo':True},
     {'id':4,'enfermaria_id':3,'numero_leito':'ONC-210','nome_leito':'Leito Isolado','ativo':False}
 ]
-DIETAS = [{'id':1,'nome':'BRANDA'},{'id':2,'nome':'BRANDA CONSTIPANTE'},{'id':3,'nome':'HIPERPROTEICA'},{'id':4,'nome':'LÍQUIDA'},{'id':5,'nome':'PASTOSA'},{'id':6,'nome':'HIPOSSÓDICA'},{'id':7,'nome':'DIABÉTICA'},{'id':8,'nome':'JEJUM'}]
 FUNCIONARIOS = [
     {'id':1,'nome':'Dr. Ricardo Almeida','cargo':'Médico','setor':'Clínica Médica','telefone':'(11)99999-0001','email':'ricardo@h.com','situacao':'ativo'},
     {'id':2,'nome':'Enf. Patricia Lima','cargo':'Enfermeira','setor':'CTI','telefone':'(11)99999-0002','email':'patricia@h.com','situacao':'ativo'},
@@ -41,7 +43,13 @@ FUNCIONARIOS = [
     {'id':5,'nome':'Téc. Maria Fernanda','cargo':'Técnico','setor':'Pediatria','telefone':'(11)99999-0005','email':'mariaf@h.com','situacao':'inativo'},
 ]
 FORNECEDORES = [{'id':1,'nome':'Distribuidora Alimentos Ltda','cnpj':'11.222.333/0001-44','contato':'Carlos','telefone':'(11)3333-0001','email':'carlos@dist.com'},{'id':2,'nome':'NutriSupply S.A.','cnpj':'55.666.777/0001-88','contato':'Ana','telefone':'(11)3333-0002','email':'ana@nutri.com'},{'id':3,'nome':'HospMedic','cnpj':'99.888.777/0001-55','contato':'José','telefone':'(11)3333-0003','email':'jose@hosp.com'}]
-PRODUTOS = [{'id':1,'nome':'Arroz 5kg','categoria':'Alimentação','unidade':'Saco','estoque_min':10,'estoque_atual':45,'fornecedor_id':1,'valor_un':'R$22,50'},{'id':2,'nome':'Feijão Preto 1kg','categoria':'Alimentação','unidade':'Pacote','estoque_min':20,'estoque_atual':38,'fornecedor_id':1,'valor_un':'R$8,90'},{'id':3,'nome':'Suplemento Proteico 500g','categoria':'Suplemento','unidade':'Lata','estoque_min':5,'estoque_atual':12,'fornecedor_id':2,'valor_un':'R$89,00'},{'id':4,'nome':'Soro 500ml','categoria':'Medicamento','unidade':'Un','estoque_min':50,'estoque_atual':120,'fornecedor_id':3,'valor_un':'R$4,50'},{'id':5,'nome':'Creme de Leite 200g','categoria':'Alimentação','unidade':'Cx','estoque_min':15,'estoque_atual':8,'fornecedor_id':1,'valor_un':'R$6,30'}]
+PRODUTOS = [
+    {'id':1,'nome':'Arroz 5kg','categoria':'Alimentação','unidade':'Saco','estoque_min':10,'estoque_atual':45,'fornecedor_id':1,'valor_un':'R$22,50'},
+    {'id':2,'nome':'Feijão Preto 1kg','categoria':'Alimentação','unidade':'Pacote','estoque_min':20,'estoque_atual':38,'fornecedor_id':1,'valor_un':'R$8,90'},
+    {'id':3,'nome':'Suplemento Proteico 500g','categoria':'Suplemento','unidade':'Lata','estoque_min':5,'estoque_atual':12,'fornecedor_id':2,'valor_un':'R$89,00'},
+    {'id':4,'nome':'Soro 500ml','categoria':'Medicamento','unidade':'Un','estoque_min':50,'estoque_atual':120,'fornecedor_id':3,'valor_un':'R$4,50'},
+    {'id':5,'nome':'Creme de Leite 200g','categoria':'Alimentação','unidade':'Cx','estoque_min':15,'estoque_atual':8,'fornecedor_id':1,'valor_un':'R$6,30'},
+]
 UTILIZADORES = [
     {'id':1,'nome':'Admin','usuario':'admin','email':'admin@nutricao.com','setor':'Administração','cargo':'Administrador','tipo':'admin','ativo':True,'permissoes':['*']},
     {'id':2,'nome':'Carla Nutrição','usuario':'carla.nutri','email':'carla@nutricao.com','setor':'Nutrição','cargo':'Nutricionista','tipo':'nutricionista','ativo':True,'permissoes':['cadastro.usuarios','mapa.pacientes']},
@@ -81,63 +89,205 @@ MAPA_SUPLEMENTOS = [
     {'clinica': 'Pediatria', 'suplemento': 'FORTINI MULTI FIBER 200ML', 'volume_total_ml': 1600},
 ]
 
+FLAG_FIELDS = (
+    'fl_desjejum', 'fl_colacao', 'fl_almoco', 'fl_merenda', 'fl_jantar', 'fl_ceia'
+)
+
+
 # ---- HELPERS ----
 def active(page):
     return dict(active_page=page)
 
-def fmt_data(d):
-    if not d: return '-'
-    p = d.split('-')
-    return f'{p[2]}/{p[1]}/{p[0]}' if len(p)==3 else d
 
-# ---- DASHBOARD ----
+def fmt_data(d):
+    if not d:
+        return '-'
+    if isinstance(d, date):
+        return d.strftime('%d/%m/%Y')
+    p = str(d).split('-')
+    return f'{p[2]}/{p[1]}/{p[0]}' if len(p) == 3 else d
+
+
+def _list_pacientes_db(ativos_only=True):
+    q = NutPaciente.query
+    if ativos_only:
+        q = q.filter_by(ativo=True)
+    return [p.to_dict() for p in q.order_by(NutPaciente.nome).all()]
+
+
+def _list_dietas_db():
+    return [d.to_dict() for d in NutDieta.query.filter_by(ativo=True).order_by(NutDieta.nome).all()]
+
+
+def _list_clinicas_db():
+    rows = NutClinica.query.filter_by(ativo=True).order_by(NutClinica.nome).all()
+    if rows:
+        return [c.to_dict() for c in rows]
+    return CLINICAS
+
+
+def _mapa_linhas(data_ref):
+    garantir_mapa_do_dia(data_ref)
+    rows = (
+        NutMapaRefeicao.query
+        .filter_by(data_refeicao=data_ref, ativo=True)
+        .order_by(NutMapaRefeicao.clinica, NutMapaRefeicao.leito, NutMapaRefeicao.nome)
+        .all()
+    )
+    return [r.to_dict() for r in rows]
+
+
+# ---- DASHBOARD / MAPA DE PRODUÇÃO ----
 @nutricao.route('/nutricao')
 def dashboard():
-    total_pac = len([p for p in PACIENTES if p.get('ativo',True)])
-    return render_template('nutricao_dashboard.html',
-        total_pacientes=total_pac, total_dietas=len(DIETAS),
-        total_clinicas=len(CLINICAS), alertas_estoque=[p for p in PRODUTOS if p['estoque_atual']<=p['estoque_min']],
-        **active('dashboard'))
+    seed_nutricao()
+    data_ref = date.today()
+    mapa = _mapa_linhas(data_ref)
+    return render_template(
+        'nutricao_dashboard.html',
+        mapa_linhas=mapa,
+        data_mapa=data_ref.isoformat(),
+        total_pacientes=NutPaciente.query.filter_by(ativo=True).count(),
+        total_dietas=NutDieta.query.filter_by(ativo=True).count(),
+        total_clinicas=NutClinica.query.filter_by(ativo=True).count() or len(CLINICAS),
+        alertas_estoque=[p for p in PRODUTOS if p['estoque_atual'] <= p['estoque_min']],
+        **active('dashboard')
+    )
 
-# ---- PACIENTES (CRUD) ----
+
+# ---- PACIENTES (CRUD MySQL) ----
 @nutricao.route('/nutricao/pacientes')
 def pacientes():
-    return render_template('nutricao_pacientes.html', pacientes=PACIENTES, clinicas=CLINICAS, dietas=DIETAS, **active('pacientes'))
-
-@nutricao.route('/nutricao/api/pacientes', methods=['GET','POST'])
-def api_pacientes():
-    if request.method=='POST':
-        d = request.get_json(force=True)
-        novo = {'id':max(p['id'] for p in PACIENTES)+1 if PACIENTES else 1}
-        for k in ['nome','sexo','nascimento','prontuario','clinica','leito','dieta','altura_cm','peso_kg']:
-            novo[k] = d.get(k)
-        novo['ativo']=True
-        PACIENTES.append(novo)
-        return jsonify({'ok':True,'id':novo['id']})
-    return jsonify(PACIENTES)
-
-@nutricao.route('/nutricao/api/pacientes/<int:pid>', methods=['PUT','DELETE'])
-def api_paciente(pid):
-    p = next((x for x in PACIENTES if x['id']==pid), None)
-    if not p: return jsonify({'error':'Não encontrado'}),404
-    if request.method=='DELETE':
-        p['ativo']=False
-        return jsonify({'ok':True})
-    d = request.get_json(force=True)
-    for k in ['nome','sexo','nascimento','prontuario','clinica','leito','dieta','altura_cm','peso_kg']:
-        if k in d: p[k]=d[k]
-    return jsonify({'ok':True})
-
-# ---- CLINICAS ----
-@nutricao.route('/nutricao/clinicas')
-def clinicas():
+    seed_nutricao()
     return render_template(
-        'nutricao_clinicas.html',
-        clinicas=CLINICAS,
-        enfermarias=ENFERMARIAS,
-        leitos=LEITOS,
+        'nutricao_pacientes.html',
+        pacientes=_list_pacientes_db(False),
+        clinicas=_list_clinicas_db(),
+        dietas=_list_dietas_db(),
         **active('pacientes')
     )
+
+
+@nutricao.route('/nutricao/api/pacientes', methods=['GET', 'POST'])
+def api_pacientes():
+    seed_nutricao()
+    if request.method == 'POST':
+        d = request.get_json(force=True) or {}
+        if not (d.get('nome') or '').strip():
+            return jsonify({'ok': False, 'error': 'Nome do paciente é obrigatório'}), 400
+        p = paciente_from_payload(d)
+        p.ativo = True
+        if not p.admissao:
+            p.admissao = date.today()
+        db.session.add(p)
+        db.session.flush()
+        data_mapa = _parse_date(d.get('admissao')) or date.today()
+        db.session.add(mapa_from_paciente(p, data_mapa))
+        db.session.commit()
+        return jsonify({'ok': True, 'id': p.id, 'paciente': p.to_dict()})
+    return jsonify(_list_pacientes_db(True))
+
+
+@nutricao.route('/nutricao/api/pacientes/<int:pid>', methods=['PUT', 'DELETE'])
+def api_paciente(pid):
+    p = NutPaciente.query.get(pid)
+    if not p:
+        return jsonify({'ok': False, 'error': 'Não encontrado'}), 404
+    if request.method == 'DELETE':
+        p.ativo = False
+        p.data_saida = p.data_saida or date.today()
+        db.session.commit()
+        return jsonify({'ok': True})
+    d = request.get_json(force=True) or {}
+    paciente_from_payload(d, p)
+    db.session.commit()
+    # sincroniza snapshot do mapa de hoje se existir
+    hoje = date.today()
+    linha = NutMapaRefeicao.query.filter_by(data_refeicao=hoje, paciente_id=p.id, ativo=True).first()
+    if linha:
+        linha.adm = p.admissao
+        linha.leito = p.leito
+        linha.prontuario = p.prontuario
+        linha.nome = p.nome
+        linha.idade = p.idade(hoje)
+        linha.diagnostico = p.diagnostico
+        linha.dieta = p.dieta
+        linha.observacoes = p.observacoes
+        linha.clinica = p.clinica
+        linha.data_saida = p.data_saida
+        db.session.commit()
+    return jsonify({'ok': True, 'paciente': p.to_dict()})
+
+
+# ---- MAPA API ----
+@nutricao.route('/nutricao/api/mapa', methods=['GET'])
+def api_mapa_get():
+    seed_nutricao()
+    data_ref = _parse_date(request.args.get('data')) or date.today()
+    return jsonify({
+        'ok': True,
+        'data': data_ref.isoformat(),
+        'linhas': _mapa_linhas(data_ref),
+    })
+
+
+@nutricao.route('/nutricao/api/mapa/<int:mid>', methods=['PUT'])
+def api_mapa_put(mid):
+    row = NutMapaRefeicao.query.get(mid)
+    if not row or not row.ativo:
+        return jsonify({'ok': False, 'error': 'Linha não encontrada'}), 404
+    d = request.get_json(force=True) or {}
+    for campo in ('leito', 'prontuario', 'nome', 'diagnostico', 'dieta', 'observacoes', 'clinica'):
+        if campo in d:
+            val = d.get(campo)
+            setattr(row, campo, (str(val).strip() if val is not None else '') or None)
+    if 'idade' in d:
+        try:
+            row.idade = int(d['idade']) if d['idade'] not in (None, '') else None
+        except (TypeError, ValueError):
+            pass
+    if 'adm' in d:
+        row.adm = _parse_date(d.get('adm'))
+    if 'data_saida' in d:
+        row.data_saida = _parse_date(d.get('data_saida'))
+    for fl in FLAG_FIELDS:
+        if fl in d:
+            setattr(row, fl, bool(d.get(fl)))
+    db.session.commit()
+    return jsonify({'ok': True, 'linha': row.to_dict()})
+
+
+@nutricao.route('/nutricao/api/mapa/<int:mid>/toggle', methods=['POST'])
+def api_mapa_toggle(mid):
+    row = NutMapaRefeicao.query.get(mid)
+    if not row or not row.ativo:
+        return jsonify({'ok': False, 'error': 'Linha não encontrada'}), 404
+    d = request.get_json(force=True) or {}
+    campo = (d.get('campo') or '').strip()
+    if campo not in FLAG_FIELDS:
+        return jsonify({'ok': False, 'error': 'Campo inválido'}), 400
+    if 'valor' in d:
+        setattr(row, campo, bool(d.get('valor')))
+    else:
+        setattr(row, campo, not bool(getattr(row, campo)))
+    db.session.commit()
+    return jsonify({'ok': True, 'linha': row.to_dict()})
+
+
+# ---- CLINICAS (página) ----
+@nutricao.route('/nutricao/clinicas')
+def clinicas():
+    seed_nutricao()
+    return render_template(
+        'nutricao_clinicas.html',
+        pacientes=_list_pacientes_db(True),
+        clinicas=_list_clinicas_db(),
+        dietas=_list_dietas_db(),
+        enfermarias=ENFERMARIAS,
+        leitos=LEITOS,
+        **active('cadastro_pacientes')
+    )
+
 
 @nutricao.route('/nutricao/api/clinicas', methods=['GET','POST'])
 def api_clinicas():
@@ -269,23 +419,39 @@ def api_leito_ops(lid):
 # ---- DIETAS ----
 @nutricao.route('/nutricao/api/dietas', methods=['GET','POST'])
 def api_dietas():
+    seed_nutricao()
     if request.method=='POST':
-        d = request.get_json(force=True)
-        n = {'id':max(dd['id'] for dd in DIETAS)+1 if DIETAS else 1,'nome':d.get('nome','').upper()}
-        DIETAS.append(n)
-        return jsonify({'ok':True,'id':n['id']})
-    return jsonify(DIETAS)
+        d = request.get_json(force=True) or {}
+        nome = (d.get('nome') or '').strip().upper()
+        if not nome:
+            return jsonify({'ok':False,'error':'Nome da dieta é obrigatório'}),400
+        categoria = (d.get('categoria') or 'basica').strip() or 'basica'
+        exists = NutDieta.query.filter_by(nome=nome).first()
+        if exists:
+            exists.ativo = True
+            exists.categoria = categoria
+            db.session.commit()
+            return jsonify({'ok':True,'id':exists.id,'dieta':exists.to_dict()})
+        row = NutDieta(nome=nome, categoria=categoria, ativo=True)
+        db.session.add(row)
+        db.session.commit()
+        return jsonify({'ok':True,'id':row.id,'dieta':row.to_dict()})
+    return jsonify(_list_dietas_db())
 
 @nutricao.route('/nutricao/api/dietas/<int:did>', methods=['DELETE'])
 def api_dieta_delete(did):
-    global DIETAS
-    DIETAS = [d for d in DIETAS if d['id']!=did]
+    row = NutDieta.query.get(did)
+    if not row:
+        return jsonify({'ok':False,'error':'Dieta não encontrada'}),404
+    row.ativo = False
+    db.session.commit()
     return jsonify({'ok':True})
 
 # ---- MAPA REFEIÇÕES ----
 @nutricao.route('/nutricao/mapa_refeicoes')
 def mapa_refeicoes():
-    return render_template('nutricao_mapa_refeicoes.html', dietas=DIETAS, clinicas=CLINICAS, **active('mapa_refeicoes'))
+    seed_nutricao()
+    return render_template('nutricao_mapa_refeicoes.html', dietas=_list_dietas_db(), clinicas=_list_clinicas_db(), **active('mapa_refeicoes'))
 
 # ---- ESTOQUE ----
 @nutricao.route('/nutricao/estoque')
