@@ -98,18 +98,21 @@ if ! command -v sudo >/dev/null 2>&1; then
   fail "sudo não disponível"
 fi
 
-sudo systemctl restart meuapp || fail "Falha ao reiniciar meuapp"
-sleep 2
-sudo systemctl is-active --quiet meuapp || fail "meuapp não está active após restart"
+SYSTEMCTL="/bin/systemctl"
+NGINX="/usr/sbin/nginx"
 
-sudo nginx -t || fail "nginx -t falhou (config inválida)"
-sudo systemctl reload nginx || fail "Falha ao recarregar nginx"
-sudo systemctl is-active --quiet nginx || fail "nginx não está active"
+sudo "${SYSTEMCTL}" restart meuapp || fail "Falha ao reiniciar meuapp"
+sleep 2
+sudo "${SYSTEMCTL}" is-active --quiet meuapp || fail "meuapp não está active após restart"
+
+sudo "${NGINX}" -t || fail "nginx -t falhou (config inválida)"
+sudo "${SYSTEMCTL}" reload nginx || fail "Falha ao recarregar nginx"
+sudo "${SYSTEMCTL}" is-active --quiet nginx || fail "nginx não está active"
 
 log "Status meuapp:"
-sudo systemctl status meuapp --no-pager -l | head -20 || true
+sudo "${SYSTEMCTL}" status meuapp --no-pager -l | head -20 || true
 log "Status nginx:"
-sudo systemctl status nginx --no-pager -l | head -15 || true
+sudo "${SYSTEMCTL}" status nginx --no-pager -l | head -15 || true
 
 # --- 5. Verificação rápida (produção = HTTP porta 80 via Nginx) ---
 log ">>> 5/5 Verificação pós-deploy (porta 80)"
