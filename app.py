@@ -2,11 +2,12 @@ from flask import Flask
 from routes import main
 from routes_nutricao import nutricao
 from models import db, Usuario
+from db_config import SQLALCHEMY_DATABASE_URI
 
 def create_app():
     app = Flask(__name__)
     app.config['SECRET_KEY'] = 'saogeraldo2025'
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///meuapp.db'
+    app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     db.init_app(app)

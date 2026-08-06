@@ -1,166 +1,183 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sistema de Nutrição</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg-primary:#f5f8ff;--bg-secondary:#ffffff;--bg-card:#ffffff;
-  --bg-card-hover:#f1f5ff;--bg-input:#ffffff;
-  --border-color:#d8e1f2;--border-light:#c7d3eb;
-  --text-primary:#1f2d4d;--text-secondary:#4d5f84;--text-muted:#7b89a6;
-  --accent:#2d6cdf;--accent-hover:#2559b7;--accent-soft:rgba(45,108,223,0.12);
-  --success:#1ca16e;--warning:#c7921a;--danger:#c94b4b;--info:#2d6cdf;
-  --radius:12px;--radius-sm:8px;--font:'Segoe UI',system-ui,-apple-system,sans-serif;
-  --sidebar-width:280px;
-}
-body{font-family:var(--font);background:var(--bg-primary);color:var(--text-primary);min-height:100vh;display:flex}
-.sidebar{width:var(--sidebar-width);background:var(--bg-secondary);border-right:1px solid var(--border-color);display:flex;flex-direction:column;height:100vh;position:sticky;top:0;flex-shrink:0}
-.sidebar-logo{padding:18px 20px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:12px}
-.sidebar-logo .logo-icon{width:38px;height:38px;border-radius:var(--radius-sm);background:linear-gradient(135deg,var(--accent),#2563eb);display:flex;align-items:center;justify-content:center;font-size:16px;color:#fff;font-weight:700}
-.sidebar-logo .logo-text strong{font-size:16px;display:block}
-.sidebar-logo .logo-text small{font-size:11px;color:var(--text-muted)}
-.sidebar-nav{flex:1;overflow-y:auto;padding:8px 0}
-.sidebar-section{padding:6px 20px 4px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);font-weight:600;margin-top:8px}
-.sidebar-item{display:flex;align-items:center;gap:10px;padding:10px 20px;cursor:pointer;transition:.2s;font-size:14px;color:var(--text-secondary);text-decoration:none;border-left:3px solid transparent}
-.sidebar-item:hover{background:var(--bg-card);color:var(--text-primary)}
-.sidebar-item.active{background:var(--accent-soft);color:var(--accent);border-left-color:var(--accent)}
-.sidebar-item .icon{width:20px;text-align:center;font-size:16px}
-.sidebar-submenu{margin:2px 0 10px 0;padding-left:22px;display:none}
-.sidebar-submenu.open{display:block}
-.sidebar-subitem{display:flex;align-items:center;gap:8px;padding:8px 20px;font-size:13px;color:var(--text-secondary);text-decoration:none;border-left:3px solid transparent}
-.sidebar-item-parent{justify-content:space-between}
-.sidebar-item-parent .left{display:flex;align-items:center;gap:10px}
-.chevron{font-size:12px;transition:transform .2s ease;color:var(--text-muted)}
-.chevron.open{transform:rotate(90deg)}
-.sidebar-subitem:hover{background:var(--bg-card);color:var(--text-primary)}
-.sidebar-subitem.active{background:var(--accent-soft);color:var(--accent);border-left-color:var(--accent)}
-.main{flex:1;padding:24px;min-height:100vh;overflow-y:auto}
-.top-switch{display:flex;justify-content:center;align-items:center;margin-bottom:18px}
-.top-switch .switch-wrap{display:inline-flex;background:#edf3ff;border:1px solid #c9d7f3;border-radius:14px;padding:6px;gap:8px}
-.top-switch .switch-link{text-decoration:none;padding:12px 22px;border-radius:10px;font-size:16px;font-weight:700;color:#335287;border:1px solid transparent}
-.top-switch .switch-link.active{background:#2d6cdf;color:#fff;border-color:#2d6cdf}
-.page-header{margin-bottom:24px}
-.page-header h1{font-size:22px;font-weight:700}
-.page-header p{color:var(--text-secondary);font-size:14px;margin-top:4px}
-.card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:var(--radius);padding:20px;margin-bottom:16px}
-.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}.card-header h3{font-size:16px;font-weight:600}
-.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}
-.stat-card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:var(--radius);padding:20px;display:flex;align-items:center;gap:16px}
-.stat-icon{width:48px;height:48px;border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
-.stat-icon.blue{background:var(--accent-soft);color:var(--accent)}
-.stat-icon.green{background:rgba(52,211,153,0.12);color:var(--success)}
-.stat-icon.yellow{background:rgba(251,191,36,0.12);color:var(--warning)}
-.stat-icon.red{background:rgba(248,113,113,0.12);color:var(--danger)}
-.stat-info h4{font-size:24px;font-weight:700;line-height:1.2}
-.stat-info p{font-size:13px;color:var(--text-secondary)}
-.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:.2s;font-family:var(--font)}
-.btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}.btn-primary:hover{background:var(--accent-hover)}
-.btn-secondary{background:transparent;color:var(--text-secondary);border-color:var(--border-color)}.btn-secondary:hover{background:var(--bg-card-hover);color:var(--text-primary)}
-.btn-sm{padding:6px 12px;font-size:12px}
-.btn-ghost{background:none;border:none;color:var(--text-secondary);cursor:pointer;padding:4px}.btn-ghost:hover{color:var(--text-primary)}
-.tabs{display:flex;gap:10px;margin-bottom:24px;overflow-x:auto;padding-bottom:4px}
-.tab{padding:12px 20px;cursor:pointer;font-size:16px;color:var(--text-secondary);border:1px solid var(--border-color);border-radius:10px;transition:.2s;background:var(--bg-card);font-family:var(--font);white-space:nowrap;font-weight:600}
-.tab:hover{color:var(--text-primary);background:var(--bg-card-hover)}
-.tab.active{color:#fff;background:var(--accent);border-color:var(--accent)}
-.form-group{margin-bottom:16px}
-.form-label{display:block;font-size:13px;color:var(--text-secondary);margin-bottom:6px}
-.form-control{width:100%;padding:10px 14px;border-radius:var(--radius-sm);background:var(--bg-input);border:1px solid var(--border-color);color:var(--text-primary);font-size:14px;font-family:var(--font);outline:none}
-.form-control:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
-.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:768px){.form-row{grid-template-columns:1fr}}
-table{width:100%;border-collapse:collapse;font-size:14px}
-th{text-align:left;padding:12px;font-weight:600;color:var(--text-secondary);font-size:12px;text-transform:uppercase;border-bottom:1px solid var(--border-color)}
-td{padding:12px;border-bottom:1px solid var(--border-color)}tr:hover td{background:rgba(45,108,223,0.04)}
-.status{display:inline-flex;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600}
-.status-success{background:rgba(52,211,153,0.12);color:var(--success)}.status-warning{background:rgba(251,191,36,0.12);color:var(--warning)}.status-info{background:rgba(96,165,250,0.12);color:var(--info)}.status-danger{background:rgba(248,113,113,0.12);color:var(--danger)}
-.toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px}
-.toolbar-search{display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:var(--radius-sm);background:var(--bg-input);border:1px solid var(--border-color);flex:1;max-width:320px}
-.toolbar-search input{background:none;border:none;color:var(--text-primary);font-size:13px;outline:none;flex:1;font-family:var(--font)}
-.filter-panel{background:var(--bg-card);border:1px solid var(--border-color);border-radius:var(--radius);padding:20px;margin-bottom:20px}
-.filter-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end}
-.radio-group{display:flex;flex-direction:column;gap:6px}
-.radio-item{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;color:var(--text-secondary)}
-.radio-item input[type="radio"]{appearance:none;width:16px;height:16px;border:2px solid var(--border-color);border-radius:50%;position:relative;cursor:pointer;flex-shrink:0}
-.radio-item input[type="radio"]:checked{border-color:var(--accent)}
-.radio-item input[type="radio"]:checked::after{content:'';position:absolute;inset:3px;background:var(--accent);border-radius:50%}
-@media(max-width:768px){.sidebar{display:none}}
-.toast{position:fixed;bottom:20px;right:20px;z-index:999;padding:12px 20px;border-radius:var(--radius-sm);background:var(--bg-card);border:1px solid var(--border-color);display:none;align-items:center;gap:10px;font-size:14px;box-shadow:0 4px 24px rgba(31,45,77,0.2)}
-.toast.show{display:flex}.toast.success{border-color:var(--success)}.toast.error{border-color:var(--danger)}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Nutrição Hospitalar - São Geraldo Service{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
 </head>
 <body>
-<aside class="sidebar">
-  <div class="sidebar-logo">
-    <div class="logo-icon">SN</div>
-    <div class="logo-text"><strong>Sistema de Nutrição</strong><small>Gestão Nutricional</small></div>
-  </div>
-  <nav class="sidebar-nav">
-    <div class="sidebar-section">Principal</div>
-    <a class="sidebar-item {{ 'active' if active_page=='dashboard' else '' }}" href="{{ url_for('nutricao.dashboard') }}"><span class="icon">📊</span> Dashboard</a>
-    <div class="sidebar-section">Operacional</div>
-    <a id="menu-cadastro" class="sidebar-item sidebar-item-parent {{ 'active' if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas'] else '' }}" href="javascript:void(0);" onclick="toggleCadastroMenu()">
-      <span class="left"><span class="icon">📋</span> Cadastro</span>
-      <span id="cadastro-chevron" class="chevron {{ 'open' if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas'] else '' }}">▸</span>
-    </a>
-    <div id="cadastro-submenu" class="sidebar-submenu {{ 'open' if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas'] else '' }}">
-      <a class="sidebar-subitem {{ 'active' if active_page=='cadastro_pacientes' else '' }}" href="{{ url_for('nutricao.clinicas') }}?tab=clinicas#paciente">👤 Pacientes</a>
-      <a class="sidebar-subitem {{ 'active' if active_page=='cadastro_clinicas' else '' }}" href="{{ url_for('nutricao.clinicas') }}?tab=clinicas">🏥 Clínicas</a>
-      <a class="sidebar-subitem {{ 'active' if active_page=='cadastro_enfermarias' else '' }}" href="{{ url_for('nutricao.clinicas') }}?tab=enfermarias">🛏️ Enfermarias</a>
-      <a class="sidebar-subitem {{ 'active' if active_page=='cadastro_leitos' else '' }}" href="{{ url_for('nutricao.clinicas') }}?tab=leitos">🛌 Leitos</a>
-      <a class="sidebar-subitem {{ 'active' if active_page=='cadastro_dietas' else '' }}" href="{{ url_for('nutricao.clinicas') }}?tab=dietas">🥗 Dietas</a>
-    </div>
-    <a class="sidebar-item {{ 'active' if active_page=='mapa_refeicoes' else '' }}" href="{{ url_for('nutricao.mapa_refeicoes') }}"><span class="icon">📅</span> Mapa de Refeições</a>
-    <a class="sidebar-item {{ 'active' if active_page=='estoque' else '' }}" href="{{ url_for('nutricao.estoque') }}"><span class="icon">📦</span> Estoque</a>
-    <div class="sidebar-section">Relatórios</div>
-    <a class="sidebar-item {{ 'active' if active_page=='relatorios' else '' }}" href="{{ url_for('nutricao.relatorios') }}"><span class="icon">💵</span> Análise de Custos</a>
-    <a class="sidebar-item {{ 'active' if active_page=='faturamento' else '' }}" href="{{ url_for('nutricao.faturamento') }}"><span class="icon">🧾</span> Faturamento</a>
-    <div class="sidebar-section">Administração</div>
-    <a class="sidebar-item {{ 'active' if active_page=='admin' else '' }}" href="{{ url_for('nutricao.admin') }}"><span class="icon">⚙️</span> Administração</a>
-    <a class="sidebar-item {{ 'active' if active_page=='utilitarios' else '' }}" href="{{ url_for('nutricao.utilitarios') }}"><span class="icon">🔧</span> Utilitários</a>
-  </nav>
-</aside>
-<main class="main">
-  <div class="top-switch">
-    <div class="switch-wrap">
-      <a class="switch-link" href="{{ url_for('main.dashboard') }}">Manutenção</a>
-      <a class="switch-link active" href="{{ url_for('nutricao.dashboard') }}">Nutrição</a>
-    </div>
-  </div>
-  {% block content %}{% endblock %}
-</main>
+    <nav class="sidebar">
+        <div class="sidebar-logo">
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service" onerror="this.style.display='none'" style="display: block; margin: 0 auto 1rem; width: 250px; max-width: 80%; height: auto; border-radius: 10px;">
+            <h3 style="margin-top: 0; text-align: center;">SÃO GERALDO<br>SERVICE</h3>
+            <p style="text-align:center;font-size:0.8rem;opacity:0.85;margin-top:0.35rem;">Nutrição Hospitalar</p>
+        </div>
 
-<!-- Modal Global -->
-<div id="modalOverlay" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)fecharModal()">
-  <div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:var(--radius);width:100%;max-width:640px;max-height:90vh;overflow-y:auto;box-shadow:0 4px 24px rgba(0,0,0,0.4)">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 24px 0">
-      <h2 id="modalTitle" style="font-size:18px;font-weight:700">Modal</h2>
-      <button onclick="fecharModal()" style="background:none;border:none;color:var(--text-muted);font-size:22px;cursor:pointer;padding:4px;line-height:1">✕</button>
+        <ul class="sidebar-menu">
+            <li>
+                <a href="{{ url_for('main.inicio') }}">
+                    <i class="fas fa-th-large" style="margin-right: 0.75rem;"></i>
+                    Sistemas
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('nutricao.dashboard') }}" class="{% if active_page == 'dashboard' %}active{% endif %}">
+                    <i class="fas fa-tachometer-alt" style="margin-right: 0.75rem;"></i>
+                    Dashboard
+                </a>
+            </li>
+            <li>
+                <a href="javascript:void(0);" onclick="toggleCadastroMenu()" class="{% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas'] %}active{% endif %}">
+                    <i class="fas fa-folder-open" style="margin-right: 0.75rem;"></i>
+                    Cadastro
+                    <i id="cadastro-chevron" class="fas fa-chevron-right chevron {% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas'] %}open{% endif %}" style="margin-left:auto;"></i>
+                </a>
+                <ul id="cadastro-submenu" class="sidebar-submenu {% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas'] %}open{% endif %}">
+                    <li>
+                        <a href="{{ url_for('nutricao.clinicas') }}?tab=clinicas#paciente" class="{% if active_page == 'cadastro_pacientes' %}active{% endif %}">
+                            <i class="fas fa-user-injured" style="margin-right: 0.75rem;"></i>
+                            Pacientes
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.clinicas') }}?tab=clinicas" class="{% if active_page == 'cadastro_clinicas' %}active{% endif %}">
+                            <i class="fas fa-hospital" style="margin-right: 0.75rem;"></i>
+                            Clínicas
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.clinicas') }}?tab=enfermarias" class="{% if active_page == 'cadastro_enfermarias' %}active{% endif %}">
+                            <i class="fas fa-procedures" style="margin-right: 0.75rem;"></i>
+                            Enfermarias
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.clinicas') }}?tab=leitos" class="{% if active_page == 'cadastro_leitos' %}active{% endif %}">
+                            <i class="fas fa-bed" style="margin-right: 0.75rem;"></i>
+                            Leitos
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.clinicas') }}?tab=dietas" class="{% if active_page == 'cadastro_dietas' %}active{% endif %}">
+                            <i class="fas fa-utensils" style="margin-right: 0.75rem;"></i>
+                            Dietas
+                        </a>
+                    </li>
+                </ul>
+            </li>
+            <li>
+                <a href="{{ url_for('nutricao.mapa_refeicoes') }}" class="{% if active_page == 'mapa_refeicoes' %}active{% endif %}">
+                    <i class="fas fa-calendar-alt" style="margin-right: 0.75rem;"></i>
+                    Mapa de Refeições
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('nutricao.estoque') }}" class="{% if active_page == 'estoque' %}active{% endif %}">
+                    <i class="fas fa-boxes" style="margin-right: 0.75rem;"></i>
+                    Estoque
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('nutricao.relatorios') }}" class="{% if active_page == 'relatorios' %}active{% endif %}">
+                    <i class="fas fa-chart-bar" style="margin-right: 0.75rem;"></i>
+                    Análise de Custos
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('nutricao.faturamento') }}" class="{% if active_page == 'faturamento' %}active{% endif %}">
+                    <i class="fas fa-file-invoice-dollar" style="margin-right: 0.75rem;"></i>
+                    Faturamento
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('nutricao.admin') }}" class="{% if active_page == 'admin' %}active{% endif %}">
+                    <i class="fas fa-cog" style="margin-right: 0.75rem;"></i>
+                    Administração
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('nutricao.utilitarios') }}" class="{% if active_page == 'utilitarios' %}active{% endif %}">
+                    <i class="fas fa-wrench" style="margin-right: 0.75rem;"></i>
+                    Utilitários
+                </a>
+            </li>
+        </ul>
+    </nav>
+
+    <main class="main-content">
+        <div class="system-switch">
+            <div class="system-switch-wrap">
+                <a href="{{ url_for('main.inicio') }}" class="system-switch-link">Sistemas</a>
+                <a href="{{ url_for('main.dashboard') }}" class="system-switch-link">Chamados</a>
+                <a href="{{ url_for('nutricao.dashboard') }}" class="system-switch-link active">Nutrição</a>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'success' if category == 'success' else 'error' }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <div id="modalOverlay" class="modal-overlay" onclick="if(event.target===this)fecharModal()">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h2 id="modalTitle">Modal</h2>
+                <button type="button" class="modal-close" onclick="fecharModal()" aria-label="Fechar">&times;</button>
+            </div>
+            <div id="modalBody" class="modal-body"></div>
+            <div id="modalFooter" class="modal-footer">
+                <button class="btn btn-secondary" type="button" onclick="fecharModal()">Cancelar</button>
+                <button class="btn btn-primary" type="button" id="modalConfirmBtn" onclick="confirmarModal()">Confirmar</button>
+            </div>
+        </div>
     </div>
-    <div id="modalBody" style="padding:16px 24px 20px"></div>
-    <div id="modalFooter" style="display:none;align-items:center;justify-content:flex-end;gap:8px;padding:16px 24px;border-top:1px solid var(--border-color)">
-      <button class="btn btn-secondary" onclick="fecharModal()">Cancelar</button>
-      <button class="btn btn-primary" id="modalConfirmBtn" onclick="confirmarModal()">Confirmar</button>
-    </div>
-  </div>
-</div>
 
-<div class="toast" id="toast"><span id="toastIcon">✓</span><span id="toastMessage"></span></div>
+    <div class="toast" id="toast"><span id="toastIcon">✓</span><span id="toastMessage"></span></div>
 
-<script>
-function showToast(msg,type){type=type||'success';var t=document.getElementById('toast');document.getElementById('toastMessage').textContent=msg;t.className='toast show '+type;clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('show')},3000);}
-function abrirModal(t,c,b,cb){document.getElementById('modalTitle').textContent=t;document.getElementById('modalBody').innerHTML=c;document.getElementById('modalConfirmBtn').textContent=b||'Confirmar';document.getElementById('modalFooter').style.display='flex';document.getElementById('modalOverlay').style.display='flex';window._cb=cb;}
-function fecharModal(){document.getElementById('modalOverlay').style.display='none';window._cb=null;}
-function confirmarModal(){if(window._cb){window._cb();}else{fecharModal();}}
-
-function toggleCadastroMenu(){
-  var submenu = document.getElementById('cadastro-submenu');
-  var chevron = document.getElementById('cadastro-chevron');
-  if(!submenu || !chevron) return;
-  submenu.classList.toggle('open');
-  chevron.classList.toggle('open');
-}
-</script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+    function showToast(msg, type) {
+        type = type || 'success';
+        var t = document.getElementById('toast');
+        document.getElementById('toastMessage').textContent = msg;
+        t.className = 'toast show ' + type;
+        clearTimeout(t._t);
+        t._t = setTimeout(function () { t.classList.remove('show'); }, 3000);
+    }
+    function abrirModal(t, c, b, cb) {
+        document.getElementById('modalTitle').textContent = t;
+        document.getElementById('modalBody').innerHTML = c;
+        document.getElementById('modalConfirmBtn').textContent = b || 'Confirmar';
+        document.getElementById('modalFooter').style.display = 'flex';
+        document.getElementById('modalOverlay').style.display = 'flex';
+        window._cb = cb;
+    }
+    function fecharModal() {
+        document.getElementById('modalOverlay').style.display = 'none';
+        window._cb = null;
+    }
+    function confirmarModal() {
+        if (window._cb) { window._cb(); } else { fecharModal(); }
+    }
+    function toggleCadastroMenu() {
+        var submenu = document.getElementById('cadastro-submenu');
+        var chevron = document.getElementById('cadastro-chevron');
+        if (!submenu || !chevron) return;
+        submenu.classList.toggle('open');
+        chevron.classList.toggle('open');
+    }
+    </script>
+    {% block scripts %}{% endblock %}
 </body>
 </html>

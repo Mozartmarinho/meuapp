@@ -1,12 +1,13 @@
+from db_config import SQLALCHEMY_DATABASE_URI as MYSQL_URI
+
+
 class Config:
-    # Configurações básicas
     SECRET_KEY = 'sua_chave_secreta_aqui'
-    
-    # Configurações do SQLite para demo
-    SQLALCHEMY_DATABASE_URI = 'mysql+pymysql://root:Br@sil2016@127.0.0.1:3306/meuappdb'
+
+    # MySQL local (mesmo banco do restante do projeto)
+    SQLALCHEMY_DATABASE_URI = MYSQL_URI
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    
-    # Configurações adicionais
+
     DEBUG = True
     UPLOAD_FOLDER = 'static/uploads'
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size

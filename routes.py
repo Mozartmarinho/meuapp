@@ -36,7 +36,7 @@ def login():
             session['user_id'] = user.id
             session['user_name'] = user.nome
             flash('Login realizado com sucesso!', 'success')
-            return redirect(url_for('main.dashboard'))
+            return redirect(url_for('main.inicio'))
         else:
             flash('Email ou senha incorretos.', 'error')
     return render_template('login.html')
@@ -50,8 +50,15 @@ def logout():
 
 @main.route('/')
 @login_required
+def inicio():
+    """Tela inicial de escolha entre os sistemas"""
+    user = Usuario.query.get(session['user_id'])
+    return render_template('inicio.html', user_name=user.nome if user else session.get('user_name', 'Usuário'))
+
+@main.route('/dashboard')
+@login_required
 def dashboard():
-    """Página principal do dashboard"""
+    """Dashboard do sistema de gestão de chamados"""
     user = Usuario.query.get(session['user_id'])
     # Estatísticas básicas
     total_chamados = Chamado.query.count()

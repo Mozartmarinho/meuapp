@@ -1,9 +1,15 @@
 import pymysql
+from db_config import MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
 
-conn = pymysql.connect(host='127.0.0.1', user='root', password='saogeraldo2025')
+conn = pymysql.connect(
+    host=MYSQL_HOST,
+    port=int(MYSQL_PORT),
+    user=MYSQL_USER,
+    password=MYSQL_PASSWORD,
+)
 
 with conn.cursor() as cursor:
-    cursor.execute("CREATE DATABASE IF NOT EXISTS meuappdb")
+    cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{MYSQL_DATABASE}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
 
 conn.close()
-print("Banco de dados criado com sucesso!")
+print(f"Banco de dados '{MYSQL_DATABASE}' criado/verificado com sucesso!")
