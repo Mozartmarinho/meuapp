@@ -1,0 +1,25 @@
+[Unit]
+Description=MeuApp Flask (Gunicorn)
+After=network-online.target mysql.service
+Wants=network-online.target
+
+[Service]
+User=administrador
+Group=www-data
+WorkingDirectory=/home/administrador/meuapp
+Environment="PATH=/home/administrador/meuapp/venv/bin"
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/home/administrador/meuapp/venv/bin/python -m gunicorn \
+  --workers 3 \
+  --bind unix:/home/administrador/meuapp/meuapp.sock \
+  -m 007 \
+  --chdir /home/administrador/meuapp \
+  wsgi:application
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=always
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
