@@ -19,6 +19,8 @@ def create_app():
     return app
 
 if __name__ == '__main__':
+    import os
+
     app = create_app()
     with app.app_context():
         db.create_all()
@@ -34,4 +36,9 @@ if __name__ == '__main__':
             db.session.add(admin)
             db.session.commit()
             print("Default admin user created: email=admin@example.com, password=admin")
-    app.run(debug=True)
+
+    # Porta 80 (padrão HTTP). No Windows, rode como Administrador.
+    host = os.environ.get('HOST', '0.0.0.0')
+    port = int(os.environ.get('PORT', '80'))
+    print(f"Servidor em http://{host}:{port}/ (acesse http://localhost/ )")
+    app.run(host=host, port=port, debug=True)
