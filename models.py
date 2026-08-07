@@ -1,8 +1,8 @@
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import Numeric
 from datetime import datetime
 
 db = SQLAlchemy()
+
 
 class Cliente(db.Model):
     __tablename__ = 'clientes'
@@ -10,9 +10,11 @@ class Cliente(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
     endereco = db.Column(db.String(200))
+    # Colunas do schema GitHub (criadas na migração Linux se faltarem)
     telefone = db.Column(db.String(20))
     responsavel = db.Column(db.String(100))
     telefone_responsavel = db.Column(db.String(20))
+    ativo = db.Column(db.Boolean, default=True)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __repr__(self):
@@ -29,6 +31,7 @@ class Cliente(db.Model):
             'data_criacao': self.data_criacao.strftime('%d/%m/%Y %H:%M') if self.data_criacao else None
         }
 
+
 class Chamado(db.Model):
     __tablename__ = 'chamados'
 
@@ -44,6 +47,8 @@ class Chamado(db.Model):
     data_conclusao = db.Column(db.DateTime)
     observacoes = db.Column(db.Text)
     equipamento = db.Column(db.String(100), nullable=True)
+    # Obrigatório no MySQL deste servidor
+    tecnico_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
 
     def __repr__(self):
         return f'<Chamado {self.numero_chamado}>'
@@ -63,34 +68,40 @@ class Chamado(db.Model):
             'equipamento': self.equipamento
         }
 
+
 class Usuario(db.Model):
     __tablename__ = 'usuarios'
 
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    senha = db.Column(db.String(255), nullable=False)
+    # Banco legado usa senha_hash; atributo Python permanece "senha" (código GitHub)
+    senha = db.Column('senha_hash', db.String(255), nullable=False)
     tipo = db.Column(db.String(20), default='operador')
     ativo = db.Column(db.Boolean, default=True)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __repr__(self):
-        return f'<Usuario {self.email}>' 
+        return f'<Usuario {self.email}>'
 
 
 class Equipamento(db.Model):
     __tablename__ = 'equipamentos'
 
     id = db.Column(db.Integer, primary_key=True)
-    nome_equipamento = db.Column(db.String(100), nullable=False)
+    # Banco legado usa coluna "equipamento"
+    nome_equipamento = db.Column('equipamento', db.String(100), nullable=False)
     modelo = db.Column(db.String(100))
     numero_serie = db.Column(db.String(50), unique=True)
     patrimonio = db.Column(db.String(50), unique=True)
     localizacao = db.Column(db.String(100))
     ativo = db.Column(db.Boolean, default=True)
-    data_compra = db.Column(db.DateTime)
-    data_manutencao = db.Column(db.DateTime)
+    data_compra = db.Column(db.Date)
+    data_manutencao = db.Column(db.Date)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    # Obrigatório no MySQL deste servidor
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False)
+    cliente = db.relationship('Cliente', backref='equipamentos')
 
     def __repr__(self):
         return f'<Equipamento {self.nome_equipamento}>'
@@ -107,4 +118,3 @@ class Equipamento(db.Model):
             'data_compra': self.data_compra.strftime('%d/%m/%Y') if self.data_compra else None,
             'data_manutencao': self.data_manutencao.strftime('%d/%m/%Y') if self.data_manutencao else None
         }
- 

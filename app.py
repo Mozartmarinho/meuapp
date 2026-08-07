@@ -4,11 +4,12 @@ from routes_nutricao import nutricao
 from models import db, Usuario
 from db_config import SQLALCHEMY_DATABASE_URI
 import models_nutricao  # noqa: F401 — registra tabelas de nutrição
+import os
 
 
 def create_app():
     app = Flask(__name__)
-    app.config['SECRET_KEY'] = 'saogeraldo2025'
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'saogeraldo2025')
     app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -18,8 +19,9 @@ def create_app():
 
     return app
 
+
 if __name__ == '__main__':
-    import os
+    from werkzeug.security import generate_password_hash
 
     app = create_app()
     with app.app_context():
@@ -27,18 +29,19 @@ if __name__ == '__main__':
         from nutricao_service import seed_nutricao
         seed_nutricao()
         if not Usuario.query.first():
-            from werkzeug.security import generate_password_hash
             admin = Usuario(
                 nome='Admin',
                 email='admin@example.com',
-                senha=generate_password_hash('admin')
+                senha=generate_password_hash('admin'),
+                tipo='admin'
             )
             db.session.add(admin)
             db.session.commit()
             print("Default admin user created: email=admin@example.com, password=admin")
 
-    # Porta 80 (padrão HTTP). No Windows, rode como Administrador.
+    # Em Linux de produção use systemd+nginx (porta 80).
+    # python app.py sobe em 5000 por padrão (sem root).
     host = os.environ.get('HOST', '0.0.0.0')
-    port = int(os.environ.get('PORT', '80'))
-    print(f"Servidor em http://{host}:{port}/ (acesse http://localhost/ )")
+    port = int(os.environ.get('PORT', '5000'))
+    print(f"Dev server em http://{host}:{port}/  |  Produção: http://192.168.0.253/")
     app.run(host=host, port=port, debug=True)

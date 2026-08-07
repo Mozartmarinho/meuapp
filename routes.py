@@ -101,7 +101,8 @@ def novo_chamado():
                 descricao=request.form['descricao'],
                 status=request.form['status'],
                 prioridade=request.form['prioridade'],
-                observacoes=request.form['observacoes']
+                observacoes=request.form['observacoes'],
+                tecnico_id=session['user_id']
             )
 
             db.session.add(chamado)
@@ -299,17 +300,25 @@ def novo_equipamento():
     clientes = Cliente.query.all()
     if request.method == 'POST':
         try:
-            data_compra = datetime.strptime(request.form['data_compra'], '%Y-%m-%d') if request.form['data_compra'] else None
-            data_manutencao = datetime.strptime(request.form['data_manutencao'], '%Y-%m-%d') if request.form['data_manutencao'] else None
+            data_compra = datetime.strptime(request.form['data_compra'], '%Y-%m-%d').date() if request.form['data_compra'] else None
+            data_manutencao = datetime.strptime(request.form['data_manutencao'], '%Y-%m-%d').date() if request.form['data_manutencao'] else None
+            cliente_id = request.form.get('cliente_id')
+            if not cliente_id and request.form.get('localizacao'):
+                cli = Cliente.query.filter_by(nome=request.form['localizacao']).first()
+                cliente_id = cli.id if cli else None
+            if not cliente_id:
+                flash('Selecione um cliente/localização válido.', 'error')
+                return render_template('novo_equipamento.html', clientes=clientes)
             equipamento = Equipamento(
                 nome_equipamento=request.form['nome_equipamento'],
                 modelo=request.form['modelo'],
-                numero_serie=request.form['numero_serie'],
-                patrimonio=request.form['patrimonio'],
+                numero_serie=request.form['numero_serie'] or None,
+                patrimonio=request.form['patrimonio'] or None,
                 localizacao=request.form['localizacao'],
-                ativo=request.form.get('ativo', True) == 'on',
+                ativo=request.form.get('ativo') == 'on',
                 data_compra=data_compra,
-                data_manutencao=data_manutencao
+                data_manutencao=data_manutencao,
+                cliente_id=int(cliente_id)
             )
             db.session.add(equipamento)
             db.session.commit()
