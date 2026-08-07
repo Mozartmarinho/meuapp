@@ -1,0 +1,45 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Utilitários</h1>
+  <p>Ferramentas auxiliares do sistema</p>
+</div>
+<div class="card-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px">
+  <div class="card" style="cursor:pointer" onclick="showToast('Calculadora aberta','info')">
+    <div style="text-align:center;padding:20px">
+      <div style="font-size:40px;margin-bottom:12px">🧮</div>
+      <h3>Calculadora Nutricional</h3>
+      <p class="text-muted text-sm">Cálculo de IMC, TMB e necessidades calóricas</p>
+    </div>
+  <div class="card" style="cursor:pointer" onclick="showToast('Backup iniciado','success')">
+    <div style="text-align:center;padding:20px">
+      <div style="font-size:40px;margin-bottom:12px">💾</div>
+      <h3>Backup de Dados</h3>
+      <p class="text-muted text-sm">Exportar e importar dados do sistema</p>
+    </div>
+  <div class="card" style="cursor:pointer" onclick="showToast('Logs exportados','info')">
+    <div style="text-align:center;padding:20px">
+      <div style="font-size:40px;margin-bottom:12px">📋</div>
+      <h3>Logs do Sistema</h3>
+      <p class="text-muted text-sm">Visualizar registros de auditoria e logs</p>
+    </div>
+  <div class="card" style="cursor:pointer" onclick="showToast('Importa\u00e7\u00e3o via PDF','info')">
+    <div style="text-align:center;padding:20px">
+      <div style="font-size:40px;margin-bottom:12px">📄</div>
+      <h3>Importar PDF</h3>
+      <p class="text-muted text-sm">Importar dados do SCN via arquivo PDF</p>
+    </div>
+  <div class="card" style="cursor:pointer" onclick="showToast('Configura\u00e7\u00f5es de e-mail','info')">
+    <div style="text-align:center;padding:20px">
+      <div style="font-size:40px;margin-bottom:12px">📧</div>
+      <h3>Configurar E-mail</h3>
+      <p class="text-muted text-sm">Configurações de SMTP e notificações</p>
+    </div>
+  <div class="card" style="cursor:pointer" onclick="showToast('Atualiza\u00e7\u00e3o de sistema','info')">
+    <div style="text-align:center;padding:20px">
+      <div style="font-size:40px;margin-bottom:12px">🔄</div>
+      <h3>Atualizar Sistema</h3>
+      <p class="text-muted text-sm">Verificar e aplicar atualizações</p>
+    </div>
+</div>
+{% endblock %}

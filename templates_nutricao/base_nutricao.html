@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Nutrição Hospitalar - São Geraldo Service{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <header class="app-topbar">
+        <button type="button" class="menu-toggle" id="menuToggle" aria-label="Abrir menu">
+            <i class="fas fa-bars"></i>
+        </button>
+        <img class="brand-logo-compact" src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service">
+    </header>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <nav class="sidebar" id="appSidebar">
+        <div class="sidebar-logo">
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service">
+            <div class="brand-tagline">Transformando vidas</div>
+            <div class="module-label">Nutrição Hospitalar</div>
+        </div>
+
+        <ul class="sidebar-menu">
+            <li>
+                <a href="{{ url_for('main.inicio') }}">
+                    <i class="fas fa-th-large" style="margin-right: 0.75rem;"></i>
+                    Sistemas
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('nutricao.dashboard') }}" class="{% if active_page == 'dashboard' %}active{% endif %}">
+                    <i class="fas fa-map" style="margin-right: 0.75rem;"></i>
+                    Mapa de Refeições
+                </a>
+            </li>
+            <li>
+                <a href="javascript:void(0);" onclick="toggleCadastroMenu()" class="{% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas'] %}active{% endif %}">
+                    <i class="fas fa-folder-open" style="margin-right: 0.75rem;"></i>
+                    Cadastro
+                    <i id="cadastro-chevron" class="fas fa-chevron-right chevron {% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas'] %}open{% endif %}"></i>
+                </a>
+                <ul id="cadastro-submenu" class="sidebar-submenu {% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas'] %}open{% endif %}">
+                    <li>
+                        <a href="{{ url_for('nutricao.clinicas') }}?tab=clinicas#paciente" class="{% if active_page == 'cadastro_pacientes' %}active{% endif %}">
+                            <i class="fas fa-user-injured" style="margin-right: 0.75rem;"></i>
+                            Pacientes
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.clinicas') }}?tab=clinicas" class="{% if active_page == 'cadastro_clinicas' %}active{% endif %}">
+                            <i class="fas fa-hospital" style="margin-right: 0.75rem;"></i>
+                            Clínicas
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.clinicas') }}?tab=enfermarias" class="{% if active_page == 'cadastro_enfermarias' %}active{% endif %}">
+                            <i class="fas fa-procedures" style="margin-right: 0.75rem;"></i>
+                            Enfermarias
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.clinicas') }}?tab=leitos" class="{% if active_page == 'cadastro_leitos' %}active{% endif %}">
+                            <i class="fas fa-bed" style="margin-right: 0.75rem;"></i>
+                            Leitos
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.clinicas') }}?tab=dietas" class="{% if active_page == 'cadastro_dietas' %}active{% endif %}">
+                            <i class="fas fa-utensils" style="margin-right: 0.75rem;"></i>
+                            Dietas
+                        </a>
+                    </li>
+                </ul>
+            </li>
+            <li>
+                <a href="{{ url_for('nutricao.estoque') }}" class="{% if active_page == 'estoque' %}active{% endif %}">
+                    <i class="fas fa-boxes" style="margin-right: 0.75rem;"></i>
+                    Estoque
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('nutricao.relatorios') }}" class="{% if active_page == 'relatorios' %}active{% endif %}">
+                    <i class="fas fa-chart-bar" style="margin-right: 0.75rem;"></i>
+                    Análise de Custos
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('nutricao.faturamento') }}" class="{% if active_page == 'faturamento' %}active{% endif %}">
+                    <i class="fas fa-file-invoice-dollar" style="margin-right: 0.75rem;"></i>
+                    Faturamento
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('nutricao.admin') }}" class="{% if active_page == 'admin' %}active{% endif %}">
+                    <i class="fas fa-cog" style="margin-right: 0.75rem;"></i>
+                    Administração
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('nutricao.utilitarios') }}" class="{% if active_page == 'utilitarios' %}active{% endif %}">
+                    <i class="fas fa-wrench" style="margin-right: 0.75rem;"></i>
+                    Utilitários
+                </a>
+            </li>
+        </ul>
+    </nav>
+
+    <main class="main-content">
+        <div class="system-switch">
+            <div class="system-switch-wrap">
+                <a href="{{ url_for('main.inicio') }}" class="system-switch-link">Sistemas</a>
+                <a href="{{ url_for('main.dashboard') }}" class="system-switch-link">Chamados</a>
+                <a href="{{ url_for('nutricao.dashboard') }}" class="system-switch-link active">Nutrição</a>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'success' if category == 'success' else 'error' }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <div id="modalOverlay" class="modal-overlay" onclick="if(event.target===this)fecharModal()">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h2 id="modalTitle">Modal</h2>
+                <button type="button" class="modal-close" onclick="fecharModal()" aria-label="Fechar">&times;</button>
+            </div>
+            <div id="modalBody" class="modal-body"></div>
+            <div id="modalFooter" class="modal-footer">
+                <button class="btn btn-secondary" type="button" onclick="fecharModal()">Cancelar</button>
+                <button class="btn btn-primary" type="button" id="modalConfirmBtn" onclick="confirmarModal()">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"><span id="toastIcon">✓</span><span id="toastMessage"></span></div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+    function showToast(msg, type) {
+        type = type || 'success';
+        var t = document.getElementById('toast');
+        document.getElementById('toastMessage').textContent = msg;
+        t.className = 'toast show ' + type;
+        clearTimeout(t._t);
+        t._t = setTimeout(function () { t.classList.remove('show'); }, 3000);
+    }
+    function abrirModal(t, c, b, cb) {
+        document.getElementById('modalTitle').textContent = t;
+        document.getElementById('modalBody').innerHTML = c;
+        document.getElementById('modalConfirmBtn').textContent = b || 'Confirmar';
+        document.getElementById('modalFooter').style.display = 'flex';
+        document.getElementById('modalOverlay').style.display = 'flex';
+        window._cb = cb;
+    }
+    function fecharModal() {
+        document.getElementById('modalOverlay').style.display = 'none';
+        window._cb = null;
+    }
+    function confirmarModal() {
+        if (window._cb) { window._cb(); } else { fecharModal(); }
+    }
+    function toggleCadastroMenu() {
+        var submenu = document.getElementById('cadastro-submenu');
+        var chevron = document.getElementById('cadastro-chevron');
+        if (!submenu || !chevron) return;
+        submenu.classList.toggle('open');
+        chevron.classList.toggle('open');
+    }
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

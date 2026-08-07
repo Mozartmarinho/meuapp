@@ -1,0 +1,330 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>MAPA DE PRODUÇÃO</h1>
+  <p>Grade do dia com flags de refeição (D · C · A · M · J · Ceia)</p>
+</div>
+
+<div class="toolbar">
+  <div class="toolbar-search">
+    <i class="fas fa-search"></i>
+    <input type="text" id="filtroPrincipal" placeholder="Buscar por leito, prontuário, nome, dieta..." oninput="filtrarTabelaPrincipal()">
+  </div>
+
+  <div class="card" style="padding:6px 10px;display:flex;align-items:center;gap:8px;margin:0;">
+    <button class="btn btn-ghost btn-sm" type="button" onclick="alterarData(-1)" aria-label="Dia anterior">
+      <i class="fas fa-chevron-left"></i>
+    </button>
+    <strong id="dataAtualLabel" style="min-width:120px;text-align:center;">-</strong>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="alterarData(1)" aria-label="Próximo dia">
+      <i class="fas fa-chevron-right"></i>
+    </button>
+  </div>
+
+  <button class="btn btn-primary btn-sm" type="button" onclick="abrirCadastroPacienteComData()">
+    <i class="fas fa-user-plus"></i> Paciente
+  </button>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden">
+  <div class="table-scroll">
+    <table id="mapaProducao" class="mapa-table">
+      <thead>
+        <tr>
+          <th style="width:90px">Adm</th>
+          <th style="width:70px">LT</th>
+          <th style="width:90px">Pront</th>
+          <th style="width:160px">Nome</th>
+          <th style="width:50px">Id</th>
+          <th style="width:140px">Diagnóstico</th>
+          <th style="width:140px">Dieta</th>
+          <th style="width:120px">OBS</th>
+          <th class="col-flag" title="Desjejum">D</th>
+          <th class="col-flag" title="Colação">C</th>
+          <th class="col-flag" title="Almoço">A</th>
+          <th class="col-flag" title="Merenda">M</th>
+          <th class="col-flag" title="Jantar">J</th>
+          <th class="col-flag" title="Ceia">C</th>
+          <th style="width:90px">Saída</th>
+        </tr>
+      </thead>
+      <tbody id="mapaBody">
+        {% for l in mapa_linhas %}
+        <tr class="linha-mapa" data-id="{{ l.id }}" data-text="{{ (l.leito ~ ' ' ~ l.prontuario ~ ' ' ~ l.nome ~ ' ' ~ l.dieta ~ ' ' ~ l.diagnostico ~ ' ' ~ l.observacoes)|lower }}">
+          <td>{{ l.adm or '-' }}</td>
+          <td>{{ l.leito or '-' }}</td>
+          <td>{{ l.prontuario or '-' }}</td>
+          <td>{{ l.nome or '-' }}</td>
+          <td>{{ l.idade if l.idade is not none else '-' }}</td>
+          <td title="{{ l.diagnostico or '' }}">{{ l.diagnostico or '-' }}</td>
+          <td title="{{ l.dieta or '' }}">{{ l.dieta or '-' }}</td>
+          <td title="{{ l.observacoes or '' }}">{{ l.observacoes or '-' }}</td>
+          <td class="col-flag"><button type="button" class="flag-btn {{ 'on' if l.fl_desjejum else '' }}" data-campo="fl_desjejum" onclick="toggleFlag(this)">{{ '●' if l.fl_desjejum else '○' }}</button></td>
+          <td class="col-flag"><button type="button" class="flag-btn {{ 'on' if l.fl_colacao else '' }}" data-campo="fl_colacao" onclick="toggleFlag(this)">{{ '●' if l.fl_colacao else '○' }}</button></td>
+          <td class="col-flag"><button type="button" class="flag-btn {{ 'on' if l.fl_almoco else '' }}" data-campo="fl_almoco" onclick="toggleFlag(this)">{{ '●' if l.fl_almoco else '○' }}</button></td>
+          <td class="col-flag"><button type="button" class="flag-btn {{ 'on' if l.fl_merenda else '' }}" data-campo="fl_merenda" onclick="toggleFlag(this)">{{ '●' if l.fl_merenda else '○' }}</button></td>
+          <td class="col-flag"><button type="button" class="flag-btn {{ 'on' if l.fl_jantar else '' }}" data-campo="fl_jantar" onclick="toggleFlag(this)">{{ '●' if l.fl_jantar else '○' }}</button></td>
+          <td class="col-flag"><button type="button" class="flag-btn {{ 'on' if l.fl_ceia else '' }}" data-campo="fl_ceia" onclick="toggleFlag(this)">{{ '●' if l.fl_ceia else '○' }}</button></td>
+          <td>{{ l.data_saida or '-' }}</td>
+        </tr>
+        {% else %}
+        <tr id="mapaVazio"><td colspan="15" style="text-align:center;padding:1.5rem;color:#64748b">Nenhum paciente no mapa deste dia. Cadastre um paciente ou navegue a data.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+.table-scroll { overflow: auto; }
+.mapa-table {
+  width: 100%;
+  min-width: 1180px;
+  border-collapse: collapse;
+}
+.mapa-table th,
+.mapa-table td {
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid rgba(31, 45, 77, 0.12);
+  box-sizing: border-box;
+  font-size: 0.88rem;
+}
+.mapa-table th {
+  background: var(--gray-100);
+  font-weight: 600;
+  color: var(--gray-800);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.mapa-table th.col-flag,
+.mapa-table td.col-flag {
+  width: 42px;
+  text-align: center;
+  padding: 0.25rem;
+}
+.flag-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(31,45,77,0.2);
+  border-radius: 6px;
+  background: #fff;
+  color: #94a3b8;
+  cursor: pointer;
+  line-height: 1;
+  font-size: 0.85rem;
+}
+.flag-btn.on {
+  background: #ecfccb;
+  border-color: #84cc16;
+  color: #3f6212;
+}
+.flag-btn:disabled { opacity: 0.5; cursor: wait; }
+.linha-mapa:hover td { background: #f8fafc; }
+</style>
+
+<script>
+const DATA_INICIAL = {{ (data_mapa or '')|tojson }};
+let dataAtual = DATA_INICIAL ? new Date(DATA_INICIAL + 'T12:00:00') : new Date();
+
+function formatDateISO(d){
+  const ano = d.getFullYear();
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+  return `${ano}-${mes}-${dia}`;
+}
+
+function formatDateBR(iso){
+  if (!iso || !iso.includes('-')) return '-';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function atualizarLabelData(){
+  const el = document.getElementById('dataAtualLabel');
+  if (el) el.textContent = formatDateBR(formatDateISO(dataAtual));
+}
+
+async function alterarData(deltaDias){
+  dataAtual.setDate(dataAtual.getDate() + deltaDias);
+  atualizarLabelData();
+  await carregarMapa();
+}
+
+function flagCell(campo, on){
+  return `<td class="col-flag"><button type="button" class="flag-btn ${on ? 'on' : ''}" data-campo="${campo}" onclick="toggleFlag(this)">${on ? '●' : '○'}</button></td>`;
+}
+
+function renderLinhas(linhas){
+  const body = document.getElementById('mapaBody');
+  if (!body) return;
+  if (!linhas || !linhas.length){
+    body.innerHTML = '<tr id="mapaVazio"><td colspan="15" style="text-align:center;padding:1.5rem;color:#64748b">Nenhum paciente no mapa deste dia.</td></tr>';
+    return;
+  }
+  body.innerHTML = linhas.map(l => {
+    const txt = [l.leito, l.prontuario, l.nome, l.dieta, l.diagnostico, l.observacoes].join(' ').toLowerCase();
+    return `<tr class="linha-mapa" data-id="${l.id}" data-text="${txt.replace(/"/g,'&quot;')}">
+      <td>${l.adm || '-'}</td>
+      <td>${l.leito || '-'}</td>
+      <td>${l.prontuario || '-'}</td>
+      <td>${l.nome || '-'}</td>
+      <td>${l.idade != null ? l.idade : '-'}</td>
+      <td title="${(l.diagnostico||'').replace(/"/g,'&quot;')}">${l.diagnostico || '-'}</td>
+      <td title="${(l.dieta||'').replace(/"/g,'&quot;')}">${l.dieta || '-'}</td>
+      <td title="${(l.observacoes||'').replace(/"/g,'&quot;')}">${l.observacoes || '-'}</td>
+      ${flagCell('fl_desjejum', !!l.fl_desjejum)}
+      ${flagCell('fl_colacao', !!l.fl_colacao)}
+      ${flagCell('fl_almoco', !!l.fl_almoco)}
+      ${flagCell('fl_merenda', !!l.fl_merenda)}
+      ${flagCell('fl_jantar', !!l.fl_jantar)}
+      ${flagCell('fl_ceia', !!l.fl_ceia)}
+      <td>${l.data_saida || '-'}</td>
+    </tr>`;
+  }).join('');
+  filtrarTabelaPrincipal();
+}
+
+async function carregarMapa(){
+  const iso = formatDateISO(dataAtual);
+  try {
+    const r = await fetch('/nutricao/api/mapa?data=' + encodeURIComponent(iso));
+    const j = await r.json();
+    if (!r.ok || j.ok === false){
+      showToast((j && j.error) || 'Falha ao carregar mapa','error');
+      return;
+    }
+    renderLinhas(j.linhas || []);
+  } catch (e) {
+    showToast('Erro ao carregar mapa','error');
+  }
+}
+
+async function toggleFlag(btn){
+  const tr = btn.closest('tr.linha-mapa');
+  if (!tr) return;
+  const id = tr.dataset.id;
+  const campo = btn.dataset.campo;
+  btn.disabled = true;
+  try {
+    const r = await fetch(`/nutricao/api/mapa/${id}/toggle`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ campo })
+    });
+    const j = await r.json();
+    if (!r.ok || j.ok === false){
+      showToast((j && j.error) || 'Falha ao atualizar','error');
+      return;
+    }
+    const on = !!(j.linha && j.linha[campo]);
+    btn.classList.toggle('on', on);
+    btn.textContent = on ? '●' : '○';
+  } catch (e) {
+    showToast('Erro ao atualizar flag','error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function filtrarTabelaPrincipal(){
+  const q = (document.getElementById('filtroPrincipal').value || '').toLowerCase().trim();
+  document.querySelectorAll('#mapaBody tr.linha-mapa').forEach(tr => {
+    const txt = (tr.dataset.text || tr.textContent || '').toLowerCase();
+    tr.style.display = (!q || txt.includes(q)) ? '' : 'none';
+  });
+}
+
+function abrirCadastroPacienteComData(){
+  const data = formatDateISO(dataAtual);
+  const html = `
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Admissão</label><input class="form-control" type="date" id="modal-pac-admissao" value="${data}"></div>
+      <div class="form-group"><label class="form-label">Prontuário</label><input class="form-control" id="modal-pac-prontuario"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Nome *</label><input class="form-control" id="modal-pac-nome"></div>
+      <div class="form-group"><label class="form-label">Sexo</label>
+        <select class="form-control" id="modal-pac-sexo">
+          <option value="">Sexo</option>
+          <option value="M">Masculino</option>
+          <option value="F">Feminino</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Nascimento</label><input class="form-control" type="date" id="modal-pac-nascimento" oninput="calcularIdadeModalPaciente()"></div>
+      <div class="form-group"><label class="form-label">Idade</label><input class="form-control" id="modal-pac-idade" readonly></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Clínica</label><input class="form-control" id="modal-pac-clinica"></div>
+      <div class="form-group"><label class="form-label">Leito</label><input class="form-control" id="modal-pac-leito"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Dieta</label><input class="form-control" id="modal-pac-dieta"></div>
+      <div class="form-group"><label class="form-label">Diagnóstico</label><input class="form-control" id="modal-pac-diagnostico"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Observações</label><textarea class="form-control" id="modal-pac-observacoes" rows="2"></textarea></div>
+  `;
+  abrirModal('Cadastro de Paciente', html, 'Salvar Paciente', salvarPacienteModal);
+}
+
+function calcularIdadeModalPaciente(){
+  const nasc = document.getElementById('modal-pac-nascimento')?.value;
+  const out = document.getElementById('modal-pac-idade');
+  if (!out) return;
+  if (!nasc){ out.value=''; return; }
+  const hoje = new Date();
+  const dn = new Date(nasc + 'T00:00:00');
+  let idade = hoje.getFullYear() - dn.getFullYear();
+  const m = hoje.getMonth() - dn.getMonth();
+  if (m < 0 || (m === 0 && hoje.getDate() < dn.getDate())) idade--;
+  out.value = idade >= 0 ? String(idade) : '';
+}
+
+async function salvarPacienteModal(){
+  const nome = (document.getElementById('modal-pac-nome')?.value || '').trim();
+  if (!nome){
+    showToast('Nome do paciente é obrigatório','error');
+    return;
+  }
+  const body = {
+    nome,
+    sexo: document.getElementById('modal-pac-sexo')?.value || '',
+    nascimento: document.getElementById('modal-pac-nascimento')?.value || '',
+    prontuario: document.getElementById('modal-pac-prontuario')?.value || '',
+    clinica: document.getElementById('modal-pac-clinica')?.value || '',
+    leito: document.getElementById('modal-pac-leito')?.value || '',
+    dieta: document.getElementById('modal-pac-dieta')?.value || '',
+    altura_cm: null,
+    peso_kg: null,
+    admissao: document.getElementById('modal-pac-admissao')?.value || '',
+    diagnostico: document.getElementById('modal-pac-diagnostico')?.value || '',
+    observacoes: document.getElementById('modal-pac-observacoes')?.value || ''
+  };
+  const r = await fetch('/nutricao/api/pacientes', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  const j = await r.json();
+  if (!r.ok || (j && j.ok === false)){
+    showToast((j && j.error) || 'Falha ao salvar paciente','error');
+    return;
+  }
+  fecharModal();
+  showToast('Paciente cadastrado com sucesso','success');
+  await carregarMapa();
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  atualizarLabelData();
+  filtrarTabelaPrincipal();
+});
+</script>
+{% endblock %}

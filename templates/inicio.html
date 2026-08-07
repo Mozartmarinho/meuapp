@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>São Geraldo Service — Sistemas</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --brand-blue: #1B4F9C;
+            --brand-navy: #0D2B5C;
+            --brand-lime: #A8C53A;
+            --muted: #5a6b85;
+            --ink: #0F2A56;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            min-height: 100vh;
+            font-family: 'Manrope', sans-serif;
+            color: var(--ink);
+            background:
+                radial-gradient(ellipse 80% 60% at 10% 20%, rgba(168, 197, 58, 0.2), transparent 55%),
+                radial-gradient(ellipse 70% 50% at 90% 80%, rgba(27, 79, 156, 0.14), transparent 50%),
+                linear-gradient(160deg, #f7fafc 0%, #e8eef6 45%, #dce7f5 100%);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.25rem;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .user-meta { color: var(--muted); font-size: 0.95rem; }
+        .user-meta strong { color: var(--brand-navy); }
+
+        .btn-logout {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            padding: 0.65rem 1rem;
+            border-radius: 999px;
+            border: 1px solid rgba(27, 79, 156, 0.15);
+            background: rgba(255, 255, 255, 0.8);
+            color: var(--brand-navy);
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        .hero {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem 1.25rem 2.5rem;
+            text-align: center;
+        }
+
+        .brand-logo {
+            width: min(100%, 360px);
+            height: auto;
+            margin-bottom: 0.85rem;
+            border-radius: 14px;
+            overflow: hidden;
+            animation: rise 0.7s ease both;
+        }
+
+        .brand-tagline {
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 700;
+            letter-spacing: 0.18em;
+            color: var(--brand-navy);
+            font-size: clamp(0.9rem, 2.5vw, 1.05rem);
+            margin-bottom: 0.45rem;
+            animation: rise 0.7s ease 0.08s both;
+        }
+
+        .brand-name {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: clamp(1.7rem, 4vw, 2.6rem);
+            font-weight: 700;
+            color: var(--brand-navy);
+            line-height: 1.1;
+            animation: rise 0.7s ease 0.12s both;
+        }
+
+        .brand-choice {
+            margin-top: 0.5rem;
+            color: var(--muted);
+            font-size: 1rem;
+            animation: rise 0.7s ease 0.16s both;
+        }
+
+        .systems {
+            margin-top: 2.2rem;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 320px));
+            gap: 1rem;
+            width: 100%;
+            max-width: 700px;
+            animation: rise 0.7s ease 0.22s both;
+        }
+
+        .system-link {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            text-align: left;
+            text-decoration: none;
+            color: inherit;
+            padding: 1.35rem 1.25rem;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.84);
+            border: 1px solid rgba(27, 79, 156, 0.1);
+            box-shadow: 0 10px 30px rgba(13, 43, 92, 0.08);
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+            min-height: 170px;
+        }
+
+        .system-link:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 16px 36px rgba(13, 43, 92, 0.14);
+        }
+
+        .system-link .icon-wrap {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: grid;
+            place-items: center;
+            font-size: 1.25rem;
+            margin-bottom: 0.9rem;
+        }
+
+        .system-link.chamados .icon-wrap {
+            background: rgba(27, 79, 156, 0.12);
+            color: var(--brand-blue);
+        }
+
+        .system-link.nutricao .icon-wrap {
+            background: rgba(168, 197, 58, 0.22);
+            color: #5f7a16;
+        }
+
+        .system-link h2 {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--brand-navy);
+            margin-bottom: 0.4rem;
+            line-height: 1.2;
+        }
+
+        .system-link p {
+            color: var(--muted);
+            font-size: 0.92rem;
+            line-height: 1.45;
+            flex: 1;
+        }
+
+        .system-link .go {
+            margin-top: 0.9rem;
+            font-size: 0.85rem;
+            font-weight: 800;
+            color: var(--brand-blue);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .system-link.nutricao .go { color: #5f7a16; }
+
+        .footer-note {
+            padding: 1rem;
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.85rem;
+        }
+
+        @keyframes rise {
+            from { opacity: 0; transform: translateY(14px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (max-width: 720px) {
+            .systems { grid-template-columns: 1fr; max-width: 420px; }
+            .brand-logo { width: min(100%, 280px); }
+        }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <div class="user-meta">Olá, <strong>{{ user_name }}</strong></div>
+        <a class="btn-logout" href="{{ url_for('main.logout') }}">
+            <i class="fas fa-sign-out-alt"></i> Sair
+        </a>
+    </header>
+
+    <section class="hero">
+        <img class="brand-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service">
+        <p class="brand-tagline">TRANSFORMANDO VIDAS</p>
+        <h1 class="brand-name">São Geraldo Service</h1>
+        <p class="brand-choice">Escolha o sistema para continuar</p>
+
+        <div class="systems">
+            <a class="system-link chamados" href="{{ url_for('main.dashboard') }}">
+                <div class="icon-wrap"><i class="fas fa-clipboard-list"></i></div>
+                <h2>Sistema de Gestão de Chamados</h2>
+                <p>Ordens de serviço, clientes, equipamentos e acompanhamento de manutenção.</p>
+                <span class="go">Acessar <i class="fas fa-arrow-right"></i></span>
+            </a>
+
+            <a class="system-link nutricao" href="{{ url_for('nutricao.dashboard') }}">
+                <div class="icon-wrap"><i class="fas fa-apple-whole"></i></div>
+                <h2>Sistema Nutrição Hospitalar</h2>
+                <p>Pacientes, dietas, mapa de refeições, estoque e gestão nutricional.</p>
+                <span class="go">Acessar <i class="fas fa-arrow-right"></i></span>
+            </a>
+        </div>
+    </section>
+
+    <footer class="footer-note">© São Geraldo Service</footer>
+</body>
+</html>

@@ -4,18 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - São Geraldo Service</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body>
     <div class="login-container">
         <div class="login-box">
             <div class="login-header">
-                <i class="fas fa-tools"></i>
-                <h1>São Geraldo Service</h1>
-                <p>Sistema de Gestão de Chamados</p>
+                <img class="login-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service">
+                <p class="tagline">TRANSFORMANDO VIDAS</p>
+                <p class="subtitle">Gestão de Chamados · Nutrição Hospitalar</p>
             </div>
-            
+
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
@@ -25,147 +27,163 @@
                     {% endfor %}
                 {% endif %}
             {% endwith %}
-            
+
             <form method="POST" action="{{ url_for('main.login') }}">
                 <div class="form-group">
                     <label for="email">Email</label>
-                    <input type="email" id="email" name="email" required>
+                    <input type="email" id="email" name="email" required autocomplete="username">
                 </div>
-                
+
                 <div class="form-group">
                     <label for="senha">Senha</label>
-                    <input type="password" id="senha" name="senha" required>
+                    <input type="password" id="senha" name="senha" required autocomplete="current-password">
                 </div>
-                
-                <button type="submit" class="btn btn-primary btn-block">
+
+                <button type="submit" class="btn btn-primary">
                     <i class="fas fa-sign-in-alt"></i> Entrar
                 </button>
             </form>
-            
+
             <div class="login-footer">
-                <p>© 2024 São Geraldo Service</p>
+                <p>© São Geraldo Service</p>
             </div>
         </div>
     </div>
-    
+
     <style>
+        :root {
+            --brand-blue: #1B4F9C;
+            --brand-navy: #0D2B5C;
+            --brand-lime: #A8C53A;
+            --muted: #5a6b85;
+        }
+
         body {
             margin: 0;
-            padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            height: 100vh;
+            min-height: 100vh;
+            font-family: 'Manrope', sans-serif;
+            background:
+                radial-gradient(ellipse 70% 50% at 12% 18%, rgba(168, 197, 58, 0.22), transparent 55%),
+                radial-gradient(ellipse 60% 45% at 88% 78%, rgba(27, 79, 156, 0.18), transparent 50%),
+                linear-gradient(160deg, #f7fafc 0%, #e8eef6 50%, #d5e2f2 100%);
             display: flex;
             align-items: center;
             justify-content: center;
+            padding: 1rem;
         }
-        
+
         .login-container {
             width: 100%;
-            max-width: 400px;
-            padding: 20px;
+            max-width: 440px;
         }
-        
+
         .login-box {
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-            padding: 40px;
+            background: rgba(255, 255, 255, 0.94);
+            border-radius: 18px;
+            box-shadow: 0 18px 40px rgba(13, 43, 92, 0.12);
+            border: 1px solid rgba(27, 79, 156, 0.1);
+            padding: clamp(1.5rem, 4vw, 2.4rem);
         }
-        
+
         .login-header {
             text-align: center;
-            margin-bottom: 30px;
+            margin-bottom: 1.5rem;
         }
-        
-        .login-header i {
-            font-size: 48px;
-            color: #667eea;
-            margin-bottom: 10px;
+
+        .login-logo {
+            width: min(100%, 280px);
+            height: auto;
+            display: block;
+            margin: 0 auto 0.75rem;
+            border-radius: 12px;
+            overflow: hidden;
         }
-        
-        .login-header h1 {
+
+        .tagline {
             margin: 0;
-            color: #333;
-            font-size: 24px;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            color: var(--brand-navy);
+            font-size: 0.95rem;
         }
-        
-        .login-header p {
-            margin: 5px 0 0 0;
-            color: #666;
-            font-size: 14px;
+
+        .subtitle {
+            margin: 0.35rem 0 0;
+            color: var(--muted);
+            font-size: 0.9rem;
         }
-        
-        .form-group {
-            margin-bottom: 20px;
-        }
-        
+
+        .form-group { margin-bottom: 1rem; }
+
         .form-group label {
             display: block;
-            margin-bottom: 5px;
-            color: #333;
-            font-weight: 500;
+            margin-bottom: 0.4rem;
+            color: var(--brand-navy);
+            font-weight: 700;
+            font-size: 0.9rem;
         }
-        
+
         .form-group input {
             width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 16px;
+            padding: 0.8rem 0.9rem;
+            border: 1px solid rgba(27, 79, 156, 0.18);
+            border-radius: 10px;
+            font-size: 1rem;
+            font-family: inherit;
             box-sizing: border-box;
         }
-        
+
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--brand-blue);
+            box-shadow: 0 0 0 3px rgba(27, 79, 156, 0.14);
+        }
+
         .btn {
-            padding: 12px 24px;
+            width: 100%;
+            padding: 0.85rem 1rem;
             border: none;
-            border-radius: 5px;
-            font-size: 16px;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-family: inherit;
+            font-weight: 700;
             cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            transition: background-color 0.3s;
+            background: var(--brand-blue);
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.45rem;
         }
-        
-        .btn-primary {
-            background-color: #667eea;
-            color: white;
-            width: 100%;
-        }
-        
-        .btn-primary:hover {
-            background-color: #5a6fd8;
-        }
-        
-        .btn-block {
-            display: block;
-            width: 100%;
-        }
-        
+
+        .btn:hover { background: var(--brand-navy); }
+
         .alert {
-            padding: 10px;
-            margin-bottom: 20px;
-            border-radius: 5px;
+            padding: 0.7rem 0.85rem;
+            margin-bottom: 1rem;
+            border-radius: 10px;
             text-align: center;
+            font-size: 0.9rem;
         }
-        
+
         .alert-success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
+            background: #eef8d8;
+            color: #3f6410;
+            border: 1px solid var(--brand-lime);
         }
-        
+
         .alert-error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
+            background: #fde8e8;
+            color: #8a1f1f;
+            border: 1px solid #f5c2c2;
         }
-        
+
         .login-footer {
             text-align: center;
-            margin-top: 30px;
-            color: #666;
-            font-size: 14px;
+            margin-top: 1.4rem;
+            color: var(--muted);
+            font-size: 0.85rem;
         }
     </style>
 </body>

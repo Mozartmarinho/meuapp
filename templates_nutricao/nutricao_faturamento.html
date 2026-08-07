@@ -1,0 +1,49 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Faturamento</h1>
+  <p>Controle de faturamento por mapa realizado vs. orçado</p>
+</div>
+
+<div class="filter-panel">
+  <div class="filter-grid">
+    <div class="form-group"><label class="form-label">Mês Referência</label>
+      <select class="form-control"><option>Janeiro/2025</option><option>Fevereiro/2025</option><option>Março/2025</option></select>
+    </div>
+    <div class="form-group"><label class="form-label">Clínica</label>
+      <select class="form-control"><option value="">Todas</option><option>Clínica Médica</option><option>CTI</option><option>Oncologia</option></select>
+    </div>
+    <div class="form-group"><label class="form-label">&nbsp;</label><button class="btn btn-primary w-full">📊 Gerar</button></div>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-icon blue">📋</div>
+    <div class="stat-info"><h4>R$ 142.500</h4><p>Faturamento Realizado</p></div>
+  <div class="stat-card">
+    <div class="stat-icon yellow">📋</div>
+    <div class="stat-info"><h4>R$ 155.000</h4><p>Faturamento Orçado</p></div>
+  <div class="stat-card">
+    <div class="stat-icon green">📈</div>
+    <div class="stat-info"><h4>91,9%</h4><p>Taxa de Realização</p></div>
+  <div class="stat-card">
+    <div class="stat-icon red">📉</div>
+    <div class="stat-info"><h4>-R$ 12.500</h4><p>Diferença</p></div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h3>Comparativo Mapa x Realizado por Clínica</h3></div>
+  <div style="overflow-x:auto">
+    <table>
+      <thead><tr><th>Clínica</th><th>Orçado</th><th>Realizado</th><th>Diferença</th><th>%</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Clínica Médica</strong></td><td>R$ 52.000</td><td>R$ 48.300</td><td style="color:var(--danger)">-R$ 3.700</td><td>92,9%</td></tr>
+        <tr><td><strong>CTI</strong></td><td>R$ 42.000</td><td style="color:var(--success)">R$ 44.500</td><td style="color:var(--success)">+R$ 2.500</td><td>106,0%</td></tr>
+        <tr><td><strong>Oncologia</strong></td><td>R$ 35.000</td><td>R$ 31.200</td><td style="color:var(--danger)">-R$ 3.800</td><td>89,1%</td></tr>
+        <tr><td><strong>Maternidade</strong></td><td>R$ 26.000</td><td>R$ 18.500</td><td style="color:var(--danger)">-R$ 7.500</td><td>71,2%</td></tr>
+        <tr style="border-top:2px solid var(--border-light);font-weight:700">
+          <td>TOTAL</td><td>R$ 155.000</td><td>R$ 142.500</td><td style="color:var(--danger)">-R$ 12.500</td><td>91,9%</td></tr>
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

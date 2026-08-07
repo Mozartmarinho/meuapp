@@ -1,6 +1,6 @@
 -- Criar o banco de dados
-CREATE DATABASE IF NOT EXISTS sao_geraldo_db;
-USE sao_geraldo_db;
+CREATE DATABASE IF NOT EXISTS meuappdb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE meuappdb;
 
 -- Criar tabela de usuários
 CREATE TABLE IF NOT EXISTS usuarios (

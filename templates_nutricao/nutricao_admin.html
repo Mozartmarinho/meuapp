@@ -1,0 +1,237 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Administração</h1>
+  <p>Gerenciamento de usuários do Sistema de Controle Nutricional</p>
+</div>
+<div class="toolbar">
+  <div class="toolbar-search">
+    <span>🔍</span>
+    <input type="text" id="buscaUser" placeholder="Buscar usuário..." oninput="filtrarTabela('buscaUser','tabelaUsuarios')">
+  </div>
+  <div class="toolbar-actions">
+    <button class="btn btn-primary" onclick="abrirModalUsuario()">+ Novo Usuário</button>
+  </div>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden">
+  <div style="overflow-x:auto">
+    <table id="tabelaUsuarios">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nome</th>
+          <th>Usuário</th>
+          <th>Setor</th>
+          <th>Cargo</th>
+          <th>Ativo</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in usuarios %}
+        <tr>
+          <td>{{ u.id }}</td>
+          <td><strong>{{ u.nome }}</strong></td>
+          <td>{{ u.usuario or '-' }}</td>
+          <td>{{ u.setor or '-' }}</td>
+          <td>{{ u.cargo or '-' }}</td>
+          <td><span class="status {{ 'status-success' if u.ativo else 'status-danger' }}">{{ 'Ativo' if u.ativo else 'Inativo' }}</span></td>
+          <td>
+            <button class="btn btn-ghost btn-sm" title="Editar">✏️</button>
+            <button class="btn btn-ghost btn-sm" title="Excluir">🗑️</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const MATRIZ_PERMISSOES = {
+  "Cadastro": [
+    "Usuários", "Nutricionistas", "Funcionários", "Refeições dos acompanhantes e funcionários",
+    "Clínicas e enfermarias", "Dietas", "Grupo de clínicas", "Grupo de dietas",
+    "Classificação do mapa de refeições", "Tabela de Nutrientes", "Pratos",
+    "Pratos (Dietas Líquidas, Cardápios, Estoques, Transportadoras, Etiquetas)"
+  ],
+  "Mapa de refeições": [
+    "Pacientes", "Totalização direta de clínicas", "Acompanhamento de evolução do paciente",
+    "Autorização de substituição", "Consulta ao mapa de refeições", "Mapa dos refeitórios", "Sequência de dietas"
+  ],
+  "U.M.A": [
+    "Dietas", "Fórmulas infantis", "Suplementos", "LVE", "Módulos", "Grupos de dietas",
+    "Grupo de módulos", "Impressão de mapas da U.M.A", "Impressão do mapa de totalização da U.M.A",
+    "Impressão de etiquetas", "Impressão do consumo mensal de dietas"
+  ],
+  "Estoque": [
+    "Entrada/devolução de notas fiscais", "Entrada/devolução de pedidos", "Gerar nota", "Inventário",
+    "Emissão de pedido de estoque", "Débito de pedido de estoque", "Retorno de produtos ao estoque",
+    "Visualizar notas", "Visualizar produtos", "Apuração de requisições de produtos"
+  ],
+  "Relatórios": [
+    "Mapa do paciente", "Identificação (etiquetas de dietas, cartão bandeja, etiquetas de extras)",
+    "Refeições (totalização de dietas, totalização de pratos, relatório de substituições, totalização de descartáveis, refeições-acompanhantes, refeições-funcionários)"
+  ],
+  "Faturamento": [
+    "Totalização de refeições"
+  ],
+  "Administração": [
+    "Análise de custo", "Estatísticas", "Cadastro de centro de custo", "Cadastro de empresas", "Cadastro de preço das refeições"
+  ]
+};
+
+function slugify(text) {
+  return String(text || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function renderPermissoes() {
+  const sections = [];
+  Object.keys(MATRIZ_PERMISSOES).forEach((modulo) => {
+    const itens = MATRIZ_PERMISSOES[modulo] || [];
+    const moduloSlug = slugify(modulo);
+    const checks = itens.map((item) => {
+      const valor = `${moduloSlug}.${slugify(item)}`;
+      return `
+        <label style="display:flex;gap:8px;align-items:flex-start;margin:4px 0">
+          <input type="checkbox" class="perm-item" value="${valor}">
+          <span>${item}</span>
+        </label>
+      `;
+    }).join('');
+    sections.push(`
+      <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:10px">
+        <label style="display:flex;gap:8px;align-items:center;font-weight:600;margin-bottom:8px">
+          <input type="checkbox" class="perm-modulo" data-modulo="${moduloSlug}">
+          <span>${modulo}</span>
+        </label>
+        <div data-modulo-list="${moduloSlug}" style="padding-left:14px">${checks}</div>
+      </div>
+    `);
+  });
+  return sections.join('');
+}
+
+function bindPermissaoEvents() {
+  document.querySelectorAll('.perm-modulo').forEach((modCheck) => {
+    modCheck.addEventListener('change', function() {
+      const modulo = this.getAttribute('data-modulo');
+      const container = document.querySelector(`[data-modulo-list="${modulo}"]`);
+      if (!container) return;
+      container.querySelectorAll('.perm-item').forEach((i) => { i.checked = this.checked; });
+    });
+  });
+}
+
+function abrirModalUsuario(){
+  document.getElementById('modalTitle').textContent = 'Novo Usuário';
+  document.getElementById('modalBody').innerHTML = `
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Nome *</label>
+        <input class="form-control" id="f-user-nome">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Usuário *</label>
+        <input class="form-control" id="f-user-usuario" placeholder="ex: joao.silva">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Setor *</label>
+        <input class="form-control" id="f-user-setor" placeholder="ex: Nutrição">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cargo *</label>
+        <input class="form-control" id="f-user-cargo" placeholder="ex: Nutricionista">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">CRN</label>
+        <input class="form-control" id="f-user-crn" placeholder="ex: 12345">
+      </div>
+      <div class="form-group" style="display:flex;align-items:flex-end">
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <input type="checkbox" id="f-user-crn-ativo">
+          <span>CRN ativo</span>
+        </label>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Senha *</label>
+        <input class="form-control" id="f-user-senha" type="password">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirmar senha *</label>
+        <input class="form-control" id="f-user-confirmar-senha" type="password">
+      </div>
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="f-user-ativo" checked>
+        <span>Ativo</span>
+      </label>
+    </div>
+    <hr style="margin:14px 0">
+    <h3 style="margin:0 0 10px 0;font-size:16px">Permissões do Sistema</h3>
+    <div style="max-height:280px;overflow:auto;padding-right:4px">${renderPermissoes()}</div>
+  `;
+  document.getElementById('modalFooter').style.display = 'flex';
+  document.getElementById('modalConfirmBtn').textContent = 'Salvar';
+  document.getElementById('modalOverlay').classList.add('open');
+  window._editData = null;
+  bindPermissaoEvents();
+}
+
+async function confirmarAdmin(){
+  const nome = (document.getElementById('f-user-nome')?.value || '').trim();
+  const usuario = (document.getElementById('f-user-usuario')?.value || '').trim();
+  const setor = (document.getElementById('f-user-setor')?.value || '').trim();
+  const cargo = (document.getElementById('f-user-cargo')?.value || '').trim();
+  const senha = document.getElementById('f-user-senha')?.value || '';
+  const confirmar_senha = document.getElementById('f-user-confirmar-senha')?.value || '';
+  const ativo = !!document.getElementById('f-user-ativo')?.checked;
+  const crn = (document.getElementById('f-user-crn')?.value || '').trim();
+  const crn_ativo = !!document.getElementById('f-user-crn-ativo')?.checked;
+  const permissoes = Array.from(document.querySelectorAll('.perm-item:checked')).map(el => el.value);
+
+  if(!nome || !usuario || !setor || !cargo){
+    showToast('Preencha Nome, Usuário, Setor e Cargo.', 'error');
+    return;
+  }
+  if(!senha){
+    showToast('Senha é obrigatória.', 'error');
+    return;
+  }
+  if(senha !== confirmar_senha){
+    showToast('Senha e confirmação não conferem.', 'error');
+    return;
+  }
+
+  try {
+    const resp = await fetch('/nutricao/api/usuarios', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ nome, usuario, setor, cargo, senha, confirmar_senha, ativo, crn, crn_ativo, permissoes })
+    });
+    const data = await resp.json();
+    if(!resp.ok || !data.ok){
+      showToast(data.error || 'Erro ao criar usuário.', 'error');
+      return;
+    }
+    showToast('Usuário criado com sucesso!');
+    document.getElementById('modalOverlay').classList.remove('open');
+    setTimeout(() => location.reload(), 500);
+  } catch (e) {
+    showToast('Falha de comunicação com o servidor.', 'error');
+  }
+}
+</script>
+{% endblock %}

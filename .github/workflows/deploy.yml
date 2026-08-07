@@ -1,0 +1,29 @@
+# Deploy automático em push para main
+# Requer GitHub Actions self-hosted runner no servidor Ubuntu.
+# Setup: ver CICD.md
+
+name: Deploy Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # permite disparar manualmente em Actions → Deploy Production
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy no servidor
+    runs-on: [self-hosted, linux, production]
+    timeout-minutes: 20
+
+    steps:
+      - name: Executar deploy
+        run: |
+          set -euo pipefail
+          APP_DIR="${APP_DIR:-/home/administrador/meuapp}"
+          cd "$APP_DIR"
+          chmod +x scripts/deploy.sh
+          ./scripts/deploy.sh
