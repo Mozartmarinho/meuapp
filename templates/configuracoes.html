@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Configurações - São Geraldo Service{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="header">
+        <h1>Configurações</h1>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3>Preferências do sistema</h3>
+        </div>
+        <p style="margin: 0; color: var(--gray-600, #666);">
+            Esta área está em preparação. Em breve você poderá ajustar preferências gerais
+            do módulo de Gestão de Chamados por aqui.
+        </p>
+        <p style="margin: 1rem 0 0; color: var(--gray-500, #888); font-size: 0.95rem;">
+            Enquanto isso, use o menu lateral para acessar Dashboard, Chamados, Clientes,
+            Usuários, Equipamentos e Relatórios.
+        </p>
+    </div>
+</div>
+
+<style>
+.container { padding: 20px 0; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.header h1 { margin: 0; }
+</style>
+{% endblock %}

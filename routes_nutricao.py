@@ -8,7 +8,7 @@ from models_nutricao import (
     NutClinica, NutEnfermaria, NutLeito, NutDieta, NutPaciente, NutMapaRefeicao, NutCardapio,
     NutTabelaNutrientes, NutAlimento, NutAlimentoNutriente, NutPratoLiquido,
     NutEstoqueLocal, NutUnidadeMedida, NutGrupoProduto, NutProduto, NutFornecedor,
-    NutEtiqueta, NutEtiquetaCampo,
+    NutEtiqueta, NutEtiquetaCampo, NutPrecoRefeicao, NutTipoRefeicao, NutPrecoDietaTipo,
 )
 from nutricao_service import (
     seed_nutricao,
@@ -20,6 +20,8 @@ from nutricao_service import (
     list_enfermarias,
     list_leitos,
     list_dietas,
+    list_tipos_refeicao,
+    normalizar_hora_limite,
     list_cardapios,
     list_tabelas_nutrientes,
     list_alimentos,
@@ -30,11 +32,20 @@ from nutricao_service import (
     list_produtos,
     list_fornecedores,
     list_etiquetas,
+    list_precos_refeicoes,
+    matriz_precos_dieta_tipo,
+    _seed_precos_dieta_tipo,
+    ensure_precos_para_dieta,
     totalizar_mapa_uma,
     relatorio_faturamento,
     totalizacao_dietas as gerar_totalizacao_dietas,
     listar_avisos_alta_mapa,
     aplicar_avisos_alta_mapa,
+    list_modelos_etiqueta_impressao,
+    gerar_impressao_etiquetas,
+    get_mapa_substituicoes,
+    save_mapa_substituicoes,
+    importar_substituicoes_anteriores,
     CARDAPIO_OPCOES,
     ESTADOS_BR,
     _parse_date,
@@ -341,6 +352,12 @@ def api_mapa_inserir():
     if not leito:
         return jsonify({'ok': False, 'error': 'Informe o leito'}), 400
 
+    # Reinserção no mapa: limpa saída anterior para o paciente voltar a persistir nos dias seguintes
+    p.ativo = True
+    p.data_saida = None
+    p.hora_saida = None
+    p.motivo_saida = None
+
     flags = {fl: bool(d.get(fl, True)) for fl in FLAG_FIELDS}
     extras = {
         'adm': _parse_date(d.get('admissao')) or p.admissao,
@@ -461,7 +478,7 @@ def api_mapa_put(mid):
 
 @nutricao.route('/nutricao/api/mapa/<int:mid>/saida', methods=['POST'])
 def api_mapa_saida(mid):
-    """Alta médica / óbito (sai do mapa) ou transferência (permanece)."""
+    """Alta médica, óbito ou transferência externa — remove do mapa."""
     seed_nutricao()
     row = NutMapaRefeicao.query.get(mid)
     if not row or not row.ativo:
@@ -503,24 +520,26 @@ def api_mapa_saida(mid):
         return jsonify({'ok': True, 'acao': 'obito', 'linha': row.to_dict()})
 
     if tipo in ('transferencia', 'transferência', 't'):
-        clinica = (d.get('clinica') or '').strip()
-        enfermaria = (d.get('enfermaria') or '').strip()
-        leito = (d.get('leito') or '').strip()
-        if not clinica:
-            return jsonify({'ok': False, 'error': 'Informe a clínica de destino'}), 400
-        if not enfermaria:
-            return jsonify({'ok': False, 'error': 'Informe a enfermaria de destino'}), 400
-        if not leito:
-            return jsonify({'ok': False, 'error': 'Informe o leito de destino'}), 400
-        row.clinica = clinica
-        row.enfermaria = enfermaria
-        row.leito = leito
+        hospital = (
+            d.get('hospital_transferencia')
+            or d.get('hospital')
+            or d.get('hospital_destino')
+            or ''
+        ).strip()
+        if not hospital:
+            return jsonify({'ok': False, 'error': 'Informe o hospital de transferência'}), 400
+        label = 'Transferência'
+        row.data_saida = _parse_date(d.get('data_saida')) or data_ref
+        row.motivo_saida = label
+        row.hospital_transferencia = hospital[:200]
+        row.ativo = False
         marcar_alteracao_mapa(row, usuario)
         if row.paciente_id:
             pac = NutPaciente.query.get(row.paciente_id)
             if pac:
-                pac.clinica = clinica
-                pac.leito = leito
+                pac.data_saida = row.data_saida
+                pac.hora_saida = agora.strftime('%H:%M:%S')
+                pac.motivo_saida = label
         db.session.commit()
         return jsonify({'ok': True, 'acao': 'transferencia', 'linha': row.to_dict()})
 
@@ -543,6 +562,41 @@ def api_mapa_toggle(mid):
     marcar_alteracao_mapa(row, _usuario_sessao())
     db.session.commit()
     return jsonify({'ok': True, 'linha': row.to_dict()})
+
+
+@nutricao.route('/nutricao/api/mapa/<int:mid>/substituicoes', methods=['GET', 'PUT'])
+def api_mapa_substituicoes(mid):
+    """Cardápio padrão + substituições (cardápio personalizado) da linha do mapa."""
+    seed_nutricao()
+    row = NutMapaRefeicao.query.get(mid)
+    if not row or not row.ativo:
+        return jsonify({'ok': False, 'error': 'Linha não encontrada'}), 404
+
+    if request.method == 'GET':
+        return jsonify(get_mapa_substituicoes(row))
+
+    d = request.get_json(force=True) or {}
+    save_mapa_substituicoes(row, d, usuario=_usuario_sessao())
+    db.session.commit()
+    return jsonify(get_mapa_substituicoes(row))
+
+
+@nutricao.route('/nutricao/api/mapa/<int:mid>/substituicoes/importar', methods=['POST'])
+def api_mapa_substituicoes_importar(mid):
+    """Importa pares ou justificativa do mapa anterior do mesmo paciente."""
+    seed_nutricao()
+    row = NutMapaRefeicao.query.get(mid)
+    if not row or not row.ativo:
+        return jsonify({'ok': False, 'error': 'Linha não encontrada'}), 404
+    d = request.get_json(force=True) or {}
+    meal = (d.get('meal') or '').strip().lower() or None
+    so_just = bool(d.get('justificativa') or d.get('so_justificativa'))
+    result = importar_substituicoes_anteriores(row, meal=meal, so_justificativa=so_just)
+    if result is None:
+        return jsonify({'ok': False, 'error': 'Nenhum mapa anterior encontrado para importar'}), 404
+    marcar_alteracao_mapa(row, _usuario_sessao())
+    db.session.commit()
+    return jsonify(get_mapa_substituicoes(row))
 
 
 # ---- CLINICAS (página) ----
@@ -826,12 +880,41 @@ def api_leito_ops(lid):
 
 
 # ---- DIETAS ----
+def _parse_precos_payload(d):
+    """Extrai mapa de preços do JSON (precos / valores por tipo ou sigla)."""
+    from nutricao_service import _normalize_precos_map
+    raw = d.get('precos') or d.get('valores') or {}
+    if isinstance(raw, dict) and raw:
+        return _normalize_precos_map(raw)
+    # aceita campos soltos: desjejum, colacao, ...
+    soltos = {}
+    for key in ('desjejum', 'colacao', 'colação', 'almoco', 'almoço', 'merenda', 'jantar', 'ceia',
+                'DESJ', 'COL', 'ALM', 'MER', 'JAN', 'CEI',
+                'DESJEJUM', 'COLAÇÃO', 'ALMOÇO', 'MERENDA', 'JANTAR', 'CEIA'):
+        if key in d:
+            soltos[key] = d.get(key)
+    return _normalize_precos_map(soltos) if soltos else {}
+
+
 @nutricao.route('/nutricao/dietas')
 def dietas():
     seed_nutricao()
+    from nutricao_service import list_tipos_refeicao, list_precos_dieta_tipo
+    dietas_list = _list_dietas_db(somente_ativas=False)
+    tipos = list_tipos_refeicao(somente_ativos=True)
+    # mapa dieta_id → {tipo_sigla: valor_empresa}
+    precos_por_dieta = {}
+    for p in list_precos_dieta_tipo(somente_ativas=False, somente_tipos_ativos=True):
+        did = p.get('dieta_id')
+        sigla = (p.get('tipo_sigla') or '').upper()
+        if not did or not sigla:
+            continue
+        precos_por_dieta.setdefault(did, {})[sigla] = float(p.get('valor_empresa') or 0)
     return render_template(
         'nutricao_dietas.html',
-        dietas=_list_dietas_db(somente_ativas=False),
+        dietas=dietas_list,
+        tipos=tipos,
+        precos_por_dieta=precos_por_dieta,
         **active('cadastro_dietas')
     )
 
@@ -845,6 +928,8 @@ def api_dietas():
         if not nome:
             return jsonify({'ok': False, 'error': 'Nome da dieta é obrigatório'}), 400
         categoria = (d.get('categoria') or 'basica').strip() or 'basica'
+        grupo = (d.get('grupo') or '').strip().upper()
+        precos = _parse_precos_payload(d)
         exists = NutDieta.query.filter_by(nome=nome).first()
         if exists:
             if 'ativo' in d:
@@ -852,14 +937,24 @@ def api_dietas():
             else:
                 exists.ativo = True
             exists.categoria = categoria
+            if 'grupo' in d:
+                exists.grupo = grupo
+            if precos:
+                ensure_precos_para_dieta(exists.id, aplicar_default=False, precos_map=precos, forcar=True)
             db.session.commit()
             return jsonify({'ok': True, 'id': exists.id, 'dieta': exists.to_dict()})
         row = NutDieta(
             nome=nome,
             categoria=categoria,
+            grupo=grupo,
             ativo=bool(d.get('ativo', True)),
         )
         db.session.add(row)
+        db.session.flush()
+        if precos:
+            ensure_precos_para_dieta(row.id, aplicar_default=False, precos_map=precos, forcar=True)
+        else:
+            ensure_precos_para_dieta(row.id, aplicar_default=True)
         db.session.commit()
         return jsonify({'ok': True, 'id': row.id, 'dieta': row.to_dict()})
     somente_ativas = str(request.args.get('ativas', '')).lower() in ('1', 'true', 'sim')
@@ -888,10 +983,126 @@ def api_dieta_ops(did):
         row.nome = nome
     if 'categoria' in d:
         row.categoria = (d.get('categoria') or 'basica').strip() or 'basica'
+    if 'grupo' in d:
+        row.grupo = (d.get('grupo') or '').strip().upper()
+    if 'ativo' in d:
+        row.ativo = bool(d.get('ativo'))
+    precos = _parse_precos_payload(d)
+    if precos:
+        ensure_precos_para_dieta(row.id, aplicar_default=False, precos_map=precos, forcar=True)
+    db.session.commit()
+    return jsonify({'ok': True, 'dieta': row.to_dict()})
+
+
+# ---- TIPOS DE REFEIÇÃO ----
+@nutricao.route('/nutricao/tipos-refeicao')
+def tipos_refeicao():
+    seed_nutricao()
+    return render_template(
+        'nutricao_tipos_refeicao.html',
+        tipos=list_tipos_refeicao(somente_ativos=False),
+        **active('cadastro_tipos_refeicao')
+    )
+
+
+@nutricao.route('/nutricao/api/tipos-refeicao', methods=['GET', 'POST'])
+def api_tipos_refeicao():
+    seed_nutricao()
+    if request.method == 'POST':
+        d = request.get_json(force=True) or {}
+        nome = (d.get('nome') or '').strip().upper()
+        sigla = (d.get('sigla') or '').strip().upper()[:10]
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome do tipo é obrigatório'}), 400
+        if not sigla:
+            sigla = nome[:4]
+        exists = NutTipoRefeicao.query.filter(
+            db.func.upper(NutTipoRefeicao.nome) == nome
+        ).first()
+        hora_limite = normalizar_hora_limite(d.get('hora_limite'))
+        if exists:
+            exists.ativo = bool(d.get('ativo', True))
+            exists.sigla = sigla
+            exists.hora_limite = hora_limite
+            if 'ordem' in d:
+                try:
+                    exists.ordem = int(d.get('ordem') or 0)
+                except (TypeError, ValueError):
+                    pass
+            db.session.flush()
+            _seed_precos_dieta_tipo()
+            db.session.commit()
+            return jsonify({'ok': True, 'id': exists.id, 'tipo': exists.to_dict()})
+        if NutTipoRefeicao.query.filter(db.func.upper(NutTipoRefeicao.sigla) == sigla).first():
+            return jsonify({'ok': False, 'error': 'Já existe tipo com esta sigla'}), 400
+        try:
+            ordem = int(d.get('ordem') or 0)
+        except (TypeError, ValueError):
+            ordem = 0
+        if ordem <= 0:
+            last = NutTipoRefeicao.query.order_by(NutTipoRefeicao.ordem.desc()).first()
+            ordem = (last.ordem + 10) if last else 10
+        row = NutTipoRefeicao(
+            nome=nome,
+            sigla=sigla,
+            ordem=ordem,
+            hora_limite=hora_limite,
+            ativo=bool(d.get('ativo', True)),
+        )
+        db.session.add(row)
+        db.session.flush()
+        _seed_precos_dieta_tipo()
+        db.session.commit()
+        return jsonify({'ok': True, 'id': row.id, 'tipo': row.to_dict()})
+    somente = str(request.args.get('ativos', '')).lower() in ('1', 'true', 'sim')
+    return jsonify(list_tipos_refeicao(somente_ativos=somente))
+
+
+@nutricao.route('/nutricao/api/tipos-refeicao/<int:tid>', methods=['PUT', 'DELETE'])
+def api_tipo_refeicao_ops(tid):
+    row = NutTipoRefeicao.query.get(tid)
+    if not row:
+        return jsonify({'ok': False, 'error': 'Tipo de refeição não encontrado'}), 404
+
+    if request.method == 'DELETE':
+        row.ativo = False
+        db.session.commit()
+        return jsonify({'ok': True})
+
+    d = request.get_json(force=True) or {}
+    if 'nome' in d:
+        nome = (d.get('nome') or '').strip().upper()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome do tipo é obrigatório'}), 400
+        outro = NutTipoRefeicao.query.filter(
+            db.func.upper(NutTipoRefeicao.nome) == nome,
+            NutTipoRefeicao.id != tid,
+        ).first()
+        if outro:
+            return jsonify({'ok': False, 'error': 'Já existe tipo com este nome'}), 400
+        row.nome = nome
+    if 'sigla' in d:
+        sigla = (d.get('sigla') or '').strip().upper()[:10]
+        if not sigla:
+            return jsonify({'ok': False, 'error': 'Sigla é obrigatória'}), 400
+        outro = NutTipoRefeicao.query.filter(
+            db.func.upper(NutTipoRefeicao.sigla) == sigla,
+            NutTipoRefeicao.id != tid,
+        ).first()
+        if outro:
+            return jsonify({'ok': False, 'error': 'Já existe tipo com esta sigla'}), 400
+        row.sigla = sigla
+    if 'ordem' in d:
+        try:
+            row.ordem = int(d.get('ordem') or 0)
+        except (TypeError, ValueError):
+            return jsonify({'ok': False, 'error': 'Ordem inválida'}), 400
+    if 'hora_limite' in d:
+        row.hora_limite = normalizar_hora_limite(d.get('hora_limite'))
     if 'ativo' in d:
         row.ativo = bool(d.get('ativo'))
     db.session.commit()
-    return jsonify({'ok': True, 'dieta': row.to_dict()})
+    return jsonify({'ok': True, 'tipo': row.to_dict()})
 
 
 # ---- CARDÁPIOS ----
@@ -1296,27 +1507,68 @@ def api_estoques():
     return jsonify(list_estoques(somente_ativos=False))
 
 
+def _unidade_from_payload(d, row=None):
+    row = row or NutUnidadeMedida()
+    if 'codigo' in d:
+        row.codigo = (d.get('codigo') or '').strip().upper()
+    if 'descricao' in d:
+        row.descricao = (d.get('descricao') or '').strip().upper() or None
+    if 'unid_conversao' in d:
+        row.unid_conversao = (d.get('unid_conversao') or '').strip().upper() or None
+    if 'valor_conversao' in d:
+        row.valor_conversao = _fnum_prod(d.get('valor_conversao'), 0.0)
+    for fld in ('flag_nutrientes', 'flag_uma', 'flag_estoque', 'flag_pratos', 'ativo'):
+        if fld in d:
+            setattr(row, fld, bool(d.get(fld)))
+    return row
+
+
 @nutricao.route('/nutricao/api/unidades', methods=['GET', 'POST'])
 def api_unidades():
     seed_nutricao()
     if request.method == 'POST':
         d = request.get_json(force=True) or {}
+        if isinstance(d.get('items'), list):
+            salvos = []
+            for item in d['items']:
+                codigo = (item.get('codigo') or '').strip().upper()
+                if not codigo:
+                    continue
+                exists = None
+                uid = item.get('id')
+                if uid:
+                    exists = NutUnidadeMedida.query.get(int(uid))
+                if not exists:
+                    exists = NutUnidadeMedida.query.filter_by(codigo=codigo).first()
+                if exists:
+                    outro = NutUnidadeMedida.query.filter(
+                        NutUnidadeMedida.codigo == codigo,
+                        NutUnidadeMedida.id != exists.id,
+                    ).first()
+                    if outro:
+                        return jsonify({'ok': False, 'error': f'Código já existe: {codigo}'}), 400
+                    _unidade_from_payload(item, exists)
+                    salvos.append(exists.to_dict())
+                else:
+                    row = _unidade_from_payload(item)
+                    if 'ativo' not in item:
+                        row.ativo = True
+                    db.session.add(row)
+                    db.session.flush()
+                    salvos.append(row.to_dict())
+            db.session.commit()
+            return jsonify({'ok': True, 'unidades': salvos})
         codigo = (d.get('codigo') or '').strip().upper()
         if not codigo:
             return jsonify({'ok': False, 'error': 'Código da unidade é obrigatório'}), 400
         exists = NutUnidadeMedida.query.filter_by(codigo=codigo).first()
         if exists:
-            if 'descricao' in d:
-                exists.descricao = (d.get('descricao') or '').strip()
-            if 'ativo' in d:
-                exists.ativo = bool(d.get('ativo'))
+            _unidade_from_payload(d, exists)
             db.session.commit()
             return jsonify({'ok': True, 'id': exists.id, 'unidade': exists.to_dict()})
-        row = NutUnidadeMedida(
-            codigo=codigo,
-            descricao=(d.get('descricao') or '').strip() or None,
-            ativo=bool(d.get('ativo', True)),
-        )
+        row = _unidade_from_payload(d)
+        if 'ativo' not in d:
+            row.ativo = True
         db.session.add(row)
         db.session.commit()
         return jsonify({'ok': True, 'id': row.id, 'unidade': row.to_dict()})
@@ -1342,11 +1594,7 @@ def api_unidade_ops(uid):
         ).first()
         if outro:
             return jsonify({'ok': False, 'error': 'Código já existe'}), 400
-        row.codigo = codigo
-    if 'descricao' in d:
-        row.descricao = (d.get('descricao') or '').strip() or None
-    if 'ativo' in d:
-        row.ativo = bool(d.get('ativo'))
+    _unidade_from_payload(d, row)
     db.session.commit()
     return jsonify({'ok': True, 'unidade': row.to_dict()})
 
@@ -1611,6 +1859,71 @@ def etiquetas():
     )
 
 
+@nutricao.route('/nutricao/impressao-etiquetas')
+def impressao_etiquetas():
+    seed_nutricao()
+    modelos = list_modelos_etiqueta_impressao()
+    return render_template(
+        'nutricao_impressao_etiquetas.html',
+        clinicas=_list_clinicas_db(somente_ativas=False),
+        enfermarias=list_enfermarias(somente_ativas=True),
+        modelos=modelos,
+        data_padrao=date.today().isoformat(),
+        **active('impressao_etiquetas')
+    )
+
+
+@nutricao.route('/nutricao/impressao-etiquetas/imprimir')
+def impressao_etiquetas_imprimir():
+    seed_nutricao()
+    data_ref = _parse_date(request.args.get('data')) or date.today()
+    horario = (request.args.get('horario') or 'desjejum').strip()
+    modo = (request.args.get('modo') or 'mapa').strip()
+    imprimir_por = (request.args.get('imprimir_por') or 'grupo_clinica').strip()
+    filtro_id = request.args.get('filtro_id', type=int)
+    filtro_nome = (request.args.get('filtro_nome') or '').strip() or None
+    ordenar = (request.args.get('ordenar') or 'grupo_dieta_data').strip()
+    incluir_enfermaria = str(request.args.get('incluir_enfermaria', '')).lower() in ('1', 'true', 'sim')
+    somente_alteradas = str(request.args.get('somente_alteradas', '')).lower() in ('1', 'true', 'sim')
+    alteradas_desde = (request.args.get('alteradas_desde') or '').strip() or None
+    modelo_id = (request.args.get('modelo') or '6080').strip()
+    seq_inicio = request.args.get('seq_inicio', type=int) or 1
+
+    if not filtro_nome and filtro_id and imprimir_por in ('grupo_clinica', 'clinica'):
+        cli = NutClinica.query.get(int(filtro_id))
+        if cli:
+            filtro_nome = cli.nome
+    if not filtro_nome and filtro_id and imprimir_por == 'enfermaria':
+        enf = NutEnfermaria.query.get(int(filtro_id))
+        if enf:
+            filtro_nome = enf.nome
+
+    try:
+        _seed_faturamento_demo(data_ref, data_ref)
+    except Exception:
+        garantir_mapa_do_dia(data_ref)
+
+    rel = gerar_impressao_etiquetas(
+        data_ref=data_ref,
+        horario=horario,
+        modo=modo,
+        imprimir_por=imprimir_por,
+        filtro_id=filtro_id,
+        filtro_nome=filtro_nome,
+        ordenar=ordenar,
+        incluir_enfermaria=incluir_enfermaria,
+        somente_alteradas=somente_alteradas,
+        alteradas_desde=alteradas_desde,
+        modelo_id=modelo_id,
+        seq_inicio=seq_inicio,
+    )
+    return render_template(
+        'nutricao_impressao_etiquetas_print.html',
+        r=rel,
+        **active('impressao_etiquetas')
+    )
+
+
 @nutricao.route('/nutricao/api/etiquetas', methods=['GET', 'POST'])
 def api_etiquetas():
     seed_nutricao()
@@ -1664,6 +1977,236 @@ def api_etiqueta_ops(eid):
     return jsonify({'ok': True, 'etiqueta': row.to_dict()})
 
 
+# ---- PREÇOS DAS REFEIÇÕES (Dieta × Tipo) ----
+@nutricao.route('/nutricao/precos-refeicoes')
+def precos_refeicoes():
+    seed_nutricao()
+    matriz = matriz_precos_dieta_tipo(somente_ativas=True, somente_tipos_ativos=True)
+    return render_template(
+        'nutricao_precos_refeicoes.html',
+        tipos=matriz['tipos'],
+        linhas=matriz['linhas'],
+        dietas=_list_dietas_db(somente_ativas=True),
+        **active('cadastro_precos_refeicoes')
+    )
+
+
+def _parse_money(val, fallback=0.0):
+    if val in (None, ''):
+        return float(fallback)
+    if isinstance(val, (int, float)):
+        return float(val)
+    s = str(val).strip().replace(' ', '').replace(',', '.')
+    return float(s)
+
+
+@nutricao.route('/nutricao/api/precos-refeicoes', methods=['GET', 'PUT'])
+def api_precos_refeicoes():
+    seed_nutricao()
+    if request.method == 'GET':
+        return jsonify(matriz_precos_dieta_tipo(
+            somente_ativas=str(request.args.get('ativas', '1')).lower() not in ('0', 'false', 'nao', 'não'),
+            somente_tipos_ativos=True,
+        ))
+
+    d = request.get_json(force=True) or {}
+    itens = d.get('itens') or d.get('celulas') or d.get('precos') or []
+    if not isinstance(itens, list):
+        return jsonify({'ok': False, 'error': 'Lista de preços inválida'}), 400
+
+    def _parse_valor(item, *keys, fallback=0.0):
+        for k in keys:
+            if k in item and item.get(k) not in (None, ''):
+                return _parse_money(item.get(k), fallback)
+        return float(fallback)
+
+    atualizados = 0
+    for item in itens:
+        if not isinstance(item, dict):
+            continue
+        row = None
+        pid = item.get('id')
+        if pid is not None:
+            try:
+                row = NutPrecoDietaTipo.query.get(int(pid))
+            except (TypeError, ValueError):
+                row = None
+        if not row:
+            try:
+                dieta_id = int(item.get('dieta_id'))
+                tipo_id = int(item.get('tipo_refeicao_id') or item.get('tipo_id'))
+            except (TypeError, ValueError):
+                continue
+            row = NutPrecoDietaTipo.query.filter_by(
+                dieta_id=dieta_id, tipo_refeicao_id=tipo_id
+            ).first()
+            if not row:
+                if not NutDieta.query.get(dieta_id) or not NutTipoRefeicao.query.get(tipo_id):
+                    continue
+                row = NutPrecoDietaTipo(dieta_id=dieta_id, tipo_refeicao_id=tipo_id)
+                db.session.add(row)
+        try:
+            if any(k in item for k in (
+                'valor_empresa', 'valor_paciente', 'valor_acompanhante',
+                'empresa', 'paciente', 'acompanhante',
+            )):
+                v_emp = _parse_valor(item, 'valor_empresa', 'empresa', fallback=row.valor_empresa or 0)
+                v_pac = _parse_valor(item, 'valor_paciente', 'paciente', fallback=row.valor_paciente or 0)
+                v_aco = _parse_valor(item, 'valor_acompanhante', 'acompanhante', fallback=row.valor_acompanhante or 0)
+            else:
+                v = _parse_valor(item, 'valor', fallback=0)
+                v_emp = v_pac = v_aco = v
+        except (TypeError, ValueError):
+            dieta_nome = row.dieta.nome if row.dieta else str(row.dieta_id)
+            return jsonify({'ok': False, 'error': f'Valor inválido ({dieta_nome})'}), 400
+        if min(v_emp, v_pac, v_aco) < 0:
+            return jsonify({'ok': False, 'error': 'Valor não pode ser negativo'}), 400
+        row.valor_empresa = v_emp
+        row.valor_paciente = v_pac
+        row.valor_acompanhante = v_aco
+        row.data_alteracao = datetime.utcnow()
+        atualizados += 1
+
+    db.session.commit()
+    return jsonify({
+        'ok': True,
+        'atualizados': atualizados,
+        'matriz': matriz_precos_dieta_tipo(somente_ativas=True, somente_tipos_ativos=True),
+    })
+
+
+@nutricao.route('/nutricao/api/precos-refeicoes/adicionar', methods=['POST'])
+def api_precos_refeicoes_adicionar():
+    """
+    Adiciona/atualiza valores de refeição para uma dieta no contexto
+    Empresa / Paciente / Acompanhante (opcionalmente replicando nas 3 colunas).
+    """
+    from nutricao_service import GRUPO_POR_PAYER, _normalize_precos_map
+
+    seed_nutricao()
+    d = request.get_json(force=True) or {}
+    coluna = (d.get('coluna') or d.get('payer') or 'paciente').strip().lower()
+    if coluna not in ('empresa', 'paciente', 'acompanhante'):
+        return jsonify({'ok': False, 'error': 'Coluna inválida'}), 400
+    replicar = bool(d.get('replicar') or d.get('replicar_tres'))
+    payers = ('empresa', 'paciente', 'acompanhante') if replicar else (coluna,)
+
+    dieta = None
+    dieta_id = d.get('dieta_id')
+    if dieta_id not in (None, '', 0, '0'):
+        try:
+            dieta = NutDieta.query.get(int(dieta_id))
+        except (TypeError, ValueError):
+            dieta = None
+    nome_novo = (d.get('dieta_nome') or d.get('nome') or '').strip().upper()
+    grupo = (d.get('grupo') or '').strip().upper() or GRUPO_POR_PAYER.get(coluna, 'LACTÁRIO')
+    if not dieta and nome_novo:
+        dieta = NutDieta.query.filter(db.func.upper(NutDieta.nome) == nome_novo).first()
+        if not dieta:
+            dieta = NutDieta(
+                nome=nome_novo,
+                categoria=(d.get('categoria') or 'basica').strip() or 'basica',
+                grupo=grupo,
+                ativo=True,
+            )
+            db.session.add(dieta)
+            db.session.flush()
+        else:
+            dieta.ativo = True
+            if not (dieta.grupo or '').strip():
+                dieta.grupo = grupo
+            elif coluna in ('empresa', 'acompanhante') and bool(d.get('criar_dieta') or d.get('nova_dieta')):
+                # Nova dieta no contexto: se pediu criar e já existe nome, só retag se vazio
+                pass
+    if not dieta:
+        return jsonify({'ok': False, 'error': 'Selecione ou informe a dieta'}), 400
+
+    # Tag de contexto ao criar/atualizar pelo popup (Funcionário / Acompanhante)
+    if coluna == 'acompanhante' and (dieta.grupo or '').upper() not in ('ACOMPANHANTE', 'ACOMPANHANTE E KITS'):
+        if bool(d.get('criar_dieta') or d.get('nova_dieta') or d.get('ajustar_grupo', True)):
+            if not dieta.grupo or (dieta.grupo or '').upper() in ('', 'LACTÁRIO') and bool(d.get('nova_dieta')):
+                dieta.grupo = 'ACOMPANHANTE'
+    if coluna == 'empresa' and bool(d.get('nova_dieta')):
+        dieta.grupo = 'FUNCIONARIO'
+    if coluna == 'paciente' and bool(d.get('nova_dieta')) and not (dieta.grupo or '').strip():
+        dieta.grupo = 'LACTÁRIO'
+
+    # Tipos + valores
+    precos_map = _parse_precos_payload(d)
+    tipos_sel = d.get('tipos') or d.get('tipos_refeicao') or []
+    tipo_ids = []
+    if isinstance(tipos_sel, list) and tipos_sel:
+        for t in tipos_sel:
+            if isinstance(t, dict):
+                tid = t.get('id') or t.get('tipo_refeicao_id') or t.get('tipo_id')
+                sigla = (t.get('sigla') or t.get('tipo') or t.get('nome') or '').strip()
+                valor = t.get('valor', t.get('value'))
+                if tid is not None:
+                    try:
+                        tipo_ids.append(int(tid))
+                    except (TypeError, ValueError):
+                        pass
+                elif sigla:
+                    row_t = NutTipoRefeicao.query.filter(
+                        db.or_(
+                            db.func.upper(NutTipoRefeicao.sigla) == sigla.upper(),
+                            db.func.upper(NutTipoRefeicao.nome) == sigla.upper(),
+                        )
+                    ).first()
+                    if row_t:
+                        tipo_ids.append(row_t.id)
+                        sigla = row_t.nome
+                if valor is not None and sigla:
+                    try:
+                        precos_map[str(sigla).upper()] = _parse_money(valor)
+                    except (TypeError, ValueError):
+                        return jsonify({'ok': False, 'error': f'Valor inválido ({sigla})'}), 400
+            else:
+                try:
+                    tipo_ids.append(int(t))
+                except (TypeError, ValueError):
+                    pass
+    if d.get('tipo_ids'):
+        for tid in d.get('tipo_ids') or []:
+            try:
+                tipo_ids.append(int(tid))
+            except (TypeError, ValueError):
+                pass
+    tipo_ids = list(dict.fromkeys(tipo_ids))
+    if not tipo_ids and not precos_map:
+        return jsonify({'ok': False, 'error': 'Selecione ao menos um tipo de refeição'}), 400
+
+    # Se há tipo_ids mas precos_map veio como dict por id
+    raw_vals = d.get('valores') or d.get('precos') or {}
+    if isinstance(raw_vals, dict):
+        for k, v in raw_vals.items():
+            try:
+                precos_map[str(k).upper()] = _parse_money(v)
+            except (TypeError, ValueError):
+                return jsonify({'ok': False, 'error': f'Valor inválido ({k})'}), 400
+
+    precos_map = _normalize_precos_map(precos_map)
+    if not precos_map:
+        return jsonify({'ok': False, 'error': 'Informe os valores das refeições'}), 400
+
+    ensure_precos_para_dieta(
+        dieta.id,
+        aplicar_default=False,
+        precos_map=precos_map,
+        forcar=True,
+        payers=payers,
+        tipos_ids=tipo_ids or None,
+    )
+    db.session.commit()
+    return jsonify({
+        'ok': True,
+        'dieta': dieta.to_dict(),
+        'coluna': coluna,
+        'payers': list(payers),
+        'matriz': matriz_precos_dieta_tipo(somente_ativas=True, somente_tipos_ativos=True),
+    })
+
+
 # ---- MAPA REFEIÇÕES ----
 @nutricao.route('/nutricao/mapa_refeicoes')
 def mapa_refeicoes():
@@ -1674,10 +2217,22 @@ def mapa_refeicoes():
 @nutricao.route('/nutricao/estoque')
 def estoque():
     seed_nutricao()
+    estoques = list_estoques(somente_ativos=False)
+    estoque_id = request.args.get('estoque_id', type=int)
+    if not estoque_id and estoques:
+        matriz = next((e for e in estoques if e['nome'] == 'MATRIZ'), None)
+        estoque_id = (matriz or estoques[0])['id']
+    grupo_id = request.args.get('grupo_id', type=int)
     return render_template(
         'nutricao_estoque.html',
-        produtos=PRODUTOS,
-        fornecedores=list_fornecedores(somente_ativos=True),
+        estoques=estoques,
+        unidades=list_unidades(somente_ativas=False),
+        grupos=list_grupos_produto(somente_ativos=False),
+        produtos=list_produtos(estoque_id=estoque_id, grupo_id=grupo_id, somente_ativos=False),
+        fornecedores=list_fornecedores(somente_ativos=False),
+        estados=ESTADOS_BR,
+        estoque_id=estoque_id,
+        grupo_id=grupo_id,
         **active('estoque')
     )
 
@@ -2104,10 +2659,12 @@ def api_usuarios_create():
 # ---- UTILITÁRIOS ----
 @nutricao.route('/nutricao/utilitarios')
 def utilitarios():
+    from audit_service import listar_logs
+    _, logs = listar_logs(modulo='nutricao', limit=50)
     return render_template(
         'nutricao_utilitarios.html',
         autorizacoes=AUTORIZACOES_SUBSTITUICAO,
-        logs=LOG_ACOES,
+        logs=logs,
         **active('utilitarios')
     )
 
@@ -2160,4 +2717,6 @@ def api_autorizacoes_substituicao():
 
 @nutricao.route('/nutricao/api/logs', methods=['GET'])
 def api_logs():
-    return jsonify(LOG_ACOES)
+    from audit_service import listar_logs
+    _, logs = listar_logs(modulo='nutricao', limit=100)
+    return jsonify(logs)

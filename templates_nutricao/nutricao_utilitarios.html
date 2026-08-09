@@ -17,7 +17,7 @@
       <h3>Backup de Dados</h3>
       <p class="text-muted text-sm">Exportar e importar dados do sistema</p>
     </div>
-  <div class="card" style="cursor:pointer" onclick="showToast('Logs exportados','info')">
+  <div class="card" style="cursor:pointer" onclick="location.href='{{ url_for('auditoria.dashboard') }}?modulo=nutricao'">
     <div style="text-align:center;padding:20px">
       <div style="font-size:40px;margin-bottom:12px">📋</div>
       <h3>Logs do Sistema</h3>

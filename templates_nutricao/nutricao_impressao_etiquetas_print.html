@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Etiquetas — {{ r.horario_label }} {{ r.data_label }}</title>
+  <style>
+    @page {
+      size: letter;
+      margin: 0;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #fff;
+      color: #000;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    .no-print {
+      padding: 10px 14px;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      font-size: 13px;
+      border-bottom: 1px solid #cbd5e1;
+      background: #f8fafc;
+    }
+    .no-print button {
+      padding: 7px 14px;
+      cursor: pointer;
+      margin-right: 6px;
+    }
+    .no-print .meta {
+      margin-top: 6px;
+      color: #475569;
+      font-size: 12px;
+    }
+    .sheet {
+      width: 215.9mm;
+      min-height: 279.4mm;
+      padding: 12.7mm 4.8mm 12.7mm 4.8mm;
+      page-break-after: always;
+      break-after: page;
+    }
+    .sheet:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+    .grid {
+      display: grid;
+      width: 100%;
+      height: 254mm; /* 10 × 25.4mm */
+      column-gap: 3.1mm;
+      row-gap: 0;
+    }
+    .grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+    .grid.rows-10 { grid-template-rows: repeat(10, 25.4mm); }
+    .grid.rows-7  { grid-template-rows: repeat(7, 1fr); height: 254mm; }
+    .grid.rows-5  { grid-template-rows: repeat(5, 1fr); height: 254mm; }
+    .grid.rows-11 { grid-template-rows: repeat(11, 1fr); height: 254mm; }
+
+    .label {
+      overflow: hidden;
+      padding: 1.2mm 2mm 1mm;
+      font-size: {{ r.modelo.fonte }}pt;
+      line-height: 1.15;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+    }
+    .label.empty { visibility: hidden; }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 2mm;
+      width: 100%;
+    }
+    .left {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: clip;
+      text-transform: uppercase;
+    }
+    .right {
+      flex: 0 0 auto;
+      white-space: nowrap;
+      text-align: right;
+    }
+    .line-full {
+      width: 100%;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: clip;
+      text-transform: uppercase;
+    }
+    .line-obs {
+      width: 100%;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      white-space: normal;
+      text-transform: uppercase;
+      font-size: {{ r.modelo.fonte_obs }}pt;
+      line-height: 1.1;
+    }
+    .meal-line .left { text-transform: none; }
+
+    @media print {
+      .no-print { display: none !important; }
+      body { background: #fff; }
+      .sheet { padding: 12.7mm 4.8mm; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <button onclick="window.print()">Imprimir</button>
+    <button onclick="window.close()">Fechar</button>
+    <div class="meta">
+      {{ r.horario_label }} · {{ r.data_label }} · Modelo: {{ r.modelo.nome }}
+      · {{ r.total }} etiqueta{% if r.total != 1 %}s{% endif %}
+      · Filtro: {{ r.filtro_nome }}
+    </div>
+  </div>
+
+  {% set cols = r.modelo.cols %}
+  {% set rows = r.modelo.rows %}
+  {% for pagina in r.paginas %}
+  <div class="sheet">
+    <div class="grid cols-{{ cols }} rows-{{ rows }}">
+      {% for eti in pagina %}
+        {% if eti %}
+        <div class="label">
+          <div class="row meal-line">
+            <span class="left">{{ eti.linha1_esq }}</span>
+            <span class="right">{{ eti.linha1_dir }}</span>
+          </div>
+          <div class="row">
+            <span class="left">{{ eti.setor }}</span>
+            <span class="right">{% if eti.leito %}L: {{ eti.leito }}{% endif %}</span>
+          </div>
+          <div class="row">
+            <span class="left">{{ eti.nome }}</span>
+            <span class="right">{% if eti.dn %}DN: {{ eti.dn }}{% endif %}</span>
+          </div>
+          <div class="line-full">{{ eti.dieta }}</div>
+          {% if eti.obs %}<div class="line-obs">{{ eti.obs }}</div>{% endif %}
+        </div>
+        {% else %}
+        <div class="label empty"></div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+  <script>
+    window.addEventListener('load', function(){
+      setTimeout(function(){ window.print(); }, 350);
+    });
+  </script>
+</body>
+</html>

@@ -190,6 +190,70 @@
   </div>
 </div>
 
+<div id="substOverlay" class="subst-overlay" hidden>
+  <div class="subst-dialog" role="dialog" aria-modal="true" aria-labelledby="substTitulo">
+    <div class="subst-titlebar">
+      <h2 id="substTitulo">Substituições</h2>
+      <button type="button" class="modal-close" onclick="fecharSubstituicoes()" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="subst-header" id="substHeader">—</div>
+    <div class="subst-tabs" id="substTabs" role="tablist">
+      <button type="button" class="subst-tab active" data-meal="desjejum">Desjejum</button>
+      <button type="button" class="subst-tab" data-meal="colacao">Colação</button>
+      <button type="button" class="subst-tab" data-meal="almoco">Almoço</button>
+      <button type="button" class="subst-tab" data-meal="merenda">Merenda</button>
+      <button type="button" class="subst-tab" data-meal="jantar">Jantar</button>
+      <button type="button" class="subst-tab" data-meal="ceia">Ceia</button>
+    </div>
+    <div class="subst-body">
+      <div class="subst-dieta">Dieta: <strong id="substDieta">—</strong></div>
+      <div class="subst-panels">
+        <div class="subst-col subst-cardapio">
+          <div class="subst-label">Cardápio:</div>
+          <div class="subst-list-wrap">
+            <div class="subst-list-head">Pratos</div>
+            <ul id="substCardapioList" class="subst-list" tabindex="0"></ul>
+          </div>
+        </div>
+        <div class="subst-mid">
+          <button type="button" class="subst-icon-btn" title="Remover linha selecionada" onclick="substLimparLinha()">
+            <span class="subst-ban" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="subst-icon-btn" title="Adicionar item selecionado à substituição" onclick="substAplicarSelecao()">
+            <i class="fas fa-pen" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div class="subst-col subst-grid-col">
+          <div class="subst-label">Remover e adicionar:</div>
+          <div class="subst-grid-wrap">
+            <table class="subst-grid" id="substGrid">
+              <thead>
+                <tr><th>Remover</th><th>Adicionar</th></tr>
+              </thead>
+              <tbody id="substGridBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="subst-just">
+        <label for="substJustificativa">Justificativa:</label>
+        <textarea id="substJustificativa" rows="4"></textarea>
+      </div>
+    </div>
+    <div class="subst-footer">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="substImportar(false)">
+        <i class="fas fa-check-square"></i> Importar substituições
+      </button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="substImportar(true)">
+        <i class="fas fa-file-import"></i> Importar justificativa
+      </button>
+      <button type="button" class="btn btn-primary btn-sm" onclick="fecharSubstituicoes(true)">
+        <i class="fas fa-door-open"></i> Fechar
+      </button>
+    </div>
+  </div>
+</div>
+
 <style>
 .table-scroll { overflow: auto; }
 .mapa-table {
@@ -440,6 +504,274 @@
   border-top: 1px solid #e5e7eb;
   margin: 4px 0;
 }
+
+.subst-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10060;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.subst-overlay[hidden] { display: none !important; }
+.subst-dialog {
+  background: #f3f4f6;
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  width: min(760px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.3);
+  display: flex;
+  flex-direction: column;
+}
+.subst-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.55rem 0.85rem;
+  background: linear-gradient(180deg, #e8eef8 0%, #d7e0ef 100%);
+  border-bottom: 1px solid #b8c4d6;
+}
+.subst-titlebar h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #0f2a5c;
+}
+.subst-header {
+  padding: 0.55rem 0.9rem;
+  background: #dbeafe;
+  color: #1e3a8a;
+  font-weight: 700;
+  font-size: 0.92rem;
+  border-bottom: 1px solid #93c5fd;
+  letter-spacing: 0.01em;
+}
+.subst-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0.45rem 0.65rem 0;
+  background: #eef2f7;
+  border-bottom: 1px solid #cbd5e1;
+  flex-wrap: wrap;
+}
+.subst-tab {
+  border: 1px solid #94a3b8;
+  border-bottom: none;
+  background: #dce3ee;
+  color: #1e293b;
+  padding: 0.4rem 0.85rem;
+  margin-right: 2px;
+  border-radius: 6px 6px 0 0;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+.subst-tab.active {
+  background: #fff;
+  color: #0f2a5c;
+  position: relative;
+  z-index: 1;
+}
+.subst-body {
+  background: #fff;
+  padding: 0.75rem 0.9rem 0.5rem;
+  flex: 1;
+}
+.subst-dieta {
+  margin-bottom: 0.55rem;
+  font-size: 0.95rem;
+  color: #334155;
+}
+.subst-dieta strong {
+  color: #1d4ed8;
+  font-weight: 700;
+  background: #eff6ff;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+}
+.subst-panels {
+  display: grid;
+  grid-template-columns: 1fr auto 1.15fr;
+  gap: 0.65rem;
+  align-items: stretch;
+  min-height: 220px;
+}
+.subst-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 0.3rem;
+  color: #1e293b;
+}
+.subst-list-wrap,
+.subst-grid-wrap {
+  border: 1px solid #64748b;
+  background: #fff;
+  height: 210px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.subst-list-head {
+  background: #e2e8f0;
+  padding: 0.3rem 0.5rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+  border-bottom: 1px solid #94a3b8;
+  color: #0f172a;
+}
+.subst-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  flex: 1;
+}
+.subst-list li {
+  padding: 0.28rem 0.5rem;
+  cursor: pointer;
+  font-size: 0.88rem;
+  border-bottom: 1px solid #f1f5f9;
+  user-select: none;
+}
+.subst-list li:hover { background: #eff6ff; }
+.subst-list li.selected {
+  background: #2563eb;
+  color: #fff;
+}
+.subst-mid {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.55rem;
+  padding-top: 1.4rem;
+}
+.subst-icon-btn {
+  width: 44px;
+  height: 44px;
+  border: 1px solid #94a3b8;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #fff 0%, #e5e7eb 100%);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  color: #1e40af;
+  font-size: 1.05rem;
+}
+.subst-icon-btn:hover { background: #eff6ff; }
+.subst-ban {
+  width: 22px;
+  height: 22px;
+  border: 2.5px solid #dc2626;
+  border-radius: 50%;
+  position: relative;
+  display: block;
+}
+.subst-ban::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  width: 2.5px;
+  height: 24px;
+  background: #dc2626;
+  transform: translateX(-50%) rotate(45deg);
+  border-radius: 1px;
+}
+.subst-pencil {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  font-size: 0.7rem;
+  color: #ca8a04;
+}
+.subst-grid {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  flex: 1;
+}
+.subst-grid th {
+  background: #1e40af;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.45rem;
+  text-align: left;
+  border: 1px solid #1e3a8a;
+  position: sticky;
+  top: 0;
+}
+.subst-grid td {
+  border: 1px solid #cbd5e1;
+  padding: 0;
+  height: 28px;
+  vertical-align: middle;
+  font-size: 0.86rem;
+  background: #fff;
+}
+.subst-grid tr.selected td { background: #dbeafe; }
+.subst-grid tr.selected td:first-child {
+  box-shadow: inset 3px 0 0 #1d4ed8;
+}
+.subst-grid .cell-edit {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0.25rem 0.4rem;
+  border: none;
+  background: transparent;
+  font: inherit;
+  box-sizing: border-box;
+  cursor: text;
+}
+.subst-grid .cell-edit:focus {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+  background: #fff;
+}
+.subst-just {
+  margin-top: 0.75rem;
+}
+.subst-just label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+  font-size: 0.9rem;
+}
+.subst-just textarea {
+  width: 100%;
+  border: 1px solid #64748b;
+  border-radius: 2px;
+  padding: 0.45rem 0.55rem;
+  font: inherit;
+  resize: vertical;
+  min-height: 88px;
+  box-sizing: border-box;
+}
+.subst-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
+  padding: 0.65rem 0.9rem 0.8rem;
+  background: #eef2f7;
+  border-top: 1px solid #cbd5e1;
+}
+.subst-empty {
+  padding: 0.75rem;
+  color: #64748b;
+  font-size: 0.88rem;
+}
+@media (max-width: 700px) {
+  .subst-panels { grid-template-columns: 1fr; }
+  .subst-mid { flex-direction: row; padding-top: 0; justify-content: center; }
+}
 </style>
 
 <script>
@@ -463,6 +795,7 @@ let mapaBloqueado = false;
 let buscaPacienteTimer = null;
 let pacienteSelecionadoInserir = null;
 let linhasMapaCache = {};
+let substState = null;
 
 function formatDateISO(d){
   const ano = d.getFullYear();
@@ -847,12 +1180,279 @@ async function onMapaFile(e){
 function guiaAtalhos(){
   const html = `<ul style="margin:0;padding-left:1.1rem;line-height:1.7">
     <li><b>Botão direito</b> na linha: menu do mapa</li>
+    <li><b>Substituições</b>: personaliza o cardápio (Remover/Adicionar) por refeição</li>
     <li><b>(Ver Texto)</b>: abre o conteúdo do campo</li>
     <li><b>Importar Extras/Suplementos/...</b>: edita o campo correspondente</li>
     <li><b>Limpar campo</b>: limpa o campo clicado</li>
     <li><b>D / C / A / M / J / C</b>: flags de refeição</li>
   </ul>`;
   abrirModal('Guia de atalhos', html, 'Fechar', fecharModal);
+}
+
+function _substMealData(){
+  if (!substState) return null;
+  const meal = substState.meal || 'desjejum';
+  if (!substState.data.refeicoes[meal]) {
+    substState.data.refeicoes[meal] = {
+      pratos: [], pares: [], justificativa: '', cardapio_personalizado: []
+    };
+  }
+  return substState.data.refeicoes[meal];
+}
+
+function _substSyncFromUi(){
+  const m = _substMealData();
+  if (!m) return;
+  const body = document.getElementById('substGridBody');
+  const pares = [];
+  body?.querySelectorAll('tr').forEach(tr => {
+    const rem = (tr.querySelector('[data-col="remover"]')?.value || '').trim();
+    const add = (tr.querySelector('[data-col="adicionar"]')?.value || '').trim();
+    if (rem || add) pares.push({ remover: rem, adicionar: add });
+  });
+  m.pares = pares;
+  m.justificativa = (document.getElementById('substJustificativa')?.value || '').trim();
+  m.cardapio_personalizado = null;
+}
+
+function _substEnsureEmptyRow(body){
+  if (!body) return;
+  const rows = body.querySelectorAll('tr');
+  let hasEmpty = false;
+  rows.forEach(tr => {
+    const rem = (tr.querySelector('[data-col="remover"]')?.value || '').trim();
+    const add = (tr.querySelector('[data-col="adicionar"]')?.value || '').trim();
+    if (!rem && !add) hasEmpty = true;
+  });
+  if (!hasEmpty) _substAppendRow(body, '', '');
+}
+
+function _substAppendRow(body, remover, adicionar){
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input class="cell-edit" data-col="remover" value="${esc(remover || '')}" spellcheck="false"></td>
+    <td><input class="cell-edit" data-col="adicionar" value="${esc(adicionar || '')}" spellcheck="false"></td>
+  `;
+  tr.addEventListener('click', (e) => {
+    if (e.target.closest('input')) {
+      substSelectGridRow(tr);
+      return;
+    }
+    substSelectGridRow(tr);
+  });
+  tr.querySelectorAll('input').forEach(inp => {
+    inp.addEventListener('focus', () => substSelectGridRow(tr));
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        _substEnsureEmptyRow(body);
+        const rows = [...body.querySelectorAll('tr')];
+        const idx = rows.indexOf(tr);
+        const next = rows[idx + 1];
+        const col = inp.dataset.col;
+        (next?.querySelector(`[data-col="${col}"]`) || next?.querySelector('input'))?.focus();
+      }
+    });
+  });
+  body.appendChild(tr);
+  return tr;
+}
+
+function substSelectGridRow(tr){
+  document.querySelectorAll('#substGridBody tr').forEach(r => r.classList.remove('selected'));
+  if (tr) {
+    tr.classList.add('selected');
+    substState && (substState.gridRow = tr);
+  }
+}
+
+function substSelectCardapioItem(li){
+  document.querySelectorAll('#substCardapioList li').forEach(x => x.classList.remove('selected'));
+  if (li) {
+    li.classList.add('selected');
+    substState && (substState.pratoSel = li.dataset.prato || li.textContent || '');
+  }
+}
+
+function substRenderMeal(){
+  if (!substState) return;
+  const m = _substMealData();
+  const list = document.getElementById('substCardapioList');
+  const body = document.getElementById('substGridBody');
+  const just = document.getElementById('substJustificativa');
+  if (!list || !body || !just) return;
+
+  document.querySelectorAll('.subst-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.meal === substState.meal);
+  });
+
+  const pratos = m.pratos || [];
+  if (!pratos.length) {
+    list.innerHTML = '<li class="subst-empty" style="cursor:default">Nenhum prato no cardápio padrão para esta dieta/refeição.</li>';
+  } else {
+    list.innerHTML = pratos.map(p => `<li data-prato="${esc(p)}">${esc(p)}</li>`).join('');
+    list.querySelectorAll('li[data-prato]').forEach(li => {
+      li.addEventListener('click', () => substSelectCardapioItem(li));
+      li.addEventListener('dblclick', () => {
+        substSelectCardapioItem(li);
+        substAplicarSelecao();
+      });
+    });
+  }
+  substState.pratoSel = '';
+
+  body.innerHTML = '';
+  const pares = (m.pares && m.pares.length) ? m.pares : [{ remover: '', adicionar: '' }];
+  pares.forEach(p => _substAppendRow(body, p.remover, p.adicionar));
+  _substEnsureEmptyRow(body);
+  substSelectGridRow(body.querySelector('tr'));
+  just.value = m.justificativa || '';
+}
+
+async function substSalvarAtual(){
+  if (!substState?.mapaId) return true;
+  _substSyncFromUi();
+  const meal = substState.meal;
+  const m = _substMealData();
+  try {
+    const r = await fetch(`/nutricao/api/mapa/${substState.mapaId}/substituicoes`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        substituicoes: {
+          [meal]: { pares: m.pares || [], justificativa: m.justificativa || '' }
+        }
+      })
+    });
+    const j = await r.json();
+    if (!r.ok || j.ok === false) {
+      showToast((j && j.error) || 'Falha ao salvar substituições', 'error');
+      return false;
+    }
+    substState.data = j;
+    if (linhasMapaCache[substState.mapaId]) {
+      linhasMapaCache[substState.mapaId].substituicoes = j.substituicoes || {};
+    }
+    return true;
+  } catch (e) {
+    showToast('Erro ao salvar substituições', 'error');
+    return false;
+  }
+}
+
+async function substTrocarMeal(meal){
+  if (!substState || meal === substState.meal) return;
+  const ok = await substSalvarAtual();
+  if (!ok) return;
+  substState.meal = meal;
+  substRenderMeal();
+}
+
+function substAplicarSelecao(){
+  if (!substState) return;
+  const prato = (substState.pratoSel || '').trim();
+  if (!prato) {
+    showToast('Selecione um item do Cardápio', 'error');
+    return;
+  }
+  const body = document.getElementById('substGridBody');
+  if (!body) return;
+  let tr = body.querySelector('tr.selected') || body.querySelector('tr');
+  if (!tr) tr = _substAppendRow(body, '', '');
+  const remInp = tr.querySelector('[data-col="remover"]');
+  const addInp = tr.querySelector('[data-col="adicionar"]');
+  if (remInp && !(remInp.value || '').trim()) {
+    remInp.value = prato;
+    substSelectGridRow(tr);
+    addInp?.focus();
+  } else {
+    tr = _substAppendRow(body, prato, '');
+    substSelectGridRow(tr);
+    tr.querySelector('[data-col="adicionar"]')?.focus();
+  }
+  _substEnsureEmptyRow(body);
+}
+
+function substLimparLinha(){
+  const body = document.getElementById('substGridBody');
+  const tr = body?.querySelector('tr.selected');
+  if (!tr) {
+    showToast('Selecione uma linha em Remover e adicionar', 'error');
+    return;
+  }
+  const rem = tr.querySelector('[data-col="remover"]');
+  const add = tr.querySelector('[data-col="adicionar"]');
+  if (rem) rem.value = '';
+  if (add) add.value = '';
+  const filled = [...body.querySelectorAll('tr')].filter(r => {
+    const a = (r.querySelector('[data-col="remover"]')?.value || '').trim();
+    const b = (r.querySelector('[data-col="adicionar"]')?.value || '').trim();
+    return a || b;
+  });
+  if (filled.length && !(rem?.value || add?.value)) {
+    tr.remove();
+  }
+  _substEnsureEmptyRow(body);
+  substSelectGridRow(body.querySelector('tr'));
+}
+
+async function substImportar(soJustificativa){
+  if (!substState?.mapaId) return;
+  await substSalvarAtual();
+  try {
+    const r = await fetch(`/nutricao/api/mapa/${substState.mapaId}/substituicoes/importar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ meal: substState.meal, justificativa: !!soJustificativa })
+    });
+    const j = await r.json();
+    if (!r.ok || j.ok === false) {
+      showToast((j && j.error) || 'Nada para importar', 'error');
+      return;
+    }
+    substState.data = j;
+    substRenderMeal();
+    showToast(soJustificativa ? 'Justificativa importada' : 'Substituições importadas', 'success');
+  } catch (e) {
+    showToast('Erro ao importar', 'error');
+  }
+}
+
+async function abrirSubstituicoes(mapaId){
+  const id = parseInt(mapaId, 10);
+  if (!id) {
+    showToast('Selecione uma linha', 'error');
+    return;
+  }
+  if (mapaBloqueado) {
+    showToast('Mapa bloqueado', 'error');
+    return;
+  }
+  try {
+    const r = await fetch(`/nutricao/api/mapa/${id}/substituicoes`);
+    const j = await r.json();
+    if (!r.ok || j.ok === false) {
+      showToast((j && j.error) || 'Falha ao carregar substituições', 'error');
+      return;
+    }
+    substState = { mapaId: id, meal: 'desjejum', data: j, pratoSel: '', gridRow: null };
+    document.getElementById('substHeader').textContent = j.header || '—';
+    document.getElementById('substDieta').textContent = j.dieta || '—';
+    document.getElementById('substOverlay').hidden = false;
+    substRenderMeal();
+  } catch (e) {
+    showToast('Erro ao abrir substituições', 'error');
+  }
+}
+
+async function fecharSubstituicoes(salvar){
+  if (salvar !== false && substState) {
+    const ok = await substSalvarAtual();
+    if (!ok) return;
+    showToast('Cardápio personalizado salvo', 'success');
+  }
+  document.getElementById('substOverlay').hidden = true;
+  substState = null;
 }
 
 function acaoContextMenu(acao){
@@ -863,7 +1463,7 @@ function acaoContextMenu(acao){
   }
   switch(acao){
     case 'alimentos': editarCampoTexto(ctxLinha, 'obs_etiqueta', 'Alimentos complementares'); break;
-    case 'substituicoes': showToast('Módulo de substituições em breve'); break;
+    case 'substituicoes': abrirSubstituicoes(ctxLinha?.dataset?.id); break;
     case 'avaliacao': showToast('Avaliação nutricional em breve'); break;
     case 'limpar': limparCampoAtual(); break;
     case 'carregar': carregarMapa(); break;
@@ -1389,9 +1989,6 @@ function abrirExcluirLinhaMapa(id){
   const l = linhasMapaCache[id];
   if (!l){ showToast('Linha não encontrada','error'); return; }
   window._excluirMapaId = id;
-  const clinicasOpts = (CLINICAS_MAPA || []).map(c =>
-    `<option value="${esc(c.nome)}" data-id="${c.id}" ${c.nome === (l.clinica || '') ? 'selected' : ''}>${esc(c.nome)}</option>`
-  ).join('');
   const html = `
     <p style="margin:0 0 0.75rem;color:#475569">Paciente: <strong>${esc(l.nome)}</strong></p>
     <div class="motivo-opcoes">
@@ -1401,83 +1998,21 @@ function abrirExcluirLinhaMapa(id){
     </div>
     <div id="transfDestino" hidden>
       <p style="margin:0.85rem 0 0.4rem;font-weight:600;color:#1f2937">Destino da transferência</p>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">Clínica *</label>
-          <select class="form-control" id="saida-clinica" onchange="carregarEnfermariasSaida()">
-            <option value="">Selecione</option>
-            ${clinicasOpts}
-          </select>
-        </div>
-        <div class="form-group"><label class="form-label">Enfermaria *</label>
-          <select class="form-control" id="saida-enfermaria" onchange="carregarLeitosSaida()">
-            <option value="">Selecione</option>
-          </select>
-        </div>
-        <div class="form-group"><label class="form-label">Leito *</label>
-          <select class="form-control" id="saida-leito">
-            <option value="">Selecione</option>
-          </select>
-        </div>
+      <div class="form-group">
+        <label class="form-label">Hospital transferência *</label>
+        <input type="text" class="form-control" id="saida-hospital" placeholder="Nome do hospital" maxlength="200" autocomplete="off">
       </div>
     </div>
   `;
   abrirModal('Motivo da saída', html, 'Confirmar', confirmarSaidaLinhaMapa);
-  setTimeout(() => {
-    if (l.clinica) carregarEnfermariasSaida(l.enfermaria, l.leito);
-  }, 40);
 }
 
 function toggleTransfDestino(){
   const tipo = document.querySelector('input[name="motivo-saida"]:checked')?.value;
   const box = document.getElementById('transfDestino');
   if (box) box.hidden = tipo !== 'transferencia';
-}
-
-async function carregarEnfermariasSaida(preEnf, preLeito){
-  const selCli = document.getElementById('saida-clinica');
-  const selEnf = document.getElementById('saida-enfermaria');
-  if (!selCli || !selEnf) return;
-  const opt = selCli.selectedOptions[0];
-  const cid = opt && opt.dataset.id;
-  if (!cid){
-    selEnf.innerHTML = '<option value="">Selecione a clínica</option>';
-    return;
-  }
-  try {
-    const r = await fetch(`/nutricao/api/clinicas/${cid}/enfermarias`);
-    const j = await r.json();
-    const lista = (j.clinica && j.clinica.enfermarias) || [];
-    selEnf.innerHTML = '<option value="">Selecione</option>' + lista.map(e =>
-      `<option value="${esc(e.nome)}" data-id="${e.id}" ${preEnf && e.nome === preEnf ? 'selected' : ''}>${esc(e.nome)}</option>`
-    ).join('');
-    await carregarLeitosSaida(preLeito);
-  } catch (e) {
-    selEnf.innerHTML = '<option value="">Erro ao carregar</option>';
-  }
-}
-
-async function carregarLeitosSaida(preLeito){
-  const selEnf = document.getElementById('saida-enfermaria');
-  const selLei = document.getElementById('saida-leito');
-  if (!selEnf || !selLei) return;
-  const opt = selEnf.selectedOptions[0];
-  const eid = opt && opt.dataset.id;
-  if (!eid){
-    selLei.innerHTML = '<option value="">Selecione a enfermaria</option>';
-    return;
-  }
-  try {
-    const r = await fetch(`/nutricao/api/leitos?enfermaria_id=${encodeURIComponent(eid)}&ativos=1`);
-    const j = await r.json();
-    const lista = Array.isArray(j) ? j : (j.leitos || []);
-    const atual = preLeito != null ? String(preLeito) : '';
-    selLei.innerHTML = '<option value="">Selecione</option>' + lista.map(l => {
-      const rotulo = l.numero || l.nome || ('Leito ' + l.id);
-      const valor = String(l.numero || l.nome || rotulo);
-      return `<option value="${esc(valor)}" ${atual && valor === atual ? 'selected' : ''}>${esc(rotulo)}${l.nome && l.numero ? ' — ' + esc(l.nome) : ''}</option>`;
-    }).join('');
-  } catch (e) {
-    selLei.innerHTML = '<option value="">Erro ao carregar</option>';
+  if (tipo === 'transferencia'){
+    setTimeout(() => document.getElementById('saida-hospital')?.focus(), 40);
   }
 }
 
@@ -1488,11 +2023,9 @@ async function confirmarSaidaLinhaMapa(){
   if (!motivo){ showToast('Selecione o motivo','error'); return; }
   const body = { motivo };
   if (motivo === 'transferencia'){
-    body.clinica = document.getElementById('saida-clinica')?.value || '';
-    body.enfermaria = document.getElementById('saida-enfermaria')?.value || '';
-    body.leito = document.getElementById('saida-leito')?.value || '';
-    if (!body.clinica || !body.enfermaria || !body.leito){
-      showToast('Informe clínica, enfermaria e leito de destino','error');
+    body.hospital_transferencia = (document.getElementById('saida-hospital')?.value || '').trim();
+    if (!body.hospital_transferencia){
+      showToast('Informe o hospital de transferência','error');
       return;
     }
   }
@@ -1507,7 +2040,7 @@ async function confirmarSaidaLinhaMapa(){
     return;
   }
   fecharModal();
-  if (motivo === 'transferencia') showToast('Transferência realizada','success');
+  if (motivo === 'transferencia') showToast('Transferência registrada — paciente removido do mapa','success');
   else if (motivo === 'obito') showToast('Óbito registrado — paciente removido do mapa','success');
   else showToast('Alta médica registrada — paciente removido do mapa','success');
   await carregarMapa();
@@ -1536,9 +2069,33 @@ document.addEventListener('DOMContentLoaded', function(){
     if (!e.target.closest('#mapaContextMenu')) fecharContextMenu();
   });
   document.addEventListener('keydown', function(e){
-    if (e.key === 'Escape') fecharContextMenu();
+    if (e.key === 'Escape') {
+      fecharContextMenu();
+      if (!document.getElementById('substOverlay')?.hidden) fecharSubstituicoes(true);
+    }
   });
   document.getElementById('mapaFileInput')?.addEventListener('change', onMapaFile);
+
+  document.getElementById('substTabs')?.addEventListener('click', function(e){
+    const btn = e.target.closest('.subst-tab');
+    if (!btn || !btn.dataset.meal) return;
+    substTrocarMeal(btn.dataset.meal);
+  });
+
+  // Clique na grade: edita; se Cardápio estiver selecionado e Remover vazio, preenche Remover
+  document.getElementById('substGridBody')?.addEventListener('focusin', function(e){
+    const inp = e.target.closest('input.cell-edit');
+    if (!inp || !substState) return;
+    const tr = inp.closest('tr');
+    substSelectGridRow(tr);
+    if (inp.dataset.col === 'remover' && !(inp.value || '').trim() && (substState.pratoSel || '').trim()) {
+      inp.value = substState.pratoSel;
+    }
+  });
+
+  document.getElementById('substOverlay')?.addEventListener('click', function(e){
+    if (e.target === this) fecharSubstituicoes(true);
+  });
 });
 </script>
 {% endblock %}

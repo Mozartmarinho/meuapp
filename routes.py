@@ -35,15 +35,56 @@ def login():
         if user and check_password_hash(user.senha, senha):
             session['user_id'] = user.id
             session['user_name'] = user.nome
+            try:
+                from audit_service import registrar_auditoria
+                registrar_auditoria(
+                    'login',
+                    modulo='sistema',
+                    entidade='usuario',
+                    entidade_id=str(user.id),
+                    detalhe={'email': email},
+                    usuario_id=user.id,
+                    usuario_nome=user.nome,
+                    status_http=200,
+                    sucesso=True,
+                )
+            except Exception:
+                pass
             flash('Login realizado com sucesso!', 'success')
             return redirect(url_for('main.inicio'))
         else:
+            try:
+                from audit_service import registrar_auditoria
+                registrar_auditoria(
+                    'login',
+                    modulo='sistema',
+                    entidade='usuario',
+                    detalhe={'email': email, 'resultado': 'falha'},
+                    usuario_nome=email,
+                    status_http=401,
+                    sucesso=False,
+                )
+            except Exception:
+                pass
             flash('Email ou senha incorretos.', 'error')
     return render_template('login.html')
 
 @main.route('/logout')
 def logout():
     """Logout do usuário"""
+    try:
+        from audit_service import registrar_auditoria
+        registrar_auditoria(
+            'logout',
+            modulo='sistema',
+            entidade='usuario',
+            entidade_id=str(session.get('user_id') or ''),
+            detalhe='Logout',
+            sucesso=True,
+            status_http=200,
+        )
+    except Exception:
+        pass
     session.clear()
     flash('Você foi deslogado com sucesso.', 'success')
     return redirect(url_for('main.login'))
@@ -359,6 +400,13 @@ def editar_equipamento(id):
             flash(f'Erro ao atualizar equipamento: {str(e)}', 'error')
             db.session.rollback()
     return render_template('editar_equipamento.html', equipamento=equipamento, clientes=clientes)
+
+@main.route('/configuracoes')
+@login_required
+def configuracoes():
+    """Página placeholder de configurações do módulo de chamados"""
+    return render_template('configuracoes.html')
+
 
 @main.route('/relatorios')
 #@login_required

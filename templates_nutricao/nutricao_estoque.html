@@ -10,6 +10,7 @@
   <button class="tab" onclick="mudarAbaEst('fornecedores',this)">Fornecedores</button>
   <button class="tab" onclick="mudarAbaEst('movimentacoes',this)">Movimentações</button>
   <button class="tab" onclick="mudarAbaEst('alertas',this)">Alertas</button>
+  <button class="tab" onclick="mudarAbaEst('unidades',this)">Unidades de medida</button>
 </div>
 
 <div id="estProdutos">
@@ -18,31 +19,58 @@
       <span>🔍</span>
       <input type="text" id="buscaProd" placeholder="Buscar produto..." oninput="filtrarTabela('buscaProd','tabelaProdutos')">
     </div>
-    <div class="toolbar-actions">
-      <button class="btn btn-primary" onclick="abrirModalProduto()">+ Novo Produto</button>
+    <div class="toolbar-actions" style="display:flex;gap:0.5rem;align-items:center;margin-left:auto">
+      <button class="btn btn-secondary" type="button" onclick="abrirModalGrupos()">Grupos</button>
+      <button class="btn btn-primary" type="button" onclick="abrirModalProduto()">+ Novo Produto</button>
     </div>
-  <div class="card" style="padding:0;overflow:hidden">
-    <div style="overflow-x:auto">
-      <table id="tabelaProdutos">
-        <thead><tr><th>Nome</th><th>Categoria</th><th>Unidade</th><th>Estoque Atual</th><th>Mínimo</th><th>Valor Unit.</th><th>Ações</th></tr></thead>
+  </div>
+  <div class="card estoque-grid-card">
+    <div class="estoque-table-scroll">
+      <table id="tabelaProdutos" class="data-table estoque-produtos-table">
+        <thead>
+          <tr>
+            <th>Grupo</th>
+            <th>Código</th>
+            <th>Descrição</th>
+            <th class="col-num">Quantidade</th>
+            <th>Unidade</th>
+            <th class="col-num">Preço médio</th>
+            <th class="col-num">Ult. preço</th>
+            <th class="col-num">Quant. min.</th>
+            <th class="col-num">Quant. max.</th>
+            <th class="col-num">Quant. liq.</th>
+            <th>Un. Liq.</th>
+            <th class="col-check">FC</th>
+            <th class="col-acoes">Ações</th>
+          </tr>
+        </thead>
         <tbody>
           {% for p in produtos %}
           <tr>
-            <td><strong>{{ p.nome }}</strong></td>
-            <td>{{ p.categoria }}</td>
+            <td>{{ p.grupo }}</td>
+            <td>{{ p.codigo }}</td>
+            <td>{{ p.descricao }}</td>
+            <td class="col-num">{{ '%.2f'|format(p.quantidade or 0) }}</td>
             <td>{{ p.unidade }}</td>
-            <td>{{ p.estoque_atual }}</td>
-            <td>{{ p.estoque_min }}</td>
-            <td>{{ p.valor_un }}</td>
-            <td>
-              <button class="btn btn-ghost btn-sm" title="Editar">✏️</button>
-              <button class="btn btn-ghost btn-sm" title="Excluir">🗑️</button>
+            <td class="col-num">{{ '%.2f'|format(p.preco_medio or 0) }}</td>
+            <td class="col-num">{{ '%.2f'|format(p.ult_preco or 0) }}</td>
+            <td class="col-num">{{ '%.2f'|format(p.quant_min or 0) }}</td>
+            <td class="col-num">{{ '%.2f'|format(p.quant_max or 0) }}</td>
+            <td class="col-num">{% if p.quant_liq %}{{ '%.2f'|format(p.quant_liq) }}{% endif %}</td>
+            <td>{{ p.un_liq or '' }}</td>
+            <td class="col-check">{% if p.fc %}X{% endif %}</td>
+            <td class="col-acoes">
+              <button class="btn btn-ghost btn-sm" type="button" title="Editar" onclick='abrirModalProduto({{ p|tojson }})'>✏️</button>
+              <button class="btn btn-ghost btn-sm" type="button" title="Excluir" onclick="excluirProduto({{ p.id }})">🗑️</button>
             </td>
           </tr>
+          {% else %}
+          <tr><td colspan="13" style="text-align:center;color:#64748b;padding:1.2rem">Nenhum produto cadastrado.</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+  </div>
 </div>
 
 <div id="estFornecedores" style="display:none">
@@ -51,27 +79,47 @@
       <span>🔍</span>
       <input type="text" id="buscaForn" placeholder="Buscar fornecedor..." oninput="filtrarTabela('buscaForn','tabelaFornecedores')">
     </div>
-    <div class="toolbar-actions">
-      <button class="btn btn-primary" onclick="abrirModalFornecedor()">+ Novo Fornecedor</button>
+    <div class="toolbar-actions" style="display:flex;gap:0.5rem;margin-left:auto">
+      <button class="btn btn-primary" type="button" onclick="abrirModalFornecedor()">+ Novo Fornecedor</button>
     </div>
-  <div class="card" style="padding:0;overflow:hidden">
-    <div style="overflow-x:auto">
-      <table id="tabelaFornecedores">
-        <thead><tr><th>Nome</th><th>CNPJ</th><th>Contato</th><th>Telefone</th><th>Email</th><th>Ações</th></tr></thead>
+  </div>
+  <div class="card estoque-grid-card">
+    <div class="estoque-table-scroll">
+      <table id="tabelaFornecedores" class="data-table estoque-wide-table">
+        <thead>
+          <tr>
+            <th>Nome</th>
+            <th>Município</th>
+            <th>UF</th>
+            <th>CNPJ</th>
+            <th>Telefone</th>
+            <th>E-mail</th>
+            <th class="col-num">Fat. (dias)</th>
+            <th class="col-acoes">Ações</th>
+          </tr>
+        </thead>
         <tbody>
-          {% for f in fornecedores %}
+          {% for f in fornecedores if f.ativo %}
           <tr>
             <td><strong>{{ f.nome }}</strong></td>
-            <td>{{ f.cnpj }}</td>
-            <td>{{ f.contato }}</td>
-            <td>{{ f.telefone }}</td>
-            <td>{{ f.email }}</td>
-            <td><button class="btn btn-ghost btn-sm" title="Excluir">🗑️</button></td>
+            <td>{{ f.municipio or '' }}</td>
+            <td>{{ f.estado or '' }}</td>
+            <td>{{ f.cnpj or '' }}</td>
+            <td>{{ f.telefone or '' }}</td>
+            <td>{{ f.email or '' }}</td>
+            <td class="col-num">{{ f.faturamento_dias or 0 }}</td>
+            <td class="col-acoes">
+              <button class="btn btn-ghost btn-sm" type="button" title="Editar" onclick='abrirModalFornecedor({{ f|tojson }})'>✏️</button>
+              <button class="btn btn-ghost btn-sm" type="button" title="Excluir" onclick="excluirFornecedor({{ f.id }})">🗑️</button>
+            </td>
           </tr>
+          {% else %}
+          <tr><td colspan="8" style="text-align:center;color:#64748b;padding:1.2rem">Nenhum fornecedor cadastrado.</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+  </div>
 </div>
 
 <div id="estMovimentacoes" style="display:none">
@@ -82,11 +130,12 @@
       </div>
       <div class="form-group"><label class="form-label">De:</label><input class="form-control" type="date"></div>
       <div class="form-group"><label class="form-label">Até:</label><input class="form-control" type="date"></div>
-      <div class="form-group"><label class="form-label">&nbsp;</label><button class="btn btn-primary w-full">Filtrar</button></div>
+      <div class="form-group"><label class="form-label">&nbsp;</label><button class="btn btn-primary w-full" type="button">Filtrar</button></div>
+    </div>
   </div>
-  <div class="card" style="padding:0;overflow:hidden">
-    <div style="overflow-x:auto">
-      <table>
+  <div class="card estoque-grid-card">
+    <div class="estoque-table-scroll">
+      <table class="data-table estoque-wide-table">
         <thead><tr><th>Data</th><th>Produto</th><th>Tipo</th><th>Quantidade</th><th>Responsável</th><th>Observação</th></tr></thead>
         <tbody>
           <tr><td>20/01/2025</td><td>Arroz 5kg</td><td><span class="status status-warning">Saída</span></td><td>10</td><td>Cozinha</td><td>Consumo</td></tr>
@@ -96,112 +145,679 @@
         </tbody>
       </table>
     </div>
+  </div>
 </div>
 
 <div id="estAlertas" style="display:none">
   <div class="card">
     <div class="card-header"><h3>⚠️ Produtos com Estoque Crítico</h3></div>
-    {% set alertas = produtos | selectattr('estoque_atual','le',15) | list %}
-    {% if alertas %}
+    {% set ns = namespace(tem=false) %}
     <table>
-      <thead><tr><th>Produto</th><th>Atual</th><th>Mínimo</th><th>Fornecedor</th><th>Ação</th></tr></thead>
+      <thead><tr><th>Produto</th><th>Atual</th><th>Mínimo</th><th>Grupo</th></tr></thead>
       <tbody>
-        {% for p in alertas %}
+        {% for p in produtos if (p.quant_min or 0) > 0 and (p.quantidade or 0) <= (p.quant_min or 0) %}
+        {% set ns.tem = true %}
         <tr>
-          <td><strong>{{ p.nome }}</strong></td>
-          <td><span class="status status-danger">{{ p.estoque_atual }}</span></td>
-          <td>{{ p.estoque_min }}</td>
-          <td>{{ fornecedores | selectattr('id','equalto',p.fornecedor_id) | map(attribute='nome') | first | default('') }}</td>
-          <td><button class="btn btn-sm btn-primary">Solicitar Compra</button></td>
+          <td><strong>{{ p.descricao }}</strong> ({{ p.codigo }})</td>
+          <td><span class="status status-danger">{{ '%.2f'|format(p.quantidade or 0) }}</span></td>
+          <td>{{ '%.2f'|format(p.quant_min or 0) }}</td>
+          <td>{{ p.grupo }}</td>
         </tr>
         {% endfor %}
+        {% if not ns.tem %}
+        <tr><td colspan="4" class="text-muted" style="padding:1rem">Nenhum alerta no momento.</td></tr>
+        {% endif %}
       </tbody>
     </table>
-    {% else %}
-    <p class="text-muted">Nenhum alerta no momento.</p>
-    {% endif %}
   </div>
+</div>
+
+<div id="estUnidades" style="display:none">
+  <div class="toolbar">
+    <h3 style="margin:0;font-size:1rem;font-weight:600">Cadastro de unidades de medida</h3>
+    <div class="toolbar-actions" style="display:flex;gap:0.5rem;margin-left:auto">
+      <button class="btn btn-ghost btn-sm" type="button" onclick="addLinhaUnidade()"><i class="fas fa-plus"></i> Nova</button>
+      <button class="btn btn-primary btn-sm" type="button" onclick="gravarUnidades()"><i class="fas fa-save"></i> Gravar</button>
+      <button class="btn btn-secondary btn-sm" type="button" onclick="mudarAbaEst('produtos', document.querySelector('.tabs .tab'))"><i class="fas fa-door-open"></i> Fechar</button>
+    </div>
+  </div>
+  <div class="card estoque-grid-card">
+    <div class="estoque-table-scroll">
+      <table class="data-table estoque-wide-table estoque-unidades-table" id="tabelaUnidades">
+        <thead>
+          <tr>
+            <th>Código</th>
+            <th>Descrição</th>
+            <th>Unid. Conversão</th>
+            <th class="col-num">Valor Conversão</th>
+            <th class="col-check">Nutrientes</th>
+            <th class="col-check">U.M.A.</th>
+            <th class="col-check">Estoque</th>
+            <th class="col-check">Pratos</th>
+            <th class="col-check">Ativo</th>
+            <th class="col-acoes">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="unidadesBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<style>
+.col-num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.col-check { text-align:center; }
+.col-acoes { white-space:nowrap; text-align:center; }
+
+/* Keep wide grids fully readable via horizontal scroll (no edge clipping). */
+#estProdutos,
+#estFornecedores,
+#estMovimentacoes,
+#estUnidades {
+  max-width: 100%;
+  min-width: 0;
+}
+.estoque-grid-card {
+  padding: 0;
+  overflow: hidden; /* radius only; scroll lives on .estoque-table-scroll */
+  max-width: 100%;
+  min-width: 0;
+}
+.estoque-table-scroll {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-width: 100%;
+  max-height: min(70vh, 720px);
+  -webkit-overflow-scrolling: touch;
+}
+.estoque-produtos-table,
+.estoque-wide-table {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  table-layout: auto;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.estoque-produtos-table {
+  min-width: max(100%, 1280px);
+}
+.estoque-produtos-table th,
+.estoque-produtos-table td,
+.estoque-wide-table th,
+.estoque-wide-table td {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.estoque-produtos-table thead th,
+.estoque-wide-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--brand-soft, #E7EEF8);
+  box-shadow: inset 0 -1px 0 var(--gray-200, #E5E7EB);
+}
+.estoque-produtos-table th:first-child,
+.estoque-produtos-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #fff;
+  box-shadow: 1px 0 0 var(--gray-200, #E5E7EB);
+}
+.estoque-produtos-table thead th:first-child {
+  z-index: 3;
+  background: var(--brand-soft, #E7EEF8);
+}
+.estoque-produtos-table tbody tr:hover td:first-child {
+  background: #f3f7fc;
+}
+
+/* Compact Unidades de medida grid */
+.estoque-unidades-table {
+  min-width: max(100%, 980px);
+  font-size: 0.82rem;
+}
+.estoque-unidades-table th,
+.estoque-unidades-table td {
+  padding: 0.28rem 0.4rem;
+}
+.estoque-unidades-table th.col-check,
+.estoque-unidades-table td.col-check {
+  padding-left: 0.3rem;
+  padding-right: 0.3rem;
+  width: 1%;
+}
+.estoque-unidades-table .u-codigo { width: 72px; min-width: 64px; max-width: 88px; }
+.estoque-unidades-table .u-desc { width: 160px; min-width: 120px; }
+.estoque-unidades-table .u-conv { width: 88px; min-width: 72px; }
+.estoque-unidades-table .u-valor { width: 88px; min-width: 72px; }
+#tabelaUnidades input.form-control,
+#tabelaUnidades select.form-control {
+  padding: 0.15rem 0.3rem;
+  font-size: 0.8rem;
+  line-height: 1.25;
+  height: 1.7rem;
+  min-height: 1.7rem;
+  min-width: 0;
+  border-radius: 4px;
+}
+#tabelaUnidades input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  cursor: pointer;
+  vertical-align: middle;
+}
+#tabelaUnidades .col-acoes .btn-sm {
+  padding: 0.1rem 0.28rem;
+  font-size: 0.85rem;
+  line-height: 1.2;
+}
+/* Compact Grupos de Produto modal grid */
+.estoque-grupos-table th,
+.estoque-grupos-table td {
+  padding: 0.28rem 0.4rem;
+  vertical-align: middle;
+}
+.estoque-grupos-table th.col-check,
+.estoque-grupos-table td.col-check,
+.estoque-grupos-table th.col-acoes,
+.estoque-grupos-table td.col-acoes {
+  width: 1%;
+  white-space: nowrap;
+  text-align: center;
+  padding-left: 0.3rem;
+  padding-right: 0.3rem;
+}
+.estoque-grupos-table .col-acoes .btn-sm {
+  padding: 0.1rem 0.28rem;
+  font-size: 0.85rem;
+  line-height: 1.2;
+}
+#gridGruposModal input.form-control {
+  padding: 0.15rem 0.3rem;
+  font-size: 0.8rem;
+  line-height: 1.25;
+  height: 1.7rem;
+  min-height: 1.7rem;
+}
+#modalOverlay .modal-dialog.forn-modal { max-width: 860px; }
+.forn-form-row { display:flex; flex-wrap:wrap; gap:0.65rem; }
+.forn-form-row .form-group { flex:1; min-width:120px; margin-bottom:0.65rem; }
+.forn-form-cep { flex:0 0 140px !important; min-width:120px !important; }
+.forn-form-uf { flex:0 0 90px !important; min-width:80px !important; }
+.forn-fat-box {
+  flex:0 0 170px; margin:0 0 0.65rem; padding:0.35rem 0.55rem 0.55rem;
+  border:1px solid #94a3b8; border-radius:4px; min-width:150px;
+}
+.forn-fat-box legend {
+  font-size:0.8rem; font-weight:600; color:#334155;
+  padding:0 0.35rem; margin-left:0.25rem; width:auto;
+}
+.forn-fat-wrap { display:flex; align-items:center; gap:0.45rem; }
+.forn-fat-wrap .form-control { width:70px; }
+.forn-fat-wrap span { font-size:0.9rem; color:#334155; white-space:nowrap; font-weight:600; }
+</style>
 
 <script>
-var fornecedoresDB = {{ fornecedores | tojson }};
+const ESTOQUES = {{ estoques|tojson }};
+const UNIDADES = {{ unidades|tojson }};
+const GRUPOS = {{ grupos|tojson }};
+const PRODUTOS = {{ produtos|tojson }};
+const FORNECEDORES = {{ fornecedores|tojson }};
+const ESTADOS = {{ estados|tojson }};
+const ESTOQUE_ID = {{ estoque_id or 'null' }};
+let unidadesDraft = JSON.parse(JSON.stringify(UNIDADES || []));
 
+function fmtNum(n){
+  const v = Number(n || 0);
+  return v.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 4 });
+}
+function esc(s){
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
 function mudarAbaEst(aba, btn){
-  document.querySelectorAll('#mainContent .tab').forEach(function(t){t.classList.remove('active');});
-  if(btn) btn.classList.add('active');
-  ['estProdutos','estFornecedores','estMovimentacoes','estAlertas'].forEach(function(id){
-    document.getElementById(id).style.display = id === 'est'+aba.charAt(0).toUpperCase()+aba.slice(1) ? '' : 'none';
+  document.querySelectorAll('#mainContent .tabs .tab').forEach(function(t){ t.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  else {
+    const tabs = document.querySelectorAll('#mainContent .tabs .tab');
+    const map = {produtos:0, fornecedores:1, movimentacoes:2, alertas:3, unidades:4};
+    if (tabs[map[aba]]) tabs[map[aba]].classList.add('active');
+  }
+  const ids = {
+    produtos: 'estProdutos',
+    fornecedores: 'estFornecedores',
+    movimentacoes: 'estMovimentacoes',
+    alertas: 'estAlertas',
+    unidades: 'estUnidades'
+  };
+  Object.keys(ids).forEach(function(k){
+    const el = document.getElementById(ids[k]);
+    if (el) el.style.display = (k === aba) ? '' : 'none';
+  });
+  if (aba === 'unidades') renderUnidadesGrid();
+}
+function filtrarTabela(inputId, tabelaId){
+  const f = document.getElementById(inputId).value.toLowerCase();
+  document.getElementById(tabelaId).querySelectorAll('tbody tr').forEach(function(r){
+    r.style.display = r.textContent.toLowerCase().includes(f) ? '' : 'none';
   });
 }
 
-function filtrarTabela(inputId, tabelaId){
-  var f = document.getElementById(inputId).value.toLowerCase();
-  var rows = document.getElementById(tabelaId).querySelectorAll('tbody tr');
-  rows.forEach(function(r){ r.style.display = r.textContent.toLowerCase().includes(f) ? '' : 'none'; });
+function unOpts(sel, allowEmpty){
+  let html = allowEmpty ? '<option value=""></option>' : '';
+  html += (UNIDADES || []).filter(u => u.ativo !== false).map(u =>
+    `<option value="${esc(u.codigo)}" ${u.codigo===sel?'selected':''}>${esc(u.codigo)}</option>`
+  ).join('');
+  return html;
+}
+function grupoOpts(sel){
+  return (GRUPOS || []).filter(g => g.ativo !== false).map(g =>
+    `<option value="${g.id}" ${Number(g.id)===Number(sel)?'selected':''}>${esc(g.nome)}</option>`
+  ).join('');
 }
 
-function abrirModalProduto(){
-  document.getElementById('modalTitle').textContent = 'Novo Produto';
-  document.getElementById('modalBody').innerHTML = [
-    '<div class="form-row">',
-      '<div class="form-group"><label class="form-label">Nome *</label><input class="form-control" id="f-prod-nome"></div>',
-      '<div class="form-group"><label class="form-label">Categoria</label><select class="form-control" id="f-prod-cat"><option>Alimenta\u00e7\u00e3o</option><option>Suplemento</option><option>Medicamento</option></select></div>',
-    '<div class="form-row">',
-      '<div class="form-group"><label class="form-label">Unidade</label><input class="form-control" id="f-prod-unid" placeholder="Ex: Kg, Un, Lata"></div>',
-      '<div class="form-group"><label class="form-label">Valor Unit\u00e1rio</label><input class="form-control" id="f-prod-valor" placeholder="Ex: 22,50"></div>',
-    '<div class="form-row">',
-      '<div class="form-group"><label class="form-label">Estoque M\u00ednimo</label><input class="form-control" type="number" id="f-prod-min" value="10"></div>',
-      '<div class="form-group"><label class="form-label">Estoque Atual</label><input class="form-control" type="number" id="f-prod-atual" value="0"></div>',
-    '<div class="form-group"><label class="form-label">Fornecedor</label><select class="form-control" id="f-prod-forn"><option value="">Selecione</option>',
-    fornecedoresDB.map(function(f){return '<option value="'+f.id+'">'+f.nome+'</option>';}).join(''),
-    '</select></div>'
-  ].join('');
-  document.getElementById('modalFooter').style.display = 'flex';
-  document.getElementById('modalConfirmBtn').textContent = 'Salvar';
-  document.getElementById('modalOverlay').classList.add('open');
-  window._editData = {tipo:'produto'};
+/* ---- Grupos modal ---- */
+function rowGrupoHtml(g){
+  const id = g && g.id ? g.id : '';
+  const nome = g ? esc(g.nome || '') : '';
+  const ativo = !g || g.ativo !== false;
+  return `<tr data-id="${id}">
+      <td><input class="form-control g-nome" value="${nome}"></td>
+      <td class="col-check"><input type="checkbox" class="g-ativo" ${ativo?'checked':''}></td>
+      <td class="col-acoes">
+        <button class="btn btn-ghost btn-sm" type="button" title="Excluir" onclick="excluirGrupo(this)">🗑️</button>
+      </td>
+    </tr>`;
 }
-
-function abrirModalFornecedor(){
-  document.getElementById('modalTitle').textContent = 'Novo Fornecedor';
-  document.getElementById('modalBody').innerHTML = [
-    '<div class="form-row">',
-      '<div class="form-group"><label class="form-label">Nome *</label><input class="form-control" id="f-forn-nome"></div>',
-      '<div class="form-group"><label class="form-label">CNPJ</label><input class="form-control" id="f-forn-cnpj" placeholder="00.000.000/0001-00"></div>',
-    '<div class="form-row">',
-      '<div class="form-group"><label class="form-label">Contato</label><input class="form-control" id="f-forn-contato"></div>',
-      '<div class="form-group"><label class="form-label">Telefone</label><input class="form-control" id="f-forn-tel"></div>',
-    '<div class="form-group"><label class="form-label">Email</label><input class="form-control" id="f-forn-email" type="email"></div>'
-  ].join('');
-  document.getElementById('modalFooter').style.display = 'flex';
-  document.getElementById('modalConfirmBtn').textContent = 'Salvar';
-  document.getElementById('modalOverlay').classList.add('open');
-  window._editData = {tipo:'fornecedor'};
+function abrirModalGrupos(){
+  const rows = (GRUPOS || []).map(g => rowGrupoHtml(g)).join('')
+    || '<tr><td colspan="3" style="text-align:center;color:#64748b">Nenhum grupo.</td></tr>';
+  const html = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:0.5rem">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="addLinhaGrupo()"><i class="fas fa-plus"></i> Novo grupo</button>
+    </div>
+    <div style="max-height:420px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px">
+      <table class="data-table estoque-grupos-table" id="gridGruposModal">
+        <thead><tr><th>Nome do grupo</th><th class="col-check" style="width:70px">Ativo</th><th class="col-acoes" style="width:44px"></th></tr></thead>
+        <tbody id="gruposModalBody">${rows}</tbody>
+      </table>
+    </div>`;
+  abrirModal('Cadastro de Grupos de Produto', html, 'Gravar', gravarGrupos);
+  const sec = document.querySelector('#modalFooter .btn-secondary');
+  if (sec) sec.textContent = 'Fechar';
 }
-
-function confirmarEstoque(){
-  var d = window._editData;
-  if(!d) return;
-  if(d.tipo === 'produto'){
-    var nome = document.getElementById('f-prod-nome').value.trim();
-    if(!nome){showToast('Nome \u00e9 obrigat\u00f3rio','error');return;}
-    fetch('/nutricao/api/estoque-produtos-legado',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-      nome:nome, categoria:document.getElementById('f-prod-cat').value,
-      unidade:document.getElementById('f-prod-unid').value,
-      valor_un:'R$'+document.getElementById('f-prod-valor').value.replace('R$',''),
-      estoque_min:parseInt(document.getElementById('f-prod-min').value)||0,
-      estoque_atual:parseInt(document.getElementById('f-prod-atual').value)||0,
-      fornecedor_id:parseInt(document.getElementById('f-prod-forn').value)||null
-    })}).then(function(r){return r.json();}).then(function(){showToast('Produto criado!');document.getElementById('modalOverlay').classList.remove('open');setTimeout(function(){location.reload();},800);});
-  } else {
-    var nome = document.getElementById('f-forn-nome').value.trim();
-    if(!nome){showToast('Nome \u00e9 obrigat\u00f3rio','error');return;}
-    fetch('/nutricao/api/fornecedores',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-      nome:nome, cnpj:document.getElementById('f-forn-cnpj').value,
-      contato:document.getElementById('f-forn-contato').value,
-      telefone:document.getElementById('f-forn-tel').value,
-      email:document.getElementById('f-forn-email').value
-    })}).then(function(r){return r.json();}).then(function(){showToast('Fornecedor criado!');document.getElementById('modalOverlay').classList.remove('open');setTimeout(function(){location.reload();},800);});
+function addLinhaGrupo(){
+  const body = document.getElementById('gruposModalBody');
+  if (!body) return;
+  if (body.querySelector('td[colspan]')) body.innerHTML = '';
+  body.insertAdjacentHTML('beforeend', rowGrupoHtml({ id: '', nome: '', ativo: true }));
+}
+async function excluirGrupo(btn){
+  const tr = btn && btn.closest ? btn.closest('tr') : null;
+  if (!tr) return;
+  const id = tr.dataset.id;
+  if (!id){
+    tr.remove();
+    const body = document.getElementById('gruposModalBody');
+    if (body && !body.querySelector('tr')) {
+      body.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#64748b">Nenhum grupo.</td></tr>';
+    }
+    showToast('Linha removida');
+    return;
   }
+  if (!confirm('Desativar este grupo de produto?')) return;
+  const r = await fetch('/nutricao/api/grupos-produto/' + id, { method: 'DELETE' });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha', 'error'); return; }
+  const pos = (GRUPOS || []).findIndex(x => Number(x.id) === Number(id));
+  if (pos >= 0) GRUPOS[pos].ativo = false;
+  const chk = tr.querySelector('.g-ativo');
+  if (chk) chk.checked = false;
+  showToast('Grupo desativado');
+}
+async function gravarGrupos(){
+  const trs = document.querySelectorAll('#gruposModalBody tr');
+  for (const tr of trs){
+    if (tr.querySelector('td[colspan]')) continue;
+    const nome = (tr.querySelector('.g-nome')?.value || '').trim().toUpperCase();
+    if (!nome) continue;
+    const ativo = !!tr.querySelector('.g-ativo')?.checked;
+    const id = tr.dataset.id;
+    const url = id ? `/nutricao/api/grupos-produto/${id}` : '/nutricao/api/grupos-produto';
+    const method = id ? 'PUT' : 'POST';
+    const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify({ nome, ativo }) });
+    const j = await r.json();
+    if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao gravar grupo', 'error'); return; }
+  }
+  showToast('Grupos gravados');
+  fecharModal();
+  setTimeout(() => location.reload(), 400);
+}
+
+/* ---- Unidades grid (aba) ---- */
+function syncUnidadesDraftFromGrid(){
+  const items = [];
+  document.querySelectorAll('#unidadesBody tr').forEach(tr => {
+    if (tr.querySelector('td[colspan]')) return;
+    const idx = parseInt(tr.dataset.idx, 10);
+    const row = {
+      id: tr.dataset.id ? parseInt(tr.dataset.id, 10) : null,
+      codigo: (tr.querySelector('.u-codigo')?.value || '').trim().toUpperCase(),
+      descricao: (tr.querySelector('.u-desc')?.value || '').trim().toUpperCase(),
+      unid_conversao: tr.querySelector('.u-conv')?.value || '',
+      valor_conversao: parseFloat(tr.querySelector('.u-valor')?.value) || 0,
+      flag_nutrientes: !!tr.querySelector('.u-nut')?.checked,
+      flag_uma: !!tr.querySelector('.u-uma')?.checked,
+      flag_estoque: !!tr.querySelector('.u-est')?.checked,
+      flag_pratos: !!tr.querySelector('.u-prat')?.checked,
+      ativo: !!tr.querySelector('.u-ativo')?.checked
+    };
+    items.push(row);
+    if (!Number.isNaN(idx) && unidadesDraft[idx]) unidadesDraft[idx] = row;
+  });
+  return items;
+}
+function renderUnidadesGrid(){
+  const body = document.getElementById('unidadesBody');
+  if (!body) return;
+  body.innerHTML = unidadesDraft.map((u, idx) => `
+    <tr data-idx="${idx}" data-id="${u.id||''}">
+      <td><input class="form-control u-codigo" value="${esc(u.codigo)}" maxlength="20"></td>
+      <td><input class="form-control u-desc" value="${esc(u.descricao||'')}"></td>
+      <td><select class="form-control u-conv">${unOpts(u.unid_conversao||'', true)}</select></td>
+      <td><input class="form-control col-num u-valor" type="number" step="any" value="${u.valor_conversao ?? 0}"></td>
+      <td class="col-check"><input type="checkbox" class="u-nut" ${u.flag_nutrientes?'checked':''}></td>
+      <td class="col-check"><input type="checkbox" class="u-uma" ${u.flag_uma?'checked':''}></td>
+      <td class="col-check"><input type="checkbox" class="u-est" ${u.flag_estoque?'checked':''}></td>
+      <td class="col-check"><input type="checkbox" class="u-prat" ${u.flag_pratos?'checked':''}></td>
+      <td class="col-check"><input type="checkbox" class="u-ativo" ${u.ativo?'checked':''}></td>
+      <td class="col-acoes">
+        <button class="btn btn-ghost btn-sm" type="button" title="Editar" onclick="abrirModalUnidade(${idx})">✏️</button>
+        <button class="btn btn-ghost btn-sm" type="button" title="Excluir" onclick="excluirUnidade(${idx})">🗑️</button>
+      </td>
+    </tr>
+  `).join('') || '<tr><td colspan="10" style="text-align:center;color:#64748b;padding:1rem">Nenhuma unidade.</td></tr>';
+}
+function addLinhaUnidade(){
+  syncUnidadesDraftFromGrid();
+  unidadesDraft.push({
+    id: null, codigo: '', descricao: '', unid_conversao: '', valor_conversao: 0,
+    flag_nutrientes: true, flag_uma: true, flag_estoque: true, flag_pratos: true, ativo: true
+  });
+  renderUnidadesGrid();
+}
+function collectUnidades(){
+  return syncUnidadesDraftFromGrid().filter(u => u.codigo);
+}
+function abrirModalUnidade(idx){
+  syncUnidadesDraftFromGrid();
+  const u = unidadesDraft[idx] || {};
+  const isEdit = !!u.id;
+  const html = [
+    '<div class="form-row">',
+      '<div class="form-group"><label class="form-label">Código *</label>',
+        '<input class="form-control" id="f-un-codigo" maxlength="20" value="'+esc(u.codigo||'')+'"></div>',
+      '<div class="form-group"><label class="form-label">Descrição</label>',
+        '<input class="form-control" id="f-un-desc" value="'+esc(u.descricao||'')+'"></div>',
+    '</div>',
+    '<div class="form-row">',
+      '<div class="form-group"><label class="form-label">Unid. Conversão</label>',
+        '<select class="form-control" id="f-un-conv">'+unOpts(u.unid_conversao||'', true)+'</select></div>',
+      '<div class="form-group"><label class="form-label">Valor Conversão</label>',
+        '<input class="form-control" type="number" step="any" id="f-un-valor" value="'+(u.valor_conversao??0)+'"></div>',
+    '</div>',
+    '<div class="form-row" style="gap:1rem;flex-wrap:wrap;margin-top:0.25rem">',
+      '<label class="form-label" style="display:flex;align-items:center;gap:0.35rem;margin:0"><input type="checkbox" id="f-un-nut" '+(u.flag_nutrientes?'checked':'')+'> Nutrientes</label>',
+      '<label class="form-label" style="display:flex;align-items:center;gap:0.35rem;margin:0"><input type="checkbox" id="f-un-uma" '+(u.flag_uma?'checked':'')+'> U.M.A.</label>',
+      '<label class="form-label" style="display:flex;align-items:center;gap:0.35rem;margin:0"><input type="checkbox" id="f-un-est" '+(u.flag_estoque?'checked':'')+'> Estoque</label>',
+      '<label class="form-label" style="display:flex;align-items:center;gap:0.35rem;margin:0"><input type="checkbox" id="f-un-prat" '+(u.flag_pratos?'checked':'')+'> Pratos</label>',
+      '<label class="form-label" style="display:flex;align-items:center;gap:0.35rem;margin:0"><input type="checkbox" id="f-un-ativo" '+(u.ativo !== false?'checked':'')+'> Ativo</label>',
+    '</div>'
+  ].join('');
+  abrirModal(isEdit ? 'Editar Unidade' : 'Nova Unidade', html, 'Salvar', function(){ salvarUnidade(idx); });
+  const sec = document.querySelector('#modalFooter .btn-secondary');
+  if (sec) sec.textContent = 'Cancelar';
+}
+function collectUnidadeModal(){
+  return {
+    codigo: (document.getElementById('f-un-codigo').value || '').trim().toUpperCase(),
+    descricao: (document.getElementById('f-un-desc').value || '').trim().toUpperCase(),
+    unid_conversao: document.getElementById('f-un-conv').value || '',
+    valor_conversao: parseFloat(document.getElementById('f-un-valor').value) || 0,
+    flag_nutrientes: !!document.getElementById('f-un-nut').checked,
+    flag_uma: !!document.getElementById('f-un-uma').checked,
+    flag_estoque: !!document.getElementById('f-un-est').checked,
+    flag_pratos: !!document.getElementById('f-un-prat').checked,
+    ativo: !!document.getElementById('f-un-ativo').checked
+  };
+}
+async function salvarUnidade(idx){
+  const body = collectUnidadeModal();
+  if (!body.codigo){ showToast('Código é obrigatório', 'error'); return; }
+  const existing = unidadesDraft[idx] || {};
+  const id = existing.id || null;
+  const url = id ? '/nutricao/api/unidades/' + id : '/nutricao/api/unidades';
+  const method = id ? 'PUT' : 'POST';
+  const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao salvar', 'error'); return; }
+  const saved = j.unidade || Object.assign({}, body, { id: j.id || id });
+  unidadesDraft[idx] = saved;
+  // keep UNIDADES list for selects in sync
+  const pos = (UNIDADES || []).findIndex(x => Number(x.id) === Number(saved.id));
+  if (pos >= 0) UNIDADES[pos] = saved;
+  else if (saved.id) UNIDADES.push(saved);
+  showToast('Unidade salva');
+  fecharModal();
+  renderUnidadesGrid();
+}
+async function excluirUnidade(idx){
+  syncUnidadesDraftFromGrid();
+  const u = unidadesDraft[idx];
+  if (!u) return;
+  if (!u.id){
+    unidadesDraft.splice(idx, 1);
+    renderUnidadesGrid();
+    showToast('Linha removida');
+    return;
+  }
+  if (!confirm('Desativar esta unidade de medida?')) return;
+  const r = await fetch('/nutricao/api/unidades/' + u.id, { method: 'DELETE' });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha', 'error'); return; }
+  u.ativo = false;
+  const pos = (UNIDADES || []).findIndex(x => Number(x.id) === Number(u.id));
+  if (pos >= 0) UNIDADES[pos].ativo = false;
+  showToast('Unidade desativada');
+  renderUnidadesGrid();
+}
+async function gravarUnidades(){
+  const items = collectUnidades();
+  if (!items.length){ showToast('Informe ao menos uma unidade', 'error'); return; }
+  const r = await fetch('/nutricao/api/unidades', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ items })
+  });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao gravar', 'error'); return; }
+  showToast('Unidades gravadas');
+  setTimeout(() => location.reload(), 400);
+}
+
+/* ---- Produto modal ---- */
+function abrirModalProduto(prod){
+  const p = prod || {};
+  const isEdit = !!p.id;
+  const html = [
+    '<div class="form-row">',
+      '<div class="form-group"><label class="form-label">Grupo *</label><select class="form-control" id="f-prod-grupo">'+grupoOpts(p.grupo_id)+'</select></div>',
+      '<div class="form-group"><label class="form-label">Código *</label><input class="form-control" id="f-prod-codigo" value="'+esc(p.codigo||'')+'"></div>',
+    '</div>',
+    '<div class="form-group"><label class="form-label">Descrição *</label><input class="form-control" id="f-prod-desc" value="'+esc(p.descricao||'')+'"></div>',
+    '<div class="form-row">',
+      '<div class="form-group"><label class="form-label">Quantidade</label><input class="form-control" type="number" step="any" id="f-prod-qtd" value="'+(p.quantidade??0)+'"></div>',
+      '<div class="form-group"><label class="form-label">Unidade</label><select class="form-control" id="f-prod-un">'+unOpts(p.unidade||'UN')+'</select></div>',
+    '</div>',
+    '<div class="form-row">',
+      '<div class="form-group"><label class="form-label">Preço médio</label><input class="form-control" type="number" step="any" id="f-prod-preco" value="'+(p.preco_medio??0.01)+'"></div>',
+      '<div class="form-group"><label class="form-label">Ult. preço</label><input class="form-control" type="number" step="any" id="f-prod-ult" value="'+(p.ult_preco??0.01)+'"></div>',
+    '</div>',
+    '<div class="form-row">',
+      '<div class="form-group"><label class="form-label">Quant. min.</label><input class="form-control" type="number" step="any" id="f-prod-min" value="'+(p.quant_min??0)+'"></div>',
+      '<div class="form-group"><label class="form-label">Quant. max.</label><input class="form-control" type="number" step="any" id="f-prod-max" value="'+(p.quant_max??0)+'"></div>',
+    '</div>',
+    '<div class="form-row">',
+      '<div class="form-group"><label class="form-label">Quant. liq.</label><input class="form-control" type="number" step="any" id="f-prod-liq" value="'+(p.quant_liq??0)+'"></div>',
+      '<div class="form-group"><label class="form-label">Un. Liq.</label><select class="form-control" id="f-prod-unliq">'+unOpts(p.un_liq||'NC')+'</select></div>',
+    '</div>',
+    '<div class="form-group"><label class="form-label"><input type="checkbox" id="f-prod-fc" '+(p.fc?'checked':'')+'> FC</label></div>'
+  ].join('');
+  abrirModal(isEdit ? 'Editar Produto' : 'Novo Produto', html, 'Salvar', function(){ salvarProduto(p.id); });
+  const sec = document.querySelector('#modalFooter .btn-secondary');
+  if (sec) sec.textContent = 'Cancelar';
+}
+async function salvarProduto(id){
+  if (!ESTOQUE_ID){ showToast('Nenhum estoque disponível', 'error'); return; }
+  const body = {
+    estoque_id: ESTOQUE_ID,
+    grupo_id: parseInt(document.getElementById('f-prod-grupo').value || 0, 10),
+    codigo: (document.getElementById('f-prod-codigo').value || '').trim().toUpperCase(),
+    descricao: (document.getElementById('f-prod-desc').value || '').trim().toUpperCase(),
+    quantidade: parseFloat(document.getElementById('f-prod-qtd').value) || 0,
+    unidade: document.getElementById('f-prod-un').value || 'UN',
+    preco_medio: parseFloat(document.getElementById('f-prod-preco').value) || 0,
+    ult_preco: parseFloat(document.getElementById('f-prod-ult').value) || 0,
+    quant_min: parseFloat(document.getElementById('f-prod-min').value) || 0,
+    quant_max: parseFloat(document.getElementById('f-prod-max').value) || 0,
+    quant_liq: parseFloat(document.getElementById('f-prod-liq').value) || 0,
+    un_liq: document.getElementById('f-prod-unliq').value || 'NC',
+    fc: !!document.getElementById('f-prod-fc').checked,
+    ativo: true
+  };
+  if (!body.codigo || !body.descricao){ showToast('Código e descrição são obrigatórios', 'error'); return; }
+  if (!body.grupo_id){ showToast('Selecione o grupo', 'error'); return; }
+  const url = id ? `/nutricao/api/produtos/${id}` : '/nutricao/api/produtos';
+  const method = id ? 'PUT' : 'POST';
+  const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao salvar', 'error'); return; }
+  showToast('Produto salvo');
+  fecharModal();
+  setTimeout(() => location.reload(), 400);
+}
+async function excluirProduto(id){
+  if (!confirm('Desativar este produto?')) return;
+  const r = await fetch('/nutricao/api/produtos/' + id, { method: 'DELETE' });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha', 'error'); return; }
+  showToast('Produto desativado');
+  setTimeout(() => location.reload(), 400);
+}
+
+function estadoOpts(sel){
+  return '<option value="">—</option>' + (ESTADOS || []).map(uf =>
+    `<option value="${esc(uf)}" ${uf===sel?'selected':''}>${esc(uf)}</option>`
+  ).join('');
+}
+
+function abrirModalFornecedor(forn){
+  const f = forn || {};
+  const isEdit = !!f.id;
+  const html = [
+    '<div class="form-group"><label class="form-label">Nome</label>',
+      '<input class="form-control" id="f-forn-nome" value="'+esc(f.nome||'')+'"></div>',
+    '<div class="form-group"><label class="form-label">Endereço</label>',
+      '<input class="form-control" id="f-forn-endereco" value="'+esc(f.endereco||'')+'"></div>',
+    '<div class="forn-form-row">',
+      '<div class="form-group" style="flex:1.2"><label class="form-label">Bairro</label>',
+        '<input class="form-control" id="f-forn-bairro" value="'+esc(f.bairro||'')+'"></div>',
+      '<div class="form-group" style="flex:1.2"><label class="form-label">Município</label>',
+        '<input class="form-control" id="f-forn-municipio" value="'+esc(f.municipio||'')+'"></div>',
+      '<div class="form-group forn-form-cep"><label class="form-label">CEP</label>',
+        '<input class="form-control" id="f-forn-cep" value="'+esc(f.cep||'')+'"></div>',
+    '</div>',
+    '<div class="forn-form-row">',
+      '<div class="form-group forn-form-uf"><label class="form-label">Estado</label>',
+        '<select class="form-control" id="f-forn-estado">'+estadoOpts(f.estado||'')+'</select></div>',
+      '<div class="form-group"><label class="form-label">CNPJ</label>',
+        '<input class="form-control" id="f-forn-cnpj" value="'+esc(f.cnpj||'')+'"></div>',
+      '<div class="form-group"><label class="form-label">Ins. Estadual</label>',
+        '<input class="form-control" id="f-forn-ie" value="'+esc(f.inscricao_estadual||'')+'"></div>',
+      '<div class="form-group"><label class="form-label">Telefone</label>',
+        '<input class="form-control" id="f-forn-tel" value="'+esc(f.telefone||'')+'"></div>',
+    '</div>',
+    '<div class="forn-form-row" style="align-items:flex-end">',
+      '<div class="form-group" style="flex:1"><label class="form-label">E-mail</label>',
+        '<input class="form-control" id="f-forn-email" type="email" value="'+esc(f.email||'')+'"></div>',
+      '<fieldset class="forn-fat-box"><legend>Faturamento</legend>',
+        '<div class="forn-fat-wrap">',
+          '<input class="form-control" type="number" min="0" step="1" id="f-forn-fat" value="'+(f.faturamento_dias??0)+'">',
+          '<span>Dias</span>',
+        '</div></fieldset>',
+    '</div>',
+    '<div class="form-group"><label class="form-label">Site</label>',
+      '<input class="form-control" id="f-forn-site" value="'+esc(f.site||'')+'"></div>',
+    '<div class="form-group" style="margin-bottom:0"><label class="form-label">Observação</label>',
+      '<input class="form-control" id="f-forn-obs" value="'+esc(f.observacao||'')+'"></div>'
+  ].join('');
+  abrirModal(isEdit ? 'Cadastro de Fornecedor' : 'Cadastro de Fornecedor', html, 'Gravar', function(){ salvarFornecedor(f.id); });
+  const dlg = document.querySelector('#modalOverlay .modal-dialog');
+  if (dlg) dlg.classList.add('forn-modal');
+  const sec = document.querySelector('#modalFooter .btn-secondary');
+  if (sec) {
+    sec.innerHTML = '<i class="fas fa-door-open"></i> Fechar';
+    sec.onclick = function(){
+      if (dlg) dlg.classList.remove('forn-modal');
+      fecharModal();
+      sec.onclick = fecharModal;
+      sec.textContent = 'Cancelar';
+    };
+  }
+  const conf = document.getElementById('modalConfirmBtn');
+  if (conf) conf.innerHTML = '<i class="fas fa-save"></i> Gravar';
+}
+function collectFornecedor(){
+  return {
+    nome: (document.getElementById('f-forn-nome').value || '').trim(),
+    endereco: document.getElementById('f-forn-endereco').value || '',
+    bairro: document.getElementById('f-forn-bairro').value || '',
+    municipio: document.getElementById('f-forn-municipio').value || '',
+    cep: document.getElementById('f-forn-cep').value || '',
+    estado: document.getElementById('f-forn-estado').value || '',
+    cnpj: document.getElementById('f-forn-cnpj').value || '',
+    inscricao_estadual: document.getElementById('f-forn-ie').value || '',
+    telefone: document.getElementById('f-forn-tel').value || '',
+    email: document.getElementById('f-forn-email').value || '',
+    faturamento_dias: parseInt(document.getElementById('f-forn-fat').value || 0, 10) || 0,
+    site: document.getElementById('f-forn-site').value || '',
+    observacao: document.getElementById('f-forn-obs').value || '',
+    ativo: true
+  };
+}
+async function salvarFornecedor(id){
+  const body = collectFornecedor();
+  if (!body.nome){ showToast('Nome é obrigatório', 'error'); return; }
+  const url = id ? '/nutricao/api/fornecedores/' + id : '/nutricao/api/fornecedores';
+  const method = id ? 'PUT' : 'POST';
+  const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha', 'error'); return; }
+  showToast(id ? 'Fornecedor atualizado' : 'Fornecedor cadastrado');
+  const dlg = document.querySelector('#modalOverlay .modal-dialog');
+  if (dlg) dlg.classList.remove('forn-modal');
+  fecharModal();
+  setTimeout(() => location.reload(), 400);
+}
+async function excluirFornecedor(id){
+  if (!confirm('Desativar este fornecedor?')) return;
+  const r = await fetch('/nutricao/api/fornecedores/' + id, { method: 'DELETE' });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha', 'error'); return; }
+  showToast('Fornecedor desativado');
+  setTimeout(() => location.reload(), 400);
 }
 </script>
 {% endblock %}

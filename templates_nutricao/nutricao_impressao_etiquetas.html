@@ -1,0 +1,319 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Impressão de Etiquetas</h1>
+  <p>Gera etiquetas de dieta a partir do mapa de refeições</p>
+</div>
+
+<div class="card eti-panel">
+  <fieldset class="eti-box">
+    <legend>Horário</legend>
+    <div class="eti-horas">
+      <label><input type="radio" name="horario" value="desjejum" checked> Desjejum</label>
+      <label><input type="radio" name="horario" value="almoco"> Almoço</label>
+      <label><input type="radio" name="horario" value="jantar"> Jantar</label>
+      <label><input type="radio" name="horario" value="colacao"> Colação</label>
+      <label><input type="radio" name="horario" value="merenda"> Merenda</label>
+      <label><input type="radio" name="horario" value="ceia"> Ceia</label>
+    </div>
+  </fieldset>
+
+  <fieldset class="eti-box">
+    <legend>Opções</legend>
+    <div class="form-group" style="max-width:220px;margin-bottom:0.85rem">
+      <label class="form-label" for="fData">Data:</label>
+      <input class="form-control" type="date" id="fData" value="{{ data_padrao }}">
+    </div>
+
+    <div class="eti-modo" style="margin-bottom:0.85rem">
+      <span class="eti-inline-label">Modo:</span>
+      <label><input type="radio" name="modo" value="mapa" checked> Mapa de Refeições</label>
+      <label class="disabled" title="Em breve"><input type="radio" name="modo" value="totalizacao_direta" disabled> Totalização Direta</label>
+    </div>
+
+    <div class="eti-inline-label" style="margin-bottom:0.35rem">Imprimir por:</div>
+    <div class="eti-radios" style="margin-bottom:0.65rem">
+      <label><input type="radio" name="imprimirPor" value="grupo_clinica" checked onchange="atualizarFiltro()"> Grupo de Clínica</label>
+      <label><input type="radio" name="imprimirPor" value="clinica" onchange="atualizarFiltro()"> Clínica</label>
+      <label><input type="radio" name="imprimirPor" value="enfermaria" onchange="atualizarFiltro()"> Enfermaria</label>
+    </div>
+    <div class="form-group" style="margin:0;max-width:420px">
+      <label class="form-label" id="lblFiltro" for="fFiltro">Grupo de Clínica:</label>
+      <select class="form-control" id="fFiltro"></select>
+    </div>
+  </fieldset>
+
+  <div class="eti-checks">
+    <label>
+      <input type="checkbox" id="fSomenteAlt" onchange="toggleAltHora()">
+      Imprimir somente etiquetas alteradas a partir de horário específico
+    </label>
+    <div class="eti-alt-hora" id="boxAltHora" hidden>
+      <label class="form-label" for="fAltHora">A partir de:</label>
+      <input class="form-control" type="time" id="fAltHora" value="00:00">
+    </div>
+    <label>
+      <input type="checkbox" id="fIncluirEnf">
+      Incluir nome da enfermaria
+    </label>
+  </div>
+
+  <fieldset class="eti-box eti-muted">
+    <legend>Imprimir</legend>
+    <div class="eti-radios">
+      <label><input type="radio" name="tipoImp" value="etiquetas" checked> Etiquetas</label>
+      <label class="disabled"><input type="radio" name="tipoImp" value="excluidas" disabled> Dietas excluídas</label>
+      <label class="disabled"><input type="radio" name="tipoImp" value="ambos" disabled> Ambos</label>
+    </div>
+  </fieldset>
+
+  <fieldset class="eti-box">
+    <legend>Ordenar por</legend>
+    <div class="eti-ordenar">
+      <label><input type="radio" name="ordenar" value="grupo_dieta_data" checked> Grupo; Dieta; Data; Clínica; Leito</label>
+      <label><input type="radio" name="ordenar" value="clinica_enfermaria_dieta"> Clínica; Enfermaria; Dieta</label>
+      <label><input type="radio" name="ordenar" value="data_clinica_leito_dieta"> Data; Clínica; Leito; Dieta</label>
+      <label><input type="radio" name="ordenar" value="clinica_enfermaria_leito"> Clínica; Enfermaria; Leito</label>
+    </div>
+  </fieldset>
+
+  <div class="eti-actions">
+    <button type="button" class="btn btn-primary" onclick="abrirModelo()">
+      <i class="fas fa-print"></i> Imprimir
+    </button>
+    <button type="button" class="btn btn-ghost" onclick="location.href='{{ url_for('nutricao.dashboard') }}'">
+      <i class="fas fa-times"></i> Fechar
+    </button>
+  </div>
+</div>
+
+<!-- Modal seleção de modelo -->
+<div class="eti-modal-backdrop" id="modalModelo" hidden>
+  <div class="eti-modal" role="dialog" aria-labelledby="modalModeloTitulo">
+    <div class="eti-modal-head">
+      <h2 id="modalModeloTitulo">Seleção do modelo de etiqueta</h2>
+      <button type="button" class="eti-modal-x" onclick="fecharModelo()" aria-label="Fechar">&times;</button>
+    </div>
+    <fieldset class="eti-box" style="margin-top:0">
+      <legend>Modelos pré-configurados</legend>
+      <div class="eti-pre">
+        {% for m in modelos.preconfigurados %}
+        <label>
+          <input type="radio" name="modeloPre" value="{{ m.id }}" {% if m.id == '6080' %}checked{% endif %} onchange="onPreModelo()">
+          {{ m.nome }}
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <fieldset class="eti-box">
+      <legend>Modelos personalizados</legend>
+      <div class="eti-custom-list" id="listaCustom">
+        <div class="eti-custom-head">Nome</div>
+        {% for m in modelos.personalizados %}
+        <label class="eti-custom-item {% if loop.first %}selected{% endif %}">
+          <input type="radio" name="modeloCustom" value="{{ m.id }}" {% if loop.first %}checked{% endif %} onchange="onCustomModelo()">
+          <span>{{ m.nome }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <p class="eti-hint">Selecione um pré-configurado <em>ou</em> um personalizado. O personalizado prevalece se marcado.</p>
+    </fieldset>
+    <div class="eti-modal-actions">
+      <button type="button" class="btn btn-primary" onclick="confirmarModelo()">
+        <i class="fas fa-check"></i> OK
+      </button>
+      <button type="button" class="btn btn-ghost" onclick="fecharModelo()">
+        <i class="fas fa-times"></i> Cancelar
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+.eti-panel { padding:1.1rem 1.25rem 1.4rem; max-width:720px; }
+.eti-box {
+  border:1px solid #dbe3ee; border-radius:8px; padding:0.75rem 0.9rem 0.95rem;
+  margin:0.75rem 0; background:#f8fafc;
+}
+.eti-box legend { font-size:0.82rem; font-weight:700; color:#334155; padding:0 0.35rem; }
+.eti-box.eti-muted { opacity:0.85; }
+.eti-horas {
+  display:grid; grid-template-columns:repeat(3, 1fr); gap:0.35rem 1rem;
+}
+.eti-horas label, .eti-radios label, .eti-modo label, .eti-ordenar label, .eti-checks label, .eti-pre label {
+  display:flex; align-items:center; gap:0.4rem;
+  font-size:0.9rem; color:#334155; margin:0.22rem 0;
+}
+.eti-radios { display:flex; flex-wrap:wrap; gap:0.45rem 1.25rem; }
+.eti-modo { display:flex; flex-wrap:wrap; align-items:center; gap:0.45rem 1rem; }
+.eti-inline-label { font-size:0.85rem; font-weight:600; color:#475569; }
+.eti-ordenar { display:flex; flex-direction:column; gap:0.15rem; }
+.eti-checks { display:flex; flex-direction:column; gap:0.45rem; margin:0.5rem 0 0.85rem; }
+.eti-alt-hora { display:flex; align-items:center; gap:0.55rem; margin:0.15rem 0 0.35rem 1.5rem; max-width:280px; }
+.eti-alt-hora .form-label { margin:0; white-space:nowrap; }
+label.disabled { color:#94a3b8; }
+.eti-actions { display:flex; gap:0.55rem; flex-wrap:wrap; margin-top:0.35rem; }
+
+.eti-modal-backdrop {
+  position:fixed; inset:0; background:rgba(15,23,42,.45);
+  display:flex; align-items:center; justify-content:center;
+  z-index:1200; padding:1rem;
+}
+.eti-modal-backdrop[hidden] { display:none !important; }
+.eti-modal {
+  background:#fff; border-radius:10px; width:min(560px,100%);
+  box-shadow:0 18px 50px rgba(15,23,42,.25); padding:1rem 1.15rem 1.15rem;
+  max-height:90vh; overflow:auto;
+}
+.eti-modal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:0.65rem; }
+.eti-modal-head h2 { margin:0; font-size:1.05rem; color:#0f2a5c; }
+.eti-modal-x {
+  border:0; background:transparent; font-size:1.5rem; line-height:1;
+  cursor:pointer; color:#64748b; padding:0 0.25rem;
+}
+.eti-pre { display:grid; grid-template-columns:1fr 1fr; gap:0.25rem 1rem; }
+.eti-custom-list {
+  border:1px solid #cbd5e1; border-radius:6px; background:#fff;
+  max-height:180px; overflow:auto;
+}
+.eti-custom-head {
+  font-size:0.78rem; font-weight:700; color:#64748b; padding:0.35rem 0.6rem;
+  border-bottom:1px solid #e2e8f0; background:#f1f5f9;
+}
+.eti-custom-item {
+  display:flex; align-items:center; gap:0.45rem;
+  padding:0.4rem 0.6rem; margin:0; cursor:pointer;
+  border-bottom:1px solid #f1f5f9; font-size:0.88rem;
+}
+.eti-custom-item input { display:none; }
+.eti-custom-item.selected { background:#2563eb; color:#fff; }
+.eti-hint { font-size:0.78rem; color:#64748b; margin:0.45rem 0 0; }
+.eti-modal-actions { display:flex; gap:0.5rem; margin-top:0.85rem; justify-content:flex-end; }
+
+@media (max-width:700px){
+  .eti-horas, .eti-pre { grid-template-columns:1fr 1fr; }
+}
+</style>
+
+<script>
+const CLINICAS = {{ clinicas|tojson }};
+const ENFERMARIAS = {{ enfermarias|tojson }};
+let usarCustom = true;
+
+function esc(s){
+  return String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
+
+function atualizarFiltro(){
+  const por = document.querySelector('input[name="imprimirPor"]:checked')?.value || 'grupo_clinica';
+  const lbl = document.getElementById('lblFiltro');
+  const sel = document.getElementById('fFiltro');
+  if (por === 'enfermaria'){
+    lbl.textContent = 'Enfermaria:';
+    sel.innerHTML = '<option value="">Todas</option>' + ENFERMARIAS.map(e =>
+      `<option value="${e.id}" data-nome="${esc(e.nome)}">${esc(e.nome)}</option>`
+    ).join('');
+  } else {
+    lbl.textContent = por === 'clinica' ? 'Clínica:' : 'Grupo de Clínica:';
+    sel.innerHTML = '<option value="">Todos</option>' + CLINICAS.map(c =>
+      `<option value="${c.id}" data-nome="${esc(c.nome)}">${esc(c.nome)}</option>`
+    ).join('');
+  }
+}
+
+function toggleAltHora(){
+  document.getElementById('boxAltHora').hidden = !document.getElementById('fSomenteAlt').checked;
+}
+
+function onPreModelo(){
+  usarCustom = false;
+  document.querySelectorAll('.eti-custom-item').forEach(el => el.classList.remove('selected'));
+  document.querySelectorAll('input[name="modeloCustom"]').forEach(r => { r.checked = false; });
+}
+
+function onCustomModelo(){
+  usarCustom = true;
+  document.querySelectorAll('input[name="modeloPre"]').forEach(r => { r.checked = false; });
+  document.querySelectorAll('.eti-custom-item').forEach(el => {
+    const inp = el.querySelector('input');
+    el.classList.toggle('selected', !!inp?.checked);
+  });
+}
+
+function abrirModelo(){
+  if (!document.getElementById('fData').value){
+    showToast('Informe a data','error');
+    return;
+  }
+  document.getElementById('modalModelo').hidden = false;
+  // padrão: primeiro personalizado (estilo legado)
+  const first = document.querySelector('input[name="modeloCustom"]');
+  if (first){
+    first.checked = true;
+    onCustomModelo();
+  }
+}
+
+function fecharModelo(){
+  document.getElementById('modalModelo').hidden = true;
+}
+
+function modeloSelecionado(){
+  if (usarCustom){
+    const c = document.querySelector('input[name="modeloCustom"]:checked');
+    if (c) return c.value;
+  }
+  const p = document.querySelector('input[name="modeloPre"]:checked');
+  return p ? p.value : '6080';
+}
+
+function coletar(){
+  const por = document.querySelector('input[name="imprimirPor"]:checked')?.value || 'grupo_clinica';
+  const sel = document.getElementById('fFiltro');
+  const opt = sel.selectedOptions[0];
+  return {
+    data: document.getElementById('fData').value,
+    horario: document.querySelector('input[name="horario"]:checked')?.value || 'desjejum',
+    modo: document.querySelector('input[name="modo"]:checked')?.value || 'mapa',
+    imprimir_por: por,
+    filtro_id: sel.value || '',
+    filtro_nome: opt && opt.value ? (opt.dataset.nome || opt.textContent) : '',
+    ordenar: document.querySelector('input[name="ordenar"]:checked')?.value || 'grupo_dieta_data',
+    incluir_enfermaria: document.getElementById('fIncluirEnf').checked,
+    somente_alteradas: document.getElementById('fSomenteAlt').checked,
+    alteradas_desde: document.getElementById('fAltHora').value || '',
+    modelo: modeloSelecionado()
+  };
+}
+
+function confirmarModelo(){
+  const p = coletar();
+  if (!p.data){ showToast('Informe a data','error'); return; }
+  const qs = new URLSearchParams({
+    data: p.data,
+    horario: p.horario,
+    modo: p.modo,
+    imprimir_por: p.imprimir_por,
+    filtro_nome: p.filtro_nome || '',
+    ordenar: p.ordenar,
+    incluir_enfermaria: p.incluir_enfermaria ? '1' : '0',
+    somente_alteradas: p.somente_alteradas ? '1' : '0',
+    alteradas_desde: p.alteradas_desde || '',
+    modelo: p.modelo
+  });
+  if (p.filtro_id) qs.set('filtro_id', p.filtro_id);
+  fecharModelo();
+  window.open('/nutricao/impressao-etiquetas/imprimir?' + qs.toString(), '_blank');
+}
+
+document.querySelectorAll('.eti-custom-item').forEach(el => {
+  el.addEventListener('click', () => {
+    const inp = el.querySelector('input');
+    if (inp){ inp.checked = true; onCustomModelo(); }
+  });
+});
+
+atualizarFiltro();
+toggleAltHora();
+</script>
+{% endblock %}

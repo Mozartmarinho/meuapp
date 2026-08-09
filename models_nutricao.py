@@ -109,6 +109,8 @@ class NutDieta(db.Model):
     nome = db.Column(db.String(200), nullable=False, unique=True)
     # basica | enteral | formula | lve | suplemento | outro
     categoria = db.Column(db.String(40), default='basica')
+    # Agrupamento visual (ex.: DIETAS ORAIS, NUTRICAO ENTERAL)
+    grupo = db.Column(db.String(80), default='')
     ativo = db.Column(db.Boolean, default=True)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -117,6 +119,7 @@ class NutDieta(db.Model):
             'id': self.id,
             'nome': self.nome,
             'categoria': self.categoria or 'basica',
+            'grupo': self.grupo or '',
             'ativo': self.ativo,
         }
 
@@ -218,14 +221,31 @@ class NutMapaRefeicao(db.Model):
     enteral = db.Column(db.Text)
     formula_infantil = db.Column(db.Text)
     lve = db.Column(db.Text)
+    # Cardápio personalizado por refeição (JSON): { meal: { pares, justificativa } }
+    substituicoes = db.Column(db.Text)
     data_inclusao = db.Column(db.DateTime, default=datetime.utcnow)
     usuario_alteracao = db.Column(db.String(80))
 
     data_saida = db.Column(db.Date)
     motivo_saida = db.Column(db.String(40))
+    hospital_transferencia = db.Column(db.String(200))
     ativo = db.Column(db.Boolean, default=True)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     data_atualizacao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def get_substituicoes(self):
+        import json
+        if not self.substituicoes:
+            return {}
+        try:
+            data = json.loads(self.substituicoes)
+            return data if isinstance(data, dict) else {}
+        except (TypeError, ValueError):
+            return {}
+
+    def set_substituicoes(self, data):
+        import json
+        self.substituicoes = json.dumps(data or {}, ensure_ascii=False)
 
     def to_dict(self):
         inclusao = self.data_inclusao or self.data_criacao
@@ -262,11 +282,13 @@ class NutMapaRefeicao(db.Model):
             'enteral': self.enteral or '',
             'formula_infantil': self.formula_infantil or '',
             'lve': self.lve or '',
+            'substituicoes': self.get_substituicoes(),
             'data_inclusao': inclusao.strftime('%d/%m/%y %H:%M:%S') if inclusao else '',
             'usuario_alteracao': usuario,
             'ultima_alteracao': ultima,
             'data_saida': self.data_saida.isoformat() if self.data_saida else '',
             'motivo_saida': self.motivo_saida or '',
+            'hospital_transferencia': self.hospital_transferencia or '',
             'ativo': self.ativo,
         }
 
@@ -499,6 +521,12 @@ class NutUnidadeMedida(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     codigo = db.Column(db.String(20), nullable=False, unique=True)
     descricao = db.Column(db.String(120))
+    unid_conversao = db.Column(db.String(20))
+    valor_conversao = db.Column(db.Float, default=0)
+    flag_nutrientes = db.Column(db.Boolean, default=True)
+    flag_uma = db.Column(db.Boolean, default=True)
+    flag_estoque = db.Column(db.Boolean, default=True)
+    flag_pratos = db.Column(db.Boolean, default=True)
     ativo = db.Column(db.Boolean, default=True)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -507,6 +535,12 @@ class NutUnidadeMedida(db.Model):
             'id': self.id,
             'codigo': self.codigo,
             'descricao': self.descricao or '',
+            'unid_conversao': self.unid_conversao or '',
+            'valor_conversao': self.valor_conversao or 0,
+            'flag_nutrientes': bool(self.flag_nutrientes),
+            'flag_uma': bool(self.flag_uma),
+            'flag_estoque': bool(self.flag_estoque),
+            'flag_pratos': bool(self.flag_pratos),
             'ativo': bool(self.ativo),
         }
 
@@ -702,4 +736,103 @@ class NutEtiquetaCampo(db.Model):
             'tipo': (self.tipo or 'D').upper()[:1],
             'nome': self.nome or '',
             'texto': self.texto or '',
+        }
+
+
+class NutPrecoRefeicao(db.Model):
+    """Legado: catálogo plano dieta/item (não é o modelo principal de preços)."""
+    __tablename__ = 'nut_precos_refeicoes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    refeicao = db.Column(db.String(160), nullable=False, unique=True)
+    grupo = db.Column(db.String(80), default='')
+    valor = db.Column(db.Float, default=0)  # espelho de valor_empresa (compat)
+    valor_empresa = db.Column(db.Float, default=0)
+    valor_paciente = db.Column(db.Float, default=0)
+    valor_acompanhante = db.Column(db.Float, default=0)
+    ordem = db.Column(db.Integer, default=0)
+    ativo = db.Column(db.Boolean, default=True)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    data_alteracao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        emp = float(self.valor_empresa if self.valor_empresa is not None else (self.valor or 0))
+        pac = float(self.valor_paciente or 0)
+        aco = float(self.valor_acompanhante or 0)
+        return {
+            'id': self.id,
+            'refeicao': self.refeicao or '',
+            'grupo': self.grupo or '',
+            'valor': emp,
+            'valor_empresa': emp,
+            'valor_paciente': pac,
+            'valor_acompanhante': aco,
+            'total': round(emp + pac + aco, 2),
+            'ordem': int(self.ordem or 0),
+            'ativo': bool(self.ativo),
+        }
+
+
+class NutTipoRefeicao(db.Model):
+    """Tipo de refeição do dia (Desjejum, Colação, Almoço, …)."""
+    __tablename__ = 'nut_tipos_refeicao'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(80), nullable=False, unique=True)
+    sigla = db.Column(db.String(10), nullable=False, unique=True)
+    ordem = db.Column(db.Integer, default=0)
+    hora_limite = db.Column(db.String(5), default='')  # HH:MM
+    ativo = db.Column(db.Boolean, default=True)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'nome': self.nome or '',
+            'sigla': self.sigla or '',
+            'ordem': int(self.ordem or 0),
+            'hora_limite': (self.hora_limite or '')[:5],
+            'ativo': bool(self.ativo),
+        }
+
+
+class NutPrecoDietaTipo(db.Model):
+    """Preço por combinação Dieta × Tipo de Refeição (Empresa / Paciente / Acompanhante)."""
+    __tablename__ = 'nut_precos_dieta_tipo'
+
+    id = db.Column(db.Integer, primary_key=True)
+    dieta_id = db.Column(db.Integer, db.ForeignKey('nut_dietas.id'), nullable=False, index=True)
+    tipo_refeicao_id = db.Column(db.Integer, db.ForeignKey('nut_tipos_refeicao.id'), nullable=False, index=True)
+    dieta = db.relationship('NutDieta', lazy='joined')
+    tipo_refeicao = db.relationship('NutTipoRefeicao', lazy='joined')
+    valor_empresa = db.Column(db.Float, default=0)
+    valor_paciente = db.Column(db.Float, default=0)
+    valor_acompanhante = db.Column(db.Float, default=0)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    data_alteracao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('dieta_id', 'tipo_refeicao_id', name='uq_preco_dieta_tipo'),
+    )
+
+    def to_dict(self):
+        emp = float(self.valor_empresa or 0)
+        pac = float(self.valor_paciente or 0)
+        aco = float(self.valor_acompanhante or 0)
+        dieta = self.dieta
+        tipo = self.tipo_refeicao
+        return {
+            'id': self.id,
+            'dieta_id': self.dieta_id,
+            'dieta': dieta.nome if dieta else '',
+            'dieta_categoria': (dieta.categoria if dieta else '') or 'basica',
+            'tipo_refeicao_id': self.tipo_refeicao_id,
+            'tipo': tipo.nome if tipo else '',
+            'tipo_sigla': tipo.sigla if tipo else '',
+            'tipo_ordem': int(tipo.ordem or 0) if tipo else 0,
+            'valor_empresa': emp,
+            'valor_paciente': pac,
+            'valor_acompanhante': aco,
+            'valor': emp,
+            'total': round(emp + pac + aco, 2),
         }

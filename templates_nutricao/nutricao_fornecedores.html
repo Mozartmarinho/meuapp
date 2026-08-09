@@ -1,7 +1,7 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
 <div class="page-header">
-  <h1>Cadastro de Fornecedores</h1>
+  <h1>Cadastro de Fornecedor</h1>
   <p>Dados cadastrais e condições de faturamento</p>
 </div>
 
@@ -15,7 +15,7 @@
     <button class="btn btn-primary btn-sm" type="button" onclick="novo()" title="Novo"><i class="fas fa-plus"></i></button>
     <button class="btn btn-ghost btn-sm" type="button" onclick="excluir()" title="Excluir"><i class="fas fa-minus"></i></button>
     <button class="btn btn-ghost btn-sm" type="button" onclick="setEdit(true)" title="Editar"><i class="fas fa-pencil-alt"></i></button>
-    <button class="btn btn-primary btn-sm" type="button" id="btnSalvar" onclick="salvar()" title="Salvar" disabled><i class="fas fa-check"></i></button>
+    <button class="btn btn-primary btn-sm" type="button" id="btnSalvar" onclick="salvar()" title="Gravar" disabled><i class="fas fa-save"></i></button>
     <button class="btn btn-ghost btn-sm" type="button" id="btnCancelar" onclick="cancelar()" title="Cancelar" disabled><i class="fas fa-times"></i></button>
     <span class="forn-sep"></span>
     <button class="btn btn-ghost btn-sm" type="button" onclick="location.reload()" title="Atualizar"><i class="fas fa-sync-alt"></i></button>
@@ -33,11 +33,11 @@
   </div>
 
   <div class="forn-row">
-    <div class="form-group">
+    <div class="form-group" style="flex:1.2">
       <label class="form-label" for="fBairro">Bairro</label>
       <input class="form-control" id="fBairro" data-field>
     </div>
-    <div class="form-group">
+    <div class="form-group" style="flex:1.2">
       <label class="form-label" for="fMunicipio">Município</label>
       <input class="form-control" id="fMunicipio" data-field>
     </div>
@@ -45,6 +45,9 @@
       <label class="form-label" for="fCep">CEP</label>
       <input class="form-control" id="fCep" data-field>
     </div>
+  </div>
+
+  <div class="forn-row">
     <div class="form-group forn-uf">
       <label class="form-label" for="fEstado">Estado</label>
       <select class="form-control" id="fEstado" data-field>
@@ -54,9 +57,6 @@
         {% endfor %}
       </select>
     </div>
-  </div>
-
-  <div class="forn-row">
     <div class="form-group">
       <label class="form-label" for="fCnpj">CNPJ</label>
       <input class="form-control" id="fCnpj" data-field>
@@ -71,42 +71,72 @@
     </div>
   </div>
 
-  <div class="forn-row">
-    <div class="form-group" style="flex:1.4">
+  <div class="forn-row forn-row-email-fat">
+    <div class="form-group" style="flex:1">
       <label class="form-label" for="fEmail">E-mail</label>
       <input class="form-control" id="fEmail" type="email" data-field>
     </div>
-    <div class="form-group forn-fat">
-      <label class="form-label" for="fFat">Faturamento</label>
+    <fieldset class="forn-fat-box">
+      <legend>Faturamento</legend>
       <div class="forn-fat-wrap">
         <input class="form-control" type="number" min="0" step="1" id="fFat" data-field>
         <span>Dias</span>
       </div>
-    </div>
+    </fieldset>
   </div>
 
   <div class="form-group">
     <label class="form-label" for="fSite">Site</label>
-    <input class="form-control" id="fSite" data-field placeholder="https://">
+    <input class="form-control" id="fSite" data-field>
   </div>
-  <div class="form-group" style="margin-bottom:0">
+  <div class="form-group">
     <label class="form-label" for="fObs">Observação</label>
     <input class="form-control" id="fObs" data-field>
+  </div>
+
+  <div class="forn-footer">
+    <button class="btn btn-primary" type="button" id="btnGravarFooter" onclick="salvar()" disabled>
+      <i class="fas fa-save"></i> Gravar
+    </button>
+    <button class="btn btn-secondary" type="button" onclick="window.history.length>1 ? history.back() : location.href='{{ url_for('nutricao.estoque') }}'">
+      <i class="fas fa-door-open"></i> Fechar
+    </button>
   </div>
 </div>
 
 <style>
-.forn-panel { padding: 1rem 1.15rem 1.35rem; max-width: 860px; }
+.forn-panel { padding: 1rem 1.15rem 1.35rem; max-width: 900px; }
 .forn-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:0.3rem; margin-bottom:1rem; }
 .forn-sep { width:1px; height:22px; background:#cbd5e1; margin:0 0.35rem; }
 .forn-pos { margin-left:auto; font-size:0.85rem; color:#64748b; font-weight:600; }
 .forn-row { display:flex; flex-wrap:wrap; gap:0.75rem; }
-.forn-row .form-group { flex:1; min-width:140px; }
-.forn-cep { flex:0 0 130px !important; min-width:110px !important; }
-.forn-uf { flex:0 0 100px !important; min-width:90px !important; }
-.forn-fat { flex:0 0 160px !important; }
+.forn-row .form-group { flex:1; min-width:120px; }
+.forn-cep { flex:0 0 140px !important; min-width:120px !important; }
+.forn-uf { flex:0 0 90px !important; min-width:80px !important; }
+.forn-row-email-fat { align-items:flex-end; }
+.forn-fat-box {
+  flex:0 0 170px;
+  margin:0;
+  padding:0.35rem 0.55rem 0.55rem;
+  border:1px solid #94a3b8;
+  border-radius:4px;
+  min-width:150px;
+}
+.forn-fat-box legend {
+  font-size:0.8rem;
+  font-weight:600;
+  color:#334155;
+  padding:0 0.35rem;
+  margin-left:0.25rem;
+  width:auto;
+}
 .forn-fat-wrap { display:flex; align-items:center; gap:0.45rem; }
-.forn-fat-wrap span { font-size:0.9rem; color:#475569; white-space:nowrap; }
+.forn-fat-wrap .form-control { width:70px; }
+.forn-fat-wrap span { font-size:0.9rem; color:#334155; white-space:nowrap; font-weight:600; }
+.forn-footer {
+  display:flex; justify-content:center; gap:0.75rem;
+  margin-top:1.25rem; padding-top:1rem; border-top:1px solid #e2e8f0;
+}
 .forn-panel:not(.editing) [data-field] {
   pointer-events:none;
   background:#f1f5f9;
@@ -137,6 +167,7 @@ function setEdit(on){
   document.querySelector('.forn-panel').classList.toggle('editing', editing);
   document.getElementById('btnSalvar').disabled = !editing;
   document.getElementById('btnCancelar').disabled = !editing;
+  document.getElementById('btnGravarFooter').disabled = !editing;
 }
 
 function updatePos(){

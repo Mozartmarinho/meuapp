@@ -1,0 +1,143 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Cadastro de Tipos de Refeição</h1>
+  <p>Desjejum, Colação, Almoço, Merenda, Jantar e Ceia — usados na grade de preços</p>
+</div>
+
+<div class="toolbar">
+  <div class="toolbar-search">
+    <i class="fas fa-search"></i>
+    <input type="text" id="buscaTipo" placeholder="Buscar tipo..." oninput="filtrarTipos()">
+  </div>
+  <button class="btn btn-primary btn-sm" type="button" onclick="abrirTipo()">
+    <i class="fas fa-plus"></i> Novo Tipo
+  </button>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden">
+  <div class="table-container" style="box-shadow:none;border-radius:0;">
+    <table class="data-table" id="tabelaTipos">
+      <thead>
+        <tr>
+          <th style="width:90px">Sigla</th>
+          <th>Nome</th>
+          <th style="width:100px;text-align:center">Hora limite</th>
+          <th style="width:90px;text-align:center">Ativo</th>
+          <th style="width:110px">Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tabelaTiposBody">
+        {% for t in tipos %}
+        <tr data-id="{{ t.id }}" data-nome="{{ t.nome }}" data-sigla="{{ t.sigla }}" data-ativo="{{ '1' if t.ativo else '0' }}">
+          <td><strong>{{ t.sigla }}</strong></td>
+          <td>{{ t.nome }}</td>
+          <td style="text-align:center">{{ t.hora_limite or '—' }}</td>
+          <td style="text-align:center">
+            <input type="checkbox" {% if t.ativo %}checked{% endif %} onchange="toggleTipoAtivo({{ t.id }}, this.checked)">
+          </td>
+          <td>
+            <button class="btn btn-ghost btn-sm" type="button"
+              onclick='abrirTipo({{ {"id": t.id, "nome": t.nome, "sigla": t.sigla, "hora_limite": t.hora_limite, "ativo": t.ativo}|tojson }})'
+              title="Editar">
+              <i class="fas fa-edit"></i>
+            </button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="excluirTipo({{ t.id }})" title="Desativar">
+              <i class="fas fa-trash"></i>
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr id="linhaVazia">
+          <td colspan="5" style="text-align:center;color:#6B7280;">Nenhum tipo cadastrado.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function filtrarTipos(){
+  const q = (document.getElementById('buscaTipo').value || '').toLowerCase().trim();
+  document.querySelectorAll('#tabelaTiposBody tr').forEach(tr => {
+    if (tr.id === 'linhaVazia') return;
+    const nome = (tr.dataset.nome || '').toLowerCase();
+    const sigla = (tr.dataset.sigla || '').toLowerCase();
+    tr.style.display = (!q || nome.includes(q) || sigla.includes(q)) ? '' : 'none';
+  });
+}
+
+function abrirTipo(data){
+  const isEdit = !!(data && data.id);
+  const hora = (data && data.hora_limite) ? String(data.hora_limite) : '';
+  const html = `
+    <div class="form-group">
+      <label class="form-label">Nome *</label>
+      <input class="form-control" id="f-tipo-nome" value="${(data && data.nome) ? String(data.nome).replace(/"/g,'&quot;') : ''}" placeholder="Ex: DESJEJUM">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Sigla *</label>
+      <input class="form-control" id="f-tipo-sigla" maxlength="10" value="${(data && data.sigla) ? String(data.sigla).replace(/"/g,'&quot;') : ''}" placeholder="Ex: DESJ">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Hora limite</label>
+      <input class="form-control" id="f-tipo-hora-limite" type="text" inputmode="numeric"
+        value="${hora.replace(/"/g,'&quot;')}"
+        placeholder="__:__" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+        title="Formato HH:MM">
+    </div>
+    <div class="form-group" style="display:flex;align-items:center;gap:8px;margin-top:12px;">
+      <input type="checkbox" id="f-tipo-ativo" ${(data ? data.ativo !== false : true) ? 'checked' : ''}>
+      <label class="form-label" for="f-tipo-ativo" style="margin:0">Ativo</label>
+    </div>
+  `;
+  window._editTipoId = isEdit ? data.id : null;
+  abrirModal(isEdit ? 'Editar Tipo de Refeição' : 'Novo Tipo de Refeição', html, isEdit ? 'Atualizar' : 'Salvar', salvarTipo);
+}
+
+async function salvarTipo(){
+  const nome = (document.getElementById('f-tipo-nome')?.value || '').trim();
+  const sigla = (document.getElementById('f-tipo-sigla')?.value || '').trim();
+  if (!nome){ showToast('Informe o nome','error'); return; }
+  if (!sigla){ showToast('Informe a sigla','error'); return; }
+  const horaRaw = (document.getElementById('f-tipo-hora-limite')?.value || '').trim();
+  if (horaRaw && !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(horaRaw)){
+    showToast('Hora limite inválida (use HH:MM)','error'); return;
+  }
+  const body = {
+    nome,
+    sigla,
+    hora_limite: horaRaw,
+    ativo: !!document.getElementById('f-tipo-ativo')?.checked,
+  };
+  const id = window._editTipoId;
+  const url = id ? `/nutricao/api/tipos-refeicao/${id}` : '/nutricao/api/tipos-refeicao';
+  const method = id ? 'PUT' : 'POST';
+  const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao salvar','error'); return; }
+  fecharModal();
+  showToast(id ? 'Tipo atualizado' : 'Tipo cadastrado','success');
+  setTimeout(() => location.reload(), 450);
+}
+
+async function toggleTipoAtivo(id, ativo){
+  const r = await fetch(`/nutricao/api/tipos-refeicao/${id}`, {
+    method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ativo: !!ativo })
+  });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao atualizar','error'); return; }
+  showToast(ativo ? 'Tipo ativado' : 'Tipo desativado','success');
+}
+
+async function excluirTipo(id){
+  if (!confirm('Desativar este tipo de refeição?')) return;
+  const r = await fetch(`/nutricao/api/tipos-refeicao/${id}`, { method: 'DELETE' });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao desativar','error'); return; }
+  showToast('Tipo desativado','success');
+  setTimeout(() => location.reload(), 450);
+}
+</script>
+{% endblock %}

@@ -76,7 +76,13 @@
                 </a>
             </li>
             <li>
-                <a href="#" onclick="alert('Funcionalidade em desenvolvimento')">
+                <a href="{{ url_for('auditoria.dashboard') }}">
+                    <i class="fas fa-clipboard-check" style="margin-right: 0.75rem;"></i>
+                    Auditoria
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('main.configuracoes') }}" class="{% if request.endpoint == 'main.configuracoes' %}active{% endif %}">
                     <i class="fas fa-cog" style="margin-right: 0.75rem;"></i>
                     Configurações
                 </a>

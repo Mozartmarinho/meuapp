@@ -1,148 +1,52 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Novo Usuário - São Geraldo Service</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-</head>
-<body>
-    <div class="container">
-        <div class="form-header">
-            <a href="{{ url_for('main.listar_usuarios') }}" class="btn btn-secondary">
-                <i class="fas fa-arrow-left"></i> Voltar
-            </a>
-            <h1>Novo Usuário</h1>
-        </div>
+{% extends "base.html" %}
 
-        <form method="POST" class="form-container">
-            <div class="form-group">
-                <label for="nome">Nome Completo *</label>
-                <input type="text" id="nome" name="nome" required>
-            </div>
+{% block title %}Novo Usuário - São Geraldo Service{% endblock %}
 
-            <div class="form-group">
-                <label for="email">Email (Login) *</label>
-                <input type="email" id="email" name="email" required>
-            </div>
-
-            <div class="form-group">
-                <label for="senha">Senha *</label>
-                <input type="password" id="senha" name="senha" required minlength="6">
-            </div>
-
-            <div class="form-group">
-                <label for="tipo">Tipo de Usuário</label>
-                <select id="tipo" name="tipo">
-                    <option value="operador">Operador</option>
-                    <option value="admin">Administrador</option>
-                </select>
-            </div>
-
-            <div class="form-actions">
-                <button type="submit" class="btn btn-success">
-                    <i class="fas fa-save"></i> Criar Usuário
-                </button>
-            </div>
-        </form>
+{% block content %}
+<div class="container">
+    <div class="header">
+        <h1>Novo Usuário</h1>
+        <a href="{{ url_for('main.listar_usuarios') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Voltar
+        </a>
     </div>
 
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background-color: #f4f4f4;
-        }
+    <form method="POST" class="form-container">
+        <div class="form-group">
+            <label for="nome">Nome Completo *</label>
+            <input type="text" id="nome" name="nome" required>
+        </div>
 
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-        }
+        <div class="form-group">
+            <label for="email">Email (Login) *</label>
+            <input type="email" id="email" name="email" required>
+        </div>
 
-        .form-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
+        <div class="form-group">
+            <label for="senha">Senha *</label>
+            <input type="password" id="senha" name="senha" required minlength="6">
+        </div>
 
-        .form-header h1 {
-            margin: 0;
-            color: #333;
-        }
+        <div class="form-group">
+            <label for="tipo">Tipo de Usuário</label>
+            <select id="tipo" name="tipo">
+                <option value="operador">Operador</option>
+                <option value="admin">Administrador</option>
+            </select>
+        </div>
 
-        .form-container {
-            background-color: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
+        <div class="form-actions">
+            <button type="submit" class="btn btn-success">
+                <i class="fas fa-save"></i> Criar Usuário
+            </button>
+        </div>
+    </form>
+</div>
 
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: 600;
-            color: #333;
-        }
-
-        .form-group input,
-        .form-group select {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 16px;
-            box-sizing: border-box;
-        }
-
-        .form-group input:focus,
-        .form-group select:focus {
-            outline: none;
-            border-color: #007bff;
-            box-shadow: 0 0 5px rgba(0,123,255,0.3);
-        }
-
-        .btn {
-            padding: 10px 15px;
-            border: none;
-            border-radius: 5px;
-            font-size: 16px;
-            cursor: pointer;
-            text-decoration: none;
-            transition: background-color 0.3s;
-            display: inline-flex;
-            align-items: center;
-        }
-
-        .btn-secondary {
-            background-color: #6c757d;
-            color: white;
-        }
-
-        .btn-secondary:hover {
-            background-color: #5a6268;
-        }
-
-        .btn-success {
-            background-color: #28a745;
-            color: white;
-        }
-
-        .btn-success:hover {
-            background-color: #218838;
-        }
-
-        .form-actions {
-            text-align: right;
-            margin-top: 30px;
-        }
-    </style>
-</body>
-</html>
+<style>
+.container { padding: 20px 0; max-width: 700px; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 1rem; flex-wrap: wrap; }
+.header h1 { margin: 0; }
+.form-actions { text-align: right; margin-top: 20px; }
+</style>
+{% endblock %}

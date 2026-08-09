@@ -1,0 +1,619 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Cadastro de Preços das Refeições</h1>
+  <p>Valores por Dieta × Tipo de Refeição (Funcionário, Paciente e Acompanhante)</p>
+</div>
+
+<div class="card prec-panel">
+  <div class="prec-toolbar">
+    <div class="prec-section-title">Grade de preços</div>
+    <div class="prec-controls">
+      <label class="prec-label">
+        Coluna em edição
+        <select id="colPayer" class="form-control" onchange="onPayerChange()">
+          <option value="empresa" selected>Funcionário</option>
+          <option value="paciente">Paciente</option>
+          <option value="acompanhante">Acompanhante</option>
+        </select>
+      </label>
+      <label class="prec-check">
+        <input type="checkbox" id="chkReplicar" checked>
+        Replicar valor nas 3 colunas
+      </label>
+      <input type="text" id="filtroDieta" class="form-control prec-filter" placeholder="Filtrar dieta..." oninput="filtrarLinhas()">
+      <button type="button" class="btn btn-primary btn-sm" onclick="abrirAdicionarValor()">
+        <i class="fas fa-plus"></i> Adicionar valor à dieta
+      </button>
+    </div>
+  </div>
+
+  <div class="table-container prec-table-wrap">
+    <table class="data-table" id="tabelaPrecos">
+      <thead>
+        <tr>
+          <th class="prec-dieta-col">Dieta</th>
+          {% for t in tipos %}
+          <th class="prec-tipo-col" title="{{ t.nome }}">{{ t.sigla }}</th>
+          {% endfor %}
+          <th class="prec-acoes-col">Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tabelaPrecosBody">
+        {% set ns = namespace(grupo='') %}
+        {% for linha in linhas %}
+        {% set g = (linha.grupo or '')|trim %}
+        {% if g and g != ns.grupo %}
+        {% set ns.grupo = g %}
+        <tr class="prec-grupo-row" data-grupo="{{ g }}">
+          <td colspan="{{ (tipos|length) + 2 }}" class="prec-grupo">{% if g|upper in ['EMPRESA', 'FUNCIONARIO', 'FUNCIONÁRIO'] %}FUNCIONÁRIO{% else %}{{ g }}{% endif %}</td>
+        </tr>
+        {% endif %}
+        <tr data-dieta-id="{{ linha.dieta_id }}" data-dieta="{{ linha.dieta }}" data-grupo="{{ g }}">
+          <td class="prec-nome">{{ linha.dieta }}</td>
+          {% for t in tipos %}
+          {% set c = linha.celulas.get(t.id) or {'id': none, 'valor_empresa': 0, 'valor_paciente': 0, 'valor_acompanhante': 0} %}
+          <td>
+            <input
+              class="form-control prec-valor"
+              type="text"
+              inputmode="decimal"
+              data-preco-id="{{ c.id or '' }}"
+              data-dieta-id="{{ linha.dieta_id }}"
+              data-tipo-id="{{ t.id }}"
+              data-empresa="{{ '%.2f'|format(c.valor_empresa or 0) }}"
+              data-paciente="{{ '%.2f'|format(c.valor_paciente or 0) }}"
+              data-acompanhante="{{ '%.2f'|format(c.valor_acompanhante or 0) }}"
+              value="{{ '%.2f'|format(c.valor_empresa or 0)|replace('.', ',') }}"
+              aria-label="{{ linha.dieta }} — {{ t.nome }}"
+              oninput="onCellInput(this)"
+            >
+          </td>
+          {% endfor %}
+          <td class="prec-acoes">
+            <button class="btn btn-ghost btn-sm" type="button"
+              onclick="excluirDietaPreco({{ linha.dieta_id }}, this)"
+              title="Excluir">
+              <i class="fas fa-trash"></i>
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="{{ (tipos|length) + 2 }}" style="text-align:center;color:#6B7280;">
+            Nenhuma dieta com preços. Cadastre dietas e tipos de refeição primeiro.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="prec-actions">
+    <button type="button" class="btn btn-primary" id="btnGravar" onclick="gravarPrecos()">
+      <i class="fas fa-save"></i> Gravar
+    </button>
+  </div>
+</div>
+
+<style>
+.prec-panel {
+  padding: 1rem 1.15rem 1.25rem;
+  max-width: 1100px;
+}
+.prec-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+.prec-section-title {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #0f2a5c;
+}
+.prec-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+.prec-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #334155;
+}
+.prec-label .form-control {
+  min-width: 140px;
+  padding: 0.35rem 0.5rem;
+}
+.prec-check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  color: #334155;
+  margin-bottom: 0.2rem;
+}
+.prec-filter {
+  min-width: 180px;
+  max-width: 220px;
+  padding: 0.35rem 0.5rem;
+}
+.prec-table-wrap {
+  box-shadow: none;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: auto;
+  max-height: calc(100vh - 280px);
+}
+#tabelaPrecos thead th {
+  background: #0f2a5c;
+  color: #fff;
+  font-weight: 700;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  text-align: center;
+  white-space: nowrap;
+}
+.prec-dieta-col {
+  text-align: left !important;
+  min-width: 180px;
+}
+.prec-tipo-col {
+  min-width: 78px;
+}
+.prec-acoes-col {
+  width: 72px;
+  min-width: 72px;
+}
+.prec-nome {
+  font-weight: 700;
+  color: #0f2a5c;
+  position: sticky;
+  left: 0;
+  background: #fff;
+  z-index: 1;
+}
+.prec-grupo-row td.prec-grupo {
+  background: #1e4d8c;
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
+  padding: 0.4rem 0.65rem;
+  text-align: left;
+}
+#tabelaPrecos tbody tr:nth-child(even) .prec-nome {
+  background: #f8fafc;
+}
+#tabelaPrecos tbody tr:hover .prec-nome {
+  background: #eef4fb;
+}
+.prec-valor {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  max-width: 88px;
+  margin: 0 auto;
+  padding: 0.3rem 0.4rem;
+}
+.prec-acoes {
+  text-align: center;
+  white-space: nowrap;
+}
+.prec-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+}
+#tabelaPrecos tbody tr:nth-child(even) {
+  background: #f8fafc;
+}
+#tabelaPrecos tbody tr:hover {
+  background: #eef4fb;
+}
+#tabelaPrecos td {
+  vertical-align: middle;
+}
+.prec-add-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem 1rem;
+}
+.prec-add-grid .full { grid-column: 1 / -1; }
+.prec-tipos-box {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+}
+.prec-tipo-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.4rem 0.45rem;
+  background: #f8fafc;
+}
+.prec-tipo-item label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #0f2a5c;
+  margin: 0;
+}
+.prec-tipo-item input[type="text"] {
+  text-align: right;
+}
+.prec-hint {
+  font-size: 0.78rem;
+  color: #64748b;
+  margin: 0.15rem 0 0;
+}
+@media (max-width: 720px) {
+  .prec-add-grid { grid-template-columns: 1fr; }
+  .prec-tipos-box { grid-template-columns: 1fr 1fr; }
+}
+</style>
+
+<script>
+const TIPOS = {{ tipos|tojson }};
+const DIETAS = {{ dietas|tojson }};
+
+const GRUPO_CTX = {
+  empresa: ['EMPRESA', 'FUNCIONARIO', 'FUNCIONÁRIO'],
+  paciente: ['LACTÁRIO', 'DIETAS ORAIS', 'DIETAS PEDIATRICAS', 'NUTRICAO ENTERAL', 'FORMULAS INFANTIS', 'SUPLEMENTOS E MODULOS', ''],
+  acompanhante: ['ACOMPANHANTE', 'ACOMPANHANTE E KITS'],
+};
+const GRUPO_NOVO = {
+  empresa: 'FUNCIONARIO',
+  paciente: 'LACTÁRIO',
+  acompanhante: 'ACOMPANHANTE',
+};
+
+function grupoDisplay(g){
+  const u = String(g || '').trim().toUpperCase();
+  if (u === 'EMPRESA' || u === 'FUNCIONARIO' || u === 'FUNCIONÁRIO') return 'FUNCIONÁRIO';
+  return g || '';
+}
+
+function parseBR(v){
+  const s = String(v ?? '').trim().replace(/\s/g, '').replace(',', '.');
+  if (s === '') return 0;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function formatBR(v){
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '0,00';
+  return n.toFixed(2).replace('.', ',');
+}
+
+function payerKey(){
+  return document.getElementById('colPayer')?.value || 'empresa';
+}
+
+function onPayerChange(){
+  aplicarVisaoPayer();
+  filtrarLinhas();
+}
+
+function rowHasPayerValue(tr, key){
+  return Array.from(tr.querySelectorAll('input.prec-valor')).some(inp => {
+    const n = parseFloat(inp.dataset[key] || '0');
+    return Number.isFinite(n) && n !== 0;
+  });
+}
+
+function filtrarLinhas(){
+  const q = (document.getElementById('filtroDieta')?.value || '').toLowerCase().trim();
+  const key = payerKey();
+  const gruposOk = new Set((GRUPO_CTX[key] || []).map(g => g.toUpperCase()));
+  document.querySelectorAll('#tabelaPrecosBody tr[data-dieta]').forEach(tr => {
+    const nome = (tr.dataset.dieta || '').toLowerCase();
+    const grupo = (tr.dataset.grupo || '').toUpperCase();
+    const matchTxt = !q || nome.includes(q) || grupo.toLowerCase().includes(q);
+    const matchCtx = gruposOk.has(grupo) || rowHasPayerValue(tr, key) || grupo === 'LACTÁRIO';
+    // Paciente: LACTÁRIO sempre; Funcionário/Acomp: grupo do contexto OU valor na coluna OU busca textual ampla
+    let showCtx = true;
+    if (key === 'acompanhante') {
+      showCtx = gruposOk.has(grupo) || rowHasPayerValue(tr, key) || (!!q && matchTxt);
+    } else if (key === 'empresa') {
+      showCtx = gruposOk.has(grupo) || rowHasPayerValue(tr, key) || grupo === 'LACTÁRIO' || (!!q && matchTxt);
+    } else {
+      showCtx = true; // paciente: lista oral/LACTÁRIO completa
+    }
+    tr.style.display = (matchTxt && showCtx) ? '' : 'none';
+  });
+  atualizarGruposVisiveis();
+}
+
+function aplicarVisaoPayer(){
+  const key = payerKey();
+  document.querySelectorAll('#tabelaPrecosBody input.prec-valor').forEach(inp => {
+    const v = inp.dataset[key] ?? '0';
+    inp.value = formatBR(v);
+  });
+}
+
+function onCellInput(inp){
+  const key = payerKey();
+  const n = parseBR(inp.value);
+  if (!Number.isFinite(n)) return;
+  const s = n.toFixed(2);
+  inp.dataset[key] = s;
+  if (document.getElementById('chkReplicar')?.checked){
+    inp.dataset.empresa = s;
+    inp.dataset.paciente = s;
+    inp.dataset.acompanhante = s;
+  }
+}
+
+function atualizarGruposVisiveis(){
+  document.querySelectorAll('#tabelaPrecosBody tr.prec-grupo-row').forEach(hr => {
+    let any = false;
+    let el = hr.nextElementSibling;
+    while (el && !el.classList.contains('prec-grupo-row')) {
+      if (el.dataset && el.dataset.dieta && el.style.display !== 'none') { any = true; break; }
+      el = el.nextElementSibling;
+    }
+    hr.style.display = any ? '' : 'none';
+  });
+}
+
+function aplicarMatriz(matriz){
+  const linhas = (matriz && matriz.linhas) || [];
+  linhas.forEach(linha => {
+    const celulas = linha.celulas || {};
+    Object.keys(celulas).forEach(tid => {
+      const c = celulas[tid];
+      const inp = document.querySelector(
+        `#tabelaPrecosBody input.prec-valor[data-dieta-id="${linha.dieta_id}"][data-tipo-id="${tid}"]`
+      );
+      if (!inp) return;
+      if (c.id != null) inp.dataset.precoId = String(c.id);
+      inp.dataset.empresa = Number(c.valor_empresa || 0).toFixed(2);
+      inp.dataset.paciente = Number(c.valor_paciente || 0).toFixed(2);
+      inp.dataset.acompanhante = Number(c.valor_acompanhante || 0).toFixed(2);
+    });
+  });
+  aplicarVisaoPayer();
+}
+
+async function excluirDietaPreco(id, btn){
+  if (!confirm('Excluir esta dieta da grade? Ela será desativada (soft-delete).')) return;
+  const r = await fetch(`/nutricao/api/dietas/${id}`, { method: 'DELETE' });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.ok === false){
+    showToast((j && j.error) || 'Falha ao excluir', 'error');
+    return;
+  }
+  const tr = btn?.closest('tr') || document.querySelector(`#tabelaPrecosBody tr[data-dieta-id="${id}"]`);
+  if (tr) tr.remove();
+  atualizarGruposVisiveis();
+  showToast('Dieta excluída da grade', 'success');
+}
+
+function gravarPrecos(){
+  const itens = [];
+  let invalid = null;
+  document.querySelectorAll('#tabelaPrecosBody input.prec-valor').forEach(inp => {
+    const emp = parseFloat(inp.dataset.empresa || '0');
+    const pac = parseFloat(inp.dataset.paciente || '0');
+    const aco = parseFloat(inp.dataset.acompanhante || '0');
+    if (![emp, pac, aco].every(Number.isFinite) || Math.min(emp, pac, aco) < 0){
+      invalid = inp.getAttribute('aria-label') || 'célula';
+      return;
+    }
+    const item = {
+      dieta_id: Number(inp.dataset.dietaId),
+      tipo_refeicao_id: Number(inp.dataset.tipoId),
+      valor_empresa: emp,
+      valor_paciente: pac,
+      valor_acompanhante: aco,
+    };
+    if (inp.dataset.precoId) item.id = Number(inp.dataset.precoId);
+    itens.push(item);
+  });
+  if (invalid){
+    showToast(`Valor inválido em ${invalid}`, 'error');
+    return;
+  }
+  const btn = document.getElementById('btnGravar');
+  if (btn) btn.disabled = true;
+  fetch('/nutricao/api/precos-refeicoes', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ itens }),
+  }).then(r => r.json().then(j => ({ok: r.ok, j}))).then(({ok, j}) => {
+    if (!ok || j.ok === false){
+      showToast((j && j.error) || 'Falha ao gravar', 'error');
+      return;
+    }
+    aplicarMatriz(j.matriz);
+    showToast('Preços gravados', 'success');
+  }).catch(() => showToast('Falha ao gravar', 'error'))
+  .finally(() => { if (btn) btn.disabled = false; });
+}
+
+function dietasOptionsHtml(selectedId, filtroGrupo){
+  const key = payerKey();
+  const prefer = new Set((GRUPO_CTX[key] || []).map(g => g.toUpperCase()));
+  const list = [...DIETAS].sort((a, b) => {
+    const ga = (a.grupo || '').toUpperCase();
+    const gb = (b.grupo || '').toUpperCase();
+    const pa = prefer.has(ga) ? 0 : 1;
+    const pb = prefer.has(gb) ? 0 : 1;
+    if (pa !== pb) return pa - pb;
+    return String(a.nome||'').localeCompare(String(b.nome||''), 'pt-BR');
+  });
+  let html = '<option value="">— Selecione —</option>';
+  list.forEach(d => {
+    if (!d.ativo && d.ativo !== undefined) return;
+    const sel = selectedId && Number(selectedId) === Number(d.id) ? ' selected' : '';
+    const g = d.grupo ? ` [${grupoDisplay(d.grupo)}]` : '';
+    html += `<option value="${d.id}" data-grupo="${(d.grupo||'').replace(/"/g,'&quot;')}"${sel}>${String(d.nome||'').replace(/</g,'&lt;')}${g}</option>`;
+  });
+  html += '<option value="__nova__">+ Nova dieta…</option>';
+  return html;
+}
+
+function tiposInputsHtml(){
+  return TIPOS.map(t => `
+    <div class="prec-tipo-item">
+      <label>
+        <input type="checkbox" class="add-tipo-chk" value="${t.id}" data-sigla="${t.sigla}" checked>
+        ${t.sigla}
+      </label>
+      <input type="text" class="form-control add-tipo-val" data-tipo-id="${t.id}" data-sigla="${t.sigla}"
+        inputmode="decimal" value="0,00" aria-label="Valor ${t.nome}">
+    </div>
+  `).join('');
+}
+
+function abrirAdicionarValor(){
+  const col = payerKey();
+  const repl = document.getElementById('chkReplicar')?.checked;
+  const html = `
+    <div class="prec-add-grid">
+      <div class="form-group">
+        <label class="form-label">Coluna / contexto</label>
+        <select id="add-coluna" class="form-control">
+          <option value="empresa" ${col==='empresa'?'selected':''}>Funcionário</option>
+          <option value="paciente" ${col==='paciente'?'selected':''}>Paciente</option>
+          <option value="acompanhante" ${col==='acompanhante'?'selected':''}>Acompanhante</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <label class="prec-check" style="margin:0.55rem 0 0">
+          <input type="checkbox" id="add-replicar" ${repl ? 'checked' : ''}>
+          Replicar nas 3 colunas
+        </label>
+      </div>
+      <div class="form-group full">
+        <label class="form-label">Dieta</label>
+        <select id="add-dieta" class="form-control" onchange="onAddDietaChange()">${dietasOptionsHtml()}</select>
+        <p class="prec-hint">No contexto Acompanhante/Funcionário, use “Nova dieta” para cadastrar o item dessa coluna.</p>
+      </div>
+      <div class="form-group full" id="add-nova-wrap" style="display:none">
+        <label class="form-label">Nome da nova dieta</label>
+        <input type="text" id="add-dieta-nome" class="form-control" placeholder="Ex: ACOMPANHANTE ALMOÇO">
+      </div>
+      <div class="form-group full">
+        <label class="form-label">Tipos de refeição e valores</label>
+        <div class="prec-tipos-box">${tiposInputsHtml()}</div>
+        <p class="prec-hint">Marque só os tipos que deseja gravar neste contexto.</p>
+      </div>
+    </div>
+  `;
+  abrirModal('Adicionar valor à dieta', html, 'Salvar', salvarAdicionarValor);
+}
+
+function onAddDietaChange(){
+  const v = document.getElementById('add-dieta')?.value;
+  const wrap = document.getElementById('add-nova-wrap');
+  if (wrap) wrap.style.display = (v === '__nova__') ? '' : 'none';
+}
+
+async function salvarAdicionarValor(){
+  const coluna = document.getElementById('add-coluna')?.value || 'paciente';
+  const replicar = !!document.getElementById('add-replicar')?.checked;
+  const sel = document.getElementById('add-dieta')?.value || '';
+  let dieta_id = null;
+  let dieta_nome = '';
+  let nova = false;
+  if (sel === '__nova__') {
+    dieta_nome = (document.getElementById('add-dieta-nome')?.value || '').trim().toUpperCase();
+    if (!dieta_nome){ showToast('Informe o nome da dieta', 'error'); return; }
+    nova = true;
+  } else if (sel) {
+    dieta_id = Number(sel);
+  } else {
+    showToast('Selecione a dieta', 'error');
+    return;
+  }
+
+  const tipos = [];
+  let invalidTipo = null;
+  document.querySelectorAll('.add-tipo-chk').forEach(chk => {
+    if (!chk.checked || invalidTipo) return;
+    const id = Number(chk.value);
+    const inp = document.querySelector(`.add-tipo-val[data-tipo-id="${id}"]`);
+    const n = parseBR(inp?.value);
+    if (!Number.isFinite(n) || n < 0){
+      invalidTipo = chk.dataset.sigla || String(id);
+      return;
+    }
+    tipos.push({ id, sigla: chk.dataset.sigla, valor: n });
+  });
+  if (invalidTipo){
+    showToast(`Valor inválido em ${invalidTipo}`, 'error');
+    return;
+  }
+  if (!tipos.length){
+    showToast('Selecione ao menos um tipo de refeição', 'error');
+    return;
+  }
+
+  const body = {
+    coluna,
+    replicar,
+    dieta_id,
+    dieta_nome,
+    nova_dieta: nova,
+    criar_dieta: nova,
+    grupo: GRUPO_NOVO[coluna] || 'LACTÁRIO',
+    tipos,
+  };
+
+  try {
+    const r = await fetch('/nutricao/api/precos-refeicoes/adicionar', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.ok === false){
+      showToast((j && j.error) || 'Falha ao salvar', 'error');
+      return;
+    }
+    fecharModal();
+    // Se dieta nova ou ainda não está na grade, recarrega
+    const exists = document.querySelector(`#tabelaPrecosBody tr[data-dieta-id="${j.dieta?.id}"]`);
+    if (!exists){
+      showToast('Valor adicionado — atualizando grade…', 'success');
+      location.reload();
+      return;
+    }
+    aplicarMatriz(j.matriz);
+    if (j.dieta){
+      const idx = DIETAS.findIndex(d => Number(d.id) === Number(j.dieta.id));
+      if (idx >= 0) DIETAS[idx] = j.dieta;
+      else DIETAS.push(j.dieta);
+    }
+    document.getElementById('colPayer').value = coluna;
+    onPayerChange();
+    showToast('Valor adicionado à dieta', 'success');
+  } catch (e) {
+    showToast('Falha ao salvar', 'error');
+  }
+}
+
+// init
+aplicarVisaoPayer();
+filtrarLinhas();
+</script>
+{% endblock %}

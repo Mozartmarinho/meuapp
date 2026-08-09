@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Controle de Pesagem{% endblock %} — São Geraldo Service</title>
+    <title>{% block title %}Auditoria{% endblock %} — São Geraldo Service</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
@@ -23,7 +23,7 @@
         <div class="sidebar-logo">
             <img src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service">
             <div class="brand-tagline">Transformando vidas</div>
-            <div class="module-label">Controle de Pesagem</div>
+            <div class="module-label">Auditoria</div>
         </div>
 
         <ul class="sidebar-menu">
@@ -34,21 +34,9 @@
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('pesagem.dashboard') }}" class="{% if active_page == 'dashboard' %}active{% endif %}">
-                    <i class="fas fa-weight-scale" style="margin-right: 0.75rem;"></i>
-                    Leituras
-                </a>
-            </li>
-            <li>
-                <a href="{{ url_for('pesagem.balancas_page') }}" class="{% if active_page == 'balancas' %}active{% endif %}">
-                    <i class="fas fa-scale-balanced" style="margin-right: 0.75rem;"></i>
-                    Balanças
-                </a>
-            </li>
-            <li>
-                <a href="{{ url_for('auditoria.dashboard') }}">
+                <a href="{{ url_for('auditoria.dashboard') }}" class="{% if active_page == 'dashboard' %}active{% endif %}">
                     <i class="fas fa-clipboard-check" style="margin-right: 0.75rem;"></i>
-                    Auditoria
+                    Logs do sistema
                 </a>
             </li>
             <li>
@@ -61,13 +49,21 @@
     </nav>
 
     <main class="main-content">
+        <div class="system-switch">
+            <div class="system-switch-wrap">
+                <a href="{{ url_for('main.inicio') }}" class="system-switch-link">Sistemas</a>
+                <a href="{{ url_for('auditoria.dashboard') }}" class="system-switch-link active">Auditoria</a>
+            </div>
+        </div>
+
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             {% for category, message in messages %}
-              <div class="alert alert-{{ category }}">{{ message }}</div>
+              <div class="alert alert-{{ 'success' if category == 'success' else 'error' }}">{{ message }}</div>
             {% endfor %}
           {% endif %}
         {% endwith %}
+
         {% block content %}{% endblock %}
     </main>
 

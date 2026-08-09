@@ -1,50 +1,59 @@
-e{% extends "base.html" %}
+{% extends "base.html" %}
 
 {% block title %}Editar Cliente - São Geraldo Service{% endblock %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-    <h1 style="color: var(--gray-800);">Editar Cliente - {{ cliente.nome }}</h1>
-    <a href="{{ url_for('main.listar_clientes') }}" class="btn" style="background-color: var(--gray-300); color: var(--gray-800);">
-        <i class="fas fa-arrow-left"></i> Voltar
-    </a>
+<div class="container">
+    <div class="header">
+        <h1>Editar Cliente - {{ cliente.nome }}</h1>
+        <a href="{{ url_for('main.listar_clientes') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Voltar
+        </a>
+    </div>
+
+    <div class="form-container">
+        <form method="POST" action="{{ url_for('main.editar_cliente', id=cliente.id) }}">
+            <div class="form-group">
+                <label for="nome">Nome *</label>
+                <input type="text" id="nome" name="nome" value="{{ cliente.nome }}" required>
+            </div>
+
+            <div class="form-group">
+                <label for="endereco">Endereço</label>
+                <input type="text" id="endereco" name="endereco" value="{{ cliente.endereco }}">
+            </div>
+
+            <div class="form-group">
+                <label for="telefone">Telefone</label>
+                <input type="tel" id="telefone" name="telefone" value="{{ cliente.telefone }}">
+            </div>
+
+            <div class="form-group">
+                <label for="responsavel">Responsável</label>
+                <input type="text" id="responsavel" name="responsavel" value="{{ cliente.responsavel }}">
+            </div>
+
+            <div class="form-group">
+                <label for="telefone_responsavel">Telefone Responsável</label>
+                <input type="tel" id="telefone_responsavel" name="telefone_responsavel" value="{{ cliente.telefone_responsavel }}">
+            </div>
+
+            <div class="form-actions">
+                <a href="{{ url_for('main.listar_clientes') }}" class="btn btn-secondary">
+                    <i class="fas fa-times"></i> Cancelar
+                </a>
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-save"></i> Salvar Alterações
+                </button>
+            </div>
+        </form>
+    </div>
 </div>
 
-<div class="form-container">
-    <form method="POST" action="{{ url_for('main.editar_cliente', id=cliente.id) }}">
-        <div class="form-group">
-            <label for="nome">Nome *</label>
-            <input type="text" id="nome" name="nome" value="{{ cliente.nome }}" required>
-        </div>
-
-        <div class="form-group">
-            <label for="endereco">Endereço</label>
-            <input type="text" id="endereco" name="endereco" value="{{ cliente.endereco }}">
-        </div>
-
-        <div class="form-group">
-            <label for="telefone">Telefone</label>
-            <input type="tel" id="telefone" name="telefone" value="{{ cliente.telefone }}">
-        </div>
-
-        <div class="form-group">
-            <label for="responsavel">Responsável</label>
-            <input type="text" id="responsavel" name="responsavel" value="{{ cliente.responsavel }}">
-        </div>
-
-        <div class="form-group">
-            <label for="telefone_responsavel">Telefone Responsável</label>
-            <input type="tel" id="telefone_responsavel" name="telefone_responsavel" value="{{ cliente.telefone_responsavel }}">
-        </div>
-
-        <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem;">
-            <a href="{{ url_for('main.listar_clientes') }}" class="btn" style="background-color: var(--gray-300); color: var(--gray-800);">
-                <i class="fas fa-times"></i> Cancelar
-            </a>
-            <button type="submit" class="btn btn-success">
-                <i class="fas fa-save"></i> Salvar Alterações
-            </button>
-        </div>
-    </form>
-</div>
+<style>
+.container { padding: 20px 0; max-width: 700px; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 1rem; flex-wrap: wrap; }
+.header h1 { margin: 0; }
+.form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+</style>
 {% endblock %}
