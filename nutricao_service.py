@@ -182,6 +182,9 @@ def _ensure_nutricao_columns():
                 'formula_infantil': 'TEXT',
                 'lve': 'TEXT',
                 'data_inclusao': 'DATETIME',
+                'enfermaria': 'VARCHAR(120)',
+                'usuario_alteracao': 'VARCHAR(80)',
+                'motivo_saida': 'VARCHAR(40)',
             }
             for col, tipo in alteracoes.items():
                 if col not in cols:
@@ -560,52 +563,53 @@ def paciente_from_payload(d, paciente=None):
     return paciente
 
 
-def mapa_from_paciente(paciente, data_ref=None, flags=None):
+def mapa_from_paciente(paciente, data_ref=None, flags=None, extras=None, usuario=None):
     data_ref = data_ref or date.today()
     flags = flags or {}
+    extras = extras or {}
+    agora = datetime.utcnow()
     return NutMapaRefeicao(
         data_refeicao=data_ref,
         paciente_id=paciente.id,
-        adm=paciente.admissao,
-        leito=paciente.leito,
-        prontuario=paciente.prontuario,
+        adm=extras.get('adm', paciente.admissao),
+        leito=(extras.get('leito') if 'leito' in extras else paciente.leito),
+        prontuario=(extras.get('prontuario') if 'prontuario' in extras else paciente.prontuario),
         nome=paciente.nome,
         idade=paciente.idade(data_ref),
-        diagnostico=paciente.diagnostico,
-        dieta=paciente.dieta,
-        observacoes=paciente.observacoes,
-        clinica=paciente.clinica,
+        diagnostico=(extras.get('diagnostico') if 'diagnostico' in extras else paciente.diagnostico),
+        dieta=(extras.get('dieta') if 'dieta' in extras else paciente.dieta),
+        observacoes=(extras.get('observacoes') if 'observacoes' in extras else paciente.observacoes),
+        clinica=(extras.get('clinica') if 'clinica' in extras else paciente.clinica),
+        enfermaria=(extras.get('enfermaria') or None),
         fl_desjejum=bool(flags.get('fl_desjejum', True)),
         fl_colacao=bool(flags.get('fl_colacao', True)),
         fl_almoco=bool(flags.get('fl_almoco', True)),
         fl_merenda=bool(flags.get('fl_merenda', True)),
         fl_jantar=bool(flags.get('fl_jantar', True)),
         fl_ceia=bool(flags.get('fl_ceia', True)),
-        data_inclusao=datetime.utcnow(),
+        obs_etiqueta=(extras.get('obs_etiqueta') or None),
+        extras=(extras.get('extras') or None),
+        suplementos=(extras.get('suplementos') or None),
+        enteral=(extras.get('enteral') or None),
+        formula_infantil=(extras.get('formula_infantil') or None),
+        lve=(extras.get('lve') or None),
+        data_inclusao=agora,
+        usuario_alteracao=(usuario or 'sistema')[:80],
+        data_atualizacao=agora,
         data_saida=paciente.data_saida,
         ativo=True,
     )
 
 
 def garantir_mapa_do_dia(data_ref=None):
-    """Garante linhas do mapa para pacientes ativos na data."""
-    data_ref = data_ref or date.today()
-    pacientes = NutPaciente.query.filter_by(ativo=True).all()
-    criados = 0
-    for p in pacientes:
-        exists = NutMapaRefeicao.query.filter_by(
-            data_refeicao=data_ref, paciente_id=p.id, ativo=True
-        ).first()
-        if exists:
-            continue
-        # não inclui quem já teve saída antes da data
-        if p.data_saida and p.data_saida < data_ref:
-            continue
-        db.session.add(mapa_from_paciente(p, data_ref))
-        criados += 1
-    if criados:
-        db.session.commit()
-    return criados
+    """Compatibilidade: inclusão no mapa é manual via Inserir paciente."""
+    return 0
+
+
+def marcar_alteracao_mapa(row, usuario=None):
+    row.usuario_alteracao = (usuario or 'sistema')[:80]
+    row.data_atualizacao = datetime.utcnow()
+    return row
 
 
 def listar_avisos_alta_mapa(data_ref=None):

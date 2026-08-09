@@ -201,6 +201,7 @@ class NutMapaRefeicao(db.Model):
     dieta = db.Column(db.String(200))
     observacoes = db.Column(db.Text)
     clinica = db.Column(db.String(120))
+    enfermaria = db.Column(db.String(120))
 
     # Flags de refeição: D C A M J C (ceia)
     fl_desjejum = db.Column(db.Boolean, default=False)
@@ -218,14 +219,23 @@ class NutMapaRefeicao(db.Model):
     formula_infantil = db.Column(db.Text)
     lve = db.Column(db.Text)
     data_inclusao = db.Column(db.DateTime, default=datetime.utcnow)
+    usuario_alteracao = db.Column(db.String(80))
 
     data_saida = db.Column(db.Date)
+    motivo_saida = db.Column(db.String(40))
     ativo = db.Column(db.Boolean, default=True)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     data_atualizacao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self):
         inclusao = self.data_inclusao or self.data_criacao
+        alteracao = self.data_atualizacao or inclusao
+        usuario = (self.usuario_alteracao or '').strip()
+        ultima = ''
+        if alteracao:
+            ultima = alteracao.strftime('%d/%m/%y %H:%M:%S')
+            if usuario:
+                ultima = f'{usuario} — {ultima}'
         return {
             'id': self.id,
             'data_refeicao': self.data_refeicao.isoformat() if self.data_refeicao else '',
@@ -239,6 +249,7 @@ class NutMapaRefeicao(db.Model):
             'dieta': self.dieta or '',
             'observacoes': self.observacoes or '',
             'clinica': self.clinica or '',
+            'enfermaria': self.enfermaria or '',
             'fl_desjejum': bool(self.fl_desjejum),
             'fl_colacao': bool(self.fl_colacao),
             'fl_almoco': bool(self.fl_almoco),
@@ -252,7 +263,10 @@ class NutMapaRefeicao(db.Model):
             'formula_infantil': self.formula_infantil or '',
             'lve': self.lve or '',
             'data_inclusao': inclusao.strftime('%d/%m/%y %H:%M:%S') if inclusao else '',
+            'usuario_alteracao': usuario,
+            'ultima_alteracao': ultima,
             'data_saida': self.data_saida.isoformat() if self.data_saida else '',
+            'motivo_saida': self.motivo_saida or '',
             'ativo': self.ativo,
         }
 

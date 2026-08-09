@@ -15,6 +15,7 @@ from nutricao_service import (
     paciente_from_payload,
     mapa_from_paciente,
     garantir_mapa_do_dia,
+    marcar_alteracao_mapa,
     list_clinicas,
     list_enfermarias,
     list_leitos,
@@ -134,11 +135,21 @@ def fmt_data(d):
     return f'{p[2]}/{p[1]}/{p[0]}' if len(p) == 3 else d
 
 
-def _list_pacientes_db(ativos_only=True):
-    q = NutPaciente.query
+def _list_pacientes_db(ativos_only=True, q=None, limit=50):
+    query = NutPaciente.query
     if ativos_only:
-        q = q.filter_by(ativo=True)
-    return [p.to_dict() for p in q.order_by(NutPaciente.nome).all()]
+        query = query.filter_by(ativo=True)
+    termo = (q or '').strip()
+    if termo:
+        query = query.filter(NutPaciente.nome.ilike(f'%{termo}%'))
+    query = query.order_by(NutPaciente.nome)
+    if limit:
+        query = query.limit(limit)
+    return [p.to_dict() for p in query.all()]
+
+
+def _usuario_sessao():
+    return (session.get('user_name') or session.get('user_email') or 'sistema')[:80]
 
 
 def _list_dietas_db(somente_ativas=True):
@@ -175,10 +186,13 @@ def dashboard():
         mapa_linhas=mapa,
         data_mapa=data_ref.isoformat(),
         clinicas=_list_clinicas_db(somente_ativas=True),
+        enfermarias=list_enfermarias(somente_ativas=True),
+        dietas=_list_dietas_db(),
         total_pacientes=NutPaciente.query.filter_by(ativo=True).count(),
         total_dietas=NutDieta.query.filter_by(ativo=True).count(),
         total_clinicas=NutClinica.query.filter_by(ativo=True).count() or len(CLINICAS),
         alertas_estoque=[p for p in PRODUTOS if p['estoque_atual'] <= p['estoque_min']],
+        usuario_atual=_usuario_sessao(),
         **active('dashboard')
     )
 
@@ -209,11 +223,40 @@ def api_pacientes():
             p.admissao = date.today()
         db.session.add(p)
         db.session.flush()
-        data_mapa = _parse_date(d.get('admissao')) or date.today()
-        db.session.add(mapa_from_paciente(p, data_mapa))
+        linha = None
+        # Por padrão só cadastra; inclusão no mapa é via /api/mapa/inserir
+        if d.get('adicionar_mapa'):
+            data_mapa = _parse_date(d.get('admissao')) or _parse_date(d.get('data_mapa')) or date.today()
+            flags = {fl: bool(d.get(fl, True)) for fl in FLAG_FIELDS}
+            extras = {
+                'adm': _parse_date(d.get('admissao')) or p.admissao,
+                'leito': d.get('leito'),
+                'prontuario': d.get('prontuario'),
+                'diagnostico': d.get('diagnostico'),
+                'dieta': d.get('dieta'),
+                'observacoes': d.get('observacoes'),
+                'clinica': d.get('clinica'),
+                'enfermaria': d.get('enfermaria'),
+                'obs_etiqueta': d.get('obs_etiqueta'),
+                'extras': d.get('extras'),
+                'suplementos': d.get('suplementos'),
+                'enteral': d.get('enteral'),
+                'formula_infantil': d.get('formula_infantil'),
+                'lve': d.get('lve'),
+            }
+            linha = mapa_from_paciente(p, data_mapa, flags=flags, extras=extras, usuario=_usuario_sessao())
+            db.session.add(linha)
         db.session.commit()
-        return jsonify({'ok': True, 'id': p.id, 'paciente': p.to_dict()})
-    return jsonify(_list_pacientes_db(True))
+        payload = {'ok': True, 'id': p.id, 'paciente': p.to_dict()}
+        if linha:
+            payload['linha'] = linha.to_dict()
+        return jsonify(payload)
+    q = request.args.get('q') or request.args.get('nome') or ''
+    limit = request.args.get('limit', type=int) or 40
+    return jsonify({
+        'ok': True,
+        'pacientes': _list_pacientes_db(True, q=q, limit=limit),
+    })
 
 
 @nutricao.route('/nutricao/api/pacientes/<int:pid>', methods=['PUT', 'DELETE'])
@@ -243,6 +286,7 @@ def api_paciente(pid):
         linha.observacoes = p.observacoes
         linha.clinica = p.clinica
         linha.data_saida = p.data_saida
+        marcar_alteracao_mapa(linha, _usuario_sessao())
         db.session.commit()
     return jsonify({'ok': True, 'paciente': p.to_dict()})
 
@@ -258,8 +302,66 @@ def api_mapa_get():
         'data': data_ref.isoformat(),
         'linhas': _mapa_linhas(data_ref),
         'clinicas': _list_clinicas_db(somente_ativas=True),
+        'enfermarias': list_enfermarias(somente_ativas=True),
         'avisos_alta': listar_avisos_alta_mapa(data_ref),
     })
+
+
+@nutricao.route('/nutricao/api/mapa/inserir', methods=['POST'])
+def api_mapa_inserir():
+    """Insere paciente existente (ou atualiza cadastro) no mapa do dia."""
+    seed_nutricao()
+    d = request.get_json(force=True) or {}
+    paciente_id = d.get('paciente_id')
+    p = NutPaciente.query.get(paciente_id) if paciente_id else None
+    if not p:
+        return jsonify({'ok': False, 'error': 'Selecione um paciente cadastrado'}), 400
+
+    # atualiza dados básicos do cadastro se enviados
+    for campo in ('prontuario', 'diagnostico', 'dieta', 'observacoes', 'clinica', 'leito'):
+        if campo in d and d.get(campo) is not None:
+            setattr(p, campo, (str(d.get(campo)).strip() or None))
+    if 'admissao' in d:
+        p.admissao = _parse_date(d.get('admissao')) or p.admissao
+
+    data_mapa = _parse_date(d.get('data_mapa')) or date.today()
+    existe = NutMapaRefeicao.query.filter_by(
+        data_refeicao=data_mapa, paciente_id=p.id, ativo=True
+    ).first()
+    if existe:
+        return jsonify({'ok': False, 'error': 'Paciente já está no mapa deste dia'}), 400
+
+    clinica = (d.get('clinica') or '').strip()
+    enfermaria = (d.get('enfermaria') or '').strip()
+    leito = (d.get('leito') or '').strip()
+    if not clinica:
+        return jsonify({'ok': False, 'error': 'Informe a clínica'}), 400
+    if not enfermaria:
+        return jsonify({'ok': False, 'error': 'Informe a enfermaria'}), 400
+    if not leito:
+        return jsonify({'ok': False, 'error': 'Informe o leito'}), 400
+
+    flags = {fl: bool(d.get(fl, True)) for fl in FLAG_FIELDS}
+    extras = {
+        'adm': _parse_date(d.get('admissao')) or p.admissao,
+        'leito': leito,
+        'prontuario': d.get('prontuario', p.prontuario),
+        'diagnostico': d.get('diagnostico', p.diagnostico),
+        'dieta': d.get('dieta', p.dieta),
+        'observacoes': d.get('observacoes', p.observacoes),
+        'clinica': clinica,
+        'enfermaria': enfermaria,
+        'obs_etiqueta': d.get('obs_etiqueta'),
+        'extras': d.get('extras'),
+        'suplementos': d.get('suplementos'),
+        'enteral': d.get('enteral'),
+        'formula_infantil': d.get('formula_infantil'),
+        'lve': d.get('lve'),
+    }
+    linha = mapa_from_paciente(p, data_mapa, flags=flags, extras=extras, usuario=_usuario_sessao())
+    db.session.add(linha)
+    db.session.commit()
+    return jsonify({'ok': True, 'linha': linha.to_dict(), 'paciente': p.to_dict()})
 
 
 @nutricao.route('/nutricao/api/mapa/avisos-alta', methods=['GET', 'POST'])
@@ -334,7 +436,7 @@ def api_mapa_put(mid):
         return jsonify({'ok': False, 'error': 'Linha não encontrada'}), 404
     d = request.get_json(force=True) or {}
     for campo in (
-        'leito', 'prontuario', 'nome', 'diagnostico', 'dieta', 'observacoes', 'clinica',
+        'leito', 'prontuario', 'nome', 'diagnostico', 'dieta', 'observacoes', 'clinica', 'enfermaria',
         'obs_etiqueta', 'extras', 'suplementos', 'enteral', 'formula_infantil', 'lve',
     ):
         if campo in d:
@@ -352,8 +454,77 @@ def api_mapa_put(mid):
     for fl in FLAG_FIELDS:
         if fl in d:
             setattr(row, fl, bool(d.get(fl)))
+    marcar_alteracao_mapa(row, _usuario_sessao())
     db.session.commit()
     return jsonify({'ok': True, 'linha': row.to_dict()})
+
+
+@nutricao.route('/nutricao/api/mapa/<int:mid>/saida', methods=['POST'])
+def api_mapa_saida(mid):
+    """Alta médica / óbito (sai do mapa) ou transferência (permanece)."""
+    seed_nutricao()
+    row = NutMapaRefeicao.query.get(mid)
+    if not row or not row.ativo:
+        return jsonify({'ok': False, 'error': 'Linha não encontrada'}), 404
+    d = request.get_json(force=True) or {}
+    tipo = (d.get('motivo') or d.get('tipo') or '').strip().lower()
+    usuario = _usuario_sessao()
+    agora = datetime.now()
+    data_ref = row.data_refeicao or date.today()
+
+    if tipo in ('alta_medica', 'alta', 'a'):
+        label = 'Alta médica'
+        row.data_saida = _parse_date(d.get('data_saida')) or data_ref
+        row.motivo_saida = label
+        row.ativo = False
+        marcar_alteracao_mapa(row, usuario)
+        if row.paciente_id:
+            pac = NutPaciente.query.get(row.paciente_id)
+            if pac:
+                pac.data_saida = row.data_saida
+                pac.hora_saida = agora.strftime('%H:%M:%S')
+                pac.motivo_saida = label
+        db.session.commit()
+        return jsonify({'ok': True, 'acao': 'alta_medica', 'linha': row.to_dict()})
+
+    if tipo in ('obito', 'óbito', 'o'):
+        label = 'Óbito'
+        row.data_saida = _parse_date(d.get('data_saida')) or data_ref
+        row.motivo_saida = label
+        row.ativo = False
+        marcar_alteracao_mapa(row, usuario)
+        if row.paciente_id:
+            pac = NutPaciente.query.get(row.paciente_id)
+            if pac:
+                pac.data_saida = row.data_saida
+                pac.hora_saida = agora.strftime('%H:%M:%S')
+                pac.motivo_saida = label
+        db.session.commit()
+        return jsonify({'ok': True, 'acao': 'obito', 'linha': row.to_dict()})
+
+    if tipo in ('transferencia', 'transferência', 't'):
+        clinica = (d.get('clinica') or '').strip()
+        enfermaria = (d.get('enfermaria') or '').strip()
+        leito = (d.get('leito') or '').strip()
+        if not clinica:
+            return jsonify({'ok': False, 'error': 'Informe a clínica de destino'}), 400
+        if not enfermaria:
+            return jsonify({'ok': False, 'error': 'Informe a enfermaria de destino'}), 400
+        if not leito:
+            return jsonify({'ok': False, 'error': 'Informe o leito de destino'}), 400
+        row.clinica = clinica
+        row.enfermaria = enfermaria
+        row.leito = leito
+        marcar_alteracao_mapa(row, usuario)
+        if row.paciente_id:
+            pac = NutPaciente.query.get(row.paciente_id)
+            if pac:
+                pac.clinica = clinica
+                pac.leito = leito
+        db.session.commit()
+        return jsonify({'ok': True, 'acao': 'transferencia', 'linha': row.to_dict()})
+
+    return jsonify({'ok': False, 'error': 'Motivo inválido. Use alta_medica, obito ou transferencia'}), 400
 
 
 @nutricao.route('/nutricao/api/mapa/<int:mid>/toggle', methods=['POST'])
@@ -369,6 +540,7 @@ def api_mapa_toggle(mid):
         setattr(row, campo, bool(d.get('valor')))
     else:
         setattr(row, campo, not bool(getattr(row, campo)))
+    marcar_alteracao_mapa(row, _usuario_sessao())
     db.session.commit()
     return jsonify({'ok': True, 'linha': row.to_dict()})
 
