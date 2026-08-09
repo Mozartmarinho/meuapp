@@ -6,6 +6,40 @@
 <div class="container">
     <div class="header">
         <h1>Lista de Chamados</h1>
+        <div class="stats-overview" style="display: flex; gap: 2rem; margin-bottom: 1rem; align-items: center;">
+            <div class="stat-item" style="text-align: center;">
+                <svg width="50" height="50" viewBox="0 0 24 24" fill="#007bff" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="10" stroke="none" />
+                    <text x="12" y="16" font-size="12" fill="white" text-anchor="middle" font-family="Arial">T</text>
+                </svg>
+                <div>Total Chamados</div>
+                <div style="font-weight: bold;">{{ total_chamados }}</div>
+            </div>
+            <div class="stat-item" style="text-align: center;">
+                <svg width="50" height="50" viewBox="0 0 24 24" fill="#dc3545" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="10" stroke="none" />
+                    <text x="12" y="16" font-size="12" fill="white" text-anchor="middle" font-family="Arial">P</text>
+                </svg>
+                <div>Pendentes</div>
+                <div style="font-weight: bold;">{{ pendentes }}</div>
+            </div>
+            <div class="stat-item" style="text-align: center;">
+                <svg width="50" height="50" viewBox="0 0 24 24" fill="#17a2b8" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="10" stroke="none" />
+                    <text x="12" y="16" font-size="12" fill="white" text-anchor="middle" font-family="Arial">A</text>
+                </svg>
+                <div>Em Andamento</div>
+                <div style="font-weight: bold;">{{ em_andamento }}</div>
+            </div>
+            <div class="stat-item" style="text-align: center;">
+                <svg width="50" height="50" viewBox="0 0 24 24" fill="#28a745" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="10" stroke="none" />
+                    <text x="12" y="16" font-size="12" fill="white" text-anchor="middle" font-family="Arial">C</text>
+                </svg>
+                <div>Concluídos</div>
+                <div style="font-weight: bold;">{{ concluidos }}</div>
+            </div>
+        </div>
         <a href="{{ url_for('main.novo_chamado') }}" class="btn btn-primary">
             <i class="fas fa-plus"></i> Novo Chamado
         </a>
@@ -23,13 +57,14 @@
                 <th>Status</th>
                 <th>Prioridade</th>
                 <th>Data Criação</th>
-                <th>Valor</th>
+                <th>Data Atendimento</th>
+                <th>Data Conclusão</th>
                 <th>Ações</th>
             </tr>
         </thead>
         <tbody>
             {% for chamado in chamados %}
-            <tr>
+            <tr onmouseover="showTooltip({{ chamado.id }})" onmouseout="hideTooltip({{ chamado.id }})">
                 <td>{{ chamado.numero_chamado }}</td>
                 <td>{{ chamado.cliente }}</td>
                 <td>{{ chamado.tipo_servico }}</td>
@@ -41,20 +76,54 @@
                     <span class="priority-{{ chamado.prioridade|lower }}">{{ chamado.prioridade }}</span>
                 </td>
                 <td>{{ chamado.data_criacao.strftime('%d/%m/%Y %H:%M') if chamado.data_criacao else '' }}</td>
-                <td>R$ {{ "%.2f"|format(chamado.valor) if chamado.valor else '0.00' }}</td>
+                <td>{{ chamado.data_atendimento.strftime('%d/%m/%Y %H:%M') if chamado.data_atendimento else '' }}</td>
+                <td>{{ chamado.data_conclusao.strftime('%d/%m/%Y %H:%M') if chamado.data_conclusao else '' }}</td>
                 <td>
-                    <a href="{{ url_for('main.editar_chamado', id=chamado.id) }}" class="btn btn-primary btn-sm">Editar</a>
                     {% if chamado.status != 'Concluído' %}
-                    <button onclick="updateStatus({{ chamado.id }}, 'Concluído')" class="btn btn-success btn-sm">Concluir</button>
+                    <button id="btn-atender-{{ chamado.id }}" onclick="updateStatus({{ chamado.id }}, 'Em Andamento')" class="btn btn-primary btn-sm">Atender</button>
+                    {% endif %}
+                    {% if chamado.status != 'Concluído' %}
+                    <button onclick="openConcluirModal({{ chamado.id }})" class="btn btn-success btn-sm">Concluir</button>
                     {% endif %}
                 </td>
             </tr>
+            {% if chamado.status == 'Concluído' %}
+            <div id="tooltip-{{ chamado.id }}" class="tooltip" style="display: none;">
+                <p><strong>Serviço Executado:</strong> {{ chamado.feito or 'N/A' }}</p>
+                {% if chamado.fotos %}
+                <div>
+                    {% for foto in chamado.fotos %}
+                    <img src="{{ url_for('static', filename='uploads/' + foto.filename) }}" alt="Foto" style="width: 100px; height: 100px; margin: 5px;">
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
             {% endfor %}
         </tbody>
     </table>
     {% else %}
     <p>Nenhum chamado encontrado.</p>
     {% endif %}
+</div>
+
+<!-- Modal for Concluir -->
+<div id="concluirModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeConcluirModal()">&times;</span>
+        <h2>Concluir Chamado</h2>
+        <form id="concluirForm" enctype="multipart/form-data" method="POST" onsubmit="submitConcluirForm(event)">
+            <input type="hidden" name="status" value="Concluído">
+            <label for="feito">Serviço Executado:</label>
+            <textarea name="feito" required></textarea>
+            <label>Fotos (até 4):</label>
+            <input type="file" name="fotos" accept="image/*" multiple>
+            <button type="submit" class="btn btn-success">Concluir</button>
+        </form>
+        <div id="concluirSuccessMessage" style="display:none; color: green; margin-top: 10px;">
+            Serviço concluído com sucesso!
+        </div>
+    </div>
 </div>
 
 <script>
@@ -67,10 +136,101 @@ function updateStatus(id, status) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            location.reload();
+            if (status === 'Em Andamento') {
+                // Remove apenas o botão Atender, não o Concluir
+                const btnAtender = document.getElementById('btn-atender-' + id);
+                if (btnAtender) {
+                    btnAtender.style.display = 'none';
+                }
+                // Atualiza o status na tabela
+                const row = document.getElementById('btn-atender-' + id).closest('tr');
+                const statusCell = row.querySelector('td:nth-child(5) span');
+                if (statusCell) {
+                    statusCell.textContent = 'Em Andamento';
+                    statusCell.className = 'status-em-andamento';
+                }
+                // Atualiza a data de atendimento
+                const dataAtendimentoCell = row.querySelector('td:nth-child(8)');
+                if (dataAtendimentoCell) {
+                    const now = new Date();
+                    const formatted = now.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                    dataAtendimentoCell.textContent = formatted;
+                }
+            } else {
+                location.reload();
+            }
         } else {
             alert('Erro ao atualizar status');
         }
+    });
+}
+
+function openConcluirModal(id) {
+    document.getElementById('concluirModal').style.display = 'block';
+    document.getElementById('concluirForm').action = '/api/chamados/' + id + '/status';
+}
+
+function closeConcluirModal() {
+    document.getElementById('concluirModal').style.display = 'none';
+}
+
+function showTooltip(id) {
+    const tooltip = document.getElementById('tooltip-' + id);
+    if (tooltip) {
+        tooltip.style.display = 'block';
+    }
+}
+
+function hideTooltip(id) {
+    const tooltip = document.getElementById('tooltip-' + id);
+    if (tooltip) {
+        tooltip.style.display = 'none';
+    }
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const modal = document.getElementById('concluirModal');
+    if (event.target == modal) {
+        modal.style.display = 'none';
+    }
+}
+
+function submitConcluirForm(event) {
+    event.preventDefault();
+    const form = document.getElementById('concluirForm');
+    const formData = new FormData(form);
+    const action = form.action;
+
+    fetch(action, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('concluirSuccessMessage').style.display = 'block';
+            setTimeout(() => {
+                closeConcluirModal();
+                // Atualiza a lista de chamados sem redirecionar para a URL da API
+                fetch('/chamados')
+                    .then(response => response.text())
+                    .then(html => {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(html, 'text/html');
+                        const newTable = doc.querySelector('.table');
+                        const container = document.querySelector('.container');
+                        if (newTable && container) {
+                            container.innerHTML = newTable.outerHTML;
+                        }
+                    });
+            }, 1500);
+        } else {
+            alert('Erro ao concluir o chamado');
+        }
+    })
+    .catch(() => {
+        alert('Erro ao concluir o chamado');
     });
 }
 </script>
@@ -78,16 +238,26 @@ function updateStatus(id, status) {
 <style>
 .container { padding: 20px; }
 .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.stats-overview { display: flex; gap: 2rem; margin-bottom: 1rem; align-items: center; }
+.stat-item { display: flex; flex-direction: column; align-items: center; }
+.stat-item div { margin-top: 5px; }
 .table { width: 100%; border-collapse: collapse; background: white; border-radius: 5px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
 .table th, .table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
 .table th { background: #f2f2f2; }
 .table tr:hover { background: #f1f1f1; }
-.status-pendente { color: #ffc107; font-weight: bold; }
+.table tr { position: relative; }
+.status-pendente { color: #dc3545; font-weight: bold; }
 .status-em-andamento { color: #17a2b8; font-weight: bold; }
 .status-concluido { color: #28a745; font-weight: bold; }
-.priority-alta { color: #dc3545; font-weight: bold; }
-.priority-normal { color: #6c757d; }
-.priority-baixa { color: #28a745; }
+.priority-alta { color: #dc3545; font-weight: bold; animation: blink 1s infinite; }
+.priority-normal { color: #ffc107; font-weight: bold; }
+.priority-baixa { color: #28a745; font-weight: bold; }
+
+@keyframes blink {
+  0% { opacity: 1; }
+  50% { opacity: 0; }
+  100% { opacity: 1; }
+}
 .btn { padding: 8px 12px; border: none; border-radius: 4px; text-decoration: none; cursor: pointer; margin-right: 5px; }
 .btn-primary { background: #007bff; color: white; }
 .btn-primary:hover { background: #0056b3; }
@@ -96,6 +266,18 @@ function updateStatus(id, status) {
 .btn-secondary { background: #6c757d; color: white; }
 .btn-secondary:hover { background: #545b62; }
 .btn-sm { padding: 4px 8px; font-size: 12px; }
-</style>
 
+/* Modal styles */
+.modal { display: none; position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }
+.modal-content { background-color: #fefefe; margin: 15% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 500px; border-radius: 5px; }
+.close { color: #aaa; float: right; font-size: 28px; font-weight: bold; }
+.close:hover, .close:focus { color: black; text-decoration: none; cursor: pointer; }
+.modal-content label { display: block; margin-top: 10px; }
+.modal-content textarea { width: 100%; height: 100px; margin-bottom: 10px; }
+.modal-content input[type="file"] { margin-bottom: 10px; }
+
+/* Tooltip styles */
+.tooltip { position: absolute; background: white; border: 1px solid #ccc; padding: 10px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 1000; max-width: 300px; }
+.tooltip img { display: inline-block; }
+    </style>
 {% endblock %}

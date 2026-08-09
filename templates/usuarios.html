@@ -1,170 +1,157 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Usuários - São Geraldo Service</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">
-                <i class="fas fa-arrow-left"></i> Voltar ao Dashboard
-            </a>
-            <h1>Gerenciar Usuários</h1>
-            <a href="{{ url_for('main.novo_usuario') }}" class="btn btn-success">
-                <i class="fas fa-plus"></i> Novo Usuário
-            </a>
-        </div>
+{% extends "base.html" %}
 
-        <div class="table-container">
-            {% if usuarios %}
-            <table>
-                <thead>
-                    <tr>
-                        <th>Nome</th>
-                        <th>Email</th>
-                        <th>Tipo</th>
-                        <th>Ativo</th>
-                        <th>Ações</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for usuario in usuarios %}
-                    <tr>
-                        <td>{{ usuario.nome }}</td>
-                        <td>{{ usuario.email }}</td>
-                        <td>{{ usuario.tipo }}</td>
-                        <td>{{ 'Sim' if usuario.ativo else 'Não' }}</td>
-                        <td>
-                            <a href="{{ url_for('main.editar_usuario', id=usuario.id) }}" class="btn btn-primary">
-                                <i class="fas fa-edit"></i> Editar
-                            </a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <div class="empty-state">
-                <i class="fas fa-user-tie"></i>
-                <p>Nenhum usuário cadastrado</p>
-                <a href="{{ url_for('main.novo_usuario') }}" class="btn btn-primary">
-                    <i class="fas fa-plus"></i> Cadastrar Primeiro Usuário
-                </a>
-            </div>
-            {% endif %}
-        </div>
+{% block title %}Usuários - São Geraldo Service{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="header">
+        <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Voltar ao Dashboard
+        </a>
+        <h1>Gerenciar Usuários</h1>
+        <a href="{{ url_for('main.novo_usuario') }}" class="btn btn-success">
+            <i class="fas fa-plus"></i> Novo Usuário
+        </a>
     </div>
 
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background-color: #f4f4f4;
-        }
+    <div class="table-container">
+        {% if usuarios %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>Email</th>
+                    <th>Tipo</th>
+                    <th>Ativo</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for usuario in usuarios %}
+                <tr>
+                    <td>{{ usuario.nome }}</td>
+                    <td>{{ usuario.email }}</td>
+                    <td>{{ usuario.tipo }}</td>
+                    <td>{{ 'Sim' if usuario.ativo else 'Não' }}</td>
+                    <td>
+                        <a href="{{ url_for('main.editar_usuario', id=usuario.id) }}" class="btn btn-primary">
+                            <i class="fas fa-edit"></i> Editar
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <i class="fas fa-user-tie"></i>
+            <p>Nenhum usuário cadastrado</p>
+            <a href="{{ url_for('main.novo_usuario') }}" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Cadastrar Primeiro Usuário
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
+<style>
+    .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+    }
 
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
+    .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
 
-        .header h1 {
-            margin: 0;
-            color: #333;
-        }
+    .header h1 {
+        margin: 0;
+        color: #333;
+    }
 
-        .btn {
-            padding: 10px 15px;
-            border: none;
-            border-radius: 5px;
-            font-size: 16px;
-            cursor: pointer;
-            text-decoration: none;
-            transition: background-color 0.3s;
-        }
+    .btn {
+        padding: 10px 15px;
+        border: none;
+        border-radius: 5px;
+        font-size: 16px;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background-color 0.3s;
+    }
 
-        .btn-secondary {
-            background-color: #6c757d;
-            color: white;
-        }
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
 
-        .btn-secondary:hover {
-            background-color: #5a6268;
-        }
+    .btn-secondary:hover {
+        background-color: #5a6268;
+    }
 
-        .btn-success {
-            background-color: #28a745;
-            color: white;
-        }
+    .btn-success {
+        background-color: #28a745;
+        color: white;
+    }
 
-        .btn-success:hover {
-            background-color: #218838;
-        }
+    .btn-success:hover {
+        background-color: #218838;
+    }
 
-        .btn-primary {
-            background-color: #007bff;
-            color: white;
-        }
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
 
-        .btn-primary:hover {
-            background-color: #0056b3;
-        }
+    .btn-primary:hover {
+        background-color: #0056b3;
+    }
 
-        .table-container {
-            background-color: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
+    .table-container {
+        background-color: white;
+        border-radius: 10px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        overflow: hidden;
+    }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
 
-        th, td {
-            padding: 15px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-        }
+    th, td {
+        padding: 15px;
+        text-align: left;
+        border-bottom: 1px solid #ddd;
+    }
 
-        th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-        }
+    th {
+        background-color: #f8f9fa;
+        font-weight: 600;
+    }
 
-        tr:hover {
-            background-color: #f1f1f1;
-        }
+    tr:hover {
+        background-color: #f1f1f1;
+    }
 
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: #666;
-        }
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #666;
+    }
 
-        .empty-state i {
-            font-size: 48px;
-            margin-bottom: 20px;
-            opacity: 0.5;
-        }
+    .empty-state i {
+        font-size: 48px;
+        margin-bottom: 20px;
+        opacity: 0.5;
+    }
 
-        .empty-state p {
-            font-size: 18px;
-            margin-bottom: 20px;
-        }
-    </style>
-</body>
-</html>
+    .empty-state p {
+        font-size: 18px;
+        margin-bottom: 20px;
+    }
+</style>
+{% endblock %}

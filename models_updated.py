@@ -25,7 +25,7 @@ class Cliente(db.Model):
     
     # Relacionamentos
     equipamentos = db.relationship('Equipamento', backref='cliente', lazy=True)
-    chamados = db.relationship('Chamado', backref='cliente_rel', lazy=True)
+    chamados = db.relationship('Chamado', backref='cliente', lazy=True)
 
     def __repr__(self):
         return f'<Cliente {self.nome}>'
@@ -94,15 +94,17 @@ class Chamado(db.Model):
     tipo_servico = db.Column(db.String(50), nullable=False)
     descricao = db.Column(db.Text)
     status = db.Column(db.String(20), default='Pendente')
-    prioridade = db.Column(db.String(10), default='Normal')
+    prioridade = db.Column(db.String(10), default='Baixa')
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    data_atendimento = db.Column(db.DateTime)
     data_conclusao = db.Column(db.DateTime)
     observacoes = db.Column(db.Text)
+    feito = db.Column(db.Text)  # Campo para o que foi realizado
+    patrimonio = db.Column(db.String(50))
+    equipamento = db.Column(db.String(100))
     tecnico_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
     
-    # Relacionamentos
-    cliente_rel = db.relationship('Cliente', backref='chamados_cliente')
-    tecnico = db.relationship('Usuario', backref='chamados_tecnico')
+    # Relacionamentos via backref
 
     def __repr__(self):
         return f'<Chamado {self.numero_chamado}>'
@@ -111,13 +113,47 @@ class Chamado(db.Model):
         return {
             'id': self.id,
             'numero_chamado': self.numero_chamado,
-            'cliente': self.cliente_rel.nome if self.cliente_rel else '',
+            'cliente': self.cliente.nome if self.cliente else '',
             'tipo_servico': self.tipo_servico,
             'descricao': self.descricao,
             'status': self.status,
             'prioridade': self.prioridade,
             'data_criacao': self.data_criacao.strftime('%d/%m/%Y %H:%M') if self.data_criacao else None,
+            'data_atendimento': self.data_atendimento.strftime('%d/%m/%Y %H:%M') if self.data_atendimento else None,
             'data_conclusao': self.data_conclusao.strftime('%d/%m/%Y %H:%M') if self.data_conclusao else None,
             'observacoes': self.observacoes,
-            'tecnico': self.tecnico.nome if self.tecnico else ''
+            'feito': self.feito,
+            'tecnico': self.tecnico.nome if self.tecnico else '',
+            'fotos': [{'filename': f.filename} for f in self.fotos]
         }
+
+class ChamadoFoto(db.Model):
+    __tablename__ = 'chamado_fotos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    chamado_id = db.Column(db.Integer, db.ForeignKey('chamados.id'), nullable=False)
+    filename = db.Column(db.String(255), nullable=False)
+    upload_date = db.Column(db.DateTime, default=datetime.utcnow)
+
+    chamado = db.relationship('Chamado', backref=db.backref('fotos', lazy=True))
+
+    def __repr__(self):
+        return f'<ChamadoFoto {self.filename}>'
+
+class SistemaConfig(db.Model):
+    __tablename__ = 'sistema_config'
+
+    id = db.Column(db.Integer, primary_key=True)
+    smtp_server = db.Column(db.String(100))
+    smtp_port = db.Column(db.Integer, default=587)
+    smtp_username = db.Column(db.String(100))
+    smtp_password = db.Column(db.String(255))
+    email_from = db.Column(db.String(120))
+    email_subject_prefix = db.Column(db.String(100), default='[São Geraldo Service]')
+    use_tls = db.Column(db.Boolean, default=True)
+    email_error_log = db.Column(db.Text)  # Campo para armazenar logs de erro de email
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    data_atualizacao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<SistemaConfig {self.id}>'

@@ -2,7 +2,7 @@ from db_config import SQLALCHEMY_DATABASE_URI as MYSQL_URI
 
 
 class Config:
-    SECRET_KEY = 'sua_chave_secreta_aqui'
+    SECRET_KEY = 'saogeraldo2025'
 
     # MySQL local (mesmo banco do restante do projeto)
     SQLALCHEMY_DATABASE_URI = MYSQL_URI

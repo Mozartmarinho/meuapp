@@ -1,4 +1,4 @@
-from app import app
+from app_updated import app
 from models_updated import db, Usuario, Cliente, Equipamento, Chamado, Permission
 from datetime import datetime
 

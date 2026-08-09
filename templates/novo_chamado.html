@@ -17,16 +17,17 @@
             <select id="cliente_id" name="cliente_id" required>
                 <option value="">Selecione um cliente...</option>
                 {% for cliente in clientes %}
-                <option value="{{ cliente.nome }}">{{ cliente.nome }}</option>
+                <option value="{{ cliente.id }}">{{ cliente.nome }}</option>
                 {% endfor %}
             </select>
         </div>
 
         <div class="form-group">
-            <label for="patrimonio">Patrimônio</label>
-            <select id="patrimonio" name="patrimonio">
+            <label for="patrimonio">Patrimônio *</label>
+            <select id="patrimonio" name="patrimonio" required>
                 <option value="">Selecione um patrimônio...</option>
             </select>
+            <p id="no-patrimonio-msg" style="color: red; display: none;">Nenhum patrimônio vinculado a este cliente.</p>
         </div>
 
         <div class="form-group">
@@ -52,11 +53,22 @@
         </div>
 
         <div class="form-group">
-            <label for="prioridade">Prioridade</label>
-            <select id="prioridade" name="prioridade">
-                <option value="Normal">Normal</option>
-                <option value="Média">Média</option>
-                <option value="Alta">Alta</option>
+            <label for="prioridade">Prioridade *</label>
+            <select id="prioridade" name="prioridade" required>
+                <option value="">Selecione uma prioridade...</option>
+                <option value="Baixa" style="background-color: #d4edda; color: #155724;">Baixa</option>
+                <option value="Normal" style="background-color: #fff3cd; color: #856404;">Normal</option>
+                <option value="Alta" style="background-color: #f8d7da; color: #721c24;">Alta</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="status">Status *</label>
+            <select id="status" name="status" required>
+                <option value="">Selecione...</option>
+                <option value="Pendente">Pendente</option>
+                <option value="Em Andamento">Em Andamento</option>
+                <option value="Concluído">Concluído</option>
             </select>
         </div>
 
@@ -83,7 +95,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const equipamentoInput = document.getElementById('equipamento');
 
     clienteSelect.addEventListener('change', function() {
-        const clienteNome = this.value;
+        const selectedOption = this.options[this.selectedIndex];
+        const clienteNome = selectedOption ? selectedOption.textContent : '';
         patrimonioSelect.innerHTML = '<option value="">Carregando...</option>';
         equipamentoInput.value = '';
 
@@ -92,12 +105,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 .then(response => response.json())
                 .then(data => {
                     patrimonioSelect.innerHTML = '<option value="">Selecione um patrimônio...</option>';
-                    data.forEach(equip => {
-                        const option = document.createElement('option');
-                        option.value = equip.patrimonio;
-                        option.textContent = `${equip.patrimonio} - ${equip.nome_equipamento}`;
-                        patrimonioSelect.appendChild(option);
-                    });
+                    if (data.length === 0) {
+                        document.getElementById('no-patrimonio-msg').style.display = 'block';
+                    } else {
+                        document.getElementById('no-patrimonio-msg').style.display = 'none';
+                        data.forEach(equip => {
+                            const option = document.createElement('option');
+                            option.value = equip.patrimonio;
+                            option.textContent = `${equip.patrimonio} - ${equip.nome_equipamento}`;
+                            patrimonioSelect.appendChild(option);
+                        });
+                    }
                 })
                 .catch(error => {
                     patrimonioSelect.innerHTML = '<option value="">Erro ao carregar patrimônios</option>';
@@ -105,6 +123,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
         } else {
             patrimonioSelect.innerHTML = '<option value="">Selecione um cliente primeiro</option>';
+            document.getElementById('no-patrimonio-msg').style.display = 'none';
         }
     });
 
