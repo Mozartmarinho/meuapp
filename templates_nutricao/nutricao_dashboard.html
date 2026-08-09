@@ -2,13 +2,23 @@
 {% block content %}
 <div class="page-header">
   <h1>MAPA DE PRODUÇÃO</h1>
-  <p>Grade do dia com flags de refeição (D · C · A · M · J · Ceia)</p>
+  <p>Grade do dia com flags de refeição e campos complementares</p>
 </div>
 
 <div class="toolbar">
   <div class="toolbar-search">
     <i class="fas fa-search"></i>
     <input type="text" id="filtroPrincipal" placeholder="Buscar por leito, prontuário, nome, dieta..." oninput="filtrarTabelaPrincipal()">
+  </div>
+
+  <div class="mapa-filtro-clinica">
+    <label for="filtroClinica">Clínica:</label>
+    <select id="filtroClinica" class="form-control" onchange="filtrarTabelaPrincipal()">
+      <option value="">Todas</option>
+      {% for c in clinicas or [] %}
+      <option value="{{ c.nome }}">{{ c.nome }}</option>
+      {% endfor %}
+    </select>
   </div>
 
   <div class="card" style="padding:6px 10px;display:flex;align-items:center;gap:8px;margin:0;">
@@ -46,13 +56,27 @@
           <th class="col-flag" title="Jantar">J</th>
           <th class="col-flag" title="Ceia">C</th>
           <th style="width:90px">Saída</th>
+          <th style="min-width:180px">Observação etiqueta (pequenas refeições)</th>
+          <th style="min-width:110px">Extras</th>
+          <th style="min-width:110px">Suplementos</th>
+          <th style="min-width:110px">Enteral</th>
+          <th style="min-width:110px">Fórm. Infantil</th>
+          <th style="min-width:90px">LVE</th>
+          <th style="min-width:140px">Data/Hora Inclusão</th>
         </tr>
       </thead>
       <tbody id="mapaBody">
         {% for l in mapa_linhas %}
-        <tr class="linha-mapa" data-id="{{ l.id }}" data-text="{{ (l.leito ~ ' ' ~ l.prontuario ~ ' ' ~ l.nome ~ ' ' ~ l.dieta ~ ' ' ~ l.diagnostico ~ ' ' ~ l.observacoes)|lower }}">
+        <tr class="linha-mapa" data-id="{{ l.id }}" data-clinica="{{ (l.clinica or '')|e }}"
+            data-obs_etiqueta="{{ (l.obs_etiqueta or '')|e }}"
+            data-extras="{{ (l.extras or '')|e }}"
+            data-suplementos="{{ (l.suplementos or '')|e }}"
+            data-enteral="{{ (l.enteral or '')|e }}"
+            data-formula_infantil="{{ (l.formula_infantil or '')|e }}"
+            data-lve="{{ (l.lve or '')|e }}"
+            data-text="{{ (l.leito ~ ' ' ~ l.prontuario ~ ' ' ~ l.nome ~ ' ' ~ l.dieta ~ ' ' ~ l.diagnostico ~ ' ' ~ l.observacoes ~ ' ' ~ (l.clinica or ''))|lower }}">
           <td>{{ l.adm or '-' }}</td>
-          <td>{{ l.leito or '-' }}</td>
+          <td class="cell-leito">{{ l.leito or '-' }}</td>
           <td>{{ l.prontuario or '-' }}</td>
           <td>{{ l.nome or '-' }}</td>
           <td>{{ l.idade if l.idade is not none else '-' }}</td>
@@ -66,12 +90,84 @@
           <td class="col-flag"><button type="button" class="flag-btn {{ 'on' if l.fl_jantar else '' }}" data-campo="fl_jantar" onclick="toggleFlag(this)">{{ '●' if l.fl_jantar else '○' }}</button></td>
           <td class="col-flag"><button type="button" class="flag-btn {{ 'on' if l.fl_ceia else '' }}" data-campo="fl_ceia" onclick="toggleFlag(this)">{{ '●' if l.fl_ceia else '○' }}</button></td>
           <td>{{ l.data_saida or '-' }}</td>
+          <td class="cell-texto" data-campo="obs_etiqueta">{% if l.obs_etiqueta %}<button type="button" class="ver-texto" onclick="abrirTextoCampo(this)"> (Ver Texto)</button>{% endif %}</td>
+          <td class="cell-texto" data-campo="extras">{% if l.extras %}<button type="button" class="ver-texto" onclick="abrirTextoCampo(this)"> (Ver Texto)</button>{% endif %}</td>
+          <td class="cell-texto" data-campo="suplementos">{% if l.suplementos %}<button type="button" class="ver-texto" onclick="abrirTextoCampo(this)"> (Ver Texto)</button>{% endif %}</td>
+          <td class="cell-texto" data-campo="enteral">{% if l.enteral %}<button type="button" class="ver-texto" onclick="abrirTextoCampo(this)"> (Ver Texto)</button>{% endif %}</td>
+          <td class="cell-texto" data-campo="formula_infantil">{% if l.formula_infantil %}<button type="button" class="ver-texto" onclick="abrirTextoCampo(this)"> (Ver Texto)</button>{% endif %}</td>
+          <td class="cell-texto" data-campo="lve">{% if l.lve %}<button type="button" class="ver-texto" onclick="abrirTextoCampo(this)"> (Ver Texto)</button>{% endif %}</td>
+          <td>{{ l.data_inclusao or '-' }}</td>
         </tr>
         {% else %}
-        <tr id="mapaVazio"><td colspan="15" style="text-align:center;padding:1.5rem;color:#64748b">Nenhum paciente no mapa deste dia. Cadastre um paciente ou navegue a data.</td></tr>
+        <tr id="mapaVazio"><td colspan="22" style="text-align:center;padding:1.5rem;color:#64748b">Nenhum paciente no mapa deste dia. Cadastre um paciente ou navegue a data.</td></tr>
         {% endfor %}
       </tbody>
     </table>
+  </div>
+</div>
+
+<nav id="mapaContextMenu" class="mapa-ctx" hidden>
+  <button type="button" data-acao="alimentos"><u>A</u>limentos complementares</button>
+  <button type="button" data-acao="substituicoes"><u>S</u>ubstituições</button>
+  <button type="button" data-acao="avaliacao"><u>A</u>valiação Nutricional</button>
+  <hr>
+  <button type="button" data-acao="limpar"><u>L</u>impar campo</button>
+  <hr>
+  <button type="button" data-acao="carregar"><u>C</u>arregar pacientes</button>
+  <button type="button" data-acao="transferir"><u>T</u>ransferir de leito</button>
+  <hr>
+  <button type="button" data-acao="salvar_arquivo"><u>S</u>alvar mapa para arquivo</button>
+  <button type="button" data-acao="carregar_arquivo"><u>C</u>arregar mapa de arquivo</button>
+  <hr>
+  <button type="button" data-acao="desbloquear"><i class="fas fa-lock" style="color:#ca8a04;margin-right:6px;"></i><u>D</u>esbloquear mapa</button>
+  <hr>
+  <button type="button" data-acao="importar_extras">Importar <u>E</u>xtras</button>
+  <button type="button" data-acao="importar_suplementos">Importar <u>S</u>uplementos</button>
+  <button type="button" data-acao="importar_enteral">Importar <u>E</u>nteral</button>
+  <button type="button" data-acao="importar_formula">Importar <u>F</u>órmulas Infantis</button>
+  <button type="button" data-acao="importar_lve">Importar <u>L</u>VE</button>
+  <hr>
+  <button type="button" data-acao="atalhos"><u>G</u>uia de atalhos</button>
+</nav>
+<input type="file" id="mapaFileInput" accept="application/json,.json" hidden>
+
+<div id="avisoAltaOverlay" class="aviso-alta-overlay" hidden>
+  <div class="aviso-alta-dialog" role="dialog" aria-modal="true" aria-labelledby="avisoAltaTitulo">
+    <div class="aviso-alta-header">
+      <span class="aviso-alta-icon" aria-hidden="true"><i class="fas fa-exclamation-triangle"></i></span>
+      <div>
+        <h2 id="avisoAltaTitulo">Aviso</h2>
+        <p>Atenção: Foram detectados pacientes com alta presentes em mapa com datas posteriores. Selecione na listagem abaixo quais devem permanecer (Por padrão, todos são excluídos).</p>
+      </div>
+    </div>
+    <div class="aviso-alta-actions">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="avisoManterTodos()">
+        <i class="fas fa-check" style="color:#16a34a"></i> Manter todos
+      </button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="avisoExcluirTodos()">
+        <i class="fas fa-ban" style="color:#dc2626"></i> Excluir todos
+      </button>
+    </div>
+    <div class="aviso-alta-table-wrap">
+      <table class="data-table aviso-alta-table">
+        <thead>
+          <tr>
+            <th>Clínica</th>
+            <th style="width:70px">Leito</th>
+            <th>Nome</th>
+            <th style="width:90px">Saída</th>
+            <th style="width:70px">Motivo</th>
+            <th style="width:70px;text-align:center">Excluir</th>
+          </tr>
+        </thead>
+        <tbody id="avisoAltaBody"></tbody>
+      </table>
+    </div>
+    <div class="aviso-alta-footer">
+      <button type="button" class="btn btn-primary" onclick="confirmarAvisoAlta()">
+        <i class="fas fa-check"></i> OK
+      </button>
+    </div>
   </div>
 </div>
 
@@ -79,7 +175,7 @@
 .table-scroll { overflow: auto; }
 .mapa-table {
   width: 100%;
-  min-width: 1180px;
+  min-width: 2100px;
   border-collapse: collapse;
 }
 .mapa-table th,
@@ -95,13 +191,14 @@
   font-size: 0.88rem;
 }
 .mapa-table th {
-  background: var(--gray-100);
+  background: #1f4f9c;
   font-weight: 600;
-  color: var(--gray-800);
+  color: #fff;
   position: sticky;
   top: 0;
   z-index: 2;
 }
+.mapa-table tbody tr:nth-child(even) td { background: #eef5fb; }
 .mapa-table th.col-flag,
 .mapa-table td.col-flag {
   width: 42px;
@@ -125,12 +222,154 @@
   color: #3f6212;
 }
 .flag-btn:disabled { opacity: 0.5; cursor: wait; }
-.linha-mapa:hover td { background: #f8fafc; }
+.linha-mapa:hover td { background: #dbeafe !important; }
+.linha-mapa.selected td { outline: 2px solid #2563eb; outline-offset: -2px; }
+.ver-texto {
+  border: none;
+  background: transparent;
+  color: #dc2626;
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0;
+  font-size: 0.88rem;
+}
+.ver-texto:hover { text-decoration: underline; }
+.mapa-filtro-clinica {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 1 320px;
+  min-width: 200px;
+}
+.mapa-filtro-clinica label {
+  margin: 0;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--brand-ink, #1f2d4d);
+}
+.mapa-filtro-clinica .form-control {
+  padding: 0.45rem 0.65rem;
+  font-size: 0.9rem;
+  min-width: 0;
+}
+.mapa-ctx {
+  position: fixed;
+  z-index: 9999;
+  min-width: 250px;
+  background: #fff;
+  border: 1px solid #c5c9d1;
+  box-shadow: 2px 4px 16px rgba(0,0,0,0.18);
+  padding: 4px 0;
+  border-radius: 2px;
+}
+.mapa-ctx[hidden] { display: none !important; }
+.mapa-ctx button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 0.45rem 1rem;
+  font-size: 0.9rem;
+  color: #1f2937;
+  cursor: pointer;
+  font-family: inherit;
+}
+.mapa-ctx button:hover { background: #2563eb; color: #fff; }
+
+.aviso-alta-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.aviso-alta-overlay[hidden] { display: none !important; }
+.aviso-alta-dialog {
+  background: #fff;
+  border-radius: 10px;
+  width: min(820px, 96vw);
+  max-height: 90vh;
+  overflow: auto;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.28);
+  padding: 1rem 1.15rem 1.1rem;
+}
+.aviso-alta-header {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+.aviso-alta-icon {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #fef3c7;
+  color: #b45309;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  border: 2px solid #f59e0b;
+}
+.aviso-alta-header h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.15rem;
+  color: #0f2a5c;
+}
+.aviso-alta-header p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #334155;
+  line-height: 1.4;
+}
+.aviso-alta-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.55rem;
+}
+.aviso-alta-table-wrap {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  max-height: 320px;
+  overflow: auto;
+}
+.aviso-alta-table { margin: 0; }
+.aviso-alta-table th { position: sticky; top: 0; background: #f1f5f9; z-index: 1; }
+.aviso-alta-footer {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.9rem;
+}
+.mapa-ctx button:hover .fa-lock { color: #fde68a !important; }
+.mapa-ctx hr {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 4px 0;
+}
 </style>
 
 <script>
 const DATA_INICIAL = {{ (data_mapa or '')|tojson }};
+const CLINICAS_MAPA = {{ (clinicas or [])|tojson }};
+const CAMPOS_TEXTO = {
+  obs_etiqueta: 'Observação etiqueta (pequenas refeições)',
+  extras: 'Extras',
+  suplementos: 'Suplementos',
+  enteral: 'Enteral',
+  formula_infantil: 'Fórm. Infantil',
+  lve: 'LVE'
+};
 let dataAtual = DATA_INICIAL ? new Date(DATA_INICIAL + 'T12:00:00') : new Date();
+let ctxLinha = null;
+let ctxCampo = null;
+let mapaBloqueado = false;
 
 function formatDateISO(d){
   const ano = d.getFullYear();
@@ -143,6 +382,10 @@ function formatDateBR(iso){
   if (!iso || !iso.includes('-')) return '-';
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
+}
+
+function esc(s){
+  return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 }
 
 function atualizarLabelData(){
@@ -160,24 +403,32 @@ function flagCell(campo, on){
   return `<td class="col-flag"><button type="button" class="flag-btn ${on ? 'on' : ''}" data-campo="${campo}" onclick="toggleFlag(this)">${on ? '●' : '○'}</button></td>`;
 }
 
+function textoCell(campo, valor){
+  const v = (valor || '').trim();
+  return `<td class="cell-texto" data-campo="${campo}">${v ? '<button type="button" class="ver-texto" onclick="abrirTextoCampo(this)"> (Ver Texto)</button>' : ''}</td>`;
+}
+
 function renderLinhas(linhas){
   const body = document.getElementById('mapaBody');
   if (!body) return;
   if (!linhas || !linhas.length){
-    body.innerHTML = '<tr id="mapaVazio"><td colspan="15" style="text-align:center;padding:1.5rem;color:#64748b">Nenhum paciente no mapa deste dia.</td></tr>';
+    body.innerHTML = '<tr id="mapaVazio"><td colspan="22" style="text-align:center;padding:1.5rem;color:#64748b">Nenhum paciente no mapa deste dia.</td></tr>';
     return;
   }
   body.innerHTML = linhas.map(l => {
-    const txt = [l.leito, l.prontuario, l.nome, l.dieta, l.diagnostico, l.observacoes].join(' ').toLowerCase();
-    return `<tr class="linha-mapa" data-id="${l.id}" data-text="${txt.replace(/"/g,'&quot;')}">
+    const clinica = l.clinica || '';
+    const txt = [l.leito, l.prontuario, l.nome, l.dieta, l.diagnostico, l.observacoes, clinica].join(' ').toLowerCase();
+    return `<tr class="linha-mapa" data-id="${l.id}" data-clinica="${esc(clinica)}" data-text="${esc(txt)}"
+      data-obs_etiqueta="${esc(l.obs_etiqueta)}" data-extras="${esc(l.extras)}" data-suplementos="${esc(l.suplementos)}"
+      data-enteral="${esc(l.enteral)}" data-formula_infantil="${esc(l.formula_infantil)}" data-lve="${esc(l.lve)}">
       <td>${l.adm || '-'}</td>
-      <td>${l.leito || '-'}</td>
+      <td class="cell-leito">${l.leito || '-'}</td>
       <td>${l.prontuario || '-'}</td>
       <td>${l.nome || '-'}</td>
       <td>${l.idade != null ? l.idade : '-'}</td>
-      <td title="${(l.diagnostico||'').replace(/"/g,'&quot;')}">${l.diagnostico || '-'}</td>
-      <td title="${(l.dieta||'').replace(/"/g,'&quot;')}">${l.dieta || '-'}</td>
-      <td title="${(l.observacoes||'').replace(/"/g,'&quot;')}">${l.observacoes || '-'}</td>
+      <td title="${esc(l.diagnostico)}">${l.diagnostico || '-'}</td>
+      <td title="${esc(l.dieta)}">${l.dieta || '-'}</td>
+      <td title="${esc(l.observacoes)}">${l.observacoes || '-'}</td>
       ${flagCell('fl_desjejum', !!l.fl_desjejum)}
       ${flagCell('fl_colacao', !!l.fl_colacao)}
       ${flagCell('fl_almoco', !!l.fl_almoco)}
@@ -185,6 +436,13 @@ function renderLinhas(linhas){
       ${flagCell('fl_jantar', !!l.fl_jantar)}
       ${flagCell('fl_ceia', !!l.fl_ceia)}
       <td>${l.data_saida || '-'}</td>
+      ${textoCell('obs_etiqueta', l.obs_etiqueta)}
+      ${textoCell('extras', l.extras)}
+      ${textoCell('suplementos', l.suplementos)}
+      ${textoCell('enteral', l.enteral)}
+      ${textoCell('formula_infantil', l.formula_infantil)}
+      ${textoCell('lve', l.lve)}
+      <td>${l.data_inclusao || '-'}</td>
     </tr>`;
   }).join('');
   filtrarTabelaPrincipal();
@@ -200,12 +458,79 @@ async function carregarMapa(){
       return;
     }
     renderLinhas(j.linhas || []);
+    abrirAvisoAlta(j.avisos_alta || []);
   } catch (e) {
     showToast('Erro ao carregar mapa','error');
   }
 }
 
+let avisosAltaAtual = [];
+
+function abrirAvisoAlta(avisos){
+  avisosAltaAtual = Array.isArray(avisos) ? avisos.map(a => ({...a, excluir: a.excluir !== false})) : [];
+  const overlay = document.getElementById('avisoAltaOverlay');
+  if (!overlay) return;
+  if (!avisosAltaAtual.length){
+    overlay.hidden = true;
+    return;
+  }
+  const tb = document.getElementById('avisoAltaBody');
+  tb.innerHTML = avisosAltaAtual.map((a, i) => `
+    <tr data-i="${i}">
+      <td>${esc(a.clinica)}</td>
+      <td>${esc(a.leito)}</td>
+      <td>${esc(a.nome)}</td>
+      <td>${esc(a.saida)}</td>
+      <td>${esc(a.motivo)}</td>
+      <td style="text-align:center">
+        <input type="checkbox" class="aviso-excluir" data-i="${i}" ${a.excluir ? 'checked' : ''} onchange="toggleAvisoExcluir(${i}, this.checked)">
+      </td>
+    </tr>
+  `).join('');
+  overlay.hidden = false;
+}
+
+function toggleAvisoExcluir(i, checked){
+  if (!avisosAltaAtual[i]) return;
+  avisosAltaAtual[i].excluir = !!checked;
+}
+
+function avisoManterTodos(){
+  avisosAltaAtual.forEach(a => { a.excluir = false; });
+  document.querySelectorAll('.aviso-excluir').forEach(c => { c.checked = false; });
+}
+
+function avisoExcluirTodos(){
+  avisosAltaAtual.forEach(a => { a.excluir = true; });
+  document.querySelectorAll('.aviso-excluir').forEach(c => { c.checked = true; });
+}
+
+async function confirmarAvisoAlta(){
+  const iso = formatDateISO(dataAtual);
+  const excluir_ids = avisosAltaAtual.filter(a => a.excluir).map(a => a.mapa_id);
+  try {
+    const r = await fetch('/nutricao/api/mapa/avisos-alta', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ data: iso, excluir_ids, itens: avisosAltaAtual })
+    });
+    const j = await r.json();
+    if (!r.ok || j.ok === false){
+      showToast((j && j.error) || 'Falha ao aplicar aviso','error');
+      return;
+    }
+    document.getElementById('avisoAltaOverlay').hidden = true;
+    renderLinhas(j.linhas || []);
+    const n = j.excluidos || 0;
+    if (n > 0) showToast(`${n} paciente(s) excluído(s) do mapa`, 'success');
+    else showToast('Nenhum paciente excluído do mapa', 'success');
+  } catch (e) {
+    showToast('Erro ao aplicar aviso','error');
+  }
+}
+
 async function toggleFlag(btn){
+  if (mapaBloqueado){ showToast('Mapa bloqueado','error'); return; }
   const tr = btn.closest('tr.linha-mapa');
   if (!tr) return;
   const id = tr.dataset.id;
@@ -234,10 +559,214 @@ async function toggleFlag(btn){
 
 function filtrarTabelaPrincipal(){
   const q = (document.getElementById('filtroPrincipal').value || '').toLowerCase().trim();
+  const clinicaFiltro = (document.getElementById('filtroClinica')?.value || '').toLowerCase().trim();
   document.querySelectorAll('#mapaBody tr.linha-mapa').forEach(tr => {
     const txt = (tr.dataset.text || tr.textContent || '').toLowerCase();
-    tr.style.display = (!q || txt.includes(q)) ? '' : 'none';
+    const clinica = (tr.dataset.clinica || '').toLowerCase().trim();
+    const okTexto = !q || txt.includes(q);
+    const okClinica = !clinicaFiltro || clinica === clinicaFiltro;
+    tr.style.display = (okTexto && okClinica) ? '' : 'none';
   });
+}
+
+function fecharContextMenu(){
+  const menu = document.getElementById('mapaContextMenu');
+  if (menu) menu.hidden = true;
+}
+
+function abrirContextMenu(e, tr, campo){
+  e.preventDefault();
+  ctxLinha = tr;
+  ctxCampo = campo || null;
+  document.querySelectorAll('#mapaBody tr.linha-mapa').forEach(r => r.classList.remove('selected'));
+  tr.classList.add('selected');
+  const menu = document.getElementById('mapaContextMenu');
+  menu.hidden = false;
+  const x = Math.min(e.clientX, window.innerWidth - 270);
+  const y = Math.min(e.clientY, window.innerHeight - menu.offsetHeight - 8);
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+}
+
+function abrirTextoCampo(btn){
+  const td = btn.closest('td');
+  const tr = btn.closest('tr.linha-mapa');
+  const campo = td?.dataset.campo;
+  if (!tr || !campo) return;
+  editarCampoTexto(tr, campo);
+}
+
+function editarCampoTexto(tr, campo, tituloExtra){
+  if (mapaBloqueado){ showToast('Mapa bloqueado','error'); return; }
+  const titulo = tituloExtra || CAMPOS_TEXTO[campo] || campo;
+  const valor = tr.dataset[campo] || '';
+  const html = `<div class="form-group"><label class="form-label">${titulo}</label>
+    <textarea class="form-control" id="f-mapa-texto" rows="6">${valor.replace(/</g,'&lt;')}</textarea></div>`;
+  window._mapaEdit = { id: tr.dataset.id, campo, tr };
+  abrirModal(titulo, html, 'Salvar', salvarCampoTexto);
+}
+
+async function salvarCampoTexto(){
+  const edit = window._mapaEdit;
+  if (!edit) return;
+  const valor = document.getElementById('f-mapa-texto')?.value || '';
+  const body = {};
+  body[edit.campo] = valor;
+  const r = await fetch(`/nutricao/api/mapa/${edit.id}`, {
+    method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+  });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao salvar','error'); return; }
+  edit.tr.dataset[edit.campo] = valor;
+  const td = edit.tr.querySelector(`td.cell-texto[data-campo="${edit.campo}"]`);
+  if (td){
+    td.innerHTML = valor.trim()
+      ? '<button type="button" class="ver-texto" onclick="abrirTextoCampo(this)"> (Ver Texto)</button>'
+      : '';
+  }
+  fecharModal();
+  showToast('Campo atualizado','success');
+}
+
+async function limparCampoAtual(){
+  if (!ctxLinha) return;
+  if (!ctxCampo || !CAMPOS_TEXTO[ctxCampo]){
+    showToast('Clique com o direito sobre Extras, Suplementos, Enteral, Fórm. Infantil, LVE ou Observação etiqueta','error');
+    return;
+  }
+  if (mapaBloqueado){ showToast('Mapa bloqueado','error'); return; }
+  const body = {};
+  body[ctxCampo] = '';
+  const r = await fetch(`/nutricao/api/mapa/${ctxLinha.dataset.id}`, {
+    method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+  });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao limpar','error'); return; }
+  ctxLinha.dataset[ctxCampo] = '';
+  const td = ctxLinha.querySelector(`td.cell-texto[data-campo="${ctxCampo}"]`);
+  if (td) td.innerHTML = '';
+  showToast('Campo limpo','success');
+}
+
+function transferirLeito(){
+  if (!ctxLinha) return;
+  if (mapaBloqueado){ showToast('Mapa bloqueado','error'); return; }
+  const atual = ctxLinha.querySelector('.cell-leito')?.textContent || '';
+  const html = `<div class="form-group"><label class="form-label">Novo leito</label>
+    <input class="form-control" id="f-novo-leito" value="${atual === '-' ? '' : atual}"></div>`;
+  window._mapaEdit = { id: ctxLinha.dataset.id, tr: ctxLinha };
+  abrirModal('Transferir de leito', html, 'Transferir', async () => {
+    const leito = (document.getElementById('f-novo-leito')?.value || '').trim();
+    const r = await fetch(`/nutricao/api/mapa/${window._mapaEdit.id}`, {
+      method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ leito })
+    });
+    const j = await r.json();
+    if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha','error'); return; }
+    const cell = window._mapaEdit.tr.querySelector('.cell-leito');
+    if (cell) cell.textContent = leito || '-';
+    fecharModal();
+    showToast('Leito atualizado','success');
+  });
+}
+
+function salvarMapaArquivo(){
+  const linhas = [];
+  document.querySelectorAll('#mapaBody tr.linha-mapa').forEach(tr => {
+    if (tr.style.display === 'none') return;
+    linhas.push({
+      id: tr.dataset.id,
+      clinica: tr.dataset.clinica || '',
+      leito: tr.querySelector('.cell-leito')?.textContent || '',
+      nome: tr.children[3]?.textContent || '',
+      obs_etiqueta: tr.dataset.obs_etiqueta || '',
+      extras: tr.dataset.extras || '',
+      suplementos: tr.dataset.suplementos || '',
+      enteral: tr.dataset.enteral || '',
+      formula_infantil: tr.dataset.formula_infantil || '',
+      lve: tr.dataset.lve || ''
+    });
+  });
+  const blob = new Blob([JSON.stringify({ data: formatDateISO(dataAtual), linhas }, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `mapa_${formatDateISO(dataAtual)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Mapa exportado','success');
+}
+
+function carregarMapaArquivo(){
+  document.getElementById('mapaFileInput').click();
+}
+
+async function onMapaFile(e){
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    const linhas = data.linhas || [];
+    let ok = 0;
+    for (const l of linhas){
+      if (!l.id) continue;
+      const body = {
+        obs_etiqueta: l.obs_etiqueta || '',
+        extras: l.extras || '',
+        suplementos: l.suplementos || '',
+        enteral: l.enteral || '',
+        formula_infantil: l.formula_infantil || '',
+        lve: l.lve || ''
+      };
+      if (l.leito) body.leito = l.leito;
+      const r = await fetch(`/nutricao/api/mapa/${l.id}`, {
+        method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+      });
+      if (r.ok) ok++;
+    }
+    await carregarMapa();
+    showToast(`Mapa carregado (${ok} linhas)`,'success');
+  } catch (err) {
+    showToast('Arquivo inválido','error');
+  }
+}
+
+function guiaAtalhos(){
+  const html = `<ul style="margin:0;padding-left:1.1rem;line-height:1.7">
+    <li><b>Botão direito</b> na linha: menu do mapa</li>
+    <li><b>(Ver Texto)</b>: abre o conteúdo do campo</li>
+    <li><b>Importar Extras/Suplementos/...</b>: edita o campo correspondente</li>
+    <li><b>Limpar campo</b>: limpa o campo clicado</li>
+    <li><b>D / C / A / M / J / C</b>: flags de refeição</li>
+  </ul>`;
+  abrirModal('Guia de atalhos', html, 'Fechar', fecharModal);
+}
+
+function acaoContextMenu(acao){
+  fecharContextMenu();
+  if (!ctxLinha && !['carregar','carregar_arquivo','salvar_arquivo','atalhos','desbloquear'].includes(acao)){
+    showToast('Selecione uma linha','error');
+    return;
+  }
+  switch(acao){
+    case 'alimentos': editarCampoTexto(ctxLinha, 'obs_etiqueta', 'Alimentos complementares'); break;
+    case 'substituicoes': showToast('Módulo de substituições em breve'); break;
+    case 'avaliacao': showToast('Avaliação nutricional em breve'); break;
+    case 'limpar': limparCampoAtual(); break;
+    case 'carregar': carregarMapa(); break;
+    case 'transferir': transferirLeito(); break;
+    case 'salvar_arquivo': salvarMapaArquivo(); break;
+    case 'carregar_arquivo': carregarMapaArquivo(); break;
+    case 'desbloquear':
+      mapaBloqueado = !mapaBloqueado;
+      showToast(mapaBloqueado ? 'Mapa bloqueado' : 'Mapa desbloqueado', mapaBloqueado ? 'error' : 'success');
+      break;
+    case 'importar_extras': editarCampoTexto(ctxLinha, 'extras'); break;
+    case 'importar_suplementos': editarCampoTexto(ctxLinha, 'suplementos'); break;
+    case 'importar_enteral': editarCampoTexto(ctxLinha, 'enteral'); break;
+    case 'importar_formula': editarCampoTexto(ctxLinha, 'formula_infantil'); break;
+    case 'importar_lve': editarCampoTexto(ctxLinha, 'lve'); break;
+    case 'atalhos': guiaAtalhos(); break;
+  }
 }
 
 function abrirCadastroPacienteComData(){
@@ -262,7 +791,12 @@ function abrirCadastroPacienteComData(){
       <div class="form-group"><label class="form-label">Idade</label><input class="form-control" id="modal-pac-idade" readonly></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Clínica</label><input class="form-control" id="modal-pac-clinica"></div>
+      <div class="form-group"><label class="form-label">Clínica</label>
+        <select class="form-control" id="modal-pac-clinica">
+          <option value="">Selecione</option>
+          ${(CLINICAS_MAPA || []).map(c => `<option value="${String(c.nome).replace(/"/g,'&quot;')}">${c.nome}</option>`).join('')}
+        </select>
+      </div>
       <div class="form-group"><label class="form-label">Leito</label><input class="form-control" id="modal-pac-leito"></div>
     </div>
     <div class="form-row">
@@ -325,6 +859,29 @@ async function salvarPacienteModal(){
 document.addEventListener('DOMContentLoaded', function(){
   atualizarLabelData();
   filtrarTabelaPrincipal();
+  carregarMapa();
+
+  const body = document.getElementById('mapaBody');
+  body?.addEventListener('contextmenu', function(e){
+    const tr = e.target.closest('tr.linha-mapa');
+    if (!tr) return;
+    const td = e.target.closest('td.cell-texto');
+    abrirContextMenu(e, tr, td?.dataset.campo || null);
+  });
+
+  document.getElementById('mapaContextMenu')?.addEventListener('click', function(e){
+    const btn = e.target.closest('button[data-acao]');
+    if (!btn) return;
+    acaoContextMenu(btn.dataset.acao);
+  });
+
+  document.addEventListener('click', function(e){
+    if (!e.target.closest('#mapaContextMenu')) fecharContextMenu();
+  });
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape') fecharContextMenu();
+  });
+  document.getElementById('mapaFileInput')?.addEventListener('change', onMapaFile);
 });
 </script>
 {% endblock %}

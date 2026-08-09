@@ -1,0 +1,153 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Totalização de Dietas</h1>
+  <p>Resumo de dietas por clínica/enfermaria e horários de refeição</p>
+</div>
+
+<div class="card tot-panel">
+  <div class="form-group" style="max-width:220px">
+    <label class="form-label" for="fData">Data</label>
+    <input class="form-control" type="date" id="fData" value="{{ data_padrao }}">
+  </div>
+
+  <div class="tot-grid">
+    <fieldset class="tot-box">
+      <legend>Totalização para</legend>
+      <label><input type="radio" name="totPara" value="clinicas" checked onchange="onTotPara()"> Clínicas</label>
+      <label><input type="radio" name="totPara" value="producao" onchange="onTotPara()"> Produção</label>
+    </fieldset>
+
+    <fieldset class="tot-box">
+      <legend>Imprimir por</legend>
+      <label><input type="radio" name="imprimirPor" value="grupo_clinica" checked onchange="atualizarLista()"> Grupo de Clínica</label>
+      <label><input type="radio" name="imprimirPor" value="clinica" onchange="atualizarLista()"> Clínica</label>
+      <label><input type="radio" name="imprimirPor" value="enfermaria" onchange="atualizarLista()"> Enfermaria</label>
+    </fieldset>
+  </div>
+
+  <div class="form-group">
+    <label class="form-label" id="lblFiltro" for="fFiltro">Grupo de Clínica:</label>
+    <select class="form-control" id="fFiltro" multiple size="10"></select>
+    <small style="color:#64748b">Segure Ctrl para selecionar vários. Inclui opção TODOS.</small>
+  </div>
+
+  <fieldset class="tot-box">
+    <legend>Horários</legend>
+    <div class="tot-horas">
+      <label><input type="checkbox" class="hora" value="desjejum"> Desjejum</label>
+      <label><input type="checkbox" class="hora" value="colacao"> Colação</label>
+      <label><input type="checkbox" class="hora" value="almoco" checked> Almoço</label>
+      <label><input type="checkbox" class="hora" value="merenda"> Merenda</label>
+      <label><input type="checkbox" class="hora" value="jantar" checked> Jantar</label>
+      <label><input type="checkbox" class="hora" value="ceia"> Ceia</label>
+    </div>
+  </fieldset>
+
+  <fieldset class="tot-box">
+    <legend>Método de totalização</legend>
+    <label class="disabled"><input type="radio" name="metodo" value="config" disabled> Verificar configuração</label>
+    <label><input type="radio" name="metodo" value="mapa" checked> Verificar apenas o mapa</label>
+    <label class="disabled"><input type="radio" name="metodo" value="direta" disabled> Verificar apenas a totalização direta</label>
+  </fieldset>
+
+  <div class="tot-footer-opts">
+    <label><input type="checkbox" id="fTotalGeral" checked> Imprimir total geral</label>
+    <label class="disabled"><input type="checkbox" id="fApenasTot" disabled> Apenas dietas totalizáveis</label>
+    <div class="form-group" style="margin:0;min-width:140px">
+      <label class="form-label" for="fConfig">Config.:</label>
+      <select class="form-control" id="fConfig" disabled>
+        <option value="">—</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="tot-actions">
+    <button type="button" class="btn btn-primary" onclick="imprimir()">
+      <i class="fas fa-print"></i> Imprimir
+    </button>
+    <button type="button" class="btn btn-ghost" onclick="location.href='{{ url_for('nutricao.dashboard') }}'">
+      <i class="fas fa-times"></i> Fechar
+    </button>
+  </div>
+</div>
+
+<style>
+.tot-panel { padding:1.1rem 1.25rem 1.4rem; max-width:720px; }
+.tot-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin:0.85rem 0; }
+.tot-box {
+  border:1px solid #dbe3ee; border-radius:8px; padding:0.75rem 0.9rem 0.95rem;
+  margin:0.75rem 0; background:#f8fafc;
+}
+.tot-box legend { font-size:0.82rem; font-weight:700; color:#334155; padding:0 0.35rem; }
+.tot-box label {
+  display:flex; align-items:center; gap:0.4rem;
+  font-size:0.9rem; color:#334155; margin:0.28rem 0;
+}
+.tot-box label.disabled, .tot-footer-opts label.disabled { color:#94a3b8; }
+.tot-horas { display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.25rem 0.75rem; }
+.tot-footer-opts {
+  display:flex; flex-wrap:wrap; align-items:flex-end; gap:0.85rem 1.25rem;
+  margin:0.85rem 0 1.1rem;
+}
+.tot-footer-opts label { display:flex; align-items:center; gap:0.4rem; font-size:0.9rem; margin:0; }
+.tot-actions { display:flex; gap:0.55rem; flex-wrap:wrap; }
+#fFiltro { min-height:180px; }
+@media (max-width:700px){
+  .tot-grid, .tot-horas { grid-template-columns:1fr; }
+}
+</style>
+
+<script>
+const CLINICAS = {{ clinicas|tojson }};
+const ENFERMARIAS = {{ enfermarias|tojson }};
+
+function esc(s){ return String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+function onTotPara(){
+  // Produção no legado desabilita alguns métodos — mantemos mapa ativo
+  atualizarLista();
+}
+
+function atualizarLista(){
+  const por = document.querySelector('input[name="imprimirPor"]:checked')?.value || 'grupo_clinica';
+  const lbl = document.getElementById('lblFiltro');
+  const sel = document.getElementById('fFiltro');
+  if (por === 'enfermaria'){
+    lbl.textContent = 'Enfermaria:';
+    sel.innerHTML = '<option value="TODOS" selected>TODOS</option>' +
+      ENFERMARIAS.map(e => `<option value="${e.id}">${esc(e.nome)}</option>`).join('');
+  } else {
+    lbl.textContent = por === 'clinica' ? 'Clínica:' : 'Grupo de Clínica:';
+    sel.innerHTML = '<option value="TODOS" selected>TODOS</option>' +
+      CLINICAS.map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join('');
+  }
+}
+
+function imprimir(){
+  const data = document.getElementById('fData').value;
+  if (!data){ showToast('Informe a data','error'); return; }
+  const por = document.querySelector('input[name="imprimirPor"]:checked')?.value || 'grupo_clinica';
+  const totPara = document.querySelector('input[name="totPara"]:checked')?.value || 'clinicas';
+  const metodo = document.querySelector('input[name="metodo"]:checked')?.value || 'mapa';
+  const sel = document.getElementById('fFiltro');
+  const filtros = [...sel.selectedOptions].map(o => o.value);
+  if (!filtros.length){ showToast('Selecione ao menos um item','error'); return; }
+  const horarios = [...document.querySelectorAll('.hora:checked')].map(c => c.value);
+  if (!horarios.length){ showToast('Selecione ao menos um horário','error'); return; }
+
+  const qs = new URLSearchParams({
+    data,
+    totalizacao_para: totPara,
+    imprimir_por: por,
+    filtros: filtros.join('|'),
+    horarios: horarios.join(','),
+    metodo,
+    imprimir_total_geral: document.getElementById('fTotalGeral').checked ? '1' : '0'
+  });
+  window.open('/nutricao/totalizacao-dietas/imprimir?' + qs.toString(), '_blank');
+}
+
+atualizarLista();
+</script>
+{% endblock %}

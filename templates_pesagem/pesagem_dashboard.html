@@ -1,0 +1,78 @@
+{% extends "base_pesagem.html" %}
+{% block title %}Leituras{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Controle de Pesagem</h1>
+  <p>Pesos recebidos das balanças via agente Windows local</p>
+</div>
+
+<div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-bottom:1.25rem;">
+  <div class="card" style="padding:1rem 1.15rem;">
+    <div style="color:var(--gray-500);font-size:0.85rem;">Leituras hoje</div>
+    <div style="font-family:var(--font-brand);font-size:1.8rem;font-weight:700;color:var(--brand-navy);">{{ total_hoje }}</div>
+  </div>
+  <div class="card" style="padding:1rem 1.15rem;">
+    <div style="color:var(--gray-500);font-size:0.85rem;">Soma hoje</div>
+    <div style="font-family:var(--font-brand);font-size:1.8rem;font-weight:700;color:var(--brand-navy);">{{ '%.2f'|format(soma_hoje) }} kg</div>
+  </div>
+  <div class="card" style="padding:1rem 1.15rem;">
+    <div style="color:var(--gray-500);font-size:0.85rem;">Última leitura</div>
+    <div style="font-family:var(--font-brand);font-size:1.35rem;font-weight:700;color:var(--brand-navy);">
+      {% if ultima %}{{ '%.3f'|format(ultima.peso) }} {{ ultima.unidade }}{% else %}—{% endif %}
+    </div>
+    <div style="font-size:0.8rem;color:var(--gray-500);">{% if ultima %}{{ ultima.balanca_codigo }} · {{ ultima.data_leitura }}{% endif %}</div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:1.25rem;padding:1rem 1.15rem;">
+  <h3 style="margin:0 0 0.85rem;font-family:var(--font-brand);color:var(--brand-navy);">Agente local (.exe)</h3>
+  <div style="display:flex;flex-wrap:wrap;gap:0.65rem;">
+    <a class="btn btn-primary" href="{{ url_for('static', filename='downloads/agente_pesagem/AgentePesagem.exe') }}" download>
+      <i class="fas fa-download"></i> Baixar AgentePesagem.exe
+    </a>
+    <a class="btn btn-secondary" href="{{ url_for('static', filename='downloads/agente_pesagem/config.json') }}" download>
+      <i class="fas fa-file-code"></i> Baixar config.json
+    </a>
+    <a class="btn btn-secondary" href="{{ url_for('static', filename='downloads/agente_pesagem/instalar_inicio_windows.bat') }}" download>
+      <i class="fas fa-power-off"></i> Baixar instalador
+    </a>
+  </div>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden;">
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Data/Hora</th>
+          <th>Balança</th>
+          <th>Peso</th>
+          <th>Estável</th>
+          <th>Origem</th>
+          <th>PC / COM</th>
+          <th>Bruto serial</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in leituras %}
+        <tr>
+          <td>{{ l.data_leitura }}</td>
+          <td>{{ l.balanca_codigo }}</td>
+          <td><strong>{{ '%.3f'|format(l.peso) }}</strong> {{ l.unidade }}</td>
+          <td>{{ 'Sim' if l.estavel else 'Não' }}</td>
+          <td>{{ l.origem }}</td>
+          <td>{{ l.computador or '-' }}{% if l.porta_com %} / {{ l.porta_com }}{% endif %}</td>
+          <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;" title="{{ l.bruto_serial }}">{{ l.bruto_serial or '-' }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7" style="text-align:center;padding:1.5rem;color:#64748b;">
+            Nenhuma leitura ainda. Conecte a balança e inicie o agente Windows.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,443 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Cadastro / Manutenção de Cardápios</h1>
+  <p>Grandes refeições, pequenas refeições e dietas líquidas</p>
+</div>
+
+<div class="card cardapio-box">
+  <div class="cardapio-toolbar">
+    <button type="button" class="btn btn-ghost btn-sm" onclick="navCardapio('first')" title="Primeiro"><i class="fas fa-step-backward"></i></button>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="navCardapio(-1)" title="Anterior"><i class="fas fa-caret-left"></i></button>
+    <span id="cardNavLabel" class="card-nav-label">0 / 0</span>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="navCardapio(1)" title="Próximo"><i class="fas fa-caret-right"></i></button>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="navCardapio('last')" title="Último"><i class="fas fa-step-forward"></i></button>
+    <span class="sep"></span>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="novoCardapio()" title="Novo"><i class="fas fa-plus"></i></button>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="excluirCardapio()" title="Excluir"><i class="fas fa-minus"></i></button>
+    <button type="button" class="btn btn-primary btn-sm" onclick="salvarCardapio()" title="Salvar"><i class="fas fa-save"></i> Salvar</button>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="carregarAba()" title="Atualizar"><i class="fas fa-sync"></i></button>
+  </div>
+
+  <div class="tabs" style="margin-bottom:1rem;">
+    <button type="button" class="tab active" data-tipo="grandes" onclick="trocarAba('grandes', this)">Dietas não-líquidas Grandes refeições</button>
+    <button type="button" class="tab" data-tipo="pequenas" onclick="trocarAba('pequenas', this)">Dietas não-líquidas Pequenas refeições</button>
+    <button type="button" class="tab" data-tipo="liquidas" onclick="trocarAba('liquidas', this)">Dietas líquidas</button>
+  </div>
+
+  <div class="cardapio-top form-row">
+    <div class="form-group">
+      <label class="form-label">Grupo do cardápio</label>
+      <select class="form-control" id="f-grupo"></select>
+    </div>
+    <div class="form-group" style="max-width:100px">
+      <label class="form-label">Dia mês</label>
+      <input class="form-control" type="number" min="1" max="31" id="f-dia-mes" value="1">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Dia da semana</label>
+      <select class="form-control" id="f-dia-semana"></select>
+    </div>
+    <div class="form-group" style="flex:1.4">
+      <label class="form-label">Dieta</label>
+      <select class="form-control" id="f-dieta"></select>
+    </div>
+  </div>
+
+  <div class="horarios-box">
+    <strong>Horários:</strong>
+    <label><input type="checkbox" id="hr_desjejum"> Desjejum</label>
+    <label><input type="checkbox" id="hr_colacao"> Colação</label>
+    <label><input type="checkbox" id="hr_almoco"> Almoço</label>
+    <label><input type="checkbox" id="hr_merenda"> Merenda</label>
+    <label><input type="checkbox" id="hr_jantar"> Jantar</label>
+    <label><input type="checkbox" id="hr_ceia"> Ceia</label>
+  </div>
+
+  <!-- GRANDES -->
+  <div id="painel-grandes" class="painel-tipo">
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Entrada</label>
+        <div class="radio-row">
+          <label><input type="radio" name="entrada_tipo" value="Salada"> Salada</label>
+          <label><input type="radio" name="entrada_tipo" value="Sopa"> Sopa</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Proteico</label>
+        <div class="radio-row wrap">
+          <label><input type="radio" name="proteico_tipo" value="Bovino"> Bovino</label>
+          <label><input type="radio" name="proteico_tipo" value="Suíno"> Suíno</label>
+          <label><input type="radio" name="proteico_tipo" value="Aves"> Aves</label>
+          <label><input type="radio" name="proteico_tipo" value="Vísceras"> Vísceras</label>
+          <label><input type="radio" name="proteico_tipo" value="Embutidos"> Embutidos</label>
+          <label><input type="radio" name="proteico_tipo" value="Peixes"> Peixes</label>
+        </div>
+      </div>
+    </div>
+    <div class="form-row two-cols">
+      <div>
+        <div class="form-group"><label class="form-label">Acompanhamento</label><select class="form-control" id="g-acompanhamento"></select></div>
+        <div class="form-group"><label class="form-label">Prato base</label><select class="form-control" id="g-prato_base"></select></div>
+        <div class="form-group"><label class="form-label">Proteico opcional</label><select class="form-control" id="g-proteico_opcional"></select></div>
+        <div class="form-group"><label class="form-label">Guarnição</label><select class="form-control" id="g-guarnicao"></select></div>
+        <div class="form-group"><label class="form-label">Diversos / Salada</label><input class="form-control" id="g-diversos_salada"></div>
+      </div>
+      <div>
+        <div class="form-group"><label class="form-label">Sobremesa</label><select class="form-control" id="g-sobremesa"></select></div>
+        <div class="form-group"><label class="form-label">Bebida</label><select class="form-control" id="g-bebida"></select></div>
+        <div class="form-group"><label class="form-label">Molhos</label><input class="form-control" id="g-molhos"></div>
+        <div class="form-group"><label class="form-label">Entrada/Sopa</label><select class="form-control" id="g-entrada_sopa"></select></div>
+        <div class="form-group"><label class="form-label">Outros</label><select class="form-control" id="g-outros"></select></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PEQUENAS -->
+  <div id="painel-pequenas" class="painel-tipo" hidden>
+    <div class="form-row two-cols">
+      <div>
+        <div class="form-group"><label class="form-label">Bebida</label><select class="form-control" id="p-bebida"></select></div>
+        <div class="form-group"><label class="form-label">Prato 1</label><select class="form-control" id="p-prato1"></select></div>
+        <div class="form-group"><label class="form-label">Prato 2</label><select class="form-control" id="p-prato2"></select></div>
+        <div class="form-group"><label class="form-label">Prato 3</label><select class="form-control" id="p-prato3"></select></div>
+        <div class="form-group"><label class="form-label">Prato 4</label><select class="form-control" id="p-prato4"></select></div>
+      </div>
+      <div>
+        <div class="form-group"><label class="form-label">Prato 5</label><select class="form-control" id="p-prato5"></select></div>
+        <div class="form-group"><label class="form-label">Prato 6</label><select class="form-control" id="p-prato6"></select></div>
+        <div class="form-group"><label class="form-label">Prato 7</label><select class="form-control" id="p-prato7"></select></div>
+        <div class="form-group"><label class="form-label">Sobremesa</label><select class="form-control" id="p-sobremesa"></select></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LÍQUIDAS -->
+  <div id="painel-liquidas" class="painel-tipo" hidden>
+    <div class="form-row two-cols">
+      <div>
+        <div class="form-group"><label class="form-label">Principal</label><select class="form-control" id="l-principal"></select></div>
+        <div class="form-group"><label class="form-label">Bebida</label><select class="form-control" id="l-bebida"></select></div>
+        <div class="form-group"><label class="form-label">Sobremesa</label><select class="form-control" id="l-sobremesa"></select></div>
+        <div class="form-group"><label class="form-label">Gelado</label><select class="form-control" id="l-gelado"></select></div>
+        <div class="form-group"><label class="form-label">Outros</label><select class="form-control" id="l-outros"></select></div>
+      </div>
+      <div>
+        <div class="conv-box">
+          <h4>Conversão p/ faturamento [Bebida]</h4>
+          <div class="form-group"><label class="form-label">Coluna</label><input class="form-control" id="l-conv_bebida_coluna"></div>
+          <div class="form-group"><label class="form-label">Quant.</label><input class="form-control" id="l-conv_bebida_quant"></div>
+        </div>
+        <div class="conv-box">
+          <h4>Conversão p/ faturamento [Gelado]</h4>
+          <div class="form-group"><label class="form-label">Coluna</label><input class="form-control" id="l-conv_gelado_coluna"></div>
+          <div class="form-group"><label class="form-label">Quant.</label><input class="form-control" id="l-conv_gelado_quant"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cardapio-footer">
+    <div class="form-row" style="align-items:flex-end">
+      <div class="form-group" style="max-width:120px">
+        <label class="form-label">V.E.T.</label>
+        <input class="form-control" type="number" step="0.01" id="f-vet" value="0">
+      </div>
+      <div class="form-group" style="max-width:140px">
+        <label class="form-label">Custo (R$)</label>
+        <input class="form-control" type="number" step="0.01" id="f-custo" value="0">
+      </div>
+      <div class="form-group" style="flex:1">
+        <label class="form-label">Organizar por</label>
+        <div class="radio-row wrap" id="organizarRadios"></div>
+      </div>
+    </div>
+    <div class="status-alt" id="statusAlteracao">Alterado em: —</div>
+  </div>
+</div>
+
+<style>
+.cardapio-box { padding: 1rem 1.1rem 1.2rem; }
+.cardapio-toolbar { display:flex; align-items:center; gap:0.35rem; margin-bottom:0.85rem; flex-wrap:wrap; }
+.card-nav-label { min-width:70px; text-align:center; font-weight:600; }
+.cardapio-toolbar .sep { width:1px; height:22px; background:#cbd5e1; margin:0 0.35rem; }
+.horarios-box { display:flex; flex-wrap:wrap; gap:0.75rem 1rem; align-items:center; margin:0.5rem 0 1rem; padding:0.65rem 0.8rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:0.375rem; }
+.horarios-box label { margin:0; font-size:0.9rem; display:flex; gap:0.35rem; align-items:center; }
+.radio-row { display:flex; gap:0.85rem; flex-wrap:wrap; }
+.radio-row label { margin:0; font-weight:500; display:flex; gap:0.3rem; align-items:center; }
+.radio-row.wrap { gap:0.55rem 0.9rem; }
+.form-row.two-cols { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+.conv-box { border:1px solid #e2e8f0; border-radius:0.375rem; padding:0.75rem; margin-bottom:0.75rem; background:#fff; }
+.conv-box h4 { margin:0 0 0.5rem; font-size:0.92rem; color:#1f2d4d; }
+.cardapio-footer { margin-top:1rem; border-top:1px solid #e5e7eb; padding-top:0.85rem; }
+.status-alt { color:#b91c1c; font-size:0.88rem; margin-top:0.5rem; font-weight:600; }
+@media (max-width: 900px){ .form-row.two-cols { grid-template-columns:1fr; } }
+</style>
+
+<script>
+const OPCOES = {{ opcoes|tojson }};
+const DIETAS = {{ dietas|tojson }};
+let tipoAtual = 'grandes';
+let lista = [];
+let idx = -1;
+let editId = null;
+
+function fillSelect(sel, items, withEmpty=true){
+  const vals = items || [];
+  sel.innerHTML = (withEmpty ? '<option value=""></option>' : '') + vals.map(v => `<option value="${v}">${v}</option>`).join('');
+}
+
+function initCombos(){
+  fillSelect(document.getElementById('f-grupo'), OPCOES.grupos, false);
+  fillSelect(document.getElementById('f-dia-semana'), OPCOES.dias_semana, false);
+  const dietasNomes = (DIETAS || []).map(d => d.nome);
+  // inclui dietas dos exemplos mesmo se não estiverem no cadastro
+  ['BRANDA CONSTIPANTE HDDS','BRANDA','DIETA LÍQUIDA COMPLETA'].forEach(n => {
+    if (!dietasNomes.includes(n)) dietasNomes.unshift(n);
+  });
+  fillSelect(document.getElementById('f-dieta'), dietasNomes, false);
+
+  fillSelect(document.getElementById('g-acompanhamento'), OPCOES.acompanhamentos);
+  fillSelect(document.getElementById('g-prato_base'), OPCOES.pratos_base);
+  fillSelect(document.getElementById('g-proteico_opcional'), OPCOES.proteicos_opcionais);
+  fillSelect(document.getElementById('g-guarnicao'), OPCOES.guarnicoes);
+  fillSelect(document.getElementById('g-sobremesa'), OPCOES.sobremesas);
+  fillSelect(document.getElementById('g-bebida'), OPCOES.bebidas);
+  fillSelect(document.getElementById('g-entrada_sopa'), OPCOES.entradas_sopas);
+  fillSelect(document.getElementById('g-outros'), OPCOES.outros);
+
+  ['p-bebida','p-prato1','p-prato2','p-prato3','p-prato4','p-prato5','p-prato6','p-prato7'].forEach(id => {
+    fillSelect(document.getElementById(id), id==='p-bebida' ? OPCOES.bebidas : OPCOES.pratos_pequenos);
+  });
+  fillSelect(document.getElementById('p-sobremesa'), OPCOES.sobremesas);
+
+  fillSelect(document.getElementById('l-principal'), OPCOES.principais_liquidos);
+  fillSelect(document.getElementById('l-bebida'), OPCOES.bebidas);
+  fillSelect(document.getElementById('l-sobremesa'), OPCOES.sobremesas);
+  fillSelect(document.getElementById('l-gelado'), OPCOES.bebidas);
+  fillSelect(document.getElementById('l-outros'), OPCOES.outros);
+
+  const box = document.getElementById('organizarRadios');
+  box.innerHTML = (OPCOES.organizar_opcoes || []).map((o,i) =>
+    `<label><input type="radio" name="organizar_por" value="${o}" ${i===0?'checked':''}> ${o}</label>`
+  ).join('');
+}
+
+function limparForm(){
+  editId = null;
+  document.getElementById('f-grupo').value = 'PRINCIPAL';
+  document.getElementById('f-dia-mes').value = 1;
+  document.getElementById('f-dia-semana').value = 'Domingo';
+  if (document.getElementById('f-dieta').options.length) document.getElementById('f-dieta').selectedIndex = 0;
+  ['hr_desjejum','hr_colacao','hr_almoco','hr_merenda','hr_jantar','hr_ceia'].forEach(id => {
+    document.getElementById(id).checked = false;
+  });
+  document.querySelectorAll('input[name="entrada_tipo"]').forEach(r => r.checked = false);
+  document.querySelectorAll('input[name="proteico_tipo"]').forEach(r => r.checked = false);
+  document.querySelectorAll('#painel-grandes select, #painel-grandes input[type=text], #painel-pequenas select, #painel-liquidas select, #painel-liquidas input').forEach(el => {
+    if (el.tagName === 'SELECT') el.value = '';
+    else el.value = '';
+  });
+  document.getElementById('f-vet').value = 0;
+  document.getElementById('f-custo').value = 0;
+  const org = document.querySelector('input[name="organizar_por"]');
+  if (org) org.checked = true;
+  document.getElementById('statusAlteracao').textContent = 'Novo registro';
+}
+
+function setRadio(name, value){
+  document.querySelectorAll(`input[name="${name}"]`).forEach(r => { r.checked = r.value === value; });
+}
+
+function preencher(c){
+  if (!c){ limparForm(); return; }
+  editId = c.id;
+  document.getElementById('f-grupo').value = c.grupo_cardapio || 'PRINCIPAL';
+  document.getElementById('f-dia-mes').value = c.dia_mes || 1;
+  document.getElementById('f-dia-semana').value = c.dia_semana || 'Domingo';
+  const dietaSel = document.getElementById('f-dieta');
+  if (c.dieta && ![...dietaSel.options].some(o => o.value === c.dieta)){
+    const opt = document.createElement('option');
+    opt.value = c.dieta; opt.textContent = c.dieta;
+    dietaSel.appendChild(opt);
+  }
+  dietaSel.value = c.dieta || '';
+  document.getElementById('hr_desjejum').checked = !!c.hr_desjejum;
+  document.getElementById('hr_colacao').checked = !!c.hr_colacao;
+  document.getElementById('hr_almoco').checked = !!c.hr_almoco;
+  document.getElementById('hr_merenda').checked = !!c.hr_merenda;
+  document.getElementById('hr_jantar').checked = !!c.hr_jantar;
+  document.getElementById('hr_ceia').checked = !!c.hr_ceia;
+  document.getElementById('f-vet').value = c.vet || 0;
+  document.getElementById('f-custo').value = c.custo || 0;
+  document.querySelectorAll('input[name="organizar_por"]').forEach(r => {
+    r.checked = r.value === (c.organizar_por || 'Dia;Dieta;Horário');
+  });
+  document.getElementById('statusAlteracao').textContent =
+    `Alterado em: ${c.data_alteracao || '—'} | Usuário: ${c.usuario_alteracao || '—'}`;
+
+  const it = c.itens || {};
+  if (c.tipo === 'grandes'){
+    setRadio('entrada_tipo', it.entrada_tipo || '');
+    setRadio('proteico_tipo', it.proteico_tipo || '');
+    document.getElementById('g-acompanhamento').value = it.acompanhamento || '';
+    document.getElementById('g-prato_base').value = it.prato_base || '';
+    document.getElementById('g-proteico_opcional').value = it.proteico_opcional || '';
+    document.getElementById('g-guarnicao').value = it.guarnicao || '';
+    document.getElementById('g-diversos_salada').value = it.diversos_salada || '';
+    document.getElementById('g-sobremesa').value = it.sobremesa || '';
+    document.getElementById('g-bebida').value = it.bebida || '';
+    document.getElementById('g-molhos').value = it.molhos || '';
+    document.getElementById('g-entrada_sopa').value = it.entrada_sopa || '';
+    document.getElementById('g-outros').value = it.outros || '';
+  } else if (c.tipo === 'pequenas'){
+    document.getElementById('p-bebida').value = it.bebida || '';
+    for (let i=1;i<=7;i++) document.getElementById('p-prato'+i).value = it['prato'+i] || '';
+    document.getElementById('p-sobremesa').value = it.sobremesa || '';
+  } else {
+    document.getElementById('l-principal').value = it.principal || '';
+    document.getElementById('l-bebida').value = it.bebida || '';
+    document.getElementById('l-sobremesa').value = it.sobremesa || '';
+    document.getElementById('l-gelado').value = it.gelado || '';
+    document.getElementById('l-outros').value = it.outros || '';
+    document.getElementById('l-conv_bebida_coluna').value = it.conv_bebida_coluna || '';
+    document.getElementById('l-conv_bebida_quant').value = it.conv_bebida_quant || '';
+    document.getElementById('l-conv_gelado_coluna').value = it.conv_gelado_coluna || '';
+    document.getElementById('l-conv_gelado_quant').value = it.conv_gelado_quant || '';
+  }
+}
+
+function coletarItens(){
+  if (tipoAtual === 'grandes'){
+    return {
+      entrada_tipo: document.querySelector('input[name="entrada_tipo"]:checked')?.value || '',
+      proteico_tipo: document.querySelector('input[name="proteico_tipo"]:checked')?.value || '',
+      acompanhamento: document.getElementById('g-acompanhamento').value,
+      prato_base: document.getElementById('g-prato_base').value,
+      proteico_opcional: document.getElementById('g-proteico_opcional').value,
+      guarnicao: document.getElementById('g-guarnicao').value,
+      diversos_salada: document.getElementById('g-diversos_salada').value,
+      sobremesa: document.getElementById('g-sobremesa').value,
+      bebida: document.getElementById('g-bebida').value,
+      molhos: document.getElementById('g-molhos').value,
+      entrada_sopa: document.getElementById('g-entrada_sopa').value,
+      outros: document.getElementById('g-outros').value,
+    };
+  }
+  if (tipoAtual === 'pequenas'){
+    const o = { bebida: document.getElementById('p-bebida').value, sobremesa: document.getElementById('p-sobremesa').value };
+    for (let i=1;i<=7;i++) o['prato'+i] = document.getElementById('p-prato'+i).value;
+    return o;
+  }
+  return {
+    principal: document.getElementById('l-principal').value,
+    bebida: document.getElementById('l-bebida').value,
+    sobremesa: document.getElementById('l-sobremesa').value,
+    gelado: document.getElementById('l-gelado').value,
+    outros: document.getElementById('l-outros').value,
+    conv_bebida_coluna: document.getElementById('l-conv_bebida_coluna').value,
+    conv_bebida_quant: document.getElementById('l-conv_bebida_quant').value,
+    conv_gelado_coluna: document.getElementById('l-conv_gelado_coluna').value,
+    conv_gelado_quant: document.getElementById('l-conv_gelado_quant').value,
+  };
+}
+
+function payloadAtual(){
+  return {
+    tipo: tipoAtual,
+    grupo_cardapio: document.getElementById('f-grupo').value,
+    dia_mes: document.getElementById('f-dia-mes').value,
+    dia_semana: document.getElementById('f-dia-semana').value,
+    dieta: document.getElementById('f-dieta').value,
+    hr_desjejum: document.getElementById('hr_desjejum').checked,
+    hr_colacao: document.getElementById('hr_colacao').checked,
+    hr_almoco: document.getElementById('hr_almoco').checked,
+    hr_merenda: document.getElementById('hr_merenda').checked,
+    hr_jantar: document.getElementById('hr_jantar').checked,
+    hr_ceia: document.getElementById('hr_ceia').checked,
+    itens: coletarItens(),
+    vet: document.getElementById('f-vet').value,
+    custo: document.getElementById('f-custo').value,
+    organizar_por: document.querySelector('input[name="organizar_por"]:checked')?.value || 'Dia;Dieta;Horário',
+    ativo: true
+  };
+}
+
+function atualizarNav(){
+  document.getElementById('cardNavLabel').textContent = lista.length
+    ? `${idx+1} / ${lista.length}`
+    : '0 / 0';
+}
+
+async function carregarAba(){
+  const r = await fetch('/nutricao/api/cardapios?tipo=' + encodeURIComponent(tipoAtual));
+  lista = await r.json();
+  if (!Array.isArray(lista)) lista = [];
+  idx = lista.length ? 0 : -1;
+  if (idx >= 0) preencher(lista[idx]); else limparForm();
+  atualizarNav();
+}
+
+function trocarAba(tipo, btn){
+  tipoAtual = tipo;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tipo === tipo));
+  document.getElementById('painel-grandes').hidden = tipo !== 'grandes';
+  document.getElementById('painel-pequenas').hidden = tipo !== 'pequenas';
+  document.getElementById('painel-liquidas').hidden = tipo !== 'liquidas';
+  carregarAba();
+}
+
+function navCardapio(dir){
+  if (!lista.length) return;
+  if (dir === 'first') idx = 0;
+  else if (dir === 'last') idx = lista.length - 1;
+  else idx = Math.max(0, Math.min(lista.length - 1, idx + dir));
+  preencher(lista[idx]);
+  atualizarNav();
+}
+
+function novoCardapio(){
+  limparForm();
+  idx = -1;
+  atualizarNav();
+  if (tipoAtual === 'grandes'){
+    document.getElementById('hr_almoco').checked = true;
+    document.getElementById('hr_jantar').checked = true;
+  } else {
+    document.getElementById('hr_desjejum').checked = true;
+  }
+}
+
+async function salvarCardapio(){
+  const body = payloadAtual();
+  if (!(body.dieta || '').trim()){ showToast('Informe a dieta','error'); return; }
+  const url = editId ? `/nutricao/api/cardapios/${editId}` : '/nutricao/api/cardapios';
+  const method = editId ? 'PUT' : 'POST';
+  const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao salvar','error'); return; }
+  showToast(editId ? 'Cardápio atualizado' : 'Cardápio cadastrado','success');
+  await carregarAba();
+  if (j.cardapio){
+    const i = lista.findIndex(x => x.id === j.cardapio.id);
+    if (i >= 0){ idx = i; preencher(lista[idx]); atualizarNav(); }
+  }
+}
+
+async function excluirCardapio(){
+  if (!editId){ showToast('Nenhum cardápio selecionado','error'); return; }
+  if (!confirm('Excluir este cardápio?')) return;
+  const r = await fetch(`/nutricao/api/cardapios/${editId}`, { method:'DELETE' });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao excluir','error'); return; }
+  showToast('Cardápio excluído','success');
+  await carregarAba();
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  initCombos();
+  carregarAba();
+});
+</script>
+{% endblock %}

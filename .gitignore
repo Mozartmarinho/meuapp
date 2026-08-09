@@ -15,6 +15,17 @@ instance/
 
 # --- Ambiente virtual ---
 venv/
+.venv/
+
+# --- Agente pesagem (build local) ---
+agente_pesagem/.venv/
+agente_pesagem/build/
+agente_pesagem/dist/
+agente_pesagem/*.spec
+
+# --- OCR / scans locais ---
+.scan_extract/
+
 
 # --- Arquivos temporários ---
 *.log

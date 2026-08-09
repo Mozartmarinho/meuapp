@@ -1,0 +1,380 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Cadastro de produtos</h1>
+  <p>Unidades, grupos e produtos por estoque</p>
+</div>
+
+<div class="card prod-panel">
+  <div class="prod-toolbar">
+    <div class="prod-actions" id="prodCrudBar">
+      <button class="btn btn-primary btn-sm" type="button" onclick="novoItem()" title="Novo"><i class="fas fa-plus"></i></button>
+      <button class="btn btn-ghost btn-sm" type="button" onclick="excluirItem()" title="Excluir"><i class="fas fa-minus"></i></button>
+      <button class="btn btn-ghost btn-sm" type="button" onclick="editarItem()" title="Editar"><i class="fas fa-pencil-alt"></i></button>
+      <button class="btn btn-primary btn-sm" type="button" id="btnSalvar" onclick="salvarItem()" title="Salvar" disabled><i class="fas fa-check"></i></button>
+      <button class="btn btn-ghost btn-sm" type="button" id="btnCancelar" onclick="cancelarEdit()" title="Cancelar" disabled><i class="fas fa-times"></i></button>
+    </div>
+
+    <div class="prod-filters" id="filtrosProdutos">
+      <label class="form-label" style="margin:0">Estoque</label>
+      <select class="form-control" id="selEstoque" onchange="trocarFiltros()">
+        {% for e in estoques %}
+        <option value="{{ e.id }}" {% if estoque_id == e.id %}selected{% endif %}>{{ e.nome }}</option>
+        {% endfor %}
+      </select>
+      <label class="form-label" style="margin:0">Localizar grupo</label>
+      <select class="form-control" id="selGrupo" onchange="trocarFiltros()">
+        <option value="">Todos</option>
+        {% for g in grupos if g.ativo %}
+        <option value="{{ g.id }}" {% if grupo_id == g.id %}selected{% endif %}>{{ g.nome }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="prod-modos">
+      <button type="button" class="modo-btn {% if true %}{% endif %}" id="btnModoUnidades" onclick="setModo('unidades')">
+        <i class="fas fa-balance-scale"></i>
+        <span>Unidades</span>
+      </button>
+      <button type="button" class="modo-btn" id="btnModoGrupos" onclick="setModo('grupos')">
+        <i class="fas fa-layer-group"></i>
+        <span>Grupos</span>
+      </button>
+      <button type="button" class="modo-btn active" id="btnModoProdutos" onclick="setModo('produtos')">
+        <i class="fas fa-apple-alt"></i>
+        <span>Produtos</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="table-container" style="box-shadow:none;border:1px solid #e2e8f0;border-radius:8px;max-height:560px;overflow:auto;">
+    <table class="data-table" id="gridPrincipal">
+      <thead id="gridHead"></thead>
+      <tbody id="gridBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+.prod-panel { padding: 0.9rem 1rem 1.2rem; }
+.prod-toolbar {
+  display:flex; flex-wrap:wrap; gap:0.75rem 1rem; align-items:flex-end;
+  margin-bottom:0.9rem;
+}
+.prod-actions { display:flex; gap:0.3rem; align-items:center; }
+.prod-filters {
+  display:flex; flex-wrap:wrap; gap:0.4rem 0.6rem; align-items:center;
+}
+.prod-filters .form-control { width:auto; min-width:140px; }
+.prod-modos { display:flex; gap:0.45rem; margin-left:auto; }
+.modo-btn {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:0.25rem; min-width:78px; padding:0.55rem 0.65rem;
+  border:1px solid #cbd5e1; border-radius:8px; background:#fff;
+  color:#334155; font-size:0.75rem; font-weight:700; cursor:pointer;
+}
+.modo-btn i { font-size:1.15rem; color:#64748b; }
+.modo-btn.active {
+  border-color:#0f2a5c; background:#0f2a5c; color:#fff;
+}
+.modo-btn.active i { color:#c5e078; }
+#gridBody tr.selected { background:#e8f0ff; }
+#gridBody tr { cursor:pointer; }
+#gridBody input.form-control, #gridBody select.form-control {
+  padding:0.25rem 0.4rem; font-size:0.85rem; min-width:70px;
+}
+.col-num { text-align:right; font-variant-numeric:tabular-nums; }
+.col-check { text-align:center; }
+</style>
+
+<script>
+const ESTOQUES = {{ estoques|tojson }};
+const UNIDADES = {{ unidades|tojson }};
+const GRUPOS = {{ grupos|tojson }};
+const PRODUTOS = {{ produtos|tojson }};
+const ESTOQUE_ID = {{ estoque_id or 'null' }};
+const GRUPO_ID = {{ grupo_id or 'null' }};
+
+let modo = 'produtos';
+let selectedId = null;
+let editing = false;
+let isNew = false;
+let draft = null;
+
+function fmt(n){
+  const v = Number(vOr0(n));
+  return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function vOr0(n){ return (n===null||n===undefined||n==='') ? 0 : n; }
+
+function setModo(m){
+  if (editing){ showToast('Salve ou cancele a edição','error'); return; }
+  modo = m;
+  document.getElementById('btnModoUnidades').classList.toggle('active', m==='unidades');
+  document.getElementById('btnModoGrupos').classList.toggle('active', m==='grupos');
+  document.getElementById('btnModoProdutos').classList.toggle('active', m==='produtos');
+  document.getElementById('filtrosProdutos').style.display = m==='produtos' ? 'flex' : 'none';
+  selectedId = null;
+  renderGrid();
+}
+
+function trocarFiltros(){
+  const e = document.getElementById('selEstoque').value;
+  const g = document.getElementById('selGrupo').value;
+  let url = '/nutricao/produtos?estoque_id=' + encodeURIComponent(e);
+  if (g) url += '&grupo_id=' + encodeURIComponent(g);
+  location.href = url;
+}
+
+function currentList(){
+  if (modo === 'unidades') return UNIDADES;
+  if (modo === 'grupos') return GRUPOS;
+  return PRODUTOS;
+}
+
+function renderGrid(){
+  const head = document.getElementById('gridHead');
+  const body = document.getElementById('gridBody');
+  if (modo === 'unidades'){
+    head.innerHTML = '<tr><th>Código</th><th>Descrição</th><th style="width:80px;text-align:center">Ativo</th></tr>';
+    body.innerHTML = UNIDADES.map(u => rowUnidade(u)).join('') || emptyRow(3);
+  } else if (modo === 'grupos'){
+    head.innerHTML = '<tr><th>Grupo</th><th style="width:110px;text-align:center">Qtd. produtos</th><th style="width:80px;text-align:center">Ativo</th></tr>';
+    body.innerHTML = GRUPOS.map(g => rowGrupo(g)).join('') || emptyRow(3);
+  } else {
+    head.innerHTML = `<tr>
+      <th>Grupo</th><th>Código</th><th>Descrição</th>
+      <th class="col-num">Quantidade</th><th>Unidade</th>
+      <th class="col-num">Preço médio</th><th class="col-num">Ult. preço</th>
+      <th class="col-num">Quant. mín.</th><th class="col-num">Quant. máx.</th>
+      <th class="col-num">Quant. líq.</th><th>Un. Liq.</th>
+      <th class="col-check">FC</th>
+    </tr>`;
+    body.innerHTML = PRODUTOS.map(p => rowProduto(p)).join('') || emptyRow(12);
+  }
+  if (selectedId){
+    const tr = body.querySelector(`tr[data-id="${selectedId}"]`);
+    if (tr) tr.classList.add('selected');
+  }
+}
+
+function emptyRow(cols){
+  return `<tr><td colspan="${cols}" style="text-align:center;color:#64748b;padding:1.2rem;">Nenhum registro.</td></tr>`;
+}
+
+function rowUnidade(u){
+  const sel = selectedId === u.id ? 'selected' : '';
+  if (editing && draft && draft.id === u.id){
+    return `<tr class="selected" data-id="${u.id}">
+      <td><input class="form-control" id="e-codigo" value="${esc(draft.codigo)}"></td>
+      <td><input class="form-control" id="e-descricao" value="${esc(draft.descricao)}"></td>
+      <td class="col-check"><input type="checkbox" id="e-ativo" ${draft.ativo?'checked':''}></td>
+    </tr>`;
+  }
+  return `<tr class="${sel}" data-id="${u.id}" onclick="selecionar(${u.id})">
+    <td>${esc(u.codigo)}</td><td>${esc(u.descricao)}</td>
+    <td class="col-check">${u.ativo?'✓':''}</td>
+  </tr>`;
+}
+
+function rowGrupo(g){
+  const sel = selectedId === g.id ? 'selected' : '';
+  if (editing && draft && draft.id === g.id){
+    return `<tr class="selected" data-id="${g.id}">
+      <td><input class="form-control" id="e-nome" value="${esc(draft.nome)}"></td>
+      <td class="col-num">${g.qtd_produtos||0}</td>
+      <td class="col-check"><input type="checkbox" id="e-ativo" ${draft.ativo?'checked':''}></td>
+    </tr>`;
+  }
+  return `<tr class="${sel}" data-id="${g.id}" onclick="selecionar(${g.id})">
+    <td>${esc(g.nome)}</td>
+    <td class="col-num" style="text-align:center">${g.qtd_produtos||0}</td>
+    <td class="col-check">${g.ativo?'✓':''}</td>
+  </tr>`;
+}
+
+function unOpts(sel){
+  return UNIDADES.filter(u=>u.ativo!==false).map(u =>
+    `<option value="${esc(u.codigo)}" ${u.codigo===sel?'selected':''}>${esc(u.codigo)}</option>`
+  ).join('');
+}
+function grupoOpts(sel){
+  return GRUPOS.filter(g=>g.ativo!==false).map(g =>
+    `<option value="${g.id}" ${g.id===sel?'selected':''}>${esc(g.nome)}</option>`
+  ).join('');
+}
+
+function rowProduto(p){
+  const sel = selectedId === p.id ? 'selected' : '';
+  if (editing && draft && ((draft.id && draft.id === p.id) || (isNew && p._temp))){
+    const d = draft;
+    return `<tr class="selected" data-id="${d.id||'new'}">
+      <td><select class="form-control" id="e-grupo">${grupoOpts(d.grupo_id)}</select></td>
+      <td><input class="form-control" id="e-codigo" value="${esc(d.codigo)}"></td>
+      <td><input class="form-control" id="e-descricao" value="${esc(d.descricao)}"></td>
+      <td><input class="form-control col-num" type="number" step="any" id="e-qtd" value="${vOr0(d.quantidade)}"></td>
+      <td><select class="form-control" id="e-unidade">${unOpts(d.unidade)}</select></td>
+      <td><input class="form-control col-num" type="number" step="any" id="e-preco" value="${vOr0(d.preco_medio)}"></td>
+      <td><input class="form-control col-num" type="number" step="any" id="e-ult" value="${vOr0(d.ult_preco)}"></td>
+      <td><input class="form-control col-num" type="number" step="any" id="e-min" value="${vOr0(d.quant_min)}"></td>
+      <td><input class="form-control col-num" type="number" step="any" id="e-max" value="${vOr0(d.quant_max)}"></td>
+      <td><input class="form-control col-num" type="number" step="any" id="e-liq" value="${vOr0(d.quant_liq)}"></td>
+      <td><select class="form-control" id="e-unliq">${unOpts(d.un_liq||'NC')}</select></td>
+      <td class="col-check"><input type="checkbox" id="e-fc" ${d.fc?'checked':''}></td>
+    </tr>`;
+  }
+  return `<tr class="${sel}" data-id="${p.id}" onclick="selecionar(${p.id})">
+    <td>${esc(p.grupo)}</td>
+    <td>${esc(p.codigo)}</td>
+    <td>${esc(p.descricao)}</td>
+    <td class="col-num">${fmt(p.quantidade)}</td>
+    <td>${esc(p.unidade)}</td>
+    <td class="col-num">${fmt(p.preco_medio)}</td>
+    <td class="col-num">${fmt(p.ult_preco)}</td>
+    <td class="col-num">${fmt(p.quant_min)}</td>
+    <td class="col-num">${fmt(p.quant_max)}</td>
+    <td class="col-num">${p.quant_liq ? fmt(p.quant_liq) : ''}</td>
+    <td>${esc(p.un_liq||'')}</td>
+    <td class="col-check">${p.fc?'X':''}</td>
+  </tr>`;
+}
+
+function esc(s){
+  return String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
+
+function selecionar(id){
+  if (editing) return;
+  selectedId = id;
+  renderGrid();
+}
+
+function setEditButtons(on){
+  editing = !!on;
+  document.getElementById('btnSalvar').disabled = !on;
+  document.getElementById('btnCancelar').disabled = !on;
+}
+
+function novoItem(){
+  isNew = true;
+  selectedId = null;
+  if (modo === 'unidades') draft = {id:null, codigo:'', descricao:'', ativo:true, _temp:true};
+  else if (modo === 'grupos') draft = {id:null, nome:'', ativo:true, qtd_produtos:0, _temp:true};
+  else {
+    if (!ESTOQUE_ID){ showToast('Selecione um estoque','error'); return; }
+    const g = GRUPO_ID || (GRUPOS.find(x=>x.ativo!==false)||{}).id;
+    draft = {
+      id:null, _temp:true, estoque_id: ESTOQUE_ID, grupo_id: g,
+      codigo:'', descricao:'', quantidade:0, unidade:'UN',
+      preco_medio:0.01, ult_preco:0.01, quant_min:0, quant_max:0,
+      quant_liq:0, un_liq:'NC', fc:false, ativo:true
+    };
+  }
+  setEditButtons(true);
+  // inject temp row into list rendering
+  if (modo === 'produtos'){
+    PRODUTOS.unshift({...draft, grupo: (GRUPOS.find(g=>g.id===draft.grupo_id)||{}).nome || ''});
+  } else if (modo === 'unidades'){
+    UNIDADES.unshift({...draft});
+  } else {
+    GRUPOS.unshift({...draft});
+  }
+  renderGrid();
+}
+
+function editarItem(){
+  if (!selectedId){ showToast('Selecione um registro','error'); return; }
+  const list = currentList();
+  const item = list.find(x => x.id === selectedId);
+  if (!item) return;
+  isNew = false;
+  draft = JSON.parse(JSON.stringify(item));
+  setEditButtons(true);
+  renderGrid();
+}
+
+function cancelarEdit(){
+  if (isNew){
+    if (modo === 'produtos') PRODUTOS.shift();
+    else if (modo === 'unidades') UNIDADES.shift();
+    else GRUPOS.shift();
+  }
+  isNew = false;
+  draft = null;
+  setEditButtons(false);
+  renderGrid();
+}
+
+function collectEdit(){
+  if (modo === 'unidades'){
+    return {
+      codigo: (document.getElementById('e-codigo')?.value||'').trim().toUpperCase(),
+      descricao: (document.getElementById('e-descricao')?.value||'').trim(),
+      ativo: !!document.getElementById('e-ativo')?.checked
+    };
+  }
+  if (modo === 'grupos'){
+    return {
+      nome: (document.getElementById('e-nome')?.value||'').trim().toUpperCase(),
+      ativo: !!document.getElementById('e-ativo')?.checked
+    };
+  }
+  return {
+    estoque_id: ESTOQUE_ID,
+    grupo_id: parseInt(document.getElementById('e-grupo')?.value||0,10),
+    codigo: (document.getElementById('e-codigo')?.value||'').trim().toUpperCase(),
+    descricao: (document.getElementById('e-descricao')?.value||'').trim().toUpperCase(),
+    quantidade: parseFloat(document.getElementById('e-qtd')?.value)||0,
+    unidade: document.getElementById('e-unidade')?.value || 'UN',
+    preco_medio: parseFloat(document.getElementById('e-preco')?.value)||0,
+    ult_preco: parseFloat(document.getElementById('e-ult')?.value)||0,
+    quant_min: parseFloat(document.getElementById('e-min')?.value)||0,
+    quant_max: parseFloat(document.getElementById('e-max')?.value)||0,
+    quant_liq: parseFloat(document.getElementById('e-liq')?.value)||0,
+    un_liq: document.getElementById('e-unliq')?.value || 'NC',
+    fc: !!document.getElementById('e-fc')?.checked,
+    ativo: true
+  };
+}
+
+async function salvarItem(){
+  const body = collectEdit();
+  let url, method;
+  if (modo === 'unidades'){
+    if (!body.codigo){ showToast('Informe o código','error'); return; }
+    url = (draft && draft.id) ? `/nutricao/api/unidades/${draft.id}` : '/nutricao/api/unidades';
+    method = (draft && draft.id) ? 'PUT' : 'POST';
+  } else if (modo === 'grupos'){
+    if (!body.nome){ showToast('Informe o grupo','error'); return; }
+    url = (draft && draft.id) ? `/nutricao/api/grupos-produto/${draft.id}` : '/nutricao/api/grupos-produto';
+    method = (draft && draft.id) ? 'PUT' : 'POST';
+  } else {
+    if (!body.codigo || !body.descricao){ showToast('Código e descrição são obrigatórios','error'); return; }
+    if (!body.grupo_id){ showToast('Selecione o grupo','error'); return; }
+    url = (draft && draft.id) ? `/nutricao/api/produtos/${draft.id}` : '/nutricao/api/produtos';
+    method = (draft && draft.id) ? 'PUT' : 'POST';
+  }
+  const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao salvar','error'); return; }
+  showToast('Salvo','success');
+  setTimeout(() => location.reload(), 350);
+}
+
+async function excluirItem(){
+  if (!selectedId){ showToast('Selecione um registro','error'); return; }
+  if (!confirm('Desativar este registro?')) return;
+  let url;
+  if (modo === 'unidades') url = `/nutricao/api/unidades/${selectedId}`;
+  else if (modo === 'grupos') url = `/nutricao/api/grupos-produto/${selectedId}`;
+  else url = `/nutricao/api/produtos/${selectedId}`;
+  const r = await fetch(url, { method:'DELETE' });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha','error'); return; }
+  showToast('Desativado','success');
+  setTimeout(() => location.reload(), 350);
+}
+
+setModo('produtos');
+</script>
+{% endblock %}

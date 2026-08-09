@@ -1,125 +1,206 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
 <div class="page-header">
-  <h1>Pacientes</h1>
-  <p>Cadastro e gerenciamento de pacientes do SCN</p>
+  <h1>Cadastro de Pacientes</h1>
+  <p>Lista de pacientes cadastrados no sistema de nutrição</p>
 </div>
+
 <div class="toolbar">
   <div class="toolbar-search">
-    <span>🔍</span>
-    <input type="text" id="buscaPaciente" placeholder="Buscar paciente..." oninput="filtrarTabela('buscaPaciente','tabelaPacientes')">
+    <i class="fas fa-search"></i>
+    <input type="text" id="buscaPaciente" placeholder="Buscar por nome, prontuário, clínica ou leito..." oninput="filtrarPacientes()">
   </div>
-  <div class="toolbar-actions">
-    <button class="btn btn-primary" onclick="abrirModalPaciente()">+ Novo Paciente</button>
-  </div>
+  <button class="btn btn-primary btn-sm" type="button" onclick="abrirPopupPaciente()">
+    <i class="fas fa-plus"></i> Adicionar Paciente
+  </button>
+</div>
+
 <div class="card" style="padding:0;overflow:hidden">
-  <div style="overflow-x:auto">
-    <table id="tabelaPacientes">
-      <thead><tr>
-        <th>Prontuário</th><th>Nome</th><th>Sexo</th><th>Nascimento</th><th>Clínica</th><th>Leito</th><th>Dieta</th><th style="width:90px">Ações</th>
-      </tr></thead>
-      <tbody>
-        {% for p in pacientes %}
+  <div class="table-container" style="box-shadow:none;border-radius:0;">
+    <table id="tabelaPacientes" class="data-table">
+      <thead>
         <tr>
-          <td>{{ p.prontuario }}</td>
+          <th>Admissão</th>
+          <th>Prontuário</th>
+          <th>Nome</th>
+          <th>Sexo</th>
+          <th>Nascimento</th>
+          <th>Clínica</th>
+          <th>Leito</th>
+          <th>Dieta</th>
+          <th>Diagnóstico</th>
+          <th style="width:100px">Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tabelaPacientesBody">
+        {% for p in pacientes %}
+        <tr data-id="{{ p.id }}"
+            data-admissao="{{ p.admissao or '' }}"
+            data-prontuario="{{ p.prontuario or '' }}"
+            data-nome="{{ p.nome or '' }}"
+            data-sexo="{{ p.sexo or '' }}"
+            data-nascimento="{{ p.nascimento[:10] if p.nascimento else '' }}"
+            data-clinica="{{ p.clinica or '' }}"
+            data-leito="{{ p.leito or '' }}"
+            data-dieta="{{ p.dieta or '' }}"
+            data-diagnostico="{{ p.diagnostico or '' }}"
+            data-observacoes="{{ p.observacoes or '' }}">
+          <td>{{ p.admissao or '-' }}</td>
+          <td>{{ p.prontuario or '-' }}</td>
           <td><strong>{{ p.nome }}</strong></td>
-          <td>{{ p.sexo }}</td>
+          <td>{{ p.sexo or '-' }}</td>
           <td>{{ p.nascimento[:10] if p.nascimento else '-' }}</td>
-          <td>{{ p.clinica }}</td>
-          <td>{{ p.leito }}</td>
-          <td><span class="status status-info">{{ p.dieta }}</span></td>
+          <td>{{ p.clinica or '-' }}</td>
+          <td>{{ p.leito or '-' }}</td>
+          <td><span class="status status-info">{{ p.dieta or '-' }}</span></td>
+          <td>{{ p.diagnostico or '-' }}</td>
           <td>
-            <button class="btn btn-ghost btn-sm" onclick="editarPaciente({{ p.id }})" title="Editar">✏️</button>
-            <button class="btn btn-ghost btn-sm" onclick="excluirPaciente({{ p.id }})" title="Excluir">🗑️</button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="editarPacienteLinha(this)" title="Editar">
+              <i class="fas fa-edit"></i>
+            </button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="excluirPaciente({{ p.id }})" title="Excluir">
+              <i class="fas fa-trash"></i>
+            </button>
           </td>
+        </tr>
+        {% else %}
+        <tr id="linhaVazia">
+          <td colspan="10" style="text-align:center;color:#6B7280;">Nenhum paciente cadastrado.</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+</div>
+
 <script>
+const clinicasOptions = {{ clinicas | tojson }};
+const dietasOptions = {{ dietas | tojson }};
 
-let clinicas = {{ clinicas | tojson }};
-let dietas = {{ dietas | tojson }};
-
-function filtrarTabela(inputId, tabelaId){
-  const f = document.getElementById(inputId).value.toLowerCase();
-  const rows = document.getElementById(tabelaId).querySelectorAll('tbody tr');
-  rows.forEach(r => { r.style.display = r.textContent.toLowerCase().includes(f) ? '' : 'none'; });
+function filtrarPacientes(){
+  const q = (document.getElementById('buscaPaciente').value || '').toLowerCase();
+  document.querySelectorAll('#tabelaPacientesBody tr').forEach(tr => {
+    if (tr.id === 'linhaVazia') return;
+    tr.style.display = (tr.textContent || '').toLowerCase().includes(q) ? '' : 'none';
+  });
 }
 
-function abrirModalPaciente(data){
-  const isEdit = !!data;
-  document.getElementById('modalTitle').textContent = isEdit ? 'Editar Paciente' : 'Novo Paciente';
-  document.getElementById('modalBody').innerHTML = `
+function editarPacienteLinha(btn){
+  const tr = btn.closest('tr');
+  if (!tr) return;
+  abrirPopupPaciente({
+    id: Number(tr.dataset.id),
+    admissao: tr.dataset.admissao || '',
+    prontuario: tr.dataset.prontuario || '',
+    nome: tr.dataset.nome || '',
+    sexo: tr.dataset.sexo || '',
+    nascimento: tr.dataset.nascimento || '',
+    clinica: tr.dataset.clinica || '',
+    leito: tr.dataset.leito || '',
+    dieta: tr.dataset.dieta || '',
+    diagnostico: tr.dataset.diagnostico || '',
+    observacoes: tr.dataset.observacoes || ''
+  });
+}
+
+function calcularIdadePopup(){
+  const nasc = document.getElementById('f-nasc')?.value;
+  const out = document.getElementById('f-idade');
+  if (!out) return;
+  if (!nasc){ out.value = ''; return; }
+  const hoje = new Date();
+  const dn = new Date(nasc + 'T00:00:00');
+  let idade = hoje.getFullYear() - dn.getFullYear();
+  const m = hoje.getMonth() - dn.getMonth();
+  if (m < 0 || (m === 0 && hoje.getDate() < dn.getDate())) idade--;
+  out.value = idade >= 0 ? String(idade) : '';
+}
+
+function abrirPopupPaciente(data){
+  const isEdit = !!(data && data.id);
+  const clinicaOpts = (clinicasOptions || []).map(c =>
+    `<option value="${c.nome}" ${(data && data.clinica === c.nome) ? 'selected' : ''}>${c.nome}</option>`
+  ).join('');
+  const dietaOpts = (dietasOptions || []).map(d =>
+    `<option value="${d.nome}" ${(data && data.dieta === d.nome) ? 'selected' : ''}>${d.nome}</option>`
+  ).join('');
+  const html = `
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Nome *</label><input class="form-control" id="f-nome" value="${data?data.nome:''}"></div>
+      <div class="form-group"><label class="form-label">Admissão</label><input class="form-control" type="date" id="f-admissao" value="${(data && data.admissao) || ''}"></div>
+      <div class="form-group"><label class="form-label">Prontuário</label><input class="form-control" id="f-prontuario" value="${(data && data.prontuario) || ''}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Nome *</label><input class="form-control" id="f-nome" value="${(data && data.nome) || ''}"></div>
       <div class="form-group"><label class="form-label">Sexo</label>
         <select class="form-control" id="f-sexo">
-          <option value="">Selecione</option>
-          <option value="M" ${data&&data.sexo==='M'?'selected':''}>Masculino</option>
-          <option value="F" ${data&&data.sexo==='F'?'selected':''}>Feminino</option>
+          <option value="">Sexo</option>
+          <option value="M" ${(data && data.sexo==='M')?'selected':''}>Masculino</option>
+          <option value="F" ${(data && data.sexo==='F')?'selected':''}>Feminino</option>
         </select>
       </div>
+    </div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Nascimento</label><input class="form-control" type="date" id="f-nasc" value="${data?data.nascimento:''}"></div>
-      <div class="form-group"><label class="form-label">Prontuário</label><input class="form-control" id="f-pront" value="${data?data.prontuario:''}"></div>
+      <div class="form-group"><label class="form-label">Nascimento</label><input class="form-control" type="date" id="f-nasc" value="${(data && data.nascimento) || ''}" oninput="calcularIdadePopup()"></div>
+      <div class="form-group"><label class="form-label">Idade</label><input class="form-control" id="f-idade" readonly></div>
+    </div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Clínica</label>
-        <select class="form-control" id="f-clinica">
-          <option value="">Selecione</option>
-          ${clinicas.map(c => '<option value="'+c.nome+'" '+(data&&data.clinica===c.nome?'selected':'')+'>'+c.nome+'</option>').join('')}
-        </select>
+        <select class="form-control" id="f-clinica"><option value="">Selecione</option>${clinicaOpts}</select>
       </div>
-      <div class="form-group"><label class="form-label">Leito</label><input class="form-control" id="f-leito" value="${data?data.leito:''}"></div>
+      <div class="form-group"><label class="form-label">Leito</label><input class="form-control" id="f-leito" value="${(data && data.leito) || ''}"></div>
+    </div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Dieta</label>
-        <select class="form-control" id="f-dieta">
-          <option value="">Selecione</option>
-          ${dietas.map(d => '<option value="'+d.nome+'" '+(data&&data.dieta===d.nome?'selected':'')+'>'+d.nome+'</option>').join('')}
-        </select>
+        <select class="form-control" id="f-dieta"><option value="">Selecione</option>${dietaOpts}</select>
       </div>
-      <div class="form-group"><label class="form-label">Altura (cm)</label><input class="form-control" type="number" id="f-altura" value="${data?data.altura_cm:''}"></div>
-    <div class="form-group"><label class="form-label">Peso (kg)</label><input class="form-control" type="number" step="0.1" id="f-peso" value="${data?data.peso_kg:''}"></div>
+      <div class="form-group"><label class="form-label">Diagnóstico</label><input class="form-control" id="f-diagnostico" value="${(data && data.diagnostico) || ''}"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Observações</label><textarea class="form-control" id="f-observacoes" rows="2">${(data && data.observacoes) || ''}</textarea></div>
   `;
-  document.getElementById('modalFooter').style.display = 'flex';
-  document.getElementById('modalConfirmBtn').textContent = isEdit ? 'Atualizar' : 'Salvar';
-  document.getElementById('modalOverlay').classList.add('open');
-  window._editData = data;
+  window._editPacienteId = isEdit ? data.id : null;
+  abrirModal(isEdit ? 'Editar Paciente' : 'Novo Paciente', html, isEdit ? 'Atualizar' : 'Salvar', salvarPacientePopup);
+  calcularIdadePopup();
 }
 
-function editarPaciente(id){
-  const p = pacientes.find(x=>x.id===id);
-  if(p) abrirModalPaciente(p);
-}
-function excluirPaciente(id){
-  if(confirm('Excluir paciente #'+id+'?')){
-    fetch('/nutricao/api/pacientes/'+id,{method:'DELETE'})
-    .then(r=>r.json()).then(()=>{showToast('Paciente excluído');setTimeout(()=>location.reload(),800);});
-  }
-}
-document.getElementById('modalConfirmBtn').onclick = function(){
-  const isEdit = !!window._editData;
-  const nome = document.getElementById('f-nome').value.trim();
-  if(!nome){showToast('Nome é obrigatório','error');return;}
+async function salvarPacientePopup(){
+  const nome = (document.getElementById('f-nome')?.value || '').trim();
+  if (!nome){ showToast('Nome é obrigatório','error'); return; }
   const body = {
-    nome, sexo: document.getElementById('f-sexo').value,
-    nascimento: document.getElementById('f-nasc').value,
-    prontuario: document.getElementById('f-pront').value,
-    clinica: document.getElementById('f-clinica').value,
-    leito: document.getElementById('f-leito').value,
-    dieta: document.getElementById('f-dieta').value,
-    altura_cm: parseInt(document.getElementById('f-altura').value)||null,
-    peso_kg: parseFloat(document.getElementById('f-peso').value)||null
+    nome,
+    sexo: document.getElementById('f-sexo')?.value || '',
+    nascimento: document.getElementById('f-nasc')?.value || '',
+    prontuario: document.getElementById('f-prontuario')?.value || '',
+    clinica: document.getElementById('f-clinica')?.value || '',
+    leito: document.getElementById('f-leito')?.value || '',
+    dieta: document.getElementById('f-dieta')?.value || '',
+    diagnostico: document.getElementById('f-diagnostico')?.value || '',
+    observacoes: document.getElementById('f-observacoes')?.value || '',
+    admissao: document.getElementById('f-admissao')?.value || ''
   };
-  const url = isEdit ? '/nutricao/api/pacientes/'+window._editData.id : '/nutricao/api/pacientes';
-  const method = isEdit ? 'PUT' : 'POST';
-  fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
-  .then(r=>r.json()).then(()=>{
-    showToast(isEdit?'Paciente atualizado!':'Paciente criado!');
-    document.getElementById('modalOverlay').classList.remove('open');
-    setTimeout(()=>location.reload(),800);
-  });
-};
+  const id = window._editPacienteId;
+  const url = id ? `/nutricao/api/pacientes/${id}` : '/nutricao/api/pacientes';
+  const method = id ? 'PUT' : 'POST';
+  const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){
+    showToast((j && j.error) || 'Falha ao salvar','error');
+    return;
+  }
+  fecharModal();
+  showToast(id ? 'Paciente atualizado' : 'Paciente cadastrado','success');
+  setTimeout(() => location.reload(), 500);
+}
+
+async function excluirPaciente(id){
+  if (!confirm('Excluir este paciente?')) return;
+  const r = await fetch(`/nutricao/api/pacientes/${id}`, { method:'DELETE' });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){
+    showToast((j && j.error) || 'Falha ao excluir','error');
+    return;
+  }
+  showToast('Paciente excluído','success');
+  setTimeout(() => location.reload(), 500);
+}
 </script>
 {% endblock %}

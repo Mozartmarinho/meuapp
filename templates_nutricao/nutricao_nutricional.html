@@ -1,0 +1,417 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Cadastro de tabela de nutrientes</h1>
+  <p>Tabelas, alimentos e composição nutricional (por 100g / 100ml)</p>
+</div>
+
+<div class="card nut-panel">
+  <div class="nut-top">
+    <div class="form-group" style="margin:0;flex:1;min-width:220px;">
+      <label class="form-label" for="selTabela">Nome da tabela:</label>
+      <select id="selTabela" class="form-control" onchange="trocarTabela()">
+        {% for t in tabelas %}
+        <option value="{{ t.id }}" {% if tabela_id == t.id %}selected{% endif %}>{{ t.nome }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="nut-top-actions">
+      <button class="btn btn-ghost btn-sm" type="button" onclick="abrirTabela()" title="Cria/Edita Tabelas">
+        <i class="fas fa-edit"></i> Cria/Edita Tabelas
+      </button>
+      <button class="btn btn-ghost btn-sm" type="button" disabled title="Em breve">
+        <i class="fas fa-vial"></i> Cria/Edita Nutriente
+      </button>
+      <button class="btn btn-ghost btn-sm" type="button" disabled title="Em breve">
+        <i class="fas fa-file-import"></i> Importa Alimento
+      </button>
+      <button class="btn btn-ghost btn-sm" type="button" disabled title="Em breve">
+        <i class="fas fa-folder-open"></i> Importa Tabela
+      </button>
+    </div>
+  </div>
+
+  <div class="nut-alimento-bar">
+    <div class="form-group" style="margin:0;flex:1;">
+      <label class="form-label" for="nomeAlimento">Nome do alimento</label>
+      <input class="form-control" id="nomeAlimento" list="listaAlimentos" placeholder="Digite ou selecione..." onkeydown="if(event.key==='Enter'){event.preventDefault();buscarPorNome();}">
+      <datalist id="listaAlimentos"></datalist>
+    </div>
+    <div class="nut-nav">
+      <button class="btn btn-ghost btn-sm" type="button" onclick="navAlimento('first')" title="Primeiro"><i class="fas fa-step-backward"></i></button>
+      <button class="btn btn-ghost btn-sm" type="button" onclick="navAlimento('prev')" title="Anterior"><i class="fas fa-caret-left"></i></button>
+      <button class="btn btn-ghost btn-sm" type="button" onclick="navAlimento('next')" title="Próximo"><i class="fas fa-caret-right"></i></button>
+      <button class="btn btn-ghost btn-sm" type="button" onclick="navAlimento('last')" title="Último"><i class="fas fa-step-forward"></i></button>
+      <span class="nut-sep"></span>
+      <button class="btn btn-primary btn-sm" type="button" onclick="novoAlimento()" title="Novo"><i class="fas fa-plus"></i></button>
+      <button class="btn btn-ghost btn-sm" type="button" onclick="excluirAlimento()" title="Excluir"><i class="fas fa-minus"></i></button>
+      <button class="btn btn-ghost btn-sm" type="button" onclick="setEditMode(true)" title="Editar"><i class="fas fa-pencil-alt"></i></button>
+      <button class="btn btn-primary btn-sm" type="button" id="btnSalvar" onclick="salvarAlimento()" title="Salvar" disabled><i class="fas fa-check"></i></button>
+      <button class="btn btn-ghost btn-sm" type="button" id="btnCancelar" onclick="cancelarEdicao()" title="Cancelar" disabled><i class="fas fa-times"></i></button>
+    </div>
+  </div>
+
+  <div class="nut-macros">
+    <div class="nut-macros-left">
+      <div class="form-group" style="margin:0 0 0.75rem;">
+        <label class="form-label">Última alteração</label>
+        <input class="form-control" id="ultimaAlteracao" readonly>
+      </div>
+      <div class="nut-macro-cols">
+        <fieldset class="nut-box">
+          <legend>Calorias</legend>
+          <label>Carboidratos <input class="form-control" type="number" step="any" id="calCarb" data-field></label>
+          <label>Gordura <input class="form-control" type="number" step="any" id="calGord" data-field></label>
+          <label>Proteína <input class="form-control" type="number" step="any" id="calProt" data-field></label>
+          <label>Total <input class="form-control" type="number" step="any" id="calTotal" data-field readonly></label>
+        </fieldset>
+        <fieldset class="nut-box">
+          <legend>Quantidade</legend>
+          <label>Carboidratos <input class="form-control" type="number" step="any" id="qtdCarb" data-field></label>
+          <label>Gordura <input class="form-control" type="number" step="any" id="qtdGord" data-field></label>
+          <label>Proteína <input class="form-control" type="number" step="any" id="qtdProt" data-field></label>
+        </fieldset>
+        <fieldset class="nut-box">
+          <legend>Referência</legend>
+          <label>Ref. de consumo <input class="form-control" id="refConsumo" data-field></label>
+          <label>Coeficiente NPU <input class="form-control" type="number" step="any" id="coefNpu" data-field></label>
+          <div class="nut-checks">
+            <label><input type="checkbox" id="chkGluten" data-field> Glúten</label>
+            <label><input type="checkbox" id="chkFenil" data-field> Fenilalanina</label>
+          </div>
+        </fieldset>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-container" style="box-shadow:none;border:1px solid #e2e8f0;border-radius:8px;max-height:360px;overflow:auto;">
+    <table class="data-table" id="gridNutrientes">
+      <thead>
+        <tr>
+          <th>Nutrientes (Valores referentes a 100g ou 100ml)</th>
+          <th style="width:110px">Quant.</th>
+          <th style="width:80px">Un.</th>
+          <th style="width:90px">Fator</th>
+          <th style="width:70px"></th>
+        </tr>
+      </thead>
+      <tbody id="gridNutrientesBody"></tbody>
+    </table>
+  </div>
+  <div style="margin-top:0.6rem;">
+    <button class="btn btn-ghost btn-sm" type="button" id="btnAddNut" onclick="addNutrienteRow()" disabled>
+      <i class="fas fa-plus"></i> Nutriente
+    </button>
+  </div>
+</div>
+
+<style>
+.nut-panel { padding: 1rem 1.1rem 1.25rem; }
+.nut-top { display:flex; flex-wrap:wrap; gap:0.75rem 1rem; align-items:flex-end; margin-bottom:1rem; }
+.nut-top-actions { display:flex; flex-wrap:wrap; gap:0.4rem; }
+.nut-alimento-bar { display:flex; flex-wrap:wrap; gap:0.75rem; align-items:flex-end; margin-bottom:1rem; }
+.nut-nav { display:flex; flex-wrap:wrap; align-items:center; gap:0.25rem; }
+.nut-sep { width:1px; height:22px; background:#cbd5e1; margin:0 0.35rem; }
+.nut-macro-cols { display:grid; grid-template-columns:repeat(3, minmax(160px, 1fr)); gap:0.75rem; }
+.nut-box {
+  border:1px solid #dbe3ee;
+  border-radius:8px;
+  padding:0.65rem 0.75rem 0.85rem;
+  margin:0;
+  background:#f8fafc;
+}
+.nut-box legend {
+  font-size:0.78rem;
+  font-weight:700;
+  color:#334155;
+  padding:0 0.35rem;
+}
+.nut-box label {
+  display:flex;
+  flex-direction:column;
+  gap:0.2rem;
+  font-size:0.78rem;
+  color:#475569;
+  margin-bottom:0.45rem;
+}
+.nut-checks {
+  display:flex;
+  flex-direction:column;
+  gap:0.35rem;
+  margin-top:0.35rem;
+}
+.nut-checks label {
+  flex-direction:row;
+  align-items:center;
+  gap:0.4rem;
+  margin:0;
+}
+.nut-panel input[readonly] { background:#eef2f7; }
+.nut-panel.editing input[readonly]#calTotal { background:#eef2f7; }
+.nut-panel:not(.editing) [data-field] { pointer-events:none; background:#f1f5f9; }
+.nut-panel:not(.editing) #gridNutrientesBody input { pointer-events:none; background:#f1f5f9; }
+@media (max-width: 900px) {
+  .nut-macro-cols { grid-template-columns:1fr; }
+}
+</style>
+
+<script>
+const ALIMENTOS = {{ alimentos|tojson }};
+const TABELA_ID = {{ tabela_id or 'null' }};
+let idx = 0;
+let editing = false;
+let draft = null;
+
+function current(){
+  if (!ALIMENTOS.length) return null;
+  return ALIMENTOS[Math.max(0, Math.min(idx, ALIMENTOS.length - 1))];
+}
+
+function fillDatalist(){
+  const dl = document.getElementById('listaAlimentos');
+  dl.innerHTML = ALIMENTOS.map(a => `<option value="${esc(a.nome)}"></option>`).join('');
+}
+
+function esc(s){
+  return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
+
+function setEditMode(on){
+  editing = !!on;
+  document.querySelector('.nut-panel').classList.toggle('editing', editing);
+  document.getElementById('btnSalvar').disabled = !editing;
+  document.getElementById('btnCancelar').disabled = !editing;
+  document.getElementById('btnAddNut').disabled = !editing;
+  if (editing) {
+    draft = JSON.parse(JSON.stringify(current() || blankAlimento()));
+    renderForm(draft);
+  } else {
+    draft = null;
+    renderForm(current());
+  }
+}
+
+function blankAlimento(){
+  return {
+    id: null,
+    tabela_id: TABELA_ID,
+    nome: '',
+    cal_carboidratos: 0, cal_gordura: 0, cal_proteina: 0, cal_total: 0,
+    qtd_carboidratos: 0, qtd_gordura: 0, qtd_proteina: 0,
+    ref_consumo: '100 g', coeficiente_npu: 0,
+    gluten: false, fenilalanina: false, ultima_alteracao: '',
+    nutrientes: [
+      {nutriente:'Energia', quantidade:0, unidade:'kcal', fator:1},
+      {nutriente:'Proteína', quantidade:0, unidade:'g', fator:1},
+      {nutriente:'Lipídios', quantidade:0, unidade:'g', fator:1},
+      {nutriente:'Carboidrato', quantidade:0, unidade:'g', fator:1},
+    ]
+  };
+}
+
+function renderForm(a){
+  a = a || blankAlimento();
+  document.getElementById('nomeAlimento').value = a.nome || '';
+  document.getElementById('ultimaAlteracao').value = a.ultima_alteracao || '';
+  document.getElementById('calCarb').value = a.cal_carboidratos ?? 0;
+  document.getElementById('calGord').value = a.cal_gordura ?? 0;
+  document.getElementById('calProt').value = a.cal_proteina ?? 0;
+  document.getElementById('calTotal').value = a.cal_total ?? 0;
+  document.getElementById('qtdCarb').value = a.qtd_carboidratos ?? 0;
+  document.getElementById('qtdGord').value = a.qtd_gordura ?? 0;
+  document.getElementById('qtdProt').value = a.qtd_proteina ?? 0;
+  document.getElementById('refConsumo').value = a.ref_consumo || '';
+  document.getElementById('coefNpu').value = a.coeficiente_npu ?? 0;
+  document.getElementById('chkGluten').checked = !!a.gluten;
+  document.getElementById('chkFenil').checked = !!a.fenilalanina;
+  renderNutrientes(a.nutrientes || []);
+  recalcTotal();
+}
+
+function renderNutrientes(rows){
+  const tb = document.getElementById('gridNutrientesBody');
+  if (!rows.length){
+    tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#64748b;">Sem nutrientes.</td></tr>';
+    return;
+  }
+  tb.innerHTML = rows.map((n,i) => `
+    <tr data-i="${i}">
+      <td><input class="form-control" value="${esc(n.nutriente)}" data-k="nutriente" oninput="onNutChange(${i},'nutriente',this.value)"></td>
+      <td><input class="form-control" type="number" step="any" value="${n.quantidade ?? 0}" data-k="quantidade" oninput="onNutChange(${i},'quantidade',this.value)"></td>
+      <td><input class="form-control" value="${esc(n.unidade||'g')}" data-k="unidade" oninput="onNutChange(${i},'unidade',this.value)"></td>
+      <td><input class="form-control" type="number" step="any" value="${n.fator ?? 1}" data-k="fator" oninput="onNutChange(${i},'fator',this.value)"></td>
+      <td style="text-align:center">
+        <button class="btn btn-ghost btn-sm" type="button" onclick="removeNutrienteRow(${i})" ${editing?'':'disabled'} title="Remover">
+          <i class="fas fa-trash"></i>
+        </button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function onNutChange(i, key, val){
+  if (!editing || !draft) return;
+  if (!draft.nutrientes[i]) return;
+  if (key === 'quantidade' || key === 'fator') draft.nutrientes[i][key] = parseFloat(val)||0;
+  else draft.nutrientes[i][key] = val;
+}
+
+function addNutrienteRow(){
+  if (!editing) return;
+  if (!draft) draft = blankAlimento();
+  draft.nutrientes = draft.nutrientes || [];
+  draft.nutrientes.push({nutriente:'', quantidade:0, unidade:'g', fator:1});
+  renderNutrientes(draft.nutrientes);
+}
+
+function removeNutrienteRow(i){
+  if (!editing || !draft) return;
+  draft.nutrientes.splice(i,1);
+  renderNutrientes(draft.nutrientes);
+}
+
+function recalcTotal(){
+  const c = parseFloat(document.getElementById('calCarb').value)||0;
+  const g = parseFloat(document.getElementById('calGord').value)||0;
+  const p = parseFloat(document.getElementById('calProt').value)||0;
+  document.getElementById('calTotal').value = +(c+g+p).toFixed(2);
+}
+
+['calCarb','calGord','calProt'].forEach(id => {
+  document.getElementById(id).addEventListener('input', recalcTotal);
+});
+
+function trocarTabela(){
+  const id = document.getElementById('selTabela').value;
+  location.href = '/nutricao/nutricional?tabela_id=' + encodeURIComponent(id);
+}
+
+function navAlimento(dir){
+  if (editing){ showToast('Salve ou cancele a edição','error'); return; }
+  if (!ALIMENTOS.length) return;
+  if (dir === 'first') idx = 0;
+  if (dir === 'prev') idx = Math.max(0, idx-1);
+  if (dir === 'next') idx = Math.min(ALIMENTOS.length-1, idx+1);
+  if (dir === 'last') idx = ALIMENTOS.length-1;
+  renderForm(current());
+}
+
+function buscarPorNome(){
+  const q = (document.getElementById('nomeAlimento').value||'').trim().toUpperCase();
+  if (!q) return;
+  const i = ALIMENTOS.findIndex(a => (a.nome||'').toUpperCase() === q || (a.nome||'').toUpperCase().includes(q));
+  if (i >= 0){
+    if (editing){ showToast('Salve ou cancele a edição','error'); return; }
+    idx = i;
+    renderForm(current());
+  }
+}
+
+function collectForm(base){
+  const a = Object.assign({}, base || blankAlimento());
+  a.nome = (document.getElementById('nomeAlimento').value||'').trim().toUpperCase();
+  a.cal_carboidratos = parseFloat(document.getElementById('calCarb').value)||0;
+  a.cal_gordura = parseFloat(document.getElementById('calGord').value)||0;
+  a.cal_proteina = parseFloat(document.getElementById('calProt').value)||0;
+  a.cal_total = parseFloat(document.getElementById('calTotal').value)||0;
+  a.qtd_carboidratos = parseFloat(document.getElementById('qtdCarb').value)||0;
+  a.qtd_gordura = parseFloat(document.getElementById('qtdGord').value)||0;
+  a.qtd_proteina = parseFloat(document.getElementById('qtdProt').value)||0;
+  a.ref_consumo = document.getElementById('refConsumo').value||'';
+  a.coeficiente_npu = parseFloat(document.getElementById('coefNpu').value)||0;
+  a.gluten = !!document.getElementById('chkGluten').checked;
+  a.fenilalanina = !!document.getElementById('chkFenil').checked;
+  a.tabela_id = TABELA_ID;
+  a.nutrientes = (draft && draft.nutrientes) ? draft.nutrientes : (a.nutrientes||[]);
+  return a;
+}
+
+function novoAlimento(){
+  if (!TABELA_ID){ showToast('Crie uma tabela primeiro','error'); return; }
+  editing = true;
+  document.querySelector('.nut-panel').classList.add('editing');
+  document.getElementById('btnSalvar').disabled = false;
+  document.getElementById('btnCancelar').disabled = false;
+  document.getElementById('btnAddNut').disabled = false;
+  draft = blankAlimento();
+  renderForm(draft);
+  document.getElementById('nomeAlimento').focus();
+}
+
+async function salvarAlimento(){
+  const body = collectForm(draft || current());
+  if (!body.nome){ showToast('Informe o nome do alimento','error'); return; }
+  const id = (draft && draft.id) || (current() && current().id);
+  const url = id ? `/nutricao/api/alimentos/${id}` : '/nutricao/api/alimentos';
+  const method = id ? 'PUT' : 'POST';
+  const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao salvar','error'); return; }
+  showToast(id ? 'Alimento atualizado' : 'Alimento cadastrado','success');
+  setTimeout(() => location.reload(), 400);
+}
+
+async function excluirAlimento(){
+  const a = current();
+  if (!a || !a.id){ showToast('Nenhum alimento selecionado','error'); return; }
+  if (!confirm('Desativar este alimento?')) return;
+  const r = await fetch(`/nutricao/api/alimentos/${a.id}`, { method:'DELETE' });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao excluir','error'); return; }
+  showToast('Alimento desativado','success');
+  setTimeout(() => location.reload(), 400);
+}
+
+function cancelarEdicao(){
+  setEditMode(false);
+  renderForm(current());
+}
+
+function abrirTabela(){
+  const atual = document.getElementById('selTabela');
+  const nomeAtual = atual && atual.selectedOptions[0] ? atual.selectedOptions[0].text : '';
+  const html = `
+    <div class="form-group">
+      <label class="form-label">Nome da tabela *</label>
+      <input class="form-control" id="f-tab-nome" value="${esc(nomeAtual)}" placeholder="Ex: Tabela Padrão">
+    </div>
+    <p style="font-size:0.85rem;color:#64748b;margin:0.5rem 0 0;">Deixe igual ao atual para renomear, ou digite um nome novo para criar.</p>
+  `;
+  window._editTabId = atual && atual.value ? parseInt(atual.value,10) : null;
+  abrirModal('Cria/Edita Tabelas', html, 'Salvar', salvarTabela);
+}
+
+async function salvarTabela(){
+  const nome = (document.getElementById('f-tab-nome')?.value || '').trim();
+  if (!nome){ showToast('Informe o nome','error'); return; }
+  const atualNome = document.getElementById('selTabela')?.selectedOptions?.[0]?.text || '';
+  const id = window._editTabId;
+  let r, j;
+  if (id && nome === atualNome){
+    fecharModal();
+    return;
+  }
+  if (id && nome !== atualNome){
+    // se mudou o nome da selecionada → rename; se quiser nova, usuário pode limpar e criar
+    r = await fetch(`/nutricao/api/tabelas-nutrientes/${id}`, {
+      method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ nome })
+    });
+  } else {
+    r = await fetch('/nutricao/api/tabelas-nutrientes', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ nome })
+    });
+  }
+  j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha','error'); return; }
+  fecharModal();
+  showToast('Tabela salva','success');
+  const tid = j.id || id;
+  setTimeout(() => location.href = '/nutricao/nutricional?tabela_id=' + tid, 400);
+}
+
+fillDatalist();
+if (ALIMENTOS.length){ idx = 0; renderForm(current()); }
+else { renderForm(blankAlimento()); }
+setEditMode(false);
+</script>
+{% endblock %}

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Totalização de Dietas — {{ r.data_label }}</title>
+  <style>
+    @page { margin: 12mm; size: A4; }
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      color: #000;
+      margin: 0;
+      padding: 12px 16px 24px;
+      font-size: 11px;
+    }
+    .head-top {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+      font-size: 11px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 14px;
+      margin: 4px 0 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .filtros {
+      font-size: 10px;
+      margin-bottom: 10px;
+      line-height: 1.35;
+    }
+    .filtros strong { font-weight: 700; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #000;
+      padding: 3px 5px;
+      vertical-align: middle;
+    }
+    th {
+      font-size: 10px;
+      text-align: center;
+      background: #f3f3f3;
+    }
+    td.nome { text-align: left; }
+    td.num { text-align: center; width: 42px; font-variant-numeric: tabular-nums; }
+    tr.subtotal td { font-weight: 700; background: #fafafa; }
+    tr.geral td { font-weight: 700; background: #eee; }
+    .foot {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 12px;
+      font-size: 10px;
+      color: #333;
+    }
+    .no-print { margin-bottom: 10px; }
+    @media print {
+      .no-print { display: none !important; }
+      body { padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <button onclick="window.print()">Imprimir</button>
+    <button onclick="window.close()" style="margin-left:6px">Fechar</button>
+  </div>
+
+  <div class="head-top">
+    <span>Data: {{ r.data_label }}</span>
+    <span>Data/hora relatório: {{ r.data_hora_relatorio }}</span>
+  </div>
+  <h1>São Geraldo Refeições e Alimentos — TOTALIZAÇÃO DE DIETAS</h1>
+  <div class="filtros">
+    <strong>{% if r.imprimir_por == 'enfermaria' %}Enfermarias{% else %}Clínicas{% endif %}:</strong>
+    {{ r.filtros_label }}
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="text-align:left">Nome da Dieta</th>
+        {% for c in r.colunas %}
+        <th>{{ c.label }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in r.linhas %}
+      <tr class="{% if row.is_subtotal %}subtotal{% endif %}">
+        <td class="nome">{{ row.nome }}</td>
+        {% for c in r.colunas %}
+        <td class="num">{% if row[c.key] %}{{ row[c.key] }}{% endif %}</td>
+        {% endfor %}
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="{{ 1 + r.colunas|length }}" style="text-align:center;padding:16px;">
+          Nenhuma dieta totalizada para os filtros selecionados.
+        </td>
+      </tr>
+      {% endfor %}
+
+      {% if r.imprimir_total_geral and r.linhas %}
+      <tr class="geral">
+        <td class="nome">TOTAL GERAL</td>
+        {% for c in r.colunas %}
+        <td class="num">{{ r.total_geral[c.key] }}</td>
+        {% endfor %}
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  <div class="foot">
+    <span>{{ r.qtd_dietas }} dietas</span>
+    <span>São Geraldo Service — Nutrição Hospitalar</span>
+    <span>1</span>
+  </div>
+
+  <script>
+    window.addEventListener('load', function(){
+      setTimeout(function(){ window.print(); }, 350);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Controle de Pesagem{% endblock %} — São Geraldo Service</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <header class="app-topbar">
+        <button type="button" class="menu-toggle" id="menuToggle" aria-label="Abrir menu">
+            <i class="fas fa-bars"></i>
+        </button>
+        <img class="brand-logo-compact" src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service">
+    </header>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <nav class="sidebar" id="appSidebar">
+        <div class="sidebar-logo">
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service">
+            <div class="brand-tagline">Transformando vidas</div>
+            <div class="module-label">Controle de Pesagem</div>
+        </div>
+
+        <ul class="sidebar-menu">
+            <li>
+                <a href="{{ url_for('main.inicio') }}">
+                    <i class="fas fa-th-large" style="margin-right: 0.75rem;"></i>
+                    Sistemas
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('pesagem.dashboard') }}" class="{% if active_page == 'dashboard' %}active{% endif %}">
+                    <i class="fas fa-weight-scale" style="margin-right: 0.75rem;"></i>
+                    Leituras
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('pesagem.balancas_page') }}" class="{% if active_page == 'balancas' %}active{% endif %}">
+                    <i class="fas fa-scale-balanced" style="margin-right: 0.75rem;"></i>
+                    Balanças
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('main.logout') }}">
+                    <i class="fas fa-sign-out-alt" style="margin-right: 0.75rem;"></i>
+                    Sair
+                </a>
+            </li>
+        </ul>
+    </nav>
+
+    <main class="main-content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

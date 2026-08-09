@@ -1,0 +1,55 @@
+"""Seed do cadastro de fornecedores."""
+
+ESTADOS_BR = [
+    'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA',
+    'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN',
+    'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO',
+]
+
+FORNECEDORES_SEED = [
+    {
+        'nome': 'DISTRIBUIDORA ALIMENTOS LTDA',
+        'endereco': 'RUA DAS INDUSTRIAS, 1200',
+        'bairro': 'DISTRITO INDUSTRIAL',
+        'municipio': 'SÃO PAULO',
+        'cep': '01000-000',
+        'estado': 'SP',
+        'cnpj': '11.222.333/0001-44',
+        'inscricao_estadual': '172.16.1.3',
+        'telefone': '(11) 3333-0001',
+        'email': 'carlos@dist.com',
+        'faturamento_dias': 30,
+        'site': 'https://www.distalimentos.com.br',
+        'observacao': 'Fornecedor principal de secos',
+    },
+    {
+        'nome': 'NUTRISUPPLY S.A.',
+        'endereco': 'AV. BRASIL, 450',
+        'bairro': 'CENTRO',
+        'municipio': 'CAMPINAS',
+        'cep': '13010-000',
+        'estado': 'SP',
+        'cnpj': '55.666.777/0001-88',
+        'inscricao_estadual': '10.0.2.4',
+        'telefone': '(19) 3333-0002',
+        'email': 'ana@nutri.com',
+        'faturamento_dias': 45,
+        'site': 'https://www.nutrisupply.com.br',
+        'observacao': 'Suplementos e fórmulas',
+    },
+    {
+        'nome': 'HOSPMEDIC',
+        'endereco': 'RUA HOSPITALAR, 88',
+        'bairro': 'SAÚDE',
+        'municipio': 'SÃO PAULO',
+        'cep': '04000-000',
+        'estado': 'SP',
+        'cnpj': '99.888.777/0001-55',
+        'inscricao_estadual': 'ISENTO',
+        'telefone': '(11) 3333-0003',
+        'email': 'jose@hosp.com',
+        'faturamento_dias': 15,
+        'site': '',
+        'observacao': 'Materiais hospitalares',
+    },
+]

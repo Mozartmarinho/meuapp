@@ -184,7 +184,7 @@ function confirmarEstoque(){
   if(d.tipo === 'produto'){
     var nome = document.getElementById('f-prod-nome').value.trim();
     if(!nome){showToast('Nome \u00e9 obrigat\u00f3rio','error');return;}
-    fetch('/nutricao/api/produtos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    fetch('/nutricao/api/estoque-produtos-legado',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       nome:nome, categoria:document.getElementById('f-prod-cat').value,
       unidade:document.getElementById('f-prod-unid').value,
       valor_un:'R$'+document.getElementById('f-prod-valor').value.replace('R$',''),

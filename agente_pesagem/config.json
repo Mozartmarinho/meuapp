@@ -1,0 +1,21 @@
+{
+  "servidor_url": "http://127.0.0.1",
+  "api_key": "saogeraldo-pesagem-2025",
+  "balanca_codigo": "BAL-01",
+  "balanca_nome": "WT1000",
+  "balanca_local": "Recepção / Expedição",
+  "modelo": "WT1000",
+  "porta_com": "COM3",
+  "baudrate": 9600,
+  "bytesize": 8,
+  "parity": "N",
+  "stopbits": 1,
+  "timeout": 1.0,
+  "modo_simulacao": false,
+  "envio_automatico": false,
+  "intervalo_envio_seg": 2.0,
+  "peso_minimo": 0.001,
+  "consultar_balanca": true,
+  "comandos_consulta": ["R", "R\r", "R\n", "R\r\n"],
+  "intervalo_consulta_seg": 0.5
+}

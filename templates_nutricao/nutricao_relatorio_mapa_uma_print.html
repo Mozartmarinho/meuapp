@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Mapa de totalização U.M.A. — {{ r.data_label }}</title>
+  <style>
+    @page { margin: 14mm; }
+    body {
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      color: #152238;
+      margin: 0;
+      padding: 16px 20px 28px;
+      font-size: 12px;
+    }
+    h1 { font-size: 16px; margin: 0 0 4px; }
+    .sub { color: #475569; margin-bottom: 14px; }
+    .meta { display:flex; flex-wrap:wrap; gap:8px 18px; margin-bottom:14px; }
+    .meta span { white-space:nowrap; }
+    .meta strong { color:#0f2a5c; }
+    table { width:100%; border-collapse:collapse; margin-top:8px; }
+    th, td { border:1px solid #94a3b8; padding:6px 8px; text-align:left; }
+    th { background:#e8eef6; font-size:11px; text-transform:uppercase; letter-spacing:.02em; }
+    td.num { text-align:right; font-variant-numeric:tabular-nums; }
+    .amostra { background:#fff7ed; }
+    .foot { margin-top:14px; color:#64748b; font-size:11px; }
+    .no-print { margin-bottom:12px; }
+    @media print {
+      .no-print { display:none !important; }
+      body { padding:0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <button onclick="window.print()" style="padding:8px 14px;cursor:pointer;">Imprimir</button>
+    <button onclick="window.close()" style="padding:8px 14px;cursor:pointer;margin-left:6px;">Fechar</button>
+  </div>
+
+  <h1>Mapa de totalização da U.M.A.</h1>
+  <div class="sub">São Geraldo Service — Nutrição Hospitalar</div>
+
+  <div class="meta">
+    <span><strong>Data:</strong> {{ r.data_label }}</span>
+    <span><strong>Categoria:</strong> {{ r.categoria_label }}</span>
+    <span><strong>Filtro:</strong> {{ r.filtro_nome }}</span>
+    <span><strong>Horários:</strong>
+      {% if r.horarios %}{{ r.horarios|join(', ') }}{% else %}—{% endif %}
+    </span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:45%">Item</th>
+        <th class="num" style="width:12%">Qtd.</th>
+        <th>Leitos</th>
+        <th>Pacientes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for i in r.itens %}
+      <tr class="{% if i.amostra %}amostra{% endif %}">
+        <td>{{ i.item }}</td>
+        <td class="num">{{ i.qtd_pacientes }}</td>
+        <td>{{ (i.leitos or [])|join(', ') }}</td>
+        <td>{{ (i.pacientes or [])|join(', ') }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="4" style="text-align:center;color:#64748b;padding:18px;">
+          Nenhum registro encontrado para os filtros selecionados.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="foot">
+    Total de itens: {{ r.total_itens }} &nbsp;|&nbsp; Linhas detalhe: {{ r.total_linhas }}
+    &nbsp;|&nbsp; Emitido em {{ r.data_label }}
+  </div>
+
+  <script>
+    window.addEventListener('load', function(){
+      setTimeout(function(){ window.print(); }, 350);
+    });
+  </script>
+</body>
+</html>

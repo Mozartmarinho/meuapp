@@ -1,0 +1,19 @@
+Agente de Pesagem — São Geraldo Service
+=====================================
+
+O programa abre uma janela com:
+- Peso atual da balança (tempo real)
+- Botão ENVIAR PARA O SERVIDOR
+
+Arquivos:
+- AgentePesagem.exe
+- config.json
+- instalar_inicio_windows.bat
+
+Passos:
+1) Baixe os arquivos na mesma pasta.
+2) Ajuste config.json (servidor_url / porta_com) se precisar.
+3) Abra AgentePesagem.exe, confira o peso e clique em ENVIAR.
+4) (Opcional) rode instalar_inicio_windows.bat para iniciar com o Windows.
+
+Para testar sem balança: no config.json use "modo_simulacao": true

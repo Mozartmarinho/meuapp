@@ -4,12 +4,38 @@ from datetime import datetime, date
 import json
 
 from models import db
-from models_nutricao import NutClinica, NutDieta, NutPaciente, NutMapaRefeicao
+from models_nutricao import (
+    NutClinica, NutEnfermaria, NutLeito, NutDieta, NutPaciente, NutMapaRefeicao, NutCardapio,
+    NutTabelaNutrientes, NutAlimento, NutAlimentoNutriente, NutPratoLiquido,
+    NutEstoqueLocal, NutUnidadeMedida, NutGrupoProduto, NutProduto, NutFornecedor,
+    NutEtiqueta, NutEtiquetaCampo,
+)
 from nutricao_service import (
     seed_nutricao,
     paciente_from_payload,
     mapa_from_paciente,
     garantir_mapa_do_dia,
+    list_clinicas,
+    list_enfermarias,
+    list_leitos,
+    list_dietas,
+    list_cardapios,
+    list_tabelas_nutrientes,
+    list_alimentos,
+    list_pratos_liquidos,
+    list_estoques,
+    list_unidades,
+    list_grupos_produto,
+    list_produtos,
+    list_fornecedores,
+    list_etiquetas,
+    totalizar_mapa_uma,
+    relatorio_faturamento,
+    totalizacao_dietas as gerar_totalizacao_dietas,
+    listar_avisos_alta_mapa,
+    aplicar_avisos_alta_mapa,
+    CARDAPIO_OPCOES,
+    ESTADOS_BR,
     _parse_date,
 )
 
@@ -115,14 +141,15 @@ def _list_pacientes_db(ativos_only=True):
     return [p.to_dict() for p in q.order_by(NutPaciente.nome).all()]
 
 
-def _list_dietas_db():
-    return [d.to_dict() for d in NutDieta.query.filter_by(ativo=True).order_by(NutDieta.nome).all()]
+def _list_dietas_db(somente_ativas=True):
+    rows = list_dietas(somente_ativas=somente_ativas)
+    return rows
 
 
-def _list_clinicas_db():
-    rows = NutClinica.query.filter_by(ativo=True).order_by(NutClinica.nome).all()
+def _list_clinicas_db(somente_ativas=False):
+    rows = list_clinicas(somente_ativas=somente_ativas)
     if rows:
-        return [c.to_dict() for c in rows]
+        return rows
     return CLINICAS
 
 
@@ -147,6 +174,7 @@ def dashboard():
         'nutricao_dashboard.html',
         mapa_linhas=mapa,
         data_mapa=data_ref.isoformat(),
+        clinicas=_list_clinicas_db(somente_ativas=True),
         total_pacientes=NutPaciente.query.filter_by(ativo=True).count(),
         total_dietas=NutDieta.query.filter_by(ativo=True).count(),
         total_clinicas=NutClinica.query.filter_by(ativo=True).count() or len(CLINICAS),
@@ -162,9 +190,9 @@ def pacientes():
     return render_template(
         'nutricao_pacientes.html',
         pacientes=_list_pacientes_db(False),
-        clinicas=_list_clinicas_db(),
+        clinicas=_list_clinicas_db(somente_ativas=True),
         dietas=_list_dietas_db(),
-        **active('pacientes')
+        **active('cadastro_pacientes')
     )
 
 
@@ -224,11 +252,79 @@ def api_paciente(pid):
 def api_mapa_get():
     seed_nutricao()
     data_ref = _parse_date(request.args.get('data')) or date.today()
+    _seed_aviso_alta_demo(data_ref)
     return jsonify({
         'ok': True,
         'data': data_ref.isoformat(),
         'linhas': _mapa_linhas(data_ref),
+        'clinicas': _list_clinicas_db(somente_ativas=True),
+        'avisos_alta': listar_avisos_alta_mapa(data_ref),
     })
+
+
+@nutricao.route('/nutricao/api/mapa/avisos-alta', methods=['GET', 'POST'])
+def api_mapa_avisos_alta():
+    seed_nutricao()
+    if request.method == 'GET':
+        data_ref = _parse_date(request.args.get('data')) or date.today()
+        _seed_aviso_alta_demo(data_ref)
+        return jsonify({
+            'ok': True,
+            'data': data_ref.isoformat(),
+            'avisos': listar_avisos_alta_mapa(data_ref),
+        })
+    d = request.get_json(force=True) or {}
+    excluir_ids = d.get('excluir_ids') or []
+    if not excluir_ids and d.get('itens'):
+        excluir_ids = [it.get('mapa_id') for it in d['itens'] if it.get('excluir')]
+    qtd = aplicar_avisos_alta_mapa(excluir_ids)
+    data_ref = _parse_date(d.get('data')) or date.today()
+    return jsonify({
+        'ok': True,
+        'excluidos': qtd,
+        'linhas': _mapa_linhas(data_ref),
+        'avisos_alta': listar_avisos_alta_mapa(data_ref),
+    })
+
+
+def _seed_aviso_alta_demo(data_ref):
+    """Garante exemplos de alta anterior ainda no mapa (uma vez)."""
+    garantir_mapa_do_dia(data_ref)
+    # já há altas cadastradas → não força demo de novo
+    if NutPaciente.query.filter(NutPaciente.data_saida.isnot(None)).count() > 0:
+        return
+    if listar_avisos_alta_mapa(data_ref):
+        return
+    rows = (
+        NutMapaRefeicao.query
+        .filter_by(data_refeicao=data_ref, ativo=True)
+        .filter(NutMapaRefeicao.paciente_id.isnot(None))
+        .order_by(NutMapaRefeicao.id)
+        .limit(5)
+        .all()
+    )
+    if len(rows) < 1:
+        return
+    saida = date.fromordinal(data_ref.toordinal() - 1)
+    vistos = set()
+    qtd = 0
+    for row in rows:
+        if row.paciente_id in vistos:
+            continue
+        pac = row.paciente or NutPaciente.query.get(row.paciente_id)
+        if not pac:
+            continue
+        pac.data_saida = saida
+        pac.hora_saida = '14:00:00'
+        pac.motivo_saida = 'A'
+        if not row.clinica:
+            row.clinica = 'MATERNIDADE ALA A + B'
+        vistos.add(row.paciente_id)
+        qtd += 1
+        if qtd >= 2:
+            break
+    if qtd:
+        db.session.commit()
 
 
 @nutricao.route('/nutricao/api/mapa/<int:mid>', methods=['PUT'])
@@ -237,7 +333,10 @@ def api_mapa_put(mid):
     if not row or not row.ativo:
         return jsonify({'ok': False, 'error': 'Linha não encontrada'}), 404
     d = request.get_json(force=True) or {}
-    for campo in ('leito', 'prontuario', 'nome', 'diagnostico', 'dieta', 'observacoes', 'clinica'):
+    for campo in (
+        'leito', 'prontuario', 'nome', 'diagnostico', 'dieta', 'observacoes', 'clinica',
+        'obs_etiqueta', 'extras', 'suplementos', 'enteral', 'formula_infantil', 'lve',
+    ):
         if campo in d:
             val = d.get(campo)
             setattr(row, campo, (str(val).strip() if val is not None else '') or None)
@@ -280,172 +379,1118 @@ def clinicas():
     seed_nutricao()
     return render_template(
         'nutricao_clinicas.html',
-        pacientes=_list_pacientes_db(True),
-        clinicas=_list_clinicas_db(),
-        dietas=_list_dietas_db(),
-        enfermarias=ENFERMARIAS,
-        leitos=LEITOS,
-        **active('cadastro_pacientes')
+        clinicas=_list_clinicas_db(somente_ativas=False),
+        **active('cadastro_clinicas')
     )
 
 
-@nutricao.route('/nutricao/api/clinicas', methods=['GET','POST'])
+@nutricao.route('/nutricao/api/clinicas', methods=['GET', 'POST'])
 def api_clinicas():
-    if request.method=='POST':
+    seed_nutricao()
+    if request.method == 'POST':
         d = request.get_json(force=True) or {}
         nome = (d.get('nome') or '').strip()
-        centro_custo = (d.get('centro_custo') or '').strip()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome da clínica é obrigatório'}), 400
+        if NutClinica.query.filter_by(nome=nome).first():
+            return jsonify({'ok': False, 'error': 'Já existe clínica com este nome'}), 400
+        row = NutClinica(
+            nome=nome,
+            centro_custo=(d.get('centro_custo') or '').strip() or None,
+            ativo=bool(d.get('ativo', True)),
+        )
+        db.session.add(row)
+        db.session.commit()
+        return jsonify({'ok': True, 'id': row.id, 'clinica': row.to_dict()})
+    somente_ativas = str(request.args.get('ativas', '')).lower() in ('1', 'true', 'sim')
+    return jsonify(_list_clinicas_db(somente_ativas=somente_ativas))
 
-        if not nome or not centro_custo:
-            return jsonify({'ok':False,'error':'Campos obrigatórios: nome e centro_custo'}),400
 
-        n = {
-            'id':max(c['id'] for c in CLINICAS)+1 if CLINICAS else 1,
-            'nome':nome,
-            'centro_custo':centro_custo
-        }
-        CLINICAS.append(n)
-        return jsonify({'ok':True,'id':n['id']})
-    return jsonify(CLINICAS)
-
-@nutricao.route('/nutricao/api/clinicas/<int:cid>', methods=['PUT','DELETE'])
+@nutricao.route('/nutricao/api/clinicas/<int:cid>', methods=['PUT', 'DELETE'])
 def api_clinica_ops(cid):
-    global CLINICAS, ENFERMARIAS, LEITOS
-    c = next((x for x in CLINICAS if x['id']==cid), None)
-    if not c:
-        return jsonify({'ok':False,'error':'Clínica não encontrada'}),404
+    row = NutClinica.query.get(cid)
+    if not row:
+        return jsonify({'ok': False, 'error': 'Clínica não encontrada'}), 404
 
-    if request.method=='DELETE':
-        enfermarias_ids = [e['id'] for e in ENFERMARIAS if e['clinica_id']==cid]
-        CLINICAS = [x for x in CLINICAS if x['id']!=cid]
-        ENFERMARIAS = [e for e in ENFERMARIAS if e['clinica_id']!=cid]
-        LEITOS = [l for l in LEITOS if l['enfermaria_id'] not in enfermarias_ids]
-        return jsonify({'ok':True})
+    if request.method == 'DELETE':
+        row.ativo = False
+        db.session.commit()
+        return jsonify({'ok': True})
 
     d = request.get_json(force=True) or {}
-    c['nome'] = d.get('nome', c['nome']).strip()
-    c['centro_custo'] = d.get('centro_custo', c.get('centro_custo','')).strip()
-    return jsonify({'ok':True})
-
-@nutricao.route('/nutricao/api/enfermarias', methods=['GET','POST'])
-def api_enfermarias():
-    if request.method=='POST':
-        d = request.get_json(force=True) or {}
-        clinica_id = int(d.get('clinica_id',0) or 0)
+    if 'nome' in d:
         nome = (d.get('nome') or '').strip()
-        numero_leito = (d.get('numero_leito') or '').strip()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome da clínica é obrigatório'}), 400
+        outro = NutClinica.query.filter(NutClinica.nome == nome, NutClinica.id != cid).first()
+        if outro:
+            return jsonify({'ok': False, 'error': 'Já existe clínica com este nome'}), 400
+        row.nome = nome
+    if 'centro_custo' in d:
+        row.centro_custo = (d.get('centro_custo') or '').strip() or None
+    if 'ativo' in d:
+        row.ativo = bool(d.get('ativo'))
+    db.session.commit()
+    return jsonify({'ok': True, 'clinica': row.to_dict()})
 
-        if not clinica_id or not nome or not numero_leito:
-            return jsonify({'ok':False,'error':'Campos obrigatórios: clinica_id, nome e numero_leito'}),400
 
-        if not any(c['id'] == clinica_id for c in CLINICAS):
-            return jsonify({'ok':False,'error':'Clínica não encontrada'}),404
+@nutricao.route('/nutricao/api/clinicas/<int:cid>/enfermarias', methods=['GET', 'PUT'])
+def api_clinica_enfermarias(cid):
+    seed_nutricao()
+    clinica = NutClinica.query.get(cid)
+    if not clinica:
+        return jsonify({'ok': False, 'error': 'Clínica não encontrada'}), 404
 
-        n = {
-            'id':max(e['id'] for e in ENFERMARIAS)+1 if ENFERMARIAS else 1,
-            'clinica_id':clinica_id,
-            'nome':nome,
-            'numero_leito':numero_leito,
-            'nutriz':bool(d.get('nutriz',False)),
-            'ativo':bool(d.get('ativo',True))
-        }
-        ENFERMARIAS.append(n)
-        return jsonify({'ok':True,'id':n['id']})
-    return jsonify(ENFERMARIAS)
-
-@nutricao.route('/nutricao/api/enfermarias/<int:eid>', methods=['PUT','DELETE'])
-def api_enfermaria_ops(eid):
-    global ENFERMARIAS, LEITOS
-    e = next((x for x in ENFERMARIAS if x['id']==eid), None)
-    if not e:
-        return jsonify({'ok':False,'error':'Enfermaria não encontrada'}),404
-
-    if request.method=='DELETE':
-        ENFERMARIAS = [x for x in ENFERMARIAS if x['id']!=eid]
-        LEITOS = [l for l in LEITOS if l['enfermaria_id']!=eid]
-        return jsonify({'ok':True})
+    if request.method == 'GET':
+        return jsonify({
+            'ok': True,
+            'clinica': clinica.to_dict(include_enfermarias=True),
+            'todas': list_enfermarias(somente_ativas=True),
+        })
 
     d = request.get_json(force=True) or {}
-    e['clinica_id'] = int(d.get('clinica_id', e['clinica_id']) or 0)
-    e['nome'] = d.get('nome', e['nome']).strip()
-    e['numero_leito'] = d.get('numero_leito', e['numero_leito']).strip()
-    e['nutriz'] = bool(d.get('nutriz', e['nutriz']))
-    e['ativo'] = bool(d.get('ativo', e['ativo']))
-    return jsonify({'ok':True})
+    ids = d.get('enfermaria_ids')
+    if ids is None:
+        return jsonify({'ok': False, 'error': 'Informe enfermaria_ids'}), 400
+    try:
+        ids = [int(x) for x in ids]
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'enfermaria_ids inválido'}), 400
 
-@nutricao.route('/nutricao/api/leitos', methods=['GET','POST'])
-def api_leitos():
-    if request.method=='POST':
+    selecionadas = NutEnfermaria.query.filter(
+        NutEnfermaria.id.in_(ids),
+        NutEnfermaria.ativo.is_(True),
+    ).all() if ids else []
+    clinica.enfermarias = selecionadas
+    db.session.commit()
+    return jsonify({'ok': True, 'clinica': clinica.to_dict(include_enfermarias=True)})
+
+
+@nutricao.route('/nutricao/enfermarias')
+def enfermarias():
+    seed_nutricao()
+    clinica_id = request.args.get('clinica_id', type=int)
+    return render_template(
+        'nutricao_enfermarias.html',
+        enfermarias=list_enfermarias(somente_ativas=False),
+        clinicas=list_clinicas(somente_ativas=False),
+        clinica_id_inicial=clinica_id,
+        **active('cadastro_enfermarias')
+    )
+
+
+@nutricao.route('/nutricao/api/enfermarias', methods=['GET', 'POST'])
+def api_enfermarias():
+    seed_nutricao()
+    if request.method == 'POST':
         d = request.get_json(force=True) or {}
-        enfermaria_id = int(d.get('enfermaria_id',0) or 0)
-        numero_leito = (d.get('numero_leito') or '').strip()
-        nome_leito = (d.get('nome_leito') or '').strip()
+        nome = (d.get('nome') or '').strip()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome da enfermaria é obrigatório'}), 400
+        if NutEnfermaria.query.filter_by(nome=nome).first():
+            return jsonify({'ok': False, 'error': 'Já existe enfermaria com este nome'}), 400
+        row = NutEnfermaria(
+            nome=nome,
+            ativo=bool(d.get('ativo', True)),
+            nutriz=bool(d.get('nutriz', False)),
+        )
+        db.session.add(row)
+        db.session.commit()
+        return jsonify({'ok': True, 'id': row.id, 'enfermaria': row.to_dict()})
+    somente_ativas = str(request.args.get('ativas', '')).lower() in ('1', 'true', 'sim')
+    return jsonify(list_enfermarias(somente_ativas=somente_ativas))
 
-        if not enfermaria_id or not numero_leito or not nome_leito:
-            return jsonify({'ok':False,'error':'Campos obrigatórios: enfermaria_id, numero_leito e nome_leito'}),400
 
-        if not any(e['id'] == enfermaria_id for e in ENFERMARIAS):
-            return jsonify({'ok':False,'error':'Enfermaria não encontrada'}),404
+@nutricao.route('/nutricao/api/enfermarias/<int:eid>', methods=['PUT', 'DELETE'])
+def api_enfermaria_ops(eid):
+    row = NutEnfermaria.query.get(eid)
+    if not row:
+        return jsonify({'ok': False, 'error': 'Enfermaria não encontrada'}), 404
 
-        n = {
-            'id':max(l['id'] for l in LEITOS)+1 if LEITOS else 1,
-            'enfermaria_id':enfermaria_id,
-            'numero_leito':numero_leito,
-            'nome_leito':nome_leito,
-            'ativo':bool(d.get('ativo',True))
-        }
-        LEITOS.append(n)
-        return jsonify({'ok':True,'id':n['id']})
-    return jsonify(LEITOS)
-
-@nutricao.route('/nutricao/api/leitos/<int:lid>', methods=['PUT','DELETE'])
-def api_leito_ops(lid):
-    global LEITOS
-    l = next((x for x in LEITOS if x['id']==lid), None)
-    if not l:
-        return jsonify({'ok':False,'error':'Leito não encontrado'}),404
-
-    if request.method=='DELETE':
-        LEITOS = [x for x in LEITOS if x['id']!=lid]
-        return jsonify({'ok':True})
+    if request.method == 'DELETE':
+        row.ativo = False
+        db.session.commit()
+        return jsonify({'ok': True})
 
     d = request.get_json(force=True) or {}
-    l['enfermaria_id'] = int(d.get('enfermaria_id', l['enfermaria_id']) or 0)
-    l['numero_leito'] = d.get('numero_leito', l['numero_leito']).strip()
-    l['nome_leito'] = d.get('nome_leito', l['nome_leito']).strip()
-    l['ativo'] = bool(d.get('ativo', l['ativo']))
-    return jsonify({'ok':True})
+    if 'nome' in d:
+        nome = (d.get('nome') or '').strip()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome da enfermaria é obrigatório'}), 400
+        outro = NutEnfermaria.query.filter(NutEnfermaria.nome == nome, NutEnfermaria.id != eid).first()
+        if outro:
+            return jsonify({'ok': False, 'error': 'Já existe enfermaria com este nome'}), 400
+        row.nome = nome
+    if 'ativo' in d:
+        row.ativo = bool(d.get('ativo'))
+    if 'nutriz' in d:
+        row.nutriz = bool(d.get('nutriz'))
+    db.session.commit()
+    return jsonify({'ok': True, 'enfermaria': row.to_dict()})
+
+
+@nutricao.route('/nutricao/api/enfermarias/<int:eid>/leitos', methods=['GET'])
+def api_enfermaria_leitos(eid):
+    seed_nutricao()
+    row = NutEnfermaria.query.get(eid)
+    if not row:
+        return jsonify({'ok': False, 'error': 'Enfermaria não encontrada'}), 404
+    return jsonify({
+        'ok': True,
+        'enfermaria': row.to_dict(include_leitos=True),
+        'leitos': list_leitos(enfermaria_id=eid),
+    })
+
+
+@nutricao.route('/nutricao/leitos')
+def leitos():
+    seed_nutricao()
+    enf_id = request.args.get('enfermaria_id', type=int)
+    return render_template(
+        'nutricao_leitos.html',
+        enfermarias=list_enfermarias(somente_ativas=False),
+        enfermaria_id_inicial=enf_id,
+        **active('cadastro_leitos')
+    )
+
+
+@nutricao.route('/nutricao/api/leitos', methods=['GET', 'POST'])
+def api_leitos():
+    seed_nutricao()
+    if request.method == 'POST':
+        d = request.get_json(force=True) or {}
+        try:
+            enfermaria_id = int(d.get('enfermaria_id') or 0)
+        except (TypeError, ValueError):
+            enfermaria_id = 0
+        nome = (d.get('nome') or d.get('nome_leito') or '').strip()
+        if not enfermaria_id:
+            return jsonify({'ok': False, 'error': 'Informe a enfermaria'}), 400
+        enf = NutEnfermaria.query.get(enfermaria_id)
+        if not enf:
+            return jsonify({'ok': False, 'error': 'Enfermaria não encontrada'}), 404
+
+        numero = d.get('numero')
+        if numero in (None, ''):
+            numero = d.get('numero_leito')
+        try:
+            numero = int(numero) if numero not in (None, '') else None
+        except (TypeError, ValueError):
+            return jsonify({'ok': False, 'error': 'Nº leito inválido'}), 400
+        if numero is None:
+            ultimo = (
+                NutLeito.query
+                .filter_by(enfermaria_id=enfermaria_id)
+                .order_by(NutLeito.numero.desc())
+                .first()
+            )
+            numero = (ultimo.numero + 1) if ultimo else 1
+        if not nome:
+            nome = str(numero).zfill(2)
+
+        if NutLeito.query.filter_by(enfermaria_id=enfermaria_id, numero=numero).first():
+            return jsonify({'ok': False, 'error': 'Já existe leito com este número nesta enfermaria'}), 400
+
+        row = NutLeito(
+            enfermaria_id=enfermaria_id,
+            numero=numero,
+            nome=nome,
+            ativo=bool(d.get('ativo', True)),
+        )
+        db.session.add(row)
+        db.session.commit()
+        return jsonify({'ok': True, 'id': row.id, 'leito': row.to_dict(), 'enfermaria': enf.to_dict()})
+
+    enfermaria_id = request.args.get('enfermaria_id', type=int)
+    somente_ativos = str(request.args.get('ativos', '')).lower() in ('1', 'true', 'sim')
+    return jsonify(list_leitos(enfermaria_id=enfermaria_id, somente_ativos=somente_ativos))
+
+
+@nutricao.route('/nutricao/api/leitos/<int:lid>', methods=['PUT', 'DELETE'])
+def api_leito_ops(lid):
+    row = NutLeito.query.get(lid)
+    if not row:
+        return jsonify({'ok': False, 'error': 'Leito não encontrado'}), 404
+
+    if request.method == 'DELETE':
+        enf_id = row.enfermaria_id
+        db.session.delete(row)
+        db.session.commit()
+        enf = NutEnfermaria.query.get(enf_id)
+        return jsonify({'ok': True, 'enfermaria': enf.to_dict() if enf else None})
+
+    d = request.get_json(force=True) or {}
+    if 'nome' in d or 'nome_leito' in d:
+        nome = (d.get('nome') if 'nome' in d else d.get('nome_leito') or '').strip()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome do leito é obrigatório'}), 400
+        row.nome = nome
+    if 'numero' in d or 'numero_leito' in d:
+        raw = d.get('numero') if 'numero' in d else d.get('numero_leito')
+        try:
+            numero = int(raw)
+        except (TypeError, ValueError):
+            return jsonify({'ok': False, 'error': 'Nº leito inválido'}), 400
+        outro = NutLeito.query.filter(
+            NutLeito.enfermaria_id == row.enfermaria_id,
+            NutLeito.numero == numero,
+            NutLeito.id != lid,
+        ).first()
+        if outro:
+            return jsonify({'ok': False, 'error': 'Já existe leito com este número nesta enfermaria'}), 400
+        row.numero = numero
+    if 'ativo' in d:
+        row.ativo = bool(d.get('ativo'))
+    if 'enfermaria_id' in d:
+        try:
+            nova_enf = int(d.get('enfermaria_id') or 0)
+        except (TypeError, ValueError):
+            nova_enf = 0
+        if not NutEnfermaria.query.get(nova_enf):
+            return jsonify({'ok': False, 'error': 'Enfermaria não encontrada'}), 404
+        row.enfermaria_id = nova_enf
+    db.session.commit()
+    return jsonify({'ok': True, 'leito': row.to_dict()})
+
 
 # ---- DIETAS ----
-@nutricao.route('/nutricao/api/dietas', methods=['GET','POST'])
+@nutricao.route('/nutricao/dietas')
+def dietas():
+    seed_nutricao()
+    return render_template(
+        'nutricao_dietas.html',
+        dietas=_list_dietas_db(somente_ativas=False),
+        **active('cadastro_dietas')
+    )
+
+
+@nutricao.route('/nutricao/api/dietas', methods=['GET', 'POST'])
 def api_dietas():
     seed_nutricao()
-    if request.method=='POST':
+    if request.method == 'POST':
         d = request.get_json(force=True) or {}
         nome = (d.get('nome') or '').strip().upper()
         if not nome:
-            return jsonify({'ok':False,'error':'Nome da dieta é obrigatório'}),400
+            return jsonify({'ok': False, 'error': 'Nome da dieta é obrigatório'}), 400
         categoria = (d.get('categoria') or 'basica').strip() or 'basica'
         exists = NutDieta.query.filter_by(nome=nome).first()
         if exists:
-            exists.ativo = True
+            if 'ativo' in d:
+                exists.ativo = bool(d.get('ativo'))
+            else:
+                exists.ativo = True
             exists.categoria = categoria
             db.session.commit()
-            return jsonify({'ok':True,'id':exists.id,'dieta':exists.to_dict()})
-        row = NutDieta(nome=nome, categoria=categoria, ativo=True)
+            return jsonify({'ok': True, 'id': exists.id, 'dieta': exists.to_dict()})
+        row = NutDieta(
+            nome=nome,
+            categoria=categoria,
+            ativo=bool(d.get('ativo', True)),
+        )
         db.session.add(row)
         db.session.commit()
-        return jsonify({'ok':True,'id':row.id,'dieta':row.to_dict()})
-    return jsonify(_list_dietas_db())
+        return jsonify({'ok': True, 'id': row.id, 'dieta': row.to_dict()})
+    somente_ativas = str(request.args.get('ativas', '')).lower() in ('1', 'true', 'sim')
+    return jsonify(_list_dietas_db(somente_ativas=somente_ativas))
 
-@nutricao.route('/nutricao/api/dietas/<int:did>', methods=['DELETE'])
-def api_dieta_delete(did):
+
+@nutricao.route('/nutricao/api/dietas/<int:did>', methods=['PUT', 'DELETE'])
+def api_dieta_ops(did):
     row = NutDieta.query.get(did)
     if not row:
-        return jsonify({'ok':False,'error':'Dieta não encontrada'}),404
-    row.ativo = False
+        return jsonify({'ok': False, 'error': 'Dieta não encontrada'}), 404
+
+    if request.method == 'DELETE':
+        row.ativo = False
+        db.session.commit()
+        return jsonify({'ok': True})
+
+    d = request.get_json(force=True) or {}
+    if 'nome' in d:
+        nome = (d.get('nome') or '').strip().upper()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome da dieta é obrigatório'}), 400
+        outro = NutDieta.query.filter(NutDieta.nome == nome, NutDieta.id != did).first()
+        if outro:
+            return jsonify({'ok': False, 'error': 'Já existe dieta com este nome'}), 400
+        row.nome = nome
+    if 'categoria' in d:
+        row.categoria = (d.get('categoria') or 'basica').strip() or 'basica'
+    if 'ativo' in d:
+        row.ativo = bool(d.get('ativo'))
     db.session.commit()
-    return jsonify({'ok':True})
+    return jsonify({'ok': True, 'dieta': row.to_dict()})
+
+
+# ---- CARDÁPIOS ----
+def _cardapio_from_payload(d, row=None):
+    row = row or NutCardapio()
+    row.tipo = (d.get('tipo') or 'grandes').strip()
+    row.grupo_cardapio = (d.get('grupo_cardapio') or 'PRINCIPAL').strip()
+    try:
+        row.dia_mes = int(d.get('dia_mes') or 1)
+    except (TypeError, ValueError):
+        row.dia_mes = 1
+    row.dia_semana = (d.get('dia_semana') or '').strip() or None
+    row.dieta = (d.get('dieta') or '').strip() or None
+    for hr in ('hr_desjejum', 'hr_colacao', 'hr_almoco', 'hr_merenda', 'hr_jantar', 'hr_ceia'):
+        setattr(row, hr, bool(d.get(hr)))
+    row.set_itens(d.get('itens') or {})
+    try:
+        row.vet = float(d.get('vet') or 0)
+    except (TypeError, ValueError):
+        row.vet = 0
+    try:
+        row.custo = float(d.get('custo') or 0)
+    except (TypeError, ValueError):
+        row.custo = 0
+    row.organizar_por = (d.get('organizar_por') or 'Dia;Dieta;Horário').strip()
+    row.usuario_alteracao = (d.get('usuario_alteracao') or session.get('usuario_nome') or 'sistema')[:80]
+    row.data_alteracao = datetime.utcnow()
+    row.ativo = bool(d.get('ativo', True))
+    return row
+
+
+@nutricao.route('/nutricao/cardapios')
+def cardapios():
+    seed_nutricao()
+    return render_template(
+        'nutricao_cardapios.html',
+        cardapios=list_cardapios(),
+        dietas=_list_dietas_db(somente_ativas=True),
+        opcoes=CARDAPIO_OPCOES,
+        **active('cadastro_cardapios')
+    )
+
+
+@nutricao.route('/nutricao/api/cardapios', methods=['GET', 'POST'])
+def api_cardapios():
+    seed_nutricao()
+    if request.method == 'POST':
+        d = request.get_json(force=True) or {}
+        if not (d.get('dieta') or '').strip():
+            return jsonify({'ok': False, 'error': 'Informe a dieta'}), 400
+        row = _cardapio_from_payload(d)
+        db.session.add(row)
+        db.session.commit()
+        return jsonify({'ok': True, 'id': row.id, 'cardapio': row.to_dict()})
+    tipo = (request.args.get('tipo') or '').strip() or None
+    return jsonify(list_cardapios(tipo=tipo))
+
+
+@nutricao.route('/nutricao/api/cardapios/<int:cid>', methods=['PUT', 'DELETE'])
+def api_cardapio_ops(cid):
+    row = NutCardapio.query.get(cid)
+    if not row or not row.ativo:
+        return jsonify({'ok': False, 'error': 'Cardápio não encontrado'}), 404
+    if request.method == 'DELETE':
+        row.ativo = False
+        db.session.commit()
+        return jsonify({'ok': True})
+    d = request.get_json(force=True) or {}
+    _cardapio_from_payload(d, row)
+    db.session.commit()
+    return jsonify({'ok': True, 'cardapio': row.to_dict()})
+
+
+# ---- CADASTRO NUTRICIONAL ----
+def _fnum(v, default=0.0):
+    try:
+        if v in (None, ''):
+            return default
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _alimento_from_payload(d, row=None, tabela_id=None):
+    row = row or NutAlimento()
+    if tabela_id is not None:
+        row.tabela_id = tabela_id
+    elif d.get('tabela_id'):
+        row.tabela_id = int(d['tabela_id'])
+    nome = (d.get('nome') or '').strip().upper()
+    if nome:
+        row.nome = nome
+    row.cal_carboidratos = _fnum(d.get('cal_carboidratos'))
+    row.cal_gordura = _fnum(d.get('cal_gordura'))
+    row.cal_proteina = _fnum(d.get('cal_proteina'))
+    cal_total = d.get('cal_total')
+    if cal_total in (None, ''):
+        row.cal_total = row.cal_carboidratos + row.cal_gordura + row.cal_proteina
+    else:
+        row.cal_total = _fnum(cal_total)
+    row.qtd_carboidratos = _fnum(d.get('qtd_carboidratos'))
+    row.qtd_gordura = _fnum(d.get('qtd_gordura'))
+    row.qtd_proteina = _fnum(d.get('qtd_proteina'))
+    row.ref_consumo = (d.get('ref_consumo') or '').strip() or None
+    row.coeficiente_npu = _fnum(d.get('coeficiente_npu'))
+    if 'gluten' in d:
+        row.gluten = bool(d.get('gluten'))
+    if 'fenilalanina' in d:
+        row.fenilalanina = bool(d.get('fenilalanina'))
+    if 'ativo' in d:
+        row.ativo = bool(d.get('ativo'))
+    row.ultima_alteracao = datetime.utcnow()
+    return row
+
+
+def _sync_nutrientes(alimento, nutrientes):
+    NutAlimentoNutriente.query.filter_by(alimento_id=alimento.id).delete()
+    for n in (nutrientes or []):
+        nome = (n.get('nutriente') or '').strip()
+        if not nome:
+            continue
+        db.session.add(NutAlimentoNutriente(
+            alimento_id=alimento.id,
+            nutriente=nome,
+            quantidade=_fnum(n.get('quantidade')),
+            unidade=(n.get('unidade') or 'g').strip() or 'g',
+            fator=_fnum(n.get('fator'), 1),
+        ))
+
+
+@nutricao.route('/nutricao/nutricional')
+def nutricional():
+    seed_nutricao()
+    tabelas = list_tabelas_nutrientes(somente_ativas=False)
+    tabela_id = request.args.get('tabela_id', type=int)
+    if not tabela_id and tabelas:
+        tabela_id = tabelas[0]['id']
+    alimentos = list_alimentos(tabela_id=tabela_id, somente_ativas=False) if tabela_id else []
+    return render_template(
+        'nutricao_nutricional.html',
+        tabelas=tabelas,
+        alimentos=alimentos,
+        tabela_id=tabela_id,
+        **active('cadastro_nutricional')
+    )
+
+
+@nutricao.route('/nutricao/api/tabelas-nutrientes', methods=['GET', 'POST'])
+def api_tabelas_nutrientes():
+    seed_nutricao()
+    if request.method == 'POST':
+        d = request.get_json(force=True) or {}
+        nome = (d.get('nome') or '').strip()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome da tabela é obrigatório'}), 400
+        exists = NutTabelaNutrientes.query.filter_by(nome=nome).first()
+        if exists:
+            if 'ativo' in d:
+                exists.ativo = bool(d.get('ativo'))
+            db.session.commit()
+            return jsonify({'ok': True, 'id': exists.id, 'tabela': exists.to_dict()})
+        row = NutTabelaNutrientes(nome=nome, ativo=bool(d.get('ativo', True)))
+        db.session.add(row)
+        db.session.commit()
+        return jsonify({'ok': True, 'id': row.id, 'tabela': row.to_dict()})
+    return jsonify(list_tabelas_nutrientes(somente_ativas=False))
+
+
+@nutricao.route('/nutricao/api/tabelas-nutrientes/<int:tid>', methods=['PUT', 'DELETE'])
+def api_tabela_nutrientes_ops(tid):
+    row = NutTabelaNutrientes.query.get(tid)
+    if not row:
+        return jsonify({'ok': False, 'error': 'Tabela não encontrada'}), 404
+    if request.method == 'DELETE':
+        row.ativo = False
+        db.session.commit()
+        return jsonify({'ok': True})
+    d = request.get_json(force=True) or {}
+    if 'nome' in d:
+        nome = (d.get('nome') or '').strip()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome da tabela é obrigatório'}), 400
+        outro = NutTabelaNutrientes.query.filter(
+            NutTabelaNutrientes.nome == nome, NutTabelaNutrientes.id != tid
+        ).first()
+        if outro:
+            return jsonify({'ok': False, 'error': 'Já existe tabela com este nome'}), 400
+        row.nome = nome
+    if 'ativo' in d:
+        row.ativo = bool(d.get('ativo'))
+    db.session.commit()
+    return jsonify({'ok': True, 'tabela': row.to_dict()})
+
+
+@nutricao.route('/nutricao/api/alimentos', methods=['GET', 'POST'])
+def api_alimentos():
+    seed_nutricao()
+    if request.method == 'POST':
+        d = request.get_json(force=True) or {}
+        try:
+            tabela_id = int(d.get('tabela_id') or 0)
+        except (TypeError, ValueError):
+            tabela_id = 0
+        if not NutTabelaNutrientes.query.get(tabela_id):
+            return jsonify({'ok': False, 'error': 'Tabela não encontrada'}), 404
+        nome = (d.get('nome') or '').strip().upper()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome do alimento é obrigatório'}), 400
+        row = _alimento_from_payload(d, tabela_id=tabela_id)
+        db.session.add(row)
+        db.session.flush()
+        _sync_nutrientes(row, d.get('nutrientes'))
+        db.session.commit()
+        return jsonify({'ok': True, 'id': row.id, 'alimento': row.to_dict()})
+    tabela_id = request.args.get('tabela_id', type=int)
+    return jsonify(list_alimentos(tabela_id=tabela_id, somente_ativas=False))
+
+
+@nutricao.route('/nutricao/api/alimentos/<int:aid>', methods=['GET', 'PUT', 'DELETE'])
+def api_alimento_ops(aid):
+    row = NutAlimento.query.get(aid)
+    if not row:
+        return jsonify({'ok': False, 'error': 'Alimento não encontrado'}), 404
+    if request.method == 'GET':
+        return jsonify(row.to_dict())
+    if request.method == 'DELETE':
+        row.ativo = False
+        row.ultima_alteracao = datetime.utcnow()
+        db.session.commit()
+        return jsonify({'ok': True})
+    d = request.get_json(force=True) or {}
+    if 'nome' in d:
+        nome = (d.get('nome') or '').strip().upper()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome do alimento é obrigatório'}), 400
+        row.nome = nome
+    _alimento_from_payload(d, row)
+    if 'nutrientes' in d:
+        _sync_nutrientes(row, d.get('nutrientes'))
+    db.session.commit()
+    return jsonify({'ok': True, 'alimento': row.to_dict()})
+
+
+# ---- PRATOS DIETAS LÍQUIDAS ----
+def _prato_liquido_from_payload(d, row=None):
+    row = row or NutPratoLiquido()
+    nome = (d.get('nome') or '').strip().upper()
+    if nome:
+        row.nome = nome
+    for g in ('principal', 'sobremesa', 'outros', 'bebida', 'gelado', 'extra'):
+        key = f'grupo_{g}'
+        if key in d:
+            setattr(row, key, bool(d.get(key)))
+    if 'fator_conv_tot' in d:
+        try:
+            row.fator_conv_tot = float(d.get('fator_conv_tot') if d.get('fator_conv_tot') not in (None, '') else 1)
+        except (TypeError, ValueError):
+            row.fator_conv_tot = 1
+    if 'ativo' in d:
+        row.ativo = bool(d.get('ativo'))
+    row.data_alteracao = datetime.utcnow()
+    return row
+
+
+@nutricao.route('/nutricao/pratos-liquidos')
+def pratos_liquidos():
+    seed_nutricao()
+    return render_template(
+        'nutricao_pratos_liquidos.html',
+        pratos=list_pratos_liquidos(somente_ativos=False),
+        **active('cadastro_pratos_liquidos')
+    )
+
+
+@nutricao.route('/nutricao/api/pratos-liquidos', methods=['GET', 'POST'])
+def api_pratos_liquidos():
+    seed_nutricao()
+    if request.method == 'POST':
+        d = request.get_json(force=True) or {}
+        nome = (d.get('nome') or '').strip().upper()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome do prato é obrigatório'}), 400
+        exists = NutPratoLiquido.query.filter_by(nome=nome).first()
+        if exists:
+            _prato_liquido_from_payload(d, exists)
+            exists.ativo = bool(d.get('ativo', True))
+            db.session.commit()
+            return jsonify({'ok': True, 'id': exists.id, 'prato': exists.to_dict()})
+        row = _prato_liquido_from_payload(d)
+        if not row.nome:
+            row.nome = nome
+        if 'ativo' not in d:
+            row.ativo = True
+        if 'fator_conv_tot' not in d:
+            row.fator_conv_tot = 1
+        db.session.add(row)
+        db.session.commit()
+        return jsonify({'ok': True, 'id': row.id, 'prato': row.to_dict()})
+    somente = str(request.args.get('ativos', '')).lower() in ('1', 'true', 'sim')
+    return jsonify(list_pratos_liquidos(somente_ativos=somente))
+
+
+@nutricao.route('/nutricao/api/pratos-liquidos/<int:pid>', methods=['PUT', 'DELETE'])
+def api_prato_liquido_ops(pid):
+    row = NutPratoLiquido.query.get(pid)
+    if not row:
+        return jsonify({'ok': False, 'error': 'Prato não encontrado'}), 404
+    if request.method == 'DELETE':
+        row.ativo = False
+        row.data_alteracao = datetime.utcnow()
+        db.session.commit()
+        return jsonify({'ok': True})
+    d = request.get_json(force=True) or {}
+    if 'nome' in d:
+        nome = (d.get('nome') or '').strip().upper()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome do prato é obrigatório'}), 400
+        outro = NutPratoLiquido.query.filter(
+            NutPratoLiquido.nome == nome, NutPratoLiquido.id != pid
+        ).first()
+        if outro:
+            return jsonify({'ok': False, 'error': 'Já existe prato com este nome'}), 400
+        row.nome = nome
+    _prato_liquido_from_payload(d, row)
+    db.session.commit()
+    return jsonify({'ok': True, 'prato': row.to_dict()})
+
+
+# ---- CADASTRO DE PRODUTOS ----
+def _fnum_prod(v, default=0.0):
+    try:
+        if v in (None, ''):
+            return default
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _produto_from_payload(d, row=None):
+    row = row or NutProduto()
+    if d.get('estoque_id'):
+        row.estoque_id = int(d['estoque_id'])
+    if d.get('grupo_id'):
+        row.grupo_id = int(d['grupo_id'])
+    if 'codigo' in d:
+        row.codigo = (d.get('codigo') or '').strip().upper()
+    if 'descricao' in d:
+        row.descricao = (d.get('descricao') or '').strip().upper()
+    for fld in ('quantidade', 'preco_medio', 'ult_preco', 'quant_min', 'quant_max', 'quant_liq'):
+        if fld in d:
+            setattr(row, fld, _fnum_prod(d.get(fld)))
+    if 'unidade' in d:
+        row.unidade = (d.get('unidade') or 'UN').strip().upper() or 'UN'
+    if 'un_liq' in d:
+        row.un_liq = (d.get('un_liq') or 'NC').strip().upper() or 'NC'
+    if 'fc' in d:
+        row.fc = bool(d.get('fc'))
+    if 'ativo' in d:
+        row.ativo = bool(d.get('ativo'))
+    row.data_alteracao = datetime.utcnow()
+    return row
+
+
+@nutricao.route('/nutricao/produtos')
+def produtos():
+    seed_nutricao()
+    estoques = list_estoques(somente_ativos=False)
+    estoque_id = request.args.get('estoque_id', type=int)
+    if not estoque_id and estoques:
+        matriz = next((e for e in estoques if e['nome'] == 'MATRIZ'), None)
+        estoque_id = (matriz or estoques[0])['id']
+    grupo_id = request.args.get('grupo_id', type=int)
+    return render_template(
+        'nutricao_produtos.html',
+        estoques=estoques,
+        unidades=list_unidades(somente_ativas=False),
+        grupos=list_grupos_produto(somente_ativos=False),
+        produtos=list_produtos(estoque_id=estoque_id, grupo_id=grupo_id, somente_ativos=False),
+        estoque_id=estoque_id,
+        grupo_id=grupo_id,
+        **active('cadastro_produtos')
+    )
+
+
+@nutricao.route('/nutricao/api/estoques', methods=['GET', 'POST'])
+def api_estoques():
+    seed_nutricao()
+    if request.method == 'POST':
+        d = request.get_json(force=True) or {}
+        nome = (d.get('nome') or '').strip().upper()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome do estoque é obrigatório'}), 400
+        exists = NutEstoqueLocal.query.filter_by(nome=nome).first()
+        if exists:
+            exists.ativo = bool(d.get('ativo', True))
+            db.session.commit()
+            return jsonify({'ok': True, 'id': exists.id, 'estoque': exists.to_dict()})
+        row = NutEstoqueLocal(nome=nome, ativo=bool(d.get('ativo', True)))
+        db.session.add(row)
+        db.session.commit()
+        return jsonify({'ok': True, 'id': row.id, 'estoque': row.to_dict()})
+    return jsonify(list_estoques(somente_ativos=False))
+
+
+@nutricao.route('/nutricao/api/unidades', methods=['GET', 'POST'])
+def api_unidades():
+    seed_nutricao()
+    if request.method == 'POST':
+        d = request.get_json(force=True) or {}
+        codigo = (d.get('codigo') or '').strip().upper()
+        if not codigo:
+            return jsonify({'ok': False, 'error': 'Código da unidade é obrigatório'}), 400
+        exists = NutUnidadeMedida.query.filter_by(codigo=codigo).first()
+        if exists:
+            if 'descricao' in d:
+                exists.descricao = (d.get('descricao') or '').strip()
+            if 'ativo' in d:
+                exists.ativo = bool(d.get('ativo'))
+            db.session.commit()
+            return jsonify({'ok': True, 'id': exists.id, 'unidade': exists.to_dict()})
+        row = NutUnidadeMedida(
+            codigo=codigo,
+            descricao=(d.get('descricao') or '').strip() or None,
+            ativo=bool(d.get('ativo', True)),
+        )
+        db.session.add(row)
+        db.session.commit()
+        return jsonify({'ok': True, 'id': row.id, 'unidade': row.to_dict()})
+    return jsonify(list_unidades(somente_ativas=False))
+
+
+@nutricao.route('/nutricao/api/unidades/<int:uid>', methods=['PUT', 'DELETE'])
+def api_unidade_ops(uid):
+    row = NutUnidadeMedida.query.get(uid)
+    if not row:
+        return jsonify({'ok': False, 'error': 'Unidade não encontrada'}), 404
+    if request.method == 'DELETE':
+        row.ativo = False
+        db.session.commit()
+        return jsonify({'ok': True})
+    d = request.get_json(force=True) or {}
+    if 'codigo' in d:
+        codigo = (d.get('codigo') or '').strip().upper()
+        if not codigo:
+            return jsonify({'ok': False, 'error': 'Código obrigatório'}), 400
+        outro = NutUnidadeMedida.query.filter(
+            NutUnidadeMedida.codigo == codigo, NutUnidadeMedida.id != uid
+        ).first()
+        if outro:
+            return jsonify({'ok': False, 'error': 'Código já existe'}), 400
+        row.codigo = codigo
+    if 'descricao' in d:
+        row.descricao = (d.get('descricao') or '').strip() or None
+    if 'ativo' in d:
+        row.ativo = bool(d.get('ativo'))
+    db.session.commit()
+    return jsonify({'ok': True, 'unidade': row.to_dict()})
+
+
+@nutricao.route('/nutricao/api/grupos-produto', methods=['GET', 'POST'])
+def api_grupos_produto():
+    seed_nutricao()
+    if request.method == 'POST':
+        d = request.get_json(force=True) or {}
+        nome = (d.get('nome') or '').strip().upper()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome do grupo é obrigatório'}), 400
+        exists = NutGrupoProduto.query.filter_by(nome=nome).first()
+        if exists:
+            if 'ativo' in d:
+                exists.ativo = bool(d.get('ativo'))
+            db.session.commit()
+            return jsonify({'ok': True, 'id': exists.id, 'grupo': exists.to_dict()})
+        row = NutGrupoProduto(nome=nome, ativo=bool(d.get('ativo', True)))
+        db.session.add(row)
+        db.session.commit()
+        return jsonify({'ok': True, 'id': row.id, 'grupo': row.to_dict()})
+    return jsonify(list_grupos_produto(somente_ativos=False))
+
+
+@nutricao.route('/nutricao/api/grupos-produto/<int:gid>', methods=['PUT', 'DELETE'])
+def api_grupo_produto_ops(gid):
+    row = NutGrupoProduto.query.get(gid)
+    if not row:
+        return jsonify({'ok': False, 'error': 'Grupo não encontrado'}), 404
+    if request.method == 'DELETE':
+        row.ativo = False
+        db.session.commit()
+        return jsonify({'ok': True})
+    d = request.get_json(force=True) or {}
+    if 'nome' in d:
+        nome = (d.get('nome') or '').strip().upper()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome obrigatório'}), 400
+        outro = NutGrupoProduto.query.filter(
+            NutGrupoProduto.nome == nome, NutGrupoProduto.id != gid
+        ).first()
+        if outro:
+            return jsonify({'ok': False, 'error': 'Grupo já existe'}), 400
+        row.nome = nome
+    if 'ativo' in d:
+        row.ativo = bool(d.get('ativo'))
+    db.session.commit()
+    return jsonify({'ok': True, 'grupo': row.to_dict()})
+
+
+@nutricao.route('/nutricao/api/produtos', methods=['GET', 'POST'])
+def api_produtos_cadastro():
+    seed_nutricao()
+    if request.method == 'POST':
+        d = request.get_json(force=True) or {}
+        try:
+            estoque_id = int(d.get('estoque_id') or 0)
+            grupo_id = int(d.get('grupo_id') or 0)
+        except (TypeError, ValueError):
+            return jsonify({'ok': False, 'error': 'Estoque/grupo inválidos'}), 400
+        if not NutEstoqueLocal.query.get(estoque_id):
+            return jsonify({'ok': False, 'error': 'Estoque não encontrado'}), 404
+        if not NutGrupoProduto.query.get(grupo_id):
+            return jsonify({'ok': False, 'error': 'Grupo não encontrado'}), 404
+        codigo = (d.get('codigo') or '').strip().upper()
+        descricao = (d.get('descricao') or '').strip().upper()
+        if not codigo or not descricao:
+            return jsonify({'ok': False, 'error': 'Código e descrição são obrigatórios'}), 400
+        exists = NutProduto.query.filter_by(estoque_id=estoque_id, codigo=codigo).first()
+        if exists:
+            _produto_from_payload(d, exists)
+            exists.ativo = bool(d.get('ativo', True))
+            db.session.commit()
+            return jsonify({'ok': True, 'id': exists.id, 'produto': exists.to_dict()})
+        row = _produto_from_payload(d)
+        row.estoque_id = estoque_id
+        row.grupo_id = grupo_id
+        row.codigo = codigo
+        row.descricao = descricao
+        if 'ativo' not in d:
+            row.ativo = True
+        db.session.add(row)
+        db.session.commit()
+        return jsonify({'ok': True, 'id': row.id, 'produto': row.to_dict()})
+    estoque_id = request.args.get('estoque_id', type=int)
+    grupo_id = request.args.get('grupo_id', type=int)
+    return jsonify(list_produtos(estoque_id=estoque_id, grupo_id=grupo_id, somente_ativos=False))
+
+
+@nutricao.route('/nutricao/api/produtos/<int:pid>', methods=['PUT', 'DELETE'])
+def api_produto_cadastro_ops(pid):
+    row = NutProduto.query.get(pid)
+    if not row:
+        return jsonify({'ok': False, 'error': 'Produto não encontrado'}), 404
+    if request.method == 'DELETE':
+        row.ativo = False
+        row.data_alteracao = datetime.utcnow()
+        db.session.commit()
+        return jsonify({'ok': True})
+    d = request.get_json(force=True) or {}
+    if 'codigo' in d:
+        codigo = (d.get('codigo') or '').strip().upper()
+        if not codigo:
+            return jsonify({'ok': False, 'error': 'Código obrigatório'}), 400
+        outro = NutProduto.query.filter(
+            NutProduto.estoque_id == row.estoque_id,
+            NutProduto.codigo == codigo,
+            NutProduto.id != pid,
+        ).first()
+        if outro:
+            return jsonify({'ok': False, 'error': 'Código já existe neste estoque'}), 400
+        row.codigo = codigo
+    _produto_from_payload(d, row)
+    db.session.commit()
+    return jsonify({'ok': True, 'produto': row.to_dict()})
+
+
+# ---- CADASTRO DE FORNECEDORES ----
+def _fornecedor_from_payload(d, row=None):
+    row = row or NutFornecedor()
+    if 'nome' in d:
+        row.nome = (d.get('nome') or '').strip().upper()
+    for fld in ('endereco', 'bairro', 'municipio', 'observacao'):
+        if fld in d:
+            val = (d.get(fld) or '').strip().upper()
+            setattr(row, fld, val or None)
+    for fld in ('cep', 'cnpj', 'inscricao_estadual', 'telefone', 'email', 'site'):
+        if fld in d:
+            val = (d.get(fld) or '').strip()
+            setattr(row, fld, val or None)
+    if 'estado' in d:
+        row.estado = ((d.get('estado') or '').strip().upper()[:2] or None)
+    if 'faturamento_dias' in d:
+        try:
+            row.faturamento_dias = int(d.get('faturamento_dias') or 0)
+        except (TypeError, ValueError):
+            row.faturamento_dias = 0
+    if 'ativo' in d:
+        row.ativo = bool(d.get('ativo'))
+    row.data_alteracao = datetime.utcnow()
+    return row
+
+
+@nutricao.route('/nutricao/fornecedores')
+def fornecedores():
+    seed_nutricao()
+    return render_template(
+        'nutricao_fornecedores.html',
+        fornecedores=list_fornecedores(somente_ativos=False),
+        estados=ESTADOS_BR,
+        **active('cadastro_fornecedores')
+    )
+
+
+@nutricao.route('/nutricao/api/fornecedores', methods=['GET', 'POST'])
+def api_fornecedores():
+    seed_nutricao()
+    if request.method == 'POST':
+        d = request.get_json(force=True) or {}
+        nome = (d.get('nome') or '').strip().upper()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome do fornecedor é obrigatório'}), 400
+        row = _fornecedor_from_payload(d)
+        row.nome = nome
+        if 'ativo' not in d:
+            row.ativo = True
+        db.session.add(row)
+        db.session.commit()
+        return jsonify({'ok': True, 'id': row.id, 'fornecedor': row.to_dict()})
+    somente = str(request.args.get('ativos', '')).lower() in ('1', 'true', 'sim')
+    return jsonify(list_fornecedores(somente_ativos=somente))
+
+
+@nutricao.route('/nutricao/api/fornecedores/<int:fid>', methods=['PUT', 'DELETE'])
+def api_fornecedor_ops(fid):
+    row = NutFornecedor.query.get(fid)
+    if not row:
+        return jsonify({'ok': False, 'error': 'Fornecedor não encontrado'}), 404
+    if request.method == 'DELETE':
+        row.ativo = False
+        row.data_alteracao = datetime.utcnow()
+        db.session.commit()
+        return jsonify({'ok': True})
+    d = request.get_json(force=True) or {}
+    if 'nome' in d:
+        nome = (d.get('nome') or '').strip().upper()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome obrigatório'}), 400
+        row.nome = nome
+    _fornecedor_from_payload(d, row)
+    db.session.commit()
+    return jsonify({'ok': True, 'fornecedor': row.to_dict()})
+
+
+# ---- CADASTRO DE ETIQUETAS ----
+def _fnum_eti(v, default=0.0):
+    try:
+        if v in (None, ''):
+            return default
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _etiqueta_from_payload(d, row=None):
+    row = row or NutEtiqueta()
+    if 'nome' in d:
+        row.nome = (d.get('nome') or '').strip()
+    if 'ativa' in d:
+        row.ativa = bool(d.get('ativa'))
+    if 'tamanho_folha' in d:
+        row.tamanho_folha = (d.get('tamanho_folha') or 'carta').strip().lower()
+    if 'folha_altura_mm' in d:
+        row.folha_altura_mm = _fnum_eti(d.get('folha_altura_mm'))
+    if 'folha_largura_mm' in d:
+        row.folha_largura_mm = _fnum_eti(d.get('folha_largura_mm'))
+    if 'orientacao' in d:
+        row.orientacao = (d.get('orientacao') or 'retrato').strip().lower()
+    for fld in ('margem_esquerda', 'margem_direita', 'margem_superior', 'margem_inferior',
+                'dist_colunas_mm', 'altura_etiqueta_mm'):
+        if fld in d:
+            setattr(row, fld, _fnum_eti(d.get(fld)))
+    if 'num_colunas' in d:
+        try:
+            row.num_colunas = max(1, int(d.get('num_colunas') or 1))
+        except (TypeError, ValueError):
+            row.num_colunas = 1
+    if 'tamanho_fonte' in d:
+        try:
+            row.tamanho_fonte = max(1, int(d.get('tamanho_fonte') or 7))
+        except (TypeError, ValueError):
+            row.tamanho_fonte = 7
+    row.data_alteracao = datetime.utcnow()
+    return row
+
+
+def _sync_etiqueta_campos(etiqueta, campos):
+    NutEtiquetaCampo.query.filter_by(etiqueta_id=etiqueta.id).delete()
+    for c in (campos or []):
+        nome = (c.get('nome') or '').strip().upper()
+        if not nome:
+            continue
+        tipo = ((c.get('tipo') or 'D').strip().upper()[:1] or 'D')
+        if tipo not in ('D', 'F'):
+            tipo = 'D'
+        db.session.add(NutEtiquetaCampo(
+            etiqueta_id=etiqueta.id,
+            tipo=tipo,
+            nome=nome,
+            texto=(c.get('texto') or '').strip() or None,
+        ))
+
+
+@nutricao.route('/nutricao/etiquetas')
+def etiquetas():
+    seed_nutricao()
+    return render_template(
+        'nutricao_etiquetas.html',
+        etiquetas=list_etiquetas(somente_ativas=False),
+        **active('cadastro_etiquetas')
+    )
+
+
+@nutricao.route('/nutricao/api/etiquetas', methods=['GET', 'POST'])
+def api_etiquetas():
+    seed_nutricao()
+    if request.method == 'POST':
+        d = request.get_json(force=True) or {}
+        nome = (d.get('nome') or '').strip()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome da etiqueta é obrigatório'}), 400
+        exists = NutEtiqueta.query.filter_by(nome=nome).first()
+        if exists:
+            _etiqueta_from_payload(d, exists)
+            if 'campos' in d:
+                _sync_etiqueta_campos(exists, d.get('campos'))
+            db.session.commit()
+            return jsonify({'ok': True, 'id': exists.id, 'etiqueta': exists.to_dict()})
+        row = _etiqueta_from_payload(d)
+        row.nome = nome
+        if 'ativa' not in d:
+            row.ativa = True
+        db.session.add(row)
+        db.session.flush()
+        _sync_etiqueta_campos(row, d.get('campos'))
+        db.session.commit()
+        return jsonify({'ok': True, 'id': row.id, 'etiqueta': row.to_dict()})
+    return jsonify(list_etiquetas(somente_ativas=False))
+
+
+@nutricao.route('/nutricao/api/etiquetas/<int:eid>', methods=['PUT', 'DELETE'])
+def api_etiqueta_ops(eid):
+    row = NutEtiqueta.query.get(eid)
+    if not row:
+        return jsonify({'ok': False, 'error': 'Etiqueta não encontrada'}), 404
+    if request.method == 'DELETE':
+        row.ativa = False
+        row.data_alteracao = datetime.utcnow()
+        db.session.commit()
+        return jsonify({'ok': True})
+    d = request.get_json(force=True) or {}
+    if 'nome' in d:
+        nome = (d.get('nome') or '').strip()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome obrigatório'}), 400
+        outro = NutEtiqueta.query.filter(NutEtiqueta.nome == nome, NutEtiqueta.id != eid).first()
+        if outro:
+            return jsonify({'ok': False, 'error': 'Já existe etiqueta com este nome'}), 400
+        row.nome = nome
+    _etiqueta_from_payload(d, row)
+    if 'campos' in d:
+        _sync_etiqueta_campos(row, d.get('campos'))
+    db.session.commit()
+    return jsonify({'ok': True, 'etiqueta': row.to_dict()})
+
 
 # ---- MAPA REFEIÇÕES ----
 @nutricao.route('/nutricao/mapa_refeicoes')
@@ -456,10 +1501,16 @@ def mapa_refeicoes():
 # ---- ESTOQUE ----
 @nutricao.route('/nutricao/estoque')
 def estoque():
-    return render_template('nutricao_estoque.html', produtos=PRODUTOS, fornecedores=FORNECEDORES, **active('estoque'))
+    seed_nutricao()
+    return render_template(
+        'nutricao_estoque.html',
+        produtos=PRODUTOS,
+        fornecedores=list_fornecedores(somente_ativos=True),
+        **active('estoque')
+    )
 
-@nutricao.route('/nutricao/api/produtos', methods=['GET','POST'])
-def api_produtos():
+@nutricao.route('/nutricao/api/estoque-produtos-legado', methods=['GET','POST'])
+def api_produtos_legado():
     if request.method=='POST':
         d = request.get_json(force=True)
         n = {'id':max(p['id'] for p in PRODUTOS)+1 if PRODUTOS else 1}
@@ -469,15 +1520,7 @@ def api_produtos():
         return jsonify({'ok':True,'id':n['id']})
     return jsonify(PRODUTOS)
 
-@nutricao.route('/nutricao/api/fornecedores', methods=['GET','POST'])
-def api_fornecedores():
-    if request.method=='POST':
-        d=request.get_json(force=True)
-        n={'id':max(f['id'] for f in FORNECEDORES)+1 if FORNECEDORES else 1}
-        for k in ['nome','cnpj','contato','telefone','email']: n[k]=d.get(k)
-        FORNECEDORES.append(n)
-        return jsonify({'ok':True,'id':n['id']})
-    return jsonify(FORNECEDORES)
+# (api fornecedores real está em /nutricao/api/fornecedores)
 
 # ---- RELATÓRIOS ----
 @nutricao.route('/nutricao/relatorios')
@@ -496,10 +1539,351 @@ def relatorios():
         **active('relatorios')
     )
 
+
+@nutricao.route('/nutricao/relatorio-mapa-uma')
+def relatorio_mapa_uma():
+    seed_nutricao()
+    hoje = date.today().isoformat()
+    return render_template(
+        'nutricao_relatorio_mapa_uma.html',
+        clinicas=_list_clinicas_db(somente_ativas=False),
+        enfermarias=list_enfermarias(somente_ativas=True),
+        data_padrao=hoje,
+        **active('relatorio_mapa_uma')
+    )
+
+
+@nutricao.route('/nutricao/api/relatorio-mapa-uma', methods=['POST'])
+def api_relatorio_mapa_uma():
+    seed_nutricao()
+    d = request.get_json(force=True) or {}
+    data_ref = _parse_date(d.get('data')) or date.today()
+    categoria = (d.get('categoria') or 'enteral').strip()
+    imprimir_por = (d.get('imprimir_por') or 'grupo_clinica').strip()
+    filtro_id = d.get('filtro_id')
+    filtro_nome = (d.get('filtro_nome') or '').strip() or None
+    horarios = d.get('horarios') or []
+    amostra = None
+    if d.get('imprimir_amostra'):
+        amostra = d.get('amostra_valor', 50)
+
+    # se filtro_id de clínica sem nome, resolve
+    if not filtro_nome and filtro_id and imprimir_por in ('grupo_clinica', 'clinica'):
+        cli = NutClinica.query.get(int(filtro_id))
+        if cli:
+            filtro_nome = cli.nome
+
+    # garante alguns dados demo de U.M.A. no dia se ainda vazios
+    _seed_mapa_uma_demo(data_ref)
+
+    resultado = totalizar_mapa_uma(
+        data_ref=data_ref,
+        categoria=categoria,
+        imprimir_por=imprimir_por,
+        filtro_id=filtro_id,
+        filtro_nome=filtro_nome,
+        horarios=horarios,
+        amostra=amostra,
+    )
+    return jsonify({'ok': True, 'relatorio': resultado})
+
+
+@nutricao.route('/nutricao/totalizacao-dietas')
+def totalizacao_dietas():
+    seed_nutricao()
+    return render_template(
+        'nutricao_totalizacao_dietas.html',
+        clinicas=_list_clinicas_db(somente_ativas=False),
+        enfermarias=list_enfermarias(somente_ativas=True),
+        data_padrao=date.today().isoformat(),
+        **active('totalizacao_dietas')
+    )
+
+
+@nutricao.route('/nutricao/totalizacao-dietas/imprimir')
+def totalizacao_dietas_imprimir():
+    seed_nutricao()
+    data_ref = _parse_date(request.args.get('data')) or date.today()
+    totalizacao_para = (request.args.get('totalizacao_para') or 'clinicas').strip()
+    imprimir_por = (request.args.get('imprimir_por') or 'grupo_clinica').strip()
+    filtros = [x for x in (request.args.get('filtros') or '').split('|') if x.strip()]
+    horarios = [x for x in (request.args.get('horarios') or '').split(',') if x.strip()]
+    metodo = (request.args.get('metodo') or 'mapa').strip()
+    imprimir_total = str(request.args.get('imprimir_total_geral', '1')).lower() in ('1', 'true', 'sim')
+
+    # reaproveita demo do faturamento para ter flags no mapa
+    try:
+        _seed_faturamento_demo(data_ref, data_ref)
+    except Exception:
+        garantir_mapa_do_dia(data_ref)
+
+    rel = gerar_totalizacao_dietas(
+        data_ref=data_ref,
+        totalizacao_para=totalizacao_para,
+        imprimir_por=imprimir_por,
+        filtros=filtros,
+        horarios=horarios,
+        metodo=metodo,
+        imprimir_total_geral=imprimir_total,
+    )
+    return render_template(
+        'nutricao_totalizacao_dietas_print.html',
+        r=rel,
+        **active('totalizacao_dietas')
+    )
+
+
+@nutricao.route('/nutricao/relatorio-mapa-uma/imprimir')
+def relatorio_mapa_uma_imprimir():
+    seed_nutricao()
+    data_ref = _parse_date(request.args.get('data')) or date.today()
+    categoria = (request.args.get('categoria') or 'enteral').strip()
+    imprimir_por = (request.args.get('imprimir_por') or 'grupo_clinica').strip()
+    filtro_id = request.args.get('filtro_id', type=int)
+    filtro_nome = (request.args.get('filtro_nome') or '').strip() or None
+    horarios = [h for h in (request.args.get('horarios') or '').split(',') if h.strip()]
+    amostra = None
+    if str(request.args.get('imprimir_amostra', '')).lower() in ('1', 'true', 'sim'):
+        try:
+            amostra = float(request.args.get('amostra_valor') or 50)
+        except (TypeError, ValueError):
+            amostra = 50.0
+
+    if not filtro_nome and filtro_id and imprimir_por in ('grupo_clinica', 'clinica'):
+        cli = NutClinica.query.get(filtro_id)
+        if cli:
+            filtro_nome = cli.nome
+
+    _seed_mapa_uma_demo(data_ref)
+    relatorio = totalizar_mapa_uma(
+        data_ref=data_ref,
+        categoria=categoria,
+        imprimir_por=imprimir_por,
+        filtro_id=filtro_id,
+        filtro_nome=filtro_nome,
+        horarios=horarios,
+        amostra=amostra,
+    )
+    return render_template(
+        'nutricao_relatorio_mapa_uma_print.html',
+        r=relatorio,
+        **active('relatorio_mapa_uma')
+    )
+
+
+def _seed_mapa_uma_demo(data_ref):
+    """Preenche campos U.M.A. de exemplo se o mapa do dia estiver vazio nesses campos."""
+    garantir_mapa_do_dia(data_ref)
+    rows = NutMapaRefeicao.query.filter_by(data_refeicao=data_ref, ativo=True).all()
+    if not rows:
+        return
+    tem = any((r.enteral or r.suplementos or r.formula_infantil or r.lve) for r in rows)
+    if tem:
+        return
+    demos = [
+        {'enteral': 'NUTRI ENTERAL 1L', 'suplementos': 'FORTIDRINK BAUNILHA 200 ML', 'lve': ''},
+        {'enteral': 'NUTRI ENTERAL 1L', 'suplementos': '', 'formula_infantil': 'FÓRMULA INFANTIL 200ML'},
+        {'enteral': 'HIPERCALÓRICA 1.5 - NUTRI ENTERAL 1L', 'suplementos': 'FORTIDRINK BAUNILHA 200 ML', 'lve': 'LVE PADRÃO'},
+    ]
+    for i, row in enumerate(rows[:3]):
+        d = demos[i % len(demos)]
+        row.enteral = d.get('enteral') or None
+        row.suplementos = d.get('suplementos') or None
+        row.formula_infantil = d.get('formula_infantil') or None
+        row.lve = d.get('lve') or None
+    db.session.commit()
+
+
 # ---- FATURAMENTO ----
 @nutricao.route('/nutricao/faturamento')
 def faturamento():
-    return render_template('nutricao_faturamento.html', **active('faturamento'))
+    seed_nutricao()
+    hoje = date.today().isoformat()
+    return render_template(
+        'nutricao_faturamento.html',
+        data_padrao=hoje,
+        **active('faturamento')
+    )
+
+
+def _params_faturamento_from_request(src):
+    data_de = _parse_date(src.get('data_de')) or date.today()
+    data_ate = _parse_date(src.get('data_ate')) or data_de
+    tipo = (src.get('tipo') or 'espelho_1').strip()
+    por_grupo = str(src.get('por_grupo_clinica', '')).lower() in ('1', 'true', 'sim', 'on')
+    sintetico = str(src.get('sintetico', '')).lower() in ('1', 'true', 'sim', 'on')
+    if hasattr(src, 'getlist'):
+        # form POST unused
+        pass
+    return data_de, data_ate, tipo, por_grupo, sintetico
+
+
+@nutricao.route('/nutricao/faturamento/imprimir')
+def faturamento_imprimir():
+    seed_nutricao()
+    data_de, data_ate, tipo, por_grupo, sintetico = _params_faturamento_from_request(request.args)
+    # demo flags no mapa se necessário
+    _seed_faturamento_demo(data_de, data_ate)
+    rel = relatorio_faturamento(
+        data_de=data_de,
+        data_ate=data_ate,
+        tipo=tipo,
+        por_grupo_clinica=por_grupo,
+        sintetico=sintetico,
+    )
+    return render_template('nutricao_faturamento_print.html', r=rel, **active('faturamento'))
+
+
+@nutricao.route('/nutricao/faturamento/exportar')
+def faturamento_exportar():
+    import csv
+    import io
+    from flask import Response
+
+    seed_nutricao()
+    data_de, data_ate, tipo, por_grupo, sintetico = _params_faturamento_from_request(request.args)
+    _seed_faturamento_demo(data_de, data_ate)
+    rel = relatorio_faturamento(
+        data_de=data_de,
+        data_ate=data_ate,
+        tipo=tipo,
+        por_grupo_clinica=por_grupo,
+        sintetico=sintetico,
+    )
+    buf = io.StringIO()
+    w = csv.writer(buf, delimiter=';')
+    w.writerow(['Relatório', rel['tipo_label']])
+    w.writerow(['Período', f"{rel['data_de_label']} a {rel['data_ate_label']}"])
+    w.writerow([])
+
+    if tipo in ('total_formulas',):
+        w.writerow(['Item', 'Quantidade'])
+        for f in rel['formulas']:
+            w.writerow([f['item'], f['qtd']])
+    elif tipo == 'total_complementares':
+        w.writerow(['Item', 'Quantidade'])
+        for f in rel['complementares']:
+            w.writerow([f['item'], f['qtd']])
+    else:
+        w.writerow(['Data', 'Clínica', 'Categoria', 'Desjejum', 'Colação', 'Almoço', 'Merenda', 'Jantar', 'Ceia', 'Total'])
+        for t in rel['tabelas']:
+            for row in t['linhas']:
+                w.writerow([
+                    t['data_label'], t['clinica'], row['categoria'],
+                    row['desjejum'], row['colacao'], row['almoco'],
+                    row['merenda'], row['jantar'], row['ceia'], row['total'],
+                ])
+        w.writerow([])
+        w.writerow(['RESUMO'])
+        for row in rel['resumo_totais']:
+            w.writerow([
+                '', 'TOTAL', row['categoria'],
+                row['desjejum'], row['colacao'], row['almoco'],
+                row['merenda'], row['jantar'], row['ceia'], row['total'],
+            ])
+
+    out = '\ufeff' + buf.getvalue()
+    return Response(
+        out,
+        mimetype='text/csv; charset=utf-8',
+        headers={'Content-Disposition': 'attachment; filename=faturamento.csv'},
+    )
+
+
+def _seed_faturamento_demo(data_de, data_ate):
+    """Garante flags de refeição e mix de dietas para demonstrar o espelho."""
+    cur = data_de
+    while cur <= data_ate:
+        garantir_mapa_do_dia(cur)
+        rows = NutMapaRefeicao.query.filter_by(data_refeicao=cur, ativo=True).order_by(NutMapaRefeicao.id).all()
+        if not rows:
+            cur = date.fromordinal(cur.toordinal() + 1)
+            continue
+
+        nomes_demo = ['CABEÇA E PESCOÇO', 'CARDIOLOGIA', 'CIRURGIA GERAL A']
+        clinicas_existentes = { (c.nome or '').upper(): c.nome for c in NutClinica.query.all() }
+        demos = [
+            {'clinica': 'CABEÇA E PESCOÇO', 'dieta': 'BRANDA COM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CABEÇA E PESCOÇO', 'dieta': 'BRANDA SEM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CABEÇA E PESCOÇO', 'dieta': 'BRANDA COM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CABEÇA E PESCOÇO', 'dieta': 'BRANDA COM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CABEÇA E PESCOÇO', 'dieta': 'BRANDA COM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CABEÇA E PESCOÇO', 'dieta': 'LIQUIDA SEM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CABEÇA E PESCOÇO', 'dieta': 'LIQUIDA SEM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CABEÇA E PESCOÇO', 'dieta': 'LIQUIDA COM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CARDIOLOGIA', 'dieta': 'BRANDA COM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CARDIOLOGIA', 'dieta': 'BRANDA COM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CARDIOLOGIA', 'dieta': 'BRANDA COM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CARDIOLOGIA', 'dieta': 'BRANDA COM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CARDIOLOGIA', 'dieta': 'BRANDA COM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CARDIOLOGIA', 'dieta': 'BRANDA COM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CARDIOLOGIA', 'dieta': 'BRANDA COM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CARDIOLOGIA', 'dieta': 'BRANDA COM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CARDIOLOGIA', 'dieta': 'BRANDA COM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CARDIOLOGIA', 'dieta': 'BRANDA COM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CARDIOLOGIA', 'dieta': 'BRANDA COM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CARDIOLOGIA', 'dieta': 'BRANDA COM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CARDIOLOGIA', 'dieta': 'BRANDA COM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CARDIOLOGIA', 'dieta': 'BRANDA COM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CARDIOLOGIA', 'dieta': 'LIQUIDA SEM SAL', 'enteral': None, 'formula_infantil': None},
+            {'clinica': 'CARDIOLOGIA', 'dieta': 'NORMOCALORICA E NORMOPROTEICA - NUTRI ENTERAL 1L',
+             'enteral': 'NUTRI ENTERAL 1L', 'formula_infantil': None},
+            {'clinica': 'CARDIOLOGIA', 'dieta': 'NORMOCALORICA E HIPERPROTEICA - NUTRI ENTERAL 1L',
+             'enteral': 'NUTRI ENTERAL 1L', 'formula_infantil': None},
+            {'clinica': 'CARDIOLOGIA', 'dieta': 'HIPERCALORICA 1.5 E HIPERPROTEICA - NUTRI ENTERAL 1L',
+             'enteral': 'NUTRI ENTERAL 1L', 'formula_infantil': None},
+        ]
+
+        # só aplica demo se ainda não houver distribuição típica (basicas+liquidas)
+        cats = []
+        from nutricao_service import _classificar_dieta_faturamento
+        dieta_cat_map = {(d.nome or '').strip().upper(): (d.categoria or 'basica') for d in NutDieta.query.all()}
+        for r in rows:
+            cats.append(_classificar_dieta_faturamento(r, dieta_cat_map))
+        clinicas_set = {(r.clinica or '') for r in rows}
+        precisa = len(clinicas_set) < 2 or not ('basicas' in cats and 'liquidas' in cats)
+
+        if precisa or not any(r.fl_almoco for r in rows):
+            while len(rows) < len(demos):
+                base = rows[0] if rows else None
+                if not base:
+                    break
+                clone = NutMapaRefeicao(
+                    data_refeicao=cur,
+                    paciente_id=base.paciente_id,
+                    nome=f'DEMO {len(rows)+1}',
+                    leito=f'D{len(rows)+1}',
+                    clinica='CABEÇA E PESCOÇO',
+                    dieta='BRANDA COM SAL',
+                    ativo=True,
+                    fl_desjejum=True, fl_colacao=True, fl_almoco=True,
+                    fl_merenda=True, fl_jantar=True, fl_ceia=True,
+                )
+                db.session.add(clone)
+                db.session.flush()
+                rows.append(clone)
+
+            for i, r in enumerate(rows[:len(demos)]):
+                d = demos[i]
+                alvo = d['clinica']
+                if alvo.upper() in clinicas_existentes:
+                    r.clinica = clinicas_existentes[alvo.upper()]
+                else:
+                    r.clinica = alvo
+                r.dieta = d['dieta']
+                r.enteral = d.get('enteral')
+                r.formula_infantil = d.get('formula_infantil')
+                r.fl_desjejum = True
+                r.fl_colacao = True
+                r.fl_almoco = True
+                r.fl_merenda = True
+                r.fl_jantar = True
+                # ceia líquidas +1 no exemplo legado para cabeça/pescoço
+                r.fl_ceia = True
+            db.session.commit()
+
+        cur = date.fromordinal(cur.toordinal() + 1)
+
 
 # ---- ADMIN ----
 @nutricao.route('/nutricao/admin')

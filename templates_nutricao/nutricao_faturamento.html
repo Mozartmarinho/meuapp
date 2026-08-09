@@ -1,49 +1,100 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
 <div class="page-header">
-  <h1>Faturamento</h1>
-  <p>Controle de faturamento por mapa realizado vs. orçado</p>
+  <h1>Relatórios do Faturamento</h1>
+  <p>Espelho e totais de refeições por clínica e período</p>
 </div>
 
-<div class="filter-panel">
-  <div class="filter-grid">
-    <div class="form-group"><label class="form-label">Mês Referência</label>
-      <select class="form-control"><option>Janeiro/2025</option><option>Fevereiro/2025</option><option>Março/2025</option></select>
+<div class="card fat-panel">
+  <fieldset class="fat-box">
+    <legend>Período</legend>
+    <div class="fat-periodo">
+      <div class="form-group" style="margin:0">
+        <label class="form-label" for="fDe">De:</label>
+        <input class="form-control" type="date" id="fDe" value="{{ data_padrao }}">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label" for="fAte">Até:</label>
+        <input class="form-control" type="date" id="fAte" value="{{ data_padrao }}">
+      </div>
     </div>
-    <div class="form-group"><label class="form-label">Clínica</label>
-      <select class="form-control"><option value="">Todas</option><option>Clínica Médica</option><option>CTI</option><option>Oncologia</option></select>
+  </fieldset>
+
+  <fieldset class="fat-box">
+    <legend>Tipo de relatório</legend>
+    <div class="fat-tipos">
+      <label><input type="radio" name="tipo" value="espelho_1" checked> Espelho do faturamento - 1ª página</label>
+      <label><input type="radio" name="tipo" value="espelho_2"> Espelho do faturamento - 2ª página</label>
+      <label><input type="radio" name="tipo" value="total_sem_correcao"> Total de refeições (sem correção)</label>
+      <label><input type="radio" name="tipo" value="total_refeicoes"> Total de refeições</label>
+      <label><input type="radio" name="tipo" value="total_formulas"> Total de fórmulas infantis e enterais</label>
+      <label><input type="radio" name="tipo" value="total_complementares"> Total de refeições complementares</label>
     </div>
-    <div class="form-group"><label class="form-label">&nbsp;</label><button class="btn btn-primary w-full">📊 Gerar</button></div>
-</div>
+  </fieldset>
 
-<div class="stats-grid">
-  <div class="stat-card">
-    <div class="stat-icon blue">📋</div>
-    <div class="stat-info"><h4>R$ 142.500</h4><p>Faturamento Realizado</p></div>
-  <div class="stat-card">
-    <div class="stat-icon yellow">📋</div>
-    <div class="stat-info"><h4>R$ 155.000</h4><p>Faturamento Orçado</p></div>
-  <div class="stat-card">
-    <div class="stat-icon green">📈</div>
-    <div class="stat-info"><h4>91,9%</h4><p>Taxa de Realização</p></div>
-  <div class="stat-card">
-    <div class="stat-icon red">📉</div>
-    <div class="stat-info"><h4>-R$ 12.500</h4><p>Diferença</p></div>
-</div>
+  <fieldset class="fat-box">
+    <legend>Opções</legend>
+    <div class="fat-ops">
+      <label><input type="checkbox" id="fGrupo"> Por grupo de clínica</label>
+      <label><input type="checkbox" id="fSintetico"> Relatório sintético</label>
+    </div>
+  </fieldset>
 
-<div class="card">
-  <div class="card-header"><h3>Comparativo Mapa x Realizado por Clínica</h3></div>
-  <div style="overflow-x:auto">
-    <table>
-      <thead><tr><th>Clínica</th><th>Orçado</th><th>Realizado</th><th>Diferença</th><th>%</th></tr></thead>
-      <tbody>
-        <tr><td><strong>Clínica Médica</strong></td><td>R$ 52.000</td><td>R$ 48.300</td><td style="color:var(--danger)">-R$ 3.700</td><td>92,9%</td></tr>
-        <tr><td><strong>CTI</strong></td><td>R$ 42.000</td><td style="color:var(--success)">R$ 44.500</td><td style="color:var(--success)">+R$ 2.500</td><td>106,0%</td></tr>
-        <tr><td><strong>Oncologia</strong></td><td>R$ 35.000</td><td>R$ 31.200</td><td style="color:var(--danger)">-R$ 3.800</td><td>89,1%</td></tr>
-        <tr><td><strong>Maternidade</strong></td><td>R$ 26.000</td><td>R$ 18.500</td><td style="color:var(--danger)">-R$ 7.500</td><td>71,2%</td></tr>
-        <tr style="border-top:2px solid var(--border-light);font-weight:700">
-          <td>TOTAL</td><td>R$ 155.000</td><td>R$ 142.500</td><td style="color:var(--danger)">-R$ 12.500</td><td>91,9%</td></tr>
-      </tbody>
-    </table>
+  <div class="fat-actions">
+    <button type="button" class="btn btn-primary" onclick="exportar()">
+      <i class="fas fa-file-excel"></i> Exportar
+    </button>
+    <button type="button" class="btn btn-primary" onclick="imprimir()">
+      <i class="fas fa-print"></i> Imprimir
+    </button>
+    <button type="button" class="btn btn-ghost" onclick="location.href='{{ url_for('nutricao.dashboard') }}'">
+      <i class="fas fa-times"></i> Fechar
+    </button>
   </div>
+</div>
+
+<style>
+.fat-panel { padding: 1.1rem 1.25rem 1.4rem; max-width: 640px; }
+.fat-box {
+  border:1px solid #dbe3ee; border-radius:8px; padding:0.85rem 1rem 1rem;
+  margin:0 0 0.9rem; background:#f8fafc;
+}
+.fat-box legend { font-size:0.85rem; font-weight:700; color:#334155; padding:0 0.4rem; }
+.fat-periodo { display:flex; flex-wrap:wrap; gap:0.85rem; }
+.fat-periodo .form-control { min-width:160px; }
+.fat-tipos { display:flex; flex-direction:column; gap:0.45rem; }
+.fat-tipos label, .fat-ops label {
+  display:flex; align-items:center; gap:0.45rem;
+  font-size:0.92rem; color:#334155; margin:0;
+}
+.fat-ops { display:flex; flex-direction:column; gap:0.45rem; }
+.fat-actions { display:flex; flex-wrap:wrap; gap:0.55rem; margin-top:0.35rem; }
+</style>
+
+<script>
+function params(){
+  const qs = new URLSearchParams({
+    data_de: document.getElementById('fDe').value,
+    data_ate: document.getElementById('fAte').value,
+    tipo: document.querySelector('input[name="tipo"]:checked')?.value || 'espelho_1',
+    por_grupo_clinica: document.getElementById('fGrupo').checked ? '1' : '0',
+    sintetico: document.getElementById('fSintetico').checked ? '1' : '0'
+  });
+  return qs;
+}
+
+function imprimir(){
+  const de = document.getElementById('fDe').value;
+  const ate = document.getElementById('fAte').value;
+  if (!de || !ate){ showToast('Informe o período','error'); return; }
+  window.open('/nutricao/faturamento/imprimir?' + params().toString(), '_blank');
+}
+
+function exportar(){
+  const de = document.getElementById('fDe').value;
+  const ate = document.getElementById('fAte').value;
+  if (!de || !ate){ showToast('Informe o período','error'); return; }
+  window.location.href = '/nutricao/faturamento/exportar?' + params().toString();
+}
+</script>
 {% endblock %}

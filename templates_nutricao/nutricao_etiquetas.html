@@ -1,0 +1,316 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Configuração de etiquetas</h1>
+  <p>Layout da folha e campos impressos (dieta / fórmula)</p>
+</div>
+
+<div class="card eti-panel">
+  <div class="eti-section-title">Configuração da etiqueta (folha)</div>
+  <div class="eti-toolbar">
+    <button class="btn btn-ghost btn-sm" type="button" onclick="nav('first')" title="Primeiro"><i class="fas fa-step-backward"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="nav('prev')" title="Anterior"><i class="fas fa-caret-left"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="nav('next')" title="Próximo"><i class="fas fa-caret-right"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="nav('last')" title="Último"><i class="fas fa-step-forward"></i></button>
+    <span class="eti-sep"></span>
+    <button class="btn btn-primary btn-sm" type="button" onclick="novo()" title="Novo"><i class="fas fa-plus"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="excluir()" title="Excluir"><i class="fas fa-minus"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="setEdit(true)" title="Editar"><i class="fas fa-pencil-alt"></i></button>
+    <button class="btn btn-primary btn-sm" type="button" id="btnSalvar" onclick="salvar()" title="Salvar" disabled><i class="fas fa-check"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" id="btnCancelar" onclick="cancelar()" title="Cancelar" disabled><i class="fas fa-times"></i></button>
+    <span class="eti-pos" id="posLabel">0 / 0</span>
+  </div>
+
+  <div class="eti-nome-row">
+    <div class="form-group" style="flex:1;margin:0">
+      <label class="form-label" for="fNome">Nome</label>
+      <input class="form-control" id="fNome" data-field>
+    </div>
+    <label class="eti-ativa"><input type="checkbox" id="fAtiva" data-field> Ativa</label>
+  </div>
+
+  <div class="eti-grid-cfg">
+    <fieldset class="eti-box">
+      <legend>Tamanho da folha</legend>
+      <label><input type="radio" name="tamFolha" value="carta" data-field onchange="toggleOutros()"> Carta</label>
+      <label><input type="radio" name="tamFolha" value="a4" data-field onchange="toggleOutros()"> A4</label>
+      <label><input type="radio" name="tamFolha" value="outros" data-field onchange="toggleOutros()"> Outros (mm)</label>
+      <div class="eti-outros" id="boxOutros">
+        <label>Altura <input class="form-control" type="number" step="any" id="fAltFolha" data-field></label>
+        <label>Largura <input class="form-control" type="number" step="any" id="fLargFolha" data-field></label>
+      </div>
+    </fieldset>
+
+    <fieldset class="eti-box">
+      <legend>Orientação</legend>
+      <label><input type="radio" name="orient" value="retrato" data-field> Retrato</label>
+      <label><input type="radio" name="orient" value="paisagem" data-field> Paisagem</label>
+    </fieldset>
+
+    <fieldset class="eti-box">
+      <legend>Margens (mm)</legend>
+      <div class="eti-margens">
+        <label>Esquerda <input class="form-control" type="number" step="any" id="fMargE" data-field></label>
+        <label>Direita <input class="form-control" type="number" step="any" id="fMargD" data-field></label>
+        <label>Superior <input class="form-control" type="number" step="any" id="fMargS" data-field></label>
+        <label>Inferior <input class="form-control" type="number" step="any" id="fMargI" data-field></label>
+      </div>
+    </fieldset>
+
+    <fieldset class="eti-box">
+      <legend>Grade</legend>
+      <label>Nº de colunas <input class="form-control" type="number" min="1" step="1" id="fCols" data-field></label>
+      <label>Distância entre colunas (mm) <input class="form-control" type="number" step="any" id="fDist" data-field></label>
+      <label>Altura da etiqueta (mm) <input class="form-control" type="number" step="any" id="fAltEti" data-field></label>
+      <label>Tamanho da fonte <input class="form-control" type="number" min="1" step="1" id="fFonte" data-field></label>
+    </fieldset>
+  </div>
+
+  <div class="eti-section-title" style="margin-top:1.1rem">Configuração dos campos</div>
+  <div class="eti-toolbar">
+    <button class="btn btn-primary btn-sm" type="button" id="btnAddCampo" onclick="addCampo()" disabled title="Novo campo"><i class="fas fa-plus"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" id="btnDelCampo" onclick="delCampo()" disabled title="Remover campo"><i class="fas fa-minus"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="ajustarCampo()" title="Ajustar"><i class="fas fa-tools"></i> Ajustar</button>
+  </div>
+
+  <div class="table-container" style="box-shadow:none;border:1px solid #e2e8f0;border-radius:8px;max-height:280px;overflow:auto;">
+    <table class="data-table" id="gridCampos">
+      <thead>
+        <tr>
+          <th style="width:70px">Tipo</th>
+          <th style="width:180px">Nome</th>
+          <th>Texto</th>
+        </tr>
+      </thead>
+      <tbody id="gridCamposBody"></tbody>
+    </table>
+  </div>
+  <p class="eti-legend"><strong>D</strong> = Dieta &nbsp;&nbsp; <strong>F</strong> = Fórmula</p>
+</div>
+
+<style>
+.eti-panel { padding: 1rem 1.15rem 1.25rem; max-width: 980px; }
+.eti-section-title {
+  font-size: 0.95rem; font-weight: 800; color: #0f2a5c;
+  margin-bottom: 0.65rem; padding-bottom: 0.35rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+.eti-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:0.3rem; margin-bottom:0.85rem; }
+.eti-sep { width:1px; height:22px; background:#cbd5e1; margin:0 0.35rem; }
+.eti-pos { margin-left:auto; font-size:0.85rem; color:#64748b; font-weight:600; }
+.eti-nome-row { display:flex; gap:1rem; align-items:flex-end; margin-bottom:0.9rem; }
+.eti-ativa { display:flex; align-items:center; gap:0.4rem; margin-bottom:0.35rem; white-space:nowrap; }
+.eti-grid-cfg {
+  display:grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap:0.75rem;
+}
+.eti-box {
+  border:1px solid #dbe3ee; border-radius:8px; padding:0.7rem 0.85rem 0.9rem;
+  margin:0; background:#f8fafc;
+}
+.eti-box legend { font-size:0.78rem; font-weight:700; color:#334155; padding:0 0.35rem; }
+.eti-box > label {
+  display:flex; align-items:center; gap:0.4rem; font-size:0.88rem; color:#334155; margin:0.3rem 0;
+}
+.eti-box label:has(input.form-control) {
+  flex-direction:column; align-items:stretch; gap:0.2rem; font-size:0.78rem; color:#475569;
+}
+.eti-outros { display:none; gap:0.5rem; margin-top:0.4rem; }
+.eti-outros.open { display:grid; grid-template-columns:1fr 1fr; }
+.eti-margens { display:grid; grid-template-columns:1fr 1fr; gap:0.45rem; }
+.eti-legend { margin:0.55rem 0 0; font-size:0.82rem; color:#64748b; }
+#gridCamposBody tr.selected { background:#e8f0ff; }
+#gridCamposBody tr { cursor:pointer; }
+.eti-panel:not(.editing) [data-field] { pointer-events:none; background:#f1f5f9; }
+.eti-panel:not(.editing) input[type=radio][data-field],
+.eti-panel:not(.editing) input[type=checkbox][data-field] { background:transparent; }
+.eti-panel:not(.editing) #gridCamposBody input,
+.eti-panel:not(.editing) #gridCamposBody select { pointer-events:none; background:#f1f5f9; }
+@media (max-width:800px){ .eti-grid-cfg { grid-template-columns:1fr; } }
+</style>
+
+<script>
+const ETIQUETAS = {{ etiquetas|tojson }};
+let idx = 0;
+let editing = false;
+let isNew = false;
+let draftCampos = [];
+let campoSel = -1;
+
+function current(){
+  if (!ETIQUETAS.length || isNew) return null;
+  return ETIQUETAS[Math.max(0, Math.min(idx, ETIQUETAS.length-1))];
+}
+
+function blank(){
+  return {
+    id:null, nome:'', ativa:true, tamanho_folha:'carta',
+    folha_altura_mm:279.4, folha_largura_mm:215.9, orientacao:'retrato',
+    margem_esquerda:4.8, margem_direita:4.8, margem_superior:12.7, margem_inferior:12.7,
+    num_colunas:3, dist_colunas_mm:3.1, altura_etiqueta_mm:25.4, tamanho_fonte:7,
+    campos:[]
+  };
+}
+
+function setEdit(on){
+  editing = !!on;
+  document.querySelector('.eti-panel').classList.toggle('editing', editing);
+  document.getElementById('btnSalvar').disabled = !editing;
+  document.getElementById('btnCancelar').disabled = !editing;
+  document.getElementById('btnAddCampo').disabled = !editing;
+  document.getElementById('btnDelCampo').disabled = !editing;
+  if (editing){
+    const c = isNew ? blank() : (current() || blank());
+    draftCampos = JSON.parse(JSON.stringify(c.campos || []));
+    renderCampos();
+  }
+}
+
+function updatePos(){
+  const total = ETIQUETAS.length;
+  document.getElementById('posLabel').textContent = isNew ? `Novo / ${total}` : `${total?idx+1:0} / ${total}`;
+}
+
+function toggleOutros(){
+  const v = document.querySelector('input[name="tamFolha"]:checked')?.value;
+  document.getElementById('boxOutros').classList.toggle('open', v === 'outros');
+}
+
+function render(e){
+  e = e || blank();
+  document.getElementById('fNome').value = e.nome || '';
+  document.getElementById('fAtiva').checked = e.ativa !== false;
+  const tam = e.tamanho_folha || 'carta';
+  document.querySelectorAll('input[name="tamFolha"]').forEach(r => { r.checked = r.value === tam; });
+  document.getElementById('fAltFolha').value = e.folha_altura_mm ?? 0;
+  document.getElementById('fLargFolha').value = e.folha_largura_mm ?? 0;
+  const ori = e.orientacao || 'retrato';
+  document.querySelectorAll('input[name="orient"]').forEach(r => { r.checked = r.value === ori; });
+  document.getElementById('fMargE').value = e.margem_esquerda ?? 0;
+  document.getElementById('fMargD').value = e.margem_direita ?? 0;
+  document.getElementById('fMargS').value = e.margem_superior ?? 0;
+  document.getElementById('fMargI').value = e.margem_inferior ?? 0;
+  document.getElementById('fCols').value = e.num_colunas ?? 1;
+  document.getElementById('fDist').value = e.dist_colunas_mm ?? 0;
+  document.getElementById('fAltEti').value = e.altura_etiqueta_mm ?? 0;
+  document.getElementById('fFonte').value = e.tamanho_fonte ?? 7;
+  draftCampos = JSON.parse(JSON.stringify(e.campos || []));
+  campoSel = -1;
+  renderCampos();
+  toggleOutros();
+  updatePos();
+}
+
+function renderCampos(){
+  const tb = document.getElementById('gridCamposBody');
+  if (!draftCampos.length){
+    tb.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#64748b;">Nenhum campo.</td></tr>';
+    return;
+  }
+  tb.innerHTML = draftCampos.map((c,i) => `
+    <tr class="${campoSel===i?'selected':''}" data-i="${i}" onclick="selCampo(${i})">
+      <td>
+        <select class="form-control" onchange="chgCampo(${i},'tipo',this.value)" onclick="event.stopPropagation()">
+          <option value="D" ${c.tipo==='D'?'selected':''}>D</option>
+          <option value="F" ${c.tipo==='F'?'selected':''}>F</option>
+        </select>
+      </td>
+      <td><input class="form-control" value="${esc(c.nome)}" onchange="chgCampo(${i},'nome',this.value)" onclick="event.stopPropagation()"></td>
+      <td><input class="form-control" value="${esc(c.texto)}" onchange="chgCampo(${i},'texto',this.value)" onclick="event.stopPropagation()"></td>
+    </tr>
+  `).join('');
+}
+
+function esc(s){ return String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+function selCampo(i){ campoSel = i; renderCampos(); }
+function chgCampo(i,k,v){ if (!draftCampos[i]) return; draftCampos[i][k] = k==='nome' ? String(v).toUpperCase() : v; }
+function addCampo(){
+  if (!editing) return;
+  draftCampos.push({tipo:'D', nome:'', texto:''});
+  campoSel = draftCampos.length-1;
+  renderCampos();
+}
+function delCampo(){
+  if (!editing || campoSel < 0){ showToast('Selecione um campo','error'); return; }
+  draftCampos.splice(campoSel,1);
+  campoSel = -1;
+  renderCampos();
+}
+function ajustarCampo(){
+  if (campoSel < 0){ showToast('Selecione um campo para ajustar','error'); return; }
+  const c = draftCampos[campoSel];
+  showToast(`Campo "${c.nome || '(sem nome)'}" pronto para ajuste de posição (impressão)`, 'success');
+}
+
+function collect(){
+  return {
+    nome: (document.getElementById('fNome').value||'').trim(),
+    ativa: !!document.getElementById('fAtiva').checked,
+    tamanho_folha: document.querySelector('input[name="tamFolha"]:checked')?.value || 'carta',
+    folha_altura_mm: parseFloat(document.getElementById('fAltFolha').value)||0,
+    folha_largura_mm: parseFloat(document.getElementById('fLargFolha').value)||0,
+    orientacao: document.querySelector('input[name="orient"]:checked')?.value || 'retrato',
+    margem_esquerda: parseFloat(document.getElementById('fMargE').value)||0,
+    margem_direita: parseFloat(document.getElementById('fMargD').value)||0,
+    margem_superior: parseFloat(document.getElementById('fMargS').value)||0,
+    margem_inferior: parseFloat(document.getElementById('fMargI').value)||0,
+    num_colunas: parseInt(document.getElementById('fCols').value||1,10)||1,
+    dist_colunas_mm: parseFloat(document.getElementById('fDist').value)||0,
+    altura_etiqueta_mm: parseFloat(document.getElementById('fAltEti').value)||0,
+    tamanho_fonte: parseInt(document.getElementById('fFonte').value||7,10)||7,
+    campos: draftCampos
+  };
+}
+
+function nav(dir){
+  if (editing){ showToast('Salve ou cancele a edição','error'); return; }
+  if (!ETIQUETAS.length) return;
+  if (dir==='first') idx=0;
+  if (dir==='prev') idx=Math.max(0,idx-1);
+  if (dir==='next') idx=Math.min(ETIQUETAS.length-1,idx+1);
+  if (dir==='last') idx=ETIQUETAS.length-1;
+  isNew=false; render(current());
+}
+
+function novo(){
+  isNew=true; setEdit(true); render(blank());
+  document.getElementById('fNome').focus();
+}
+function cancelar(){
+  isNew=false; setEdit(false); render(current()||blank());
+}
+
+async function salvar(){
+  const body = collect();
+  if (!body.nome){ showToast('Informe o nome','error'); return; }
+  const cur = current();
+  const id = (!isNew && cur) ? cur.id : null;
+  const url = id ? `/nutricao/api/etiquetas/${id}` : '/nutricao/api/etiquetas';
+  const method = id ? 'PUT' : 'POST';
+  const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error)||'Falha ao salvar','error'); return; }
+  showToast(id ? 'Etiqueta atualizada' : 'Etiqueta cadastrada','success');
+  setTimeout(() => location.reload(), 400);
+}
+
+async function excluir(){
+  const cur = current();
+  if (!cur || !cur.id){ showToast('Nenhuma etiqueta selecionada','error'); return; }
+  if (!confirm('Desativar esta etiqueta?')) return;
+  const r = await fetch(`/nutricao/api/etiquetas/${cur.id}`, { method:'DELETE' });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error)||'Falha','error'); return; }
+  showToast('Etiqueta desativada','success');
+  setTimeout(() => location.reload(), 400);
+}
+
+if (ETIQUETAS.length){
+  const i = ETIQUETAS.findIndex(e => (e.nome||'').includes('PIMACO 6080'));
+  idx = i >= 0 ? i : 0;
+  render(current());
+} else {
+  render(blank());
+}
+setEdit(false);
+</script>
+{% endblock %}

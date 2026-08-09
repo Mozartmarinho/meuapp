@@ -1,0 +1,70 @@
+{% extends "base_pesagem.html" %}
+{% block title %}Balanças{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Balanças cadastradas</h1>
+  <p>Identificação das balanças que enviam peso pelo agente local</p>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden;">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Código</th>
+        <th>Nome</th>
+        <th>Local</th>
+        <th>Porta COM</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for b in balancas %}
+      <tr>
+        <td><strong>{{ b.codigo }}</strong></td>
+        <td>{{ b.nome }}</td>
+        <td>{{ b.local or '-' }}</td>
+        <td>{{ b.porta_com or '-' }}</td>
+        <td>{{ 'Ativa' if b.ativo else 'Inativa' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" style="text-align:center;padding:1.25rem;">Nenhuma balança cadastrada.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card" style="margin-top:1rem;padding:1rem 1.15rem;">
+  <h3 style="margin:0 0 0.65rem;font-family:var(--font-brand);color:var(--brand-navy);">Nova balança</h3>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Código</label><input class="form-control" id="b-codigo" placeholder="BAL-02"></div>
+    <div class="form-group"><label class="form-label">Nome</label><input class="form-control" id="b-nome" placeholder="Balança Expedição"></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Local</label><input class="form-control" id="b-local" placeholder="Galpão 1"></div>
+    <div class="form-group"><label class="form-label">Porta COM</label><input class="form-control" id="b-com" placeholder="COM3"></div>
+  </div>
+  <button class="btn btn-primary" type="button" onclick="salvarBalanca()">Salvar</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function salvarBalanca(){
+  const body = {
+    codigo: document.getElementById('b-codigo').value,
+    nome: document.getElementById('b-nome').value,
+    local: document.getElementById('b-local').value,
+    porta_com: document.getElementById('b-com').value
+  };
+  const r = await fetch('/api/pesagem/balancas', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+  });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){
+    alert(j.error || 'Falha ao salvar');
+    return;
+  }
+  location.reload();
+}
+</script>
+{% endblock %}

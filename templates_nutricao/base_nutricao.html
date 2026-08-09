@@ -40,40 +40,76 @@
                 </a>
             </li>
             <li>
-                <a href="javascript:void(0);" onclick="toggleCadastroMenu()" class="{% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas'] %}active{% endif %}">
+                <a href="javascript:void(0);" onclick="toggleCadastroMenu()" class="{% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas','cadastro_cardapios','cadastro_nutricional','cadastro_pratos_liquidos','cadastro_produtos','cadastro_fornecedores','cadastro_etiquetas'] %}active{% endif %}">
                     <i class="fas fa-folder-open" style="margin-right: 0.75rem;"></i>
                     Cadastro
-                    <i id="cadastro-chevron" class="fas fa-chevron-right chevron {% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas'] %}open{% endif %}"></i>
+                    <i id="cadastro-chevron" class="fas fa-chevron-right chevron {% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas','cadastro_cardapios','cadastro_nutricional','cadastro_pratos_liquidos','cadastro_produtos','cadastro_fornecedores','cadastro_etiquetas'] %}open{% endif %}"></i>
                 </a>
-                <ul id="cadastro-submenu" class="sidebar-submenu {% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas'] %}open{% endif %}">
+                <ul id="cadastro-submenu" class="sidebar-submenu {% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas','cadastro_cardapios','cadastro_nutricional','cadastro_pratos_liquidos','cadastro_produtos','cadastro_fornecedores','cadastro_etiquetas'] %}open{% endif %}">
                     <li>
-                        <a href="{{ url_for('nutricao.clinicas') }}?tab=clinicas#paciente" class="{% if active_page == 'cadastro_pacientes' %}active{% endif %}">
+                        <a href="{{ url_for('nutricao.pacientes') }}" class="{% if active_page == 'cadastro_pacientes' or active_page == 'pacientes' %}active{% endif %}">
                             <i class="fas fa-user-injured" style="margin-right: 0.75rem;"></i>
                             Pacientes
                         </a>
                     </li>
                     <li>
-                        <a href="{{ url_for('nutricao.clinicas') }}?tab=clinicas" class="{% if active_page == 'cadastro_clinicas' %}active{% endif %}">
+                        <a href="{{ url_for('nutricao.clinicas') }}" class="{% if active_page == 'cadastro_clinicas' %}active{% endif %}">
                             <i class="fas fa-hospital" style="margin-right: 0.75rem;"></i>
                             Clínicas
                         </a>
                     </li>
                     <li>
-                        <a href="{{ url_for('nutricao.clinicas') }}?tab=enfermarias" class="{% if active_page == 'cadastro_enfermarias' %}active{% endif %}">
+                        <a href="{{ url_for('nutricao.enfermarias') }}" class="{% if active_page == 'cadastro_enfermarias' %}active{% endif %}">
                             <i class="fas fa-procedures" style="margin-right: 0.75rem;"></i>
                             Enfermarias
                         </a>
                     </li>
                     <li>
-                        <a href="{{ url_for('nutricao.clinicas') }}?tab=leitos" class="{% if active_page == 'cadastro_leitos' %}active{% endif %}">
+                        <a href="{{ url_for('nutricao.leitos') }}" class="{% if active_page == 'cadastro_leitos' %}active{% endif %}">
                             <i class="fas fa-bed" style="margin-right: 0.75rem;"></i>
                             Leitos
                         </a>
                     </li>
                     <li>
-                        <a href="{{ url_for('nutricao.clinicas') }}?tab=dietas" class="{% if active_page == 'cadastro_dietas' %}active{% endif %}">
+                        <a href="{{ url_for('nutricao.dietas') }}" class="{% if active_page == 'cadastro_dietas' %}active{% endif %}">
                             <i class="fas fa-utensils" style="margin-right: 0.75rem;"></i>
                             Dietas
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.cardapios') }}" class="{% if active_page == 'cadastro_cardapios' %}active{% endif %}">
+                            <i class="fas fa-clipboard-list" style="margin-right: 0.75rem;"></i>
+                            Cardápios
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.nutricional') }}" class="{% if active_page == 'cadastro_nutricional' %}active{% endif %}">
+                            <i class="fas fa-flask" style="margin-right: 0.75rem;"></i>
+                            Nutricional
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.pratos_liquidos') }}" class="{% if active_page == 'cadastro_pratos_liquidos' %}active{% endif %}">
+                            <i class="fas fa-mug-hot" style="margin-right: 0.75rem;"></i>
+                            Dietas Líquidas
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.produtos') }}" class="{% if active_page == 'cadastro_produtos' %}active{% endif %}">
+                            <i class="fas fa-carrot" style="margin-right: 0.75rem;"></i>
+                            Produtos
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.fornecedores') }}" class="{% if active_page == 'cadastro_fornecedores' %}active{% endif %}">
+                            <i class="fas fa-truck" style="margin-right: 0.75rem;"></i>
+                            Fornecedores
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.etiquetas') }}" class="{% if active_page == 'cadastro_etiquetas' %}active{% endif %}">
+                            <i class="fas fa-tags" style="margin-right: 0.75rem;"></i>
+                            Etiquetas
                         </a>
                     </li>
                 </ul>
@@ -90,6 +126,18 @@
                     Análise de Custos
                 </a>
             </li>
+            <li>
+                <a href="{{ url_for('nutricao.relatorio_mapa_uma') }}" class="{% if active_page == 'relatorio_mapa_uma' %}active{% endif %}">
+                    <i class="fas fa-print" style="margin-right: 0.75rem;"></i>
+                    Mapa U.M.A.
+                </a>
+            </li>
+                    <li>
+                        <a href="/nutricao/totalizacao-dietas" class="{% if active_page == 'totalizacao_dietas' %}active{% endif %}">
+                            <i class="fas fa-calculator" style="margin-right: 0.75rem;"></i>
+                            Totalização de Dietas
+                        </a>
+                    </li>
             <li>
                 <a href="{{ url_for('nutricao.faturamento') }}" class="{% if active_page == 'faturamento' %}active{% endif %}">
                     <i class="fas fa-file-invoice-dollar" style="margin-right: 0.75rem;"></i>

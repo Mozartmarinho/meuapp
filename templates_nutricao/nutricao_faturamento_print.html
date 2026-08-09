@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ r.tipo_label }} — {{ r.data_de_label }}</title>
+  <style>
+    @page { margin: 12mm; size: A4 landscape; }
+    body { font-family: "Segoe UI", Tahoma, sans-serif; color:#152238; margin:0; padding:14px 18px 24px; font-size:11px; }
+    h1 { font-size:15px; margin:0 0 2px; }
+    .sub { color:#64748b; margin-bottom:10px; }
+    .meta { margin-bottom:12px; }
+    .meta strong { color:#0f2a5c; }
+    .bloco { margin-bottom:16px; page-break-inside:avoid; }
+    .bloco-head {
+      display:flex; gap:24px; font-weight:700; margin-bottom:4px;
+      border-bottom:1px solid #94a3b8; padding-bottom:3px;
+    }
+    table { width:100%; border-collapse:collapse; max-width:720px; }
+    th, td { border:1px solid #64748b; padding:4px 6px; text-align:center; }
+    th { background:#e8eef6; font-size:10px; }
+    td.cat { text-align:left; font-weight:600; width:90px; }
+    .resumo { margin-top:18px; }
+    .no-print { margin-bottom:10px; }
+    @media print { .no-print { display:none !important; } body { padding:0; } }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <button onclick="window.print()">Imprimir</button>
+    <button onclick="window.close()" style="margin-left:6px">Fechar</button>
+  </div>
+
+  <h1>{{ r.tipo_label }}</h1>
+  <div class="sub">São Geraldo Service — Nutrição Hospitalar</div>
+  <div class="meta">
+    <strong>Período:</strong> {{ r.data_de_label }}{% if r.data_de != r.data_ate %} a {{ r.data_ate_label }}{% endif %}
+    {% if r.sintetico %} &nbsp;|&nbsp; <strong>Sintético</strong>{% endif %}
+    {% if r.por_grupo_clinica %} &nbsp;|&nbsp; <strong>Por grupo de clínica</strong>{% endif %}
+  </div>
+
+  {% if r.tipo in ['total_formulas'] %}
+  <table>
+    <thead><tr><th style="text-align:left">Item</th><th>Quantidade</th></tr></thead>
+    <tbody>
+      {% for f in r.formulas %}
+      <tr><td style="text-align:left">{{ f.item }}</td><td>{{ f.qtd }}</td></tr>
+      {% else %}
+      <tr><td colspan="2">Nenhum registro.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% elif r.tipo == 'total_complementares' %}
+  <table>
+    <thead><tr><th style="text-align:left">Item</th><th>Quantidade</th></tr></thead>
+    <tbody>
+      {% for f in r.complementares %}
+      <tr><td style="text-align:left">{{ f.item }}</td><td>{{ f.qtd }}</td></tr>
+      {% else %}
+      <tr><td colspan="2">Nenhum registro.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% else %}
+    {% for t in r.tabelas %}
+    <div class="bloco">
+      <div class="bloco-head">
+        <span>Data: {{ t.data_label }}</span>
+        <span>Clínica: {{ t.clinica }}</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th>DESJEJUM</th>
+            <th>COLAÇÃO</th>
+            <th>ALMOÇO</th>
+            <th>MERENDA</th>
+            <th>JANTAR</th>
+            <th>CEIA</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in t.linhas %}
+          <tr>
+            <td class="cat">{{ row.categoria }}</td>
+            <td>{{ row.desjejum }}</td>
+            <td>{{ row.colacao }}</td>
+            <td>{{ row.almoco }}</td>
+            <td>{{ row.merenda }}</td>
+            <td>{{ row.jantar }}</td>
+            <td>{{ row.ceia }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p>Nenhum movimento no período.</p>
+    {% endfor %}
+
+    {% if r.tipo in ['total_sem_correcao', 'total_refeicoes'] %}
+    <div class="bloco resumo">
+      <div class="bloco-head"><span>TOTAL GERAL</span></div>
+      <table>
+        <thead>
+          <tr>
+            <th></th><th>DESJEJUM</th><th>COLAÇÃO</th><th>ALMOÇO</th><th>MERENDA</th><th>JANTAR</th><th>CEIA</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in r.resumo_totais %}
+          <tr>
+            <td class="cat">{{ row.categoria }}</td>
+            <td>{{ row.desjejum }}</td>
+            <td>{{ row.colacao }}</td>
+            <td>{{ row.almoco }}</td>
+            <td>{{ row.merenda }}</td>
+            <td>{{ row.jantar }}</td>
+            <td>{{ row.ceia }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  {% endif %}
+
+  <script>
+    window.addEventListener('load', function(){ setTimeout(function(){ window.print(); }, 350); });
+  </script>
+</body>
+</html>

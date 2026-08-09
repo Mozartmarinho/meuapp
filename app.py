@@ -1,9 +1,11 @@
 from flask import Flask
 from routes import main
 from routes_nutricao import nutricao
+from routes_pesagem import pesagem
 from models import db, Usuario
 from db_config import SQLALCHEMY_DATABASE_URI
 import models_nutricao  # noqa: F401 — registra tabelas de nutrição
+import models_pesagem  # noqa: F401 — registra tabelas de pesagem
 import os
 
 
@@ -16,6 +18,7 @@ def create_app():
     db.init_app(app)
     app.register_blueprint(main)
     app.register_blueprint(nutricao)
+    app.register_blueprint(pesagem)
 
     return app
 
@@ -27,7 +30,9 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
         from nutricao_service import seed_nutricao
+        from routes_pesagem import seed_pesagem
         seed_nutricao()
+        seed_pesagem()
         if not Usuario.query.first():
             admin = Usuario(
                 nome='Admin',

@@ -1,0 +1,246 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Cadastro de Pratos — Dietas Líquidas</h1>
+  <p>Pratos usados nos cardápios de dietas líquidas</p>
+</div>
+
+<div class="card pl-panel">
+  <div class="pl-toolbar">
+    <button class="btn btn-ghost btn-sm" type="button" onclick="nav('first')" title="Primeiro"><i class="fas fa-step-backward"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="nav('prev')" title="Anterior"><i class="fas fa-caret-left"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="nav('next')" title="Próximo"><i class="fas fa-caret-right"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="nav('last')" title="Último"><i class="fas fa-step-forward"></i></button>
+    <span class="pl-sep"></span>
+    <button class="btn btn-primary btn-sm" type="button" onclick="novo()" title="Novo"><i class="fas fa-plus"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="excluir()" title="Excluir"><i class="fas fa-minus"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="setEdit(true)" title="Editar"><i class="fas fa-pencil-alt"></i></button>
+    <button class="btn btn-primary btn-sm" type="button" id="btnSalvar" onclick="salvar()" title="Salvar" disabled><i class="fas fa-check"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" id="btnCancelar" onclick="cancelar()" title="Cancelar" disabled><i class="fas fa-times"></i></button>
+    <span class="pl-sep"></span>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="abrirBusca()" title="Buscar"><i class="fas fa-search"></i></button>
+    <span class="pl-pos" id="posLabel">0 / 0</span>
+  </div>
+
+  <div class="form-group">
+    <label class="form-label" for="fNome">Prato:</label>
+    <input class="form-control" id="fNome" data-field placeholder="Nome do prato">
+  </div>
+
+  <fieldset class="pl-grupos">
+    <legend>Grupos</legend>
+    <div class="pl-checks">
+      <label><input type="checkbox" id="gPrincipal" data-field> Principal</label>
+      <label><input type="checkbox" id="gSobremesa" data-field> Sobremesa</label>
+      <label><input type="checkbox" id="gOutros" data-field> Outros</label>
+      <label><input type="checkbox" id="gBebida" data-field> Bebida</label>
+      <label><input type="checkbox" id="gGelado" data-field> Gelado</label>
+      <label><input type="checkbox" id="gExtra" data-field> Extra</label>
+    </div>
+  </fieldset>
+
+  <div class="pl-footer-fields">
+    <div class="form-group" style="margin:0;max-width:180px;">
+      <label class="form-label" for="fFator">Fator de Conv. Tot.:</label>
+      <input class="form-control" type="number" step="any" id="fFator" data-field value="1">
+    </div>
+    <label class="pl-ativo"><input type="checkbox" id="fAtivo" data-field checked> Prato ativo</label>
+  </div>
+</div>
+
+<style>
+.pl-panel { padding: 1rem 1.15rem 1.35rem; max-width: 720px; }
+.pl-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:0.3rem; margin-bottom:1rem; }
+.pl-sep { width:1px; height:22px; background:#cbd5e1; margin:0 0.35rem; }
+.pl-pos { margin-left:auto; font-size:0.85rem; color:#64748b; font-weight:600; }
+.pl-grupos {
+  border:1px solid #dbe3ee;
+  border-radius:8px;
+  padding:0.75rem 1rem 1rem;
+  margin:1rem 0;
+  background:#f8fafc;
+}
+.pl-grupos legend {
+  font-size:0.85rem;
+  font-weight:700;
+  color:#334155;
+  padding:0 0.4rem;
+}
+.pl-checks {
+  display:grid;
+  grid-template-columns:repeat(3, minmax(120px, 1fr));
+  gap:0.55rem 1rem;
+}
+.pl-checks label {
+  display:flex;
+  align-items:center;
+  gap:0.45rem;
+  font-size:0.9rem;
+  color:#334155;
+  margin:0;
+}
+.pl-footer-fields {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-end;
+  gap:1.25rem;
+}
+.pl-ativo {
+  display:flex;
+  align-items:center;
+  gap:0.45rem;
+  font-size:0.9rem;
+  color:#334155;
+  margin-bottom:0.35rem;
+}
+.pl-panel:not(.editing) [data-field] {
+  pointer-events:none;
+  background:#f1f5f9;
+}
+.pl-panel:not(.editing) input[type=checkbox][data-field] {
+  background:transparent;
+}
+@media (max-width:640px) {
+  .pl-checks { grid-template-columns:1fr 1fr; }
+}
+</style>
+
+<script>
+const PRATOS = {{ pratos|tojson }};
+let idx = 0;
+let editing = false;
+let isNew = false;
+
+function current(){
+  if (!PRATOS.length || isNew) return null;
+  return PRATOS[Math.max(0, Math.min(idx, PRATOS.length-1))];
+}
+
+function blank(){
+  return {
+    id: null, nome: '',
+    grupo_principal: false, grupo_sobremesa: false, grupo_outros: false,
+    grupo_bebida: false, grupo_gelado: false, grupo_extra: false,
+    fator_conv_tot: 1, ativo: true
+  };
+}
+
+function setEdit(on){
+  editing = !!on;
+  document.querySelector('.pl-panel').classList.toggle('editing', editing);
+  document.getElementById('btnSalvar').disabled = !editing;
+  document.getElementById('btnCancelar').disabled = !editing;
+  if (editing && !isNew) render(current() || blank());
+}
+
+function updatePos(){
+  const total = PRATOS.length;
+  const cur = total ? (idx + 1) : 0;
+  document.getElementById('posLabel').textContent = isNew ? `Novo / ${total}` : `${cur} / ${total}`;
+}
+
+function render(p){
+  p = p || blank();
+  document.getElementById('fNome').value = p.nome || '';
+  document.getElementById('gPrincipal').checked = !!p.grupo_principal;
+  document.getElementById('gSobremesa').checked = !!p.grupo_sobremesa;
+  document.getElementById('gOutros').checked = !!p.grupo_outros;
+  document.getElementById('gBebida').checked = !!p.grupo_bebida;
+  document.getElementById('gGelado').checked = !!p.grupo_gelado;
+  document.getElementById('gExtra').checked = !!p.grupo_extra;
+  document.getElementById('fFator').value = p.fator_conv_tot ?? 1;
+  document.getElementById('fAtivo').checked = p.ativo !== false;
+  updatePos();
+}
+
+function collect(){
+  return {
+    nome: (document.getElementById('fNome').value || '').trim().toUpperCase(),
+    grupo_principal: !!document.getElementById('gPrincipal').checked,
+    grupo_sobremesa: !!document.getElementById('gSobremesa').checked,
+    grupo_outros: !!document.getElementById('gOutros').checked,
+    grupo_bebida: !!document.getElementById('gBebida').checked,
+    grupo_gelado: !!document.getElementById('gGelado').checked,
+    grupo_extra: !!document.getElementById('gExtra').checked,
+    fator_conv_tot: parseFloat(document.getElementById('fFator').value) || 1,
+    ativo: !!document.getElementById('fAtivo').checked,
+  };
+}
+
+function nav(dir){
+  if (editing){ showToast('Salve ou cancele a edição','error'); return; }
+  if (!PRATOS.length) return;
+  if (dir === 'first') idx = 0;
+  if (dir === 'prev') idx = Math.max(0, idx - 1);
+  if (dir === 'next') idx = Math.min(PRATOS.length - 1, idx + 1);
+  if (dir === 'last') idx = PRATOS.length - 1;
+  isNew = false;
+  render(current());
+}
+
+function novo(){
+  isNew = true;
+  setEdit(true);
+  render(blank());
+  document.getElementById('fNome').focus();
+}
+
+function cancelar(){
+  isNew = false;
+  setEdit(false);
+  render(current() || blank());
+}
+
+async function salvar(){
+  const body = collect();
+  if (!body.nome){ showToast('Informe o nome do prato','error'); return; }
+  const cur = current();
+  const id = (!isNew && cur) ? cur.id : null;
+  const url = id ? `/nutricao/api/pratos-liquidos/${id}` : '/nutricao/api/pratos-liquidos';
+  const method = id ? 'PUT' : 'POST';
+  const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao salvar','error'); return; }
+  showToast(id ? 'Prato atualizado' : 'Prato cadastrado','success');
+  setTimeout(() => location.reload(), 400);
+}
+
+async function excluir(){
+  const cur = current();
+  if (!cur || !cur.id){ showToast('Nenhum prato selecionado','error'); return; }
+  if (!confirm('Desativar este prato?')) return;
+  const r = await fetch(`/nutricao/api/pratos-liquidos/${cur.id}`, { method:'DELETE' });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao excluir','error'); return; }
+  showToast('Prato desativado','success');
+  setTimeout(() => location.reload(), 400);
+}
+
+function abrirBusca(){
+  const html = `
+    <div class="form-group">
+      <label class="form-label">Buscar prato</label>
+      <input class="form-control" id="f-busca" placeholder="Digite parte do nome..." autofocus>
+    </div>
+  `;
+  abrirModal('Buscar prato', html, 'Localizar', () => {
+    const q = (document.getElementById('f-busca')?.value || '').trim().toUpperCase();
+    if (!q){ showToast('Digite um termo','error'); return; }
+    const i = PRATOS.findIndex(p => (p.nome||'').toUpperCase().includes(q));
+    if (i < 0){ showToast('Prato não encontrado','error'); return; }
+    if (editing){ showToast('Salve ou cancele a edição','error'); return; }
+    idx = i; isNew = false; render(current()); fecharModal();
+  });
+  setTimeout(() => document.getElementById('f-busca')?.focus(), 50);
+}
+
+if (PRATOS.length){
+  const i = PRATOS.findIndex(p => (p.nome||'') === 'CREME DE LARANJA LIMA');
+  idx = i >= 0 ? i : 0;
+  render(current());
+} else {
+  render(blank());
+}
+setEdit(false);
+</script>
+{% endblock %}

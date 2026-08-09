@@ -226,7 +226,8 @@ h1, h2, h3, h4, .brand-title {
     -webkit-overflow-scrolling: touch;
 }
 
-table {
+table,
+.data-table {
     width: 100%;
     border-collapse: collapse;
 }
