@@ -44,9 +44,7 @@ if __name__ == '__main__':
             db.session.commit()
             print("Default admin user created: email=admin@example.com, password=admin")
 
-    # Em Linux de produção use systemd+nginx (porta 80).
-    # python app.py sobe em 5000 por padrão (sem root).
     host = os.environ.get('HOST', '0.0.0.0')
-    port = int(os.environ.get('PORT', '5000'))
-    print(f"Dev server em http://{host}:{port}/  |  Produção: http://192.168.0.253/")
+    port = int(os.environ.get('PORT', '80'))
+    print(f"Servidor em http://{host}:{port}/ (acesse http://localhost/ )")
     app.run(host=host, port=port, debug=True)
