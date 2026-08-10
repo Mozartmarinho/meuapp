@@ -1,9 +1,6 @@
 {% extends "base_acesso.html" %}
 {% block title %}Colaboradores{% endblock %}
 {% block content %}
-{% set pct = ((total_ativos_licenca / limite_usuarios) * 100) if limite_usuarios else 0 %}
-{% set atingiu = total_ativos_licenca >= limite_usuarios %}
-
 <div class="colab-wrap">
   <div class="colab-hero">
     <div>
@@ -11,17 +8,7 @@
       <p>Gerencie colaboradores, biometrias, fotos e acessos aos equipamentos.</p>
     </div>
     <div class="colab-hero-actions">
-      <div class="licenca-box">
-        <div class="licenca-top">
-          <span>Licença de Uso</span>
-          <strong class="{{ 'text-danger' if atingiu else 'text-ok' }}">{{ total_ativos_licenca }} / {{ limite_usuarios }}</strong>
-        </div>
-        <div class="licenca-bar"><span style="width:{% if pct > 100 %}100{% else %}{{ '%.1f'|format(pct) }}{% endif %}%" class="{{ 'is-danger' if atingiu else '' }}"></span></div>
-      </div>
-      <button type="button" class="btn btn-secondary btn-sm" id="btnAjuda">
-        <i class="fas fa-circle-question"></i> Ajuda
-      </button>
-      <button type="button" class="btn-acesso" id="btnNovo" {% if atingiu %}disabled title="Limite de licença atingido"{% endif %}>
+      <button type="button" class="btn-acesso" id="btnNovo">
         <i class="fas fa-user-plus"></i> Novo Colaborador
       </button>
       <button type="button" class="btn btn-success-sg" id="btnLote" onclick="alert('Cadastro em lote será liberado em breve.')">
@@ -391,13 +378,6 @@
 .colab-hero h1 { margin:0; font-family:var(--font-brand); font-size:1.55rem; color:var(--brand-navy); }
 .colab-hero p { margin:.25rem 0 0; color:#64748b; font-size:.92rem; }
 .colab-hero-actions { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; justify-content:flex-end; }
-.licenca-box { min-width:170px; margin-right:.2rem; }
-.licenca-top { display:flex; justify-content:space-between; font-size:.78rem; color:#64748b; font-weight:600; margin-bottom:.25rem; }
-.licenca-top .text-ok { color:#16a34a; }
-.licenca-top .text-danger { color:#dc2626; }
-.licenca-bar { height:6px; background:#e5e7eb; border-radius:99px; overflow:hidden; }
-.licenca-bar span { display:block; height:100%; background:#16a34a; }
-.licenca-bar span.is-danger { background:#dc2626; }
 .btn-success-sg {
   background:#16a34a; color:#fff; border:none; border-radius:10px; padding:.55rem .9rem;
   font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:.4rem; font-size:.88rem;
@@ -610,9 +590,6 @@ document.getElementById('btnNovo').addEventListener('click', () => {
 });
 document.getElementById('btnCloseModal').addEventListener('click', closeModal);
 document.getElementById('btnCancelModal').addEventListener('click', closeModal);
-document.getElementById('btnAjuda').addEventListener('click', () => {
-  alert('Use os filtros à esquerda. Novo Colaborador abre o cadastro em abas: Básico, Identificação, Organização e Acesso & Status.');
-});
 
 document.getElementById('btnGerarQr').addEventListener('click', () => {
   document.getElementById('f_qr_code').value = 'QR-' + Date.now().toString(36).toUpperCase();

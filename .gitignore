@@ -50,6 +50,8 @@ cookies.txt
 # --- Uploads locais (permanecem no servidor) ---
 static/uploads/**
 !static/uploads/.gitkeep
+static/acesso_fotos/**
+!static/acesso_fotos/.gitkeep
 
 # --- Configurações locais ---
 .env

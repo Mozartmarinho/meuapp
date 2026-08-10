@@ -20,9 +20,6 @@ from models_acesso import (
 
 acesso = Blueprint('acesso', __name__, template_folder='templates_acesso')
 
-# Limite visual de licença (como na tela de referência)
-LICENCA_LIMITE_USUARIOS = 600
-
 
 def login_required(f):
     @wraps(f)
@@ -570,17 +567,12 @@ def pessoas_page():
         query = query.filter(or_(AcessoPessoa.foto.is_(None), AcessoPessoa.foto == ''))
 
     pessoas = query.order_by(AcessoPessoa.nome).all()
-    total_ativos_licenca = AcessoPessoa.query.filter(
-        or_(AcessoPessoa.status.in_(['Ativo', 'Livre']), AcessoPessoa.status.is_(None))
-    ).count()
     cats = _catalogos()
     equipamentos = AcessoEquipamento.query.filter_by(ativo=True).order_by(AcessoEquipamento.nome).all()
     return render_template(
         'acesso_pessoas.html',
         pessoas=[p.to_dict() for p in pessoas],
         total_encontrados=len(pessoas),
-        total_ativos_licenca=total_ativos_licenca,
-        limite_usuarios=LICENCA_LIMITE_USUARIOS,
         filtros=filtros,
         equipamentos=[e.to_dict() for e in equipamentos],
         active_page='pessoas',
