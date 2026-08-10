@@ -11,6 +11,12 @@
 </head>
 <body>
     <div class="login-container">
+        {% if show_https_cert_help %}
+        <div class="https-help-banner" role="note">
+            <span>Conexão HTTPS com certificado local.</span>
+            <a href="{{ url_for('main.instalar_certificado') }}">Remover aviso de segurança</a>
+        </div>
+        {% endif %}
         <div class="login-box">
             <div class="login-header">
                 <img class="login-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service">
@@ -76,6 +82,30 @@
             width: 100%;
             max-width: 440px;
         }
+
+        .https-help-banner {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem 1rem;
+            margin-bottom: 0.75rem;
+            padding: 0.55rem 0.8rem;
+            border-radius: 10px;
+            font-size: 0.82rem;
+            color: #3d4f6a;
+            background: rgba(255, 255, 255, 0.72);
+            border: 1px solid rgba(27, 79, 156, 0.14);
+        }
+
+        .https-help-banner a {
+            color: var(--brand-blue);
+            font-weight: 700;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .https-help-banner a:hover { text-decoration: underline; }
 
         .login-box {
             background: rgba(255, 255, 255, 0.94);

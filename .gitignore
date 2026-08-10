@@ -56,6 +56,9 @@ static/uploads/**
 .env.*
 config.py
 
+# --- Certificados TLS locais (self-signed; regenerar com generate_certs.py) ---
+certs/
+
 # --- IDEs ---
 .vscode/
 .idea/

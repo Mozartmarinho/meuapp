@@ -109,7 +109,7 @@ class NutDieta(db.Model):
     nome = db.Column(db.String(200), nullable=False, unique=True)
     # basica | enteral | formula | lve | suplemento | outro
     categoria = db.Column(db.String(40), default='basica')
-    # Agrupamento visual (ex.: DIETAS ORAIS, NUTRICAO ENTERAL)
+    # Agrupamento visual (ex.: DIETAS ORAIS, NUTRICAO ENTERAL) — nome de NutGrupoDieta
     grupo = db.Column(db.String(80), default='')
     ativo = db.Column(db.Boolean, default=True)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
@@ -121,6 +121,25 @@ class NutDieta(db.Model):
             'categoria': self.categoria or 'basica',
             'grupo': self.grupo or '',
             'ativo': self.ativo,
+        }
+
+
+class NutGrupoDieta(db.Model):
+    """Grupo visual de dietas (ex.: DIETAS ORAIS, LACTÁRIO)."""
+    __tablename__ = 'nut_grupos_dieta'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(80), nullable=False, unique=True)
+    ordem = db.Column(db.Integer, default=0)
+    ativo = db.Column(db.Boolean, default=True)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'nome': self.nome or '',
+            'ordem': int(self.ordem or 0),
+            'ativo': bool(self.ativo),
         }
 
 
@@ -294,7 +313,11 @@ class NutMapaRefeicao(db.Model):
 
 
 class NutCardapio(db.Model):
-    """Cardápio diário por tipo de dieta (grandes / pequenas / líquidas)."""
+    """Cardápio montado por dieta × horários (flags hr_* = tipos de refeição).
+
+    Futuro: cruzar dieta_id + hr_* com NutPrecoDietaTipo (dieta × tipo_refeicao)
+    para preços das refeições — não wire completo ainda.
+    """
     __tablename__ = 'nut_cardapios'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -303,7 +326,10 @@ class NutCardapio(db.Model):
     grupo_cardapio = db.Column(db.String(80), default='PRINCIPAL')
     dia_mes = db.Column(db.Integer, default=1)
     dia_semana = db.Column(db.String(20))
+    # nome denormalizado (compat) + FK canônica para join com preços
     dieta = db.Column(db.String(200))
+    dieta_id = db.Column(db.Integer, db.ForeignKey('nut_dietas.id'), nullable=True, index=True)
+    dieta_ref = db.relationship('NutDieta', lazy='joined', foreign_keys=[dieta_id])
 
     hr_desjejum = db.Column(db.Boolean, default=False)
     hr_colacao = db.Column(db.Boolean, default=False)
@@ -315,9 +341,10 @@ class NutCardapio(db.Model):
     # campos específicos da aba (JSON/Text)
     itens = db.Column(db.Text)
 
+    # V.N.T. na UI (valor nutricional total) — coluna histórica `vet`
     vet = db.Column(db.Float, default=0)
     custo = db.Column(db.Float, default=0)
-    organizar_por = db.Column(db.String(40), default='Dia;Dieta;Horário')
+    organizar_por = db.Column(db.String(40), default='Ord, Dieta, Horário')
     usuario_alteracao = db.Column(db.String(80))
     data_alteracao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     ativo = db.Column(db.Boolean, default=True)
@@ -337,13 +364,17 @@ class NutCardapio(db.Model):
         self.itens = json.dumps(data or {}, ensure_ascii=False)
 
     def to_dict(self):
+        dieta_nome = self.dieta or ''
+        if not dieta_nome and self.dieta_ref is not None:
+            dieta_nome = self.dieta_ref.nome or ''
         return {
             'id': self.id,
             'tipo': self.tipo,
             'grupo_cardapio': self.grupo_cardapio or 'PRINCIPAL',
             'dia_mes': self.dia_mes or 1,
             'dia_semana': self.dia_semana or '',
-            'dieta': self.dieta or '',
+            'dieta': dieta_nome,
+            'dieta_id': self.dieta_id,
             'hr_desjejum': bool(self.hr_desjejum),
             'hr_colacao': bool(self.hr_colacao),
             'hr_almoco': bool(self.hr_almoco),
@@ -353,7 +384,7 @@ class NutCardapio(db.Model):
             'itens': self.get_itens(),
             'vet': self.vet or 0,
             'custo': self.custo or 0,
-            'organizar_por': self.organizar_por or 'Dia;Dieta;Horário',
+            'organizar_por': self.organizar_por or 'Ord, Dieta, Horário',
             'usuario_alteracao': self.usuario_alteracao or '',
             'data_alteracao': self.data_alteracao.strftime('%d/%m/%Y %H:%M:%S') if self.data_alteracao else '',
             'ativo': bool(self.ativo),
@@ -388,11 +419,15 @@ class NutTabelaNutrientes(db.Model):
 class NutAlimento(db.Model):
     """Alimento de uma tabela nutricional."""
     __tablename__ = 'nut_alimentos'
+    __table_args__ = (
+        db.UniqueConstraint('tabela_id', 'fdc_id', name='uq_nut_alimento_tabela_fdc'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     tabela_id = db.Column(db.Integer, db.ForeignKey('nut_tabelas_nutrientes.id'), nullable=False, index=True)
     tabela = db.relationship('NutTabelaNutrientes', back_populates='alimentos')
     nome = db.Column(db.String(200), nullable=False)
+    fdc_id = db.Column(db.Integer, nullable=True, index=True)
 
     cal_carboidratos = db.Column(db.Float, default=0)
     cal_gordura = db.Column(db.Float, default=0)
@@ -424,6 +459,7 @@ class NutAlimento(db.Model):
         data = {
             'id': self.id,
             'tabela_id': self.tabela_id,
+            'fdc_id': self.fdc_id,
             'nome': self.nome,
             'cal_carboidratos': self.cal_carboidratos or 0,
             'cal_gordura': self.cal_gordura or 0,

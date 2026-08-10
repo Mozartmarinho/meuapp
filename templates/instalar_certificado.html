@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instalar certificado — remover aviso HTTPS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+    <main class="page">
+        <header class="hero">
+            <p class="eyebrow">HTTPS local · São Geraldo Service</p>
+            <h1>Instalar certificado / Remover aviso de segurança</h1>
+            <p class="lead">
+                O navegador avisa porque este servidor usa um certificado
+                <strong>autoassinado</strong> (desenvolvimento/rede local).
+                O site <em>não consegue</em> instalar a autoridade raiz sozinho —
+                isso seria uma falha de segurança. Você precisa baixar e instalar
+                o certificado neste Windows (uma vez por usuário/máquina).
+            </p>
+        </header>
+
+        <section class="actions" aria-label="Downloads">
+            <a class="btn btn-primary" href="{{ url_for('main.download_certificado_cer') }}">
+                <i class="fas fa-file-certificate"></i>
+                Baixar certificado (.cer)
+            </a>
+            <a class="btn btn-secondary" href="{{ url_for('main.download_instalar_certificado_bat') }}">
+                <i class="fas fa-download"></i>
+                Baixar instalador (.bat)
+            </a>
+            <a class="btn btn-ghost" href="{{ url_for('main.download_trust_local_cert_ps1') }}">
+                <i class="fas fa-terminal"></i>
+                Baixar script PowerShell (.ps1)
+            </a>
+        </section>
+
+        <section class="card">
+            <h2>Opção A — instalador (recomendado no Windows)</h2>
+            <ol>
+                <li>Clique em <strong>Baixar instalador (.bat)</strong>.</li>
+                <li>Abra o arquivo baixado (pode aparecer SmartScreen → “Mais informações” → “Executar assim mesmo”).</li>
+                <li>O script baixa o certificado público via HTTP e importa em
+                    <em>Usuário atual → Autoridades de Certificação Raiz Confiáveis</em>.
+                    Confirme se o Windows pedir.</li>
+                <li><strong>Feche e reabra</strong> o Chrome/Edge por completo.</li>
+                <li>Abra de novo o site em HTTPS (ex.: <code>https://127.0.0.1/</code>).</li>
+            </ol>
+            <p class="note">
+                Se o download automático falhar, baixe também o <strong>.cer</strong>,
+                coloque na mesma pasta do <code>.bat</code> e execute o instalador de novo.
+            </p>
+        </section>
+
+        <section class="card">
+            <h2>Opção B — instalar o .cer manualmente</h2>
+            <ol>
+                <li>Baixe o certificado (<code>sao-geraldo-local.cer</code>).</li>
+                <li>Clique duas vezes no arquivo → <strong>Instalar certificado…</strong></li>
+                <li>Escolha <strong>Usuário atual</strong> → Avançar.</li>
+                <li>Marque <strong>Colocar todos os certificados no repositório a seguir</strong>.</li>
+                <li>Repositório: <strong>Autoridades de Certificação Raiz Confiáveis</strong> → OK → Avançar → Concluir.</li>
+                <li>Aceite o aviso de segurança do Windows (é o cert local deste app).</li>
+                <li><strong>Reinicie o navegador</strong> e reabra o HTTPS.</li>
+            </ol>
+        </section>
+
+        <section class="card muted">
+            <h2>O que você ainda precisa fazer manualmente</h2>
+            <ul>
+                <li>Baixar o .cer e/ou o instalador</li>
+                <li>Executar o instalador (ou o assistente do .cer) e confirmar no Windows</li>
+                <li>Reiniciar o navegador</li>
+                <li>Reabrir a URL HTTPS</li>
+            </ul>
+            <p class="note">
+                Vale só para <strong>este usuário nesta máquina</strong>.
+                Em produção use domínio real + CA pública (Let’s Encrypt, etc.).
+                A chave privada (<code>certs/key.pem</code>) nunca é oferecida para download.
+            </p>
+            {% if cert_http_url %}
+            <p class="note">URL pública do certificado (HTTP): <code>{{ cert_http_url }}</code></p>
+            {% endif %}
+        </section>
+
+        <p class="back">
+            <a href="{{ url_for('main.login') }}"><i class="fas fa-arrow-left"></i> Voltar ao login</a>
+        </p>
+    </main>
+
+    <style>
+        :root {
+            --brand-blue: #1B4F9C;
+            --brand-navy: #0D2B5C;
+            --brand-lime: #A8C53A;
+            --muted: #5a6b85;
+            --line: rgba(27, 79, 156, 0.14);
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: 'Manrope', sans-serif;
+            color: var(--brand-navy);
+            background:
+                radial-gradient(ellipse 70% 50% at 12% 18%, rgba(168, 197, 58, 0.2), transparent 55%),
+                radial-gradient(ellipse 60% 45% at 88% 10%, rgba(27, 79, 156, 0.14), transparent 50%),
+                linear-gradient(160deg, #f7fafc 0%, #e8eef6 50%, #d5e2f2 100%);
+            padding: 1.5rem 1rem 2.5rem;
+        }
+        .page { max-width: 720px; margin: 0 auto; }
+        .eyebrow {
+            margin: 0 0 0.4rem;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--muted);
+            font-size: 0.85rem;
+        }
+        h1 {
+            margin: 0 0 0.75rem;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 700;
+            font-size: clamp(1.6rem, 4vw, 2.1rem);
+            line-height: 1.15;
+        }
+        .lead { margin: 0; color: var(--muted); line-height: 1.55; font-size: 1rem; }
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.65rem;
+            margin: 1.5rem 0 1.25rem;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            padding: 0.75rem 1rem;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 0.95rem;
+            text-decoration: none;
+            border: 1px solid transparent;
+        }
+        .btn-primary { background: var(--brand-blue); color: #fff; }
+        .btn-primary:hover { background: var(--brand-navy); }
+        .btn-secondary {
+            background: #fff;
+            color: var(--brand-navy);
+            border-color: var(--line);
+        }
+        .btn-secondary:hover { border-color: var(--brand-blue); }
+        .btn-ghost {
+            background: transparent;
+            color: var(--muted);
+            border-color: var(--line);
+        }
+        .btn-ghost:hover { color: var(--brand-navy); }
+        .card {
+            background: rgba(255, 255, 255, 0.94);
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 1.15rem 1.25rem;
+            margin-bottom: 0.9rem;
+            box-shadow: 0 10px 28px rgba(13, 43, 92, 0.06);
+        }
+        .card.muted { background: rgba(255, 255, 255, 0.72); }
+        h2 {
+            margin: 0 0 0.7rem;
+            font-size: 1.05rem;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 700;
+        }
+        ol, ul { margin: 0; padding-left: 1.2rem; color: #334155; line-height: 1.55; }
+        li + li { margin-top: 0.35rem; }
+        .note {
+            margin: 0.85rem 0 0;
+            font-size: 0.9rem;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+        code {
+            font-size: 0.86em;
+            background: #eef3fa;
+            padding: 0.1em 0.35em;
+            border-radius: 4px;
+        }
+        .back { margin-top: 1.25rem; }
+        .back a {
+            color: var(--brand-blue);
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .back a:hover { text-decoration: underline; }
+    </style>
+</body>
+</html>

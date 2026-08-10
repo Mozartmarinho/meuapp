@@ -2,7 +2,7 @@
 from datetime import date, datetime, timedelta
 from models import db
 from models_nutricao import (
-    NutClinica, NutEnfermaria, NutLeito, NutDieta, NutPaciente, NutMapaRefeicao, NutCardapio,
+    NutClinica, NutEnfermaria, NutLeito, NutDieta, NutGrupoDieta, NutPaciente, NutMapaRefeicao, NutCardapio,
     NutTabelaNutrientes, NutAlimento, NutAlimentoNutriente, NutPratoLiquido,
     NutEstoqueLocal, NutUnidadeMedida, NutGrupoProduto, NutProduto, NutFornecedor,
     NutEtiqueta, NutEtiquetaCampo, NutPrecoRefeicao, NutTipoRefeicao, NutPrecoDietaTipo,
@@ -20,6 +20,7 @@ from nutricao_seed_dietas import (
     TIPOS_PRECO_ORDEM,
     P_ORAL,
     GRUPO_POR_PAYER,
+    GRUPOS_DIETA_SEED,
     precos_dict_da_tupla,
 )
 from nutricao_seed_cardapios import CARDAPIOS_SEED, CARDAPIO_OPCOES
@@ -145,6 +146,61 @@ def list_dietas(somente_ativas=False):
         d.to_dict()
         for d in q.order_by(NutDieta.grupo, NutDieta.nome).all()
     ]
+
+
+def list_grupos_dieta(somente_ativos=False):
+    q = NutGrupoDieta.query
+    if somente_ativos:
+        q = q.filter_by(ativo=True)
+    return [
+        g.to_dict()
+        for g in q.order_by(NutGrupoDieta.ordem, NutGrupoDieta.nome).all()
+    ]
+
+
+def _seed_grupos_dieta():
+    """Garante grupos de dieta padrão + valores já usados em NutDieta.grupo."""
+    nomes_seed = []
+    for item in GRUPOS_DIETA_SEED:
+        if isinstance(item, (list, tuple)):
+            nome = (item[0] or '').strip().upper()
+            try:
+                ordem = int(item[1] if len(item) > 1 else 0)
+            except (TypeError, ValueError):
+                ordem = 0
+        else:
+            nome = (item or '').strip().upper()
+            ordem = 0
+        if nome:
+            nomes_seed.append((nome, ordem))
+
+    for nome, ordem in nomes_seed:
+        row = NutGrupoDieta.query.filter(
+            db.func.upper(NutGrupoDieta.nome) == nome
+        ).first()
+        if not row:
+            db.session.add(NutGrupoDieta(nome=nome, ordem=ordem or 0, ativo=True))
+        elif ordem and not (row.ordem or 0):
+            row.ordem = ordem
+
+    # Absorve grupos já gravados nas dietas (idempotente)
+    existentes = (
+        db.session.query(NutDieta.grupo)
+        .filter(NutDieta.grupo.isnot(None), NutDieta.grupo != '')
+        .distinct()
+        .all()
+    )
+    last = NutGrupoDieta.query.order_by(NutGrupoDieta.ordem.desc()).first()
+    next_ordem = ((last.ordem or 0) + 10) if last else 110
+    for (grupo,) in existentes:
+        nome = (grupo or '').strip().upper()
+        if not nome:
+            continue
+        if NutGrupoDieta.query.filter(db.func.upper(NutGrupoDieta.nome) == nome).first():
+            continue
+        db.session.add(NutGrupoDieta(nome=nome, ordem=next_ordem, ativo=True))
+        next_ordem += 10
+    db.session.flush()
 
 
 def list_tipos_refeicao(somente_ativos=False):
@@ -308,6 +364,26 @@ def _ensure_nutricao_columns():
                 db.session.execute(text("ALTER TABLE nut_tipos_refeicao ADD COLUMN hora_limite VARCHAR(5) NULL"))
                 db.session.commit()
                 insp.clear_cache()
+        if 'nut_cardapios' in tables:
+            cols = {c['name'] for c in insp.get_columns('nut_cardapios')}
+            if 'dieta_id' not in cols:
+                db.session.execute(text('ALTER TABLE nut_cardapios ADD COLUMN dieta_id INTEGER NULL'))
+                db.session.commit()
+                insp.clear_cache()
+        if 'nut_alimentos' in tables:
+            cols = {c['name'] for c in insp.get_columns('nut_alimentos')}
+            if 'fdc_id' not in cols:
+                db.session.execute(text('ALTER TABLE nut_alimentos ADD COLUMN fdc_id INTEGER NULL'))
+                db.session.commit()
+                insp.clear_cache()
+            try:
+                db.session.execute(text(
+                    'CREATE UNIQUE INDEX uq_nut_alimento_tabela_fdc '
+                    'ON nut_alimentos (tabela_id, fdc_id)'
+                ))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
     except Exception:
         db.session.rollback()
 
@@ -315,6 +391,8 @@ def _ensure_nutricao_columns():
     for table, col, ddl in (
         ('nut_dietas', 'grupo', "ALTER TABLE nut_dietas ADD COLUMN grupo VARCHAR(80) NULL"),
         ('nut_tipos_refeicao', 'hora_limite', "ALTER TABLE nut_tipos_refeicao ADD COLUMN hora_limite VARCHAR(5) NULL"),
+        ('nut_cardapios', 'dieta_id', 'ALTER TABLE nut_cardapios ADD COLUMN dieta_id INTEGER NULL'),
+        ('nut_alimentos', 'fdc_id', 'ALTER TABLE nut_alimentos ADD COLUMN fdc_id INTEGER NULL'),
     ):
         try:
             insp = inspect(db.engine)
@@ -328,6 +406,38 @@ def _ensure_nutricao_columns():
                 insp.clear_cache()
         except Exception:
             db.session.rollback()
+
+    _backfill_cardapio_dieta_id()
+
+
+def _backfill_cardapio_dieta_id():
+    """Preenche dieta_id a partir do nome denormalizado (idempotente)."""
+    def _n(s):
+        return ' '.join(str(s or '').strip().upper().split())
+    try:
+        from sqlalchemy import inspect
+        insp = inspect(db.engine)
+        if 'nut_cardapios' not in set(insp.get_table_names()):
+            return
+        cols = {c['name'] for c in insp.get_columns('nut_cardapios')}
+        if 'dieta_id' not in cols:
+            return
+        dietas = { _n(d.nome): d.id for d in NutDieta.query.all() if d.nome }
+        if not dietas:
+            return
+        changed = False
+        for row in NutCardapio.query.filter(
+            NutCardapio.dieta_id.is_(None),
+            NutCardapio.dieta.isnot(None),
+        ).all():
+            did = dietas.get(_n(row.dieta))
+            if did:
+                row.dieta_id = did
+                changed = True
+        if changed:
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 def _seed_enfermarias():
@@ -352,10 +462,12 @@ def _seed_enfermarias():
                 clinica.enfermarias.append(enf)
 
 
-def list_cardapios(tipo=None):
+def list_cardapios(tipo=None, dieta_id=None):
     q = NutCardapio.query.filter_by(ativo=True)
     if tipo:
         q = q.filter_by(tipo=tipo)
+    if dieta_id:
+        q = q.filter_by(dieta_id=int(dieta_id))
     return [
         c.to_dict()
         for c in q.order_by(NutCardapio.dia_mes, NutCardapio.dieta, NutCardapio.id).all()
@@ -383,8 +495,9 @@ MEAL_LABELS = {
 }
 _ITENS_ORDEM = {
     'grandes': [
-        'entrada_sopa', 'diversos_salada', 'acompanhamento', 'prato_base',
-        'proteico_opcional', 'guarnicao', 'sobremesa', 'bebida', 'molhos', 'outros',
+        'acompanhamento', 'prato_base', 'proteina_opcional', 'proteico_opcional',
+        'guarnicao', 'docinho_salada', 'diversos_salada', 'sobremesa', 'fruta',
+        'suco', 'vitamina_suco', 'entrada_sopa', 'bebida', 'molhos', 'outros',
     ],
     'pequenas': [
         'bebida', 'prato1', 'prato2', 'prato3', 'prato4', 'prato5', 'prato6', 'prato7', 'sobremesa',
@@ -394,7 +507,7 @@ _ITENS_ORDEM = {
     ],
 }
 _ITENS_SKIP = {
-    'entrada_tipo', 'proteico_tipo',
+    'entrada_tipo', 'proteico_tipo', 'proteina_tipo',
     'conv_bebida_coluna', 'conv_bebida_quant',
     'conv_gelado_coluna', 'conv_gelado_quant',
 }
@@ -491,8 +604,12 @@ def cardapio_personalizado(pratos_padrao, pares):
     return result
 
 
-def find_cardapio_for_meal(dieta, meal, data_ref=None):
-    """Melhor NutCardapio para dieta + horário (opcionalmente dia do mês)."""
+def find_cardapio_for_meal(dieta, meal, data_ref=None, dieta_id=None):
+    """Melhor NutCardapio para dieta + horário (opcionalmente dia do mês).
+
+    Preferência por dieta_id (FK) quando disponível — alinha com join futuro
+    em NutPrecoDietaTipo (dieta × tipo_refeicao / hr_*).
+    """
     hr = MEAL_HR_FIELD.get(meal)
     if not hr:
         return None
@@ -500,7 +617,10 @@ def find_cardapio_for_meal(dieta, meal, data_ref=None):
     q = NutCardapio.query.filter_by(ativo=True).filter(getattr(NutCardapio, hr).is_(True))
     candidatos = []
     for row in q.all():
-        score = _dieta_match_score(dieta, row.dieta)
+        if dieta_id and row.dieta_id and int(row.dieta_id) == int(dieta_id):
+            score = 110
+        else:
+            score = _dieta_match_score(dieta, row.dieta)
         if score <= 0:
             continue
         dia_bonus = 10 if (dia and row.dia_mes == dia) else 0
@@ -633,6 +753,7 @@ def _cardapio_seed_signature(item):
 
 
 def _seed_cardapios():
+    dietas_by_nome = { _norm_txt(d.nome): d.id for d in NutDieta.query.all() if d.nome }
     existentes = {
         (
             (c.tipo or '').strip().lower(),
@@ -646,12 +767,14 @@ def _seed_cardapios():
         sig = _cardapio_seed_signature(item)
         if sig in existentes:
             continue
+        dieta_nome = item.get('dieta', '') or ''
         row = NutCardapio(
             tipo=item['tipo'],
             grupo_cardapio=item.get('grupo_cardapio', 'PRINCIPAL'),
             dia_mes=item.get('dia_mes', 1),
             dia_semana=item.get('dia_semana', ''),
-            dieta=item.get('dieta', ''),
+            dieta=dieta_nome,
+            dieta_id=dietas_by_nome.get(_norm_txt(dieta_nome)),
             hr_desjejum=bool(item.get('hr_desjejum')),
             hr_colacao=bool(item.get('hr_colacao')),
             hr_almoco=bool(item.get('hr_almoco')),
@@ -660,7 +783,7 @@ def _seed_cardapios():
             hr_ceia=bool(item.get('hr_ceia')),
             vet=float(item.get('vet') or 0),
             custo=float(item.get('custo') or 0),
-            organizar_por=item.get('organizar_por', 'Dia;Dieta;Horário'),
+            organizar_por=item.get('organizar_por', 'Ord, Dieta, Horário'),
             usuario_alteracao=item.get('usuario_alteracao', 'sistema'),
             data_alteracao=datetime(2026, 1, 5, 11, 43, 16),
             ativo=True,
@@ -677,16 +800,22 @@ def list_tabelas_nutrientes(somente_ativas=True):
     return [t.to_dict() for t in q.order_by(NutTabelaNutrientes.nome).all()]
 
 
-def list_alimentos(tabela_id=None, somente_ativas=True):
+def list_alimentos(tabela_id=None, somente_ativas=True, include_nutrientes=True):
     q = NutAlimento.query
     if tabela_id:
         q = q.filter_by(tabela_id=tabela_id)
     if somente_ativas:
         q = q.filter_by(ativo=True)
     return [
-        a.to_dict()
+        a.to_dict(include_nutrientes=include_nutrientes)
         for a in q.order_by(NutAlimento.nome, NutAlimento.id).all()
     ]
+
+
+def import_tabela_fdc(source, **kwargs):
+    """Proxy para import USDA FDC Foundation Foods (zip/json path ou file-like)."""
+    from nutricao_fdc_import import import_fdc_foundation_foods
+    return import_fdc_foundation_foods(source, **kwargs)
 
 
 def _seed_nutricional():
@@ -1399,14 +1528,18 @@ def seed_nutricao():
     db.session.flush()
     _seed_enfermarias()
     _seed_cardapios()
+    _backfill_cardapio_dieta_id()
     _seed_nutricional()
     _seed_pratos_liquidos()
     _seed_produtos()
     _seed_fornecedores()
     _seed_etiquetas()
     _seed_tipos_refeicao()
+    _seed_grupos_dieta()
     _seed_precos_dieta_tipo()  # inclui catálogo da foto + preços
     _seed_precos_refeicoes()
+    # Após preços/catálogo, reabsorve grupos novos criados nas dietas
+    _seed_grupos_dieta()
 
     if NutPaciente.query.count() == 0:
         exemplos = [
@@ -1494,7 +1627,9 @@ def mapa_from_paciente(paciente, data_ref=None, flags=None, extras=None, usuario
         data_inclusao=agora,
         usuario_alteracao=(usuario or 'sistema')[:80],
         data_atualizacao=agora,
-        data_saida=paciente.data_saida,
+        # Saída no mapa só via Excluir com motivo — não herdar data_saida do cadastro
+        data_saida=None,
+        motivo_saida=None,
         ativo=True,
     )
 
@@ -1552,77 +1687,246 @@ def _clonar_linha_mapa(src, data_ref, usuario=None):
     )
 
 
-def garantir_mapa_do_dia(data_ref=None):
-    """Garante linhas do mapa em data_ref copiando pacientes ainda ativos de dias anteriores.
+def _linha_com_baixa(src):
+    """Baixa real no mapa: só Excluir com motivo preenchido."""
+    return bool(src and (src.motivo_saida or '').strip())
 
-    Novos pacientes continuam entrando só via inserção manual. Quem saiu por alta,
-    óbito ou transferência (ativo=False) não é recriado.
+
+def _linha_mapa_ativa_para_copia(src):
+    """Elegível para persistir no dia seguinte (não deu baixa com motivo)."""
+    if not src:
+        return False
+    # ativo=False sem motivo = inconsistência; ainda pode ser fonte de cópia
+    if _linha_com_baixa(src):
+        return False
+    return True
+
+
+def _sanear_baixas_incompletas(data_ref):
+    """Reativa linhas inativas sem motivo (baixa incompleta / bug antigo)."""
+    sanadas = 0
+    rows = (
+        NutMapaRefeicao.query
+        .filter_by(data_refeicao=data_ref, ativo=False)
+        .all()
+    )
+    for row in rows:
+        if _linha_com_baixa(row):
+            continue
+        row.ativo = True
+        row.data_saida = None
+        row.hospital_transferencia = None
+        marcar_alteracao_mapa(row, 'sistema')
+        sanadas += 1
+    return sanadas
+
+
+def _upsert_linha_no_dia(src, data_ref, by_pid, by_chave):
+    """Garante linha de src em data_ref (cria ou reativa). Retorna 1 se alterou."""
+    if not _linha_mapa_ativa_para_copia(src):
+        return 0
+
+    if src.paciente_id:
+        existing = by_pid.get(src.paciente_id)
+        if existing:
+            if _linha_com_baixa(existing):
+                return 0
+            if not existing.ativo:
+                existing.ativo = True
+                existing.data_saida = None
+                existing.motivo_saida = None
+                existing.hospital_transferencia = None
+                marcar_alteracao_mapa(existing, 'sistema')
+                return 1
+            return 0
+        clone = _clonar_linha_mapa(src, data_ref)
+        db.session.add(clone)
+        by_pid[src.paciente_id] = clone
+        return 1
+
+    chave = _chave_linha_mapa(src)
+    existing = by_chave.get(chave)
+    if existing:
+        if _linha_com_baixa(existing):
+            return 0
+        if not existing.ativo:
+            existing.ativo = True
+            existing.data_saida = None
+            existing.motivo_saida = None
+            existing.hospital_transferencia = None
+            marcar_alteracao_mapa(existing, 'sistema')
+            return 1
+        return 0
+    clone = _clonar_linha_mapa(src, data_ref)
+    db.session.add(clone)
+    by_chave[chave] = clone
+    return 1
+
+
+def _copiar_ativos_dia_anterior(data_ref):
+    """Merge: cada paciente ativo (sem baixa com motivo) de data_ref-1 passa a existir em data_ref.
+
+    Não pula o dia só porque já há algumas linhas (ex.: Ana em 09/08 não bloqueia os demais).
     """
-    data_ref = data_ref or date.today()
+    data_origem = data_ref - timedelta(days=1)
+    alteradas = _sanear_baixas_incompletas(data_ref)
+    alteradas += _sanear_baixas_incompletas(data_origem)
 
     existentes = NutMapaRefeicao.query.filter_by(data_refeicao=data_ref).all()
-    pids_existentes = {r.paciente_id for r in existentes if r.paciente_id}
-    chaves_existentes = {_chave_linha_mapa(r) for r in existentes if not r.paciente_id}
+    by_pid = {r.paciente_id: r for r in existentes if r.paciente_id}
+    by_chave = {_chave_linha_mapa(r): r for r in existentes if not r.paciente_id}
 
-    data_origem = data_ref - timedelta(days=1)
     fontes = (
         NutMapaRefeicao.query
-        .filter_by(data_refeicao=data_origem, ativo=True)
+        .filter_by(data_refeicao=data_origem)
         .order_by(NutMapaRefeicao.id)
         .all()
     )
     if not fontes:
-        prev = (
-            db.session.query(NutMapaRefeicao.data_refeicao)
-            .filter(
-                NutMapaRefeicao.data_refeicao < data_ref,
-                NutMapaRefeicao.ativo.is_(True),
-            )
-            .order_by(NutMapaRefeicao.data_refeicao.desc())
-            .first()
-        )
-        if not prev:
-            return 0
-        data_origem = prev[0]
-        fontes = (
-            NutMapaRefeicao.query
-            .filter_by(data_refeicao=data_origem, ativo=True)
-            .order_by(NutMapaRefeicao.id)
-            .all()
-        )
+        return alteradas
 
-    criadas = 0
     for src in fontes:
-        if src.motivo_saida or (src.data_saida and src.data_saida < data_ref):
-            continue
+        alteradas += _upsert_linha_no_dia(src, data_ref, by_pid, by_chave)
+    return alteradas
+
+
+def _garantir_ausentes_desde_historico(data_ref):
+    """Copia do último estado anterior (sem baixa) quem ainda falta no dia alvo.
+
+    Cobre buracos se um dia intermediário nunca recebeu a linha.
+    """
+    existentes = NutMapaRefeicao.query.filter_by(data_refeicao=data_ref).all()
+    by_pid = {r.paciente_id: r for r in existentes if r.paciente_id}
+    by_chave = {_chave_linha_mapa(r): r for r in existentes if not r.paciente_id}
+
+    priors = (
+        NutMapaRefeicao.query
+        .filter(NutMapaRefeicao.data_refeicao < data_ref)
+        .order_by(NutMapaRefeicao.data_refeicao.desc(), NutMapaRefeicao.id.desc())
+        .all()
+    )
+    seen_pids = set()
+    seen_chaves = set()
+    alteradas = 0
+    for src in priors:
         if src.paciente_id:
-            if src.paciente_id in pids_existentes:
+            if src.paciente_id in seen_pids:
                 continue
-            pac = src.paciente
-            if pac is not None:
-                if pac.ativo is False:
-                    continue
-                # Alta/óbito/transferência anteriores ao dia do mapa
-                if pac.data_saida and pac.data_saida < data_ref:
-                    continue
-            pids_existentes.add(src.paciente_id)
+            seen_pids.add(src.paciente_id)
         else:
             chave = _chave_linha_mapa(src)
-            if chave in chaves_existentes:
+            if chave in seen_chaves:
                 continue
-            chaves_existentes.add(chave)
+            seen_chaves.add(chave)
+        # Último estado anterior: se foi baixa com motivo, não ressuscita
+        if _linha_com_baixa(src):
+            continue
+        alteradas += _upsert_linha_no_dia(src, data_ref, by_pid, by_chave)
+    return alteradas
 
-        db.session.add(_clonar_linha_mapa(src, data_ref))
-        criadas += 1
 
-    if criadas:
+def garantir_mapa_do_dia(data_ref=None):
+    """Garante linhas do mapa em data_ref mesclando pacientes ainda sem baixa.
+
+    Novos pacientes entram só via inserção manual. Quem saiu por Excluir
+    (motivo_saida preenchido) não é recriado nos dias seguintes.
+
+    - Mescla mesmo se o dia já tiver algumas linhas (não aborta por dia não-vazio).
+    - Reativa baixas incompletas (ativo=False sem motivo).
+    - Preenche dia a dia e, por fim, cobre ausentes via histórico.
+    Cadastro do paciente (data_saida no NutPaciente) NÃO impede a cópia —
+    só a baixa no mapa com motivo.
+    """
+    data_ref = data_ref or date.today()
+
+    oldest = (
+        db.session.query(NutMapaRefeicao.data_refeicao)
+        .filter(NutMapaRefeicao.data_refeicao < data_ref)
+        .order_by(NutMapaRefeicao.data_refeicao.asc())
+        .first()
+    )
+    alteradas = _sanear_baixas_incompletas(data_ref)
+    if not oldest:
+        if alteradas:
+            db.session.commit()
+            print(f'[mapa] garantir {data_ref}: sanadas/criadas={alteradas}')
+        return alteradas
+
+    cur = oldest[0] + timedelta(days=1)
+    while cur <= data_ref:
+        alteradas += _copiar_ativos_dia_anterior(cur)
+        cur += timedelta(days=1)
+
+    alteradas += _garantir_ausentes_desde_historico(data_ref)
+
+    if alteradas:
         db.session.commit()
-    return criadas
+    print(f'[mapa] garantir {data_ref}: sanadas/criadas={alteradas}')
+    return alteradas
 
 
 def marcar_alteracao_mapa(row, usuario=None):
     row.usuario_alteracao = (usuario or 'sistema')[:80]
     row.data_atualizacao = datetime.utcnow()
+    return row
+
+
+def _aplicar_baixa_linha(row, motivo, usuario=None, data_saida=None, hospital_transferencia=None):
+    """Aplica campos de baixa em uma linha do mapa (mantém registro histórico)."""
+    row.data_saida = data_saida
+    row.motivo_saida = motivo[:40]
+    row.ativo = False
+    if hospital_transferencia is not None:
+        hosp = (hospital_transferencia or '').strip()
+        row.hospital_transferencia = hosp[:200] if hosp else None
+    marcar_alteracao_mapa(row, usuario)
+    return row
+
+
+def registrar_saida_mapa(row, motivo, usuario=None, data_saida=None, hospital_transferencia=None):
+    """Baixa/soft-exit: mantém histórico na linha (não apaga) e impede persistência futura."""
+    if not row:
+        return None
+    motivo = (motivo or '').strip()
+    if not motivo:
+        raise ValueError('Motivo da saída é obrigatório')
+
+    data_ref = data_saida or row.data_refeicao or date.today()
+    _aplicar_baixa_linha(
+        row,
+        motivo=motivo,
+        usuario=usuario,
+        data_saida=data_ref,
+        hospital_transferencia=hospital_transferencia,
+    )
+
+    # Fecha duplicatas ativas do mesmo paciente no mesmo dia + cópias já criadas à frente
+    if row.paciente_id:
+        irmas = (
+            NutMapaRefeicao.query
+            .filter(
+                NutMapaRefeicao.paciente_id == row.paciente_id,
+                NutMapaRefeicao.ativo.is_(True),
+                NutMapaRefeicao.id != row.id,
+                NutMapaRefeicao.data_refeicao >= (row.data_refeicao or data_ref),
+            )
+            .all()
+        )
+        for irma in irmas:
+            _aplicar_baixa_linha(
+                irma,
+                motivo=motivo,
+                usuario=usuario,
+                data_saida=data_ref,
+                hospital_transferencia=hospital_transferencia,
+            )
+
+        pac = NutPaciente.query.get(row.paciente_id)
+        if pac:
+            pac.ativo = False
+            pac.data_saida = data_ref
+            pac.hora_saida = datetime.now().strftime('%H:%M:%S')
+            pac.motivo_saida = motivo[:40]
     return row
 
 
@@ -1641,13 +1945,14 @@ def listar_avisos_alta_mapa(data_ref=None):
         pac = r.paciente
         saida = None
         hora = '00:00:00'
-        motivo = 'A'
+        motivo = 'Alta médica'
         if pac and pac.data_saida:
             saida = pac.data_saida
             hora = (pac.hora_saida or '14:00:00').strip() or '14:00:00'
-            motivo = (pac.motivo_saida or 'A').strip() or 'A'
+            motivo = (pac.motivo_saida or 'Alta médica').strip() or 'Alta médica'
         elif r.data_saida:
             saida = r.data_saida
+            motivo = (r.motivo_saida or 'Alta médica').strip() or 'Alta médica'
         if not saida:
             continue
         # alta em data anterior à do mapa → não deveria permanecer
@@ -1667,8 +1972,8 @@ def listar_avisos_alta_mapa(data_ref=None):
     return avisos
 
 
-def aplicar_avisos_alta_mapa(mapa_ids_excluir):
-    """Desativa linhas do mapa marcadas para exclusão no aviso de alta."""
+def aplicar_avisos_alta_mapa(mapa_ids_excluir, usuario=None):
+    """Desativa linhas do mapa marcadas para exclusão no aviso de alta (com histórico)."""
     ids = []
     for x in (mapa_ids_excluir or []):
         try:
@@ -1682,7 +1987,20 @@ def aplicar_avisos_alta_mapa(mapa_ids_excluir):
         row = NutMapaRefeicao.query.get(mid)
         if not row or not row.ativo:
             continue
-        row.ativo = False
+        pac = row.paciente
+        motivo = None
+        if pac and pac.motivo_saida:
+            motivo = pac.motivo_saida
+        elif row.motivo_saida:
+            motivo = row.motivo_saida
+        else:
+            motivo = 'Alta médica'
+        data_saida = None
+        if pac and pac.data_saida:
+            data_saida = pac.data_saida
+        elif row.data_saida:
+            data_saida = row.data_saida
+        registrar_saida_mapa(row, motivo=motivo, usuario=usuario, data_saida=data_saida)
         qtd += 1
     if qtd:
         db.session.commit()

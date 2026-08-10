@@ -6,3 +6,4 @@ SQLAlchemy==1.4.53
 gunicorn==21.2.0
 Werkzeug==2.2.3
 requests>=2.28
+cryptography>=42

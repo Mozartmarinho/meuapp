@@ -25,9 +25,10 @@
       <button class="btn btn-ghost btn-sm" type="button" disabled title="Em breve">
         <i class="fas fa-file-import"></i> Importa Alimento
       </button>
-      <button class="btn btn-ghost btn-sm" type="button" disabled title="Em breve">
+      <button class="btn btn-ghost btn-sm" type="button" onclick="abrirImportTabela()" title="Importar FoodData Central (ZIP/JSON)">
         <i class="fas fa-folder-open"></i> Importa Tabela
       </button>
+      <input type="file" id="fileImportFdc" accept=".zip,.json,application/zip,application/json" hidden>
     </div>
   </div>
 
@@ -176,18 +177,20 @@ function esc(s){
   return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 }
 
-function setEditMode(on){
+async function setEditMode(on){
   editing = !!on;
   document.querySelector('.nut-panel').classList.toggle('editing', editing);
   document.getElementById('btnSalvar').disabled = !editing;
   document.getElementById('btnCancelar').disabled = !editing;
   document.getElementById('btnAddNut').disabled = !editing;
   if (editing) {
-    draft = JSON.parse(JSON.stringify(current() || blankAlimento()));
-    renderForm(draft);
+    const base = current() || blankAlimento();
+    await ensureNutrientes(base);
+    draft = JSON.parse(JSON.stringify(base));
+    await renderForm(draft);
   } else {
     draft = null;
-    renderForm(current());
+    await renderForm(current());
   }
 }
 
@@ -209,8 +212,43 @@ function blankAlimento(){
   };
 }
 
-function renderForm(a){
+async function ensureNutrientes(a){
+  if (!a || !a.id) return a;
+  if (Array.isArray(a.nutrientes)) return a;
+  try {
+    const r = await fetch('/nutricao/api/alimentos/' + a.id);
+    const j = await r.json();
+    if (r.ok && j) {
+      a.nutrientes = j.nutrientes || [];
+      Object.assign(a, {
+        cal_carboidratos: j.cal_carboidratos,
+        cal_gordura: j.cal_gordura,
+        cal_proteina: j.cal_proteina,
+        cal_total: j.cal_total,
+        qtd_carboidratos: j.qtd_carboidratos,
+        qtd_gordura: j.qtd_gordura,
+        qtd_proteina: j.qtd_proteina,
+        ref_consumo: j.ref_consumo,
+        coeficiente_npu: j.coeficiente_npu,
+        gluten: j.gluten,
+        fenilalanina: j.fenilalanina,
+        ultima_alteracao: j.ultima_alteracao,
+        fdc_id: j.fdc_id,
+      });
+    } else {
+      a.nutrientes = [];
+    }
+  } catch (e) {
+    a.nutrientes = [];
+  }
+  return a;
+}
+
+async function renderForm(a){
   a = a || blankAlimento();
+  if (a.id && !Array.isArray(a.nutrientes)) {
+    await ensureNutrientes(a);
+  }
   document.getElementById('nomeAlimento').value = a.nome || '';
   document.getElementById('ultimaAlteracao').value = a.ultima_alteracao || '';
   document.getElementById('calCarb').value = a.cal_carboidratos ?? 0;
@@ -407,6 +445,57 @@ async function salvarTabela(){
   showToast('Tabela salva','success');
   const tid = j.id || id;
   setTimeout(() => location.href = '/nutricao/nutricional?tabela_id=' + tid, 400);
+}
+
+function abrirImportTabela(){
+  const html = `
+    <div class="form-group">
+      <label class="form-label">Arquivo FoodData Central (ZIP ou JSON) *</label>
+      <input class="form-control" type="file" id="f-fdc-file" accept=".zip,.json,application/zip,application/json">
+    </div>
+    <div class="form-group" style="margin-top:0.75rem;">
+      <label class="form-label">Nome da tabela</label>
+      <input class="form-control" id="f-fdc-nome" value="FoodData Central Foundation 2026-04-30">
+    </div>
+    <label style="display:flex;align-items:center;gap:0.45rem;margin-top:0.75rem;font-size:0.85rem;color:#475569;">
+      <input type="checkbox" id="f-fdc-official" checked>
+      Definir como tabela oficial (desativa as demais)
+    </label>
+    <p style="font-size:0.82rem;color:#64748b;margin:0.75rem 0 0;">
+      Upsert idempotente por FDC ID. Pode demorar alguns minutos.
+    </p>
+  `;
+  abrirModal('Importa Tabela (FDC)', html, 'Importar', importarTabelaFdc);
+}
+
+async function importarTabelaFdc(){
+  const fileEl = document.getElementById('f-fdc-file');
+  const file = fileEl && fileEl.files && fileEl.files[0];
+  if (!file){ showToast('Selecione o ZIP ou JSON','error'); return; }
+  const nome = (document.getElementById('f-fdc-nome')?.value || '').trim();
+  const official = !!document.getElementById('f-fdc-official')?.checked;
+  const fd = new FormData();
+  fd.append('file', file);
+  if (nome) fd.append('tabela_nome', nome);
+  fd.append('set_official', official ? '1' : '0');
+  const btn = document.getElementById('modalConfirmBtn');
+  if (btn){ btn.disabled = true; btn.textContent = 'Importando...'; }
+  showToast('Importando FoodData Central...','info');
+  try {
+    const r = await fetch('/nutricao/api/tabelas-nutrientes/import-fdc', { method:'POST', body: fd });
+    const j = await r.json();
+    if (!r.ok || j.ok === false){
+      showToast((j && j.error) || 'Falha na importação','error');
+      if (btn){ btn.disabled = false; btn.textContent = 'Importar'; }
+      return;
+    }
+    fecharModal();
+    showToast(`Importado: ${j.ativos || 0} alimentos ativos`,'success');
+    setTimeout(() => location.href = '/nutricao/nutricional?tabela_id=' + j.tabela_id, 500);
+  } catch (e) {
+    showToast('Erro de rede na importação','error');
+    if (btn){ btn.disabled = false; btn.textContent = 'Importar'; }
+  }
 }
 
 fillDatalist();

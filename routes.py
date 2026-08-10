@@ -1,14 +1,75 @@
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, session
+from flask import (
+    Blueprint,
+    Response,
+    render_template,
+    request,
+    jsonify,
+    redirect,
+    url_for,
+    flash,
+    session,
+)
 from functools import wraps
-from werkzeug.security import generate_password_hash, check_password_hash
+from password_utils import generate_password_hash, check_password_hash
 from models import db, Chamado, Usuario, Cliente, Equipamento
 from sqlalchemy.orm import joinedload
 from sqlalchemy import func
 from datetime import datetime
+import os
 import random
 import string
 
 main = Blueprint('main', __name__)
+
+
+def _http_cert_download_url() -> str:
+    """URL HTTP (sem TLS) para baixar o .cer — evita aviso SSL no instalador."""
+    host = (request.host or '127.0.0.1').split(':')[0]
+    http_port = str(os.environ.get('PORT', '80')).strip() or '80'
+    if http_port == '80':
+        return f'http://{host}/certificado.cer'
+    return f'http://{host}:{http_port}/certificado.cer'
+
+
+def _build_trust_installer_bat(cert_url: str) -> str:
+    """Gera .bat que baixa o .cer público e importa no Current User\\Root."""
+    safe_url = cert_url.replace('"', '').replace("'", '')
+    # Passa pasta do .bat e URL como argumentos (-Args) para evitar expansão frágil.
+    return rf'''@echo off
+setlocal EnableExtensions
+title Instalar certificado local - Sao Geraldo
+echo.
+echo ========================================
+echo  Instalar certificado HTTPS (local)
+echo ========================================
+echo.
+echo Este script importa APENAS o certificado PUBLICO no
+echo store do usuario atual (Autoridades Raiz Confiaveis).
+echo O navegador NAO instala isso sozinho — voce precisa
+echo executar este arquivo (pode aparecer aviso do SmartScreen).
+echo.
+echo URL do certificado: {safe_url}
+echo.
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "& {{ param([string]$Dir,[string]$CertUrl); $ErrorActionPreference='Stop'; $beside=Join-Path $Dir 'sao-geraldo-local.cer'; if (Test-Path -LiteralPath $beside) {{ $p=$beside; Write-Host ('Usando: '+$p) }} else {{ $p=Join-Path $env:TEMP 'sao-geraldo-local.cer'; Write-Host ('Baixando de '+$CertUrl+' ...'); Invoke-WebRequest -Uri $CertUrl -OutFile $p -UseBasicParsing }}; $cert=New-Object System.Security.Cryptography.X509Certificates.X509Certificate2((Resolve-Path -LiteralPath $p)); $store=New-Object System.Security.Cryptography.X509Certificates.X509Store('Root','CurrentUser'); $store.Open('ReadWrite'); try {{ if ($store.Certificates | Where-Object {{ $_.Thumbprint -eq $cert.Thumbprint }}) {{ Write-Host ('Ja confiavel: '+$cert.Thumbprint) }} else {{ $store.Add($cert); Write-Host ('Importado em CurrentUser\\Root: '+$cert.Thumbprint) }} }} finally {{ $store.Close() }}; Write-Host ('Subject: '+$cert.Subject); Write-Host 'Feche e reabra o Chrome/Edge, depois abra o site em HTTPS.' }}" ^
+  "%~dp0" "{safe_url}"
+
+if errorlevel 1 (
+  echo.
+  echo FALHA. Baixe sao-geraldo-local.cer em /instalar-certificado,
+  echo coloque na mesma pasta deste .bat e execute de novo.
+  echo Ou use o metodo manual: clique duplo no .cer -^> Usuario atual
+  echo -^> Autoridades de Certificacao Raiz Confiaveis.
+  pause
+  exit /b 1
+)
+
+echo.
+echo Pronto. Reinicie o navegador para o aviso sumir.
+pause
+endlocal
+'''
 
 def login_required(f):
     @wraps(f)
@@ -24,6 +85,107 @@ def gerar_numero_chamado():
     prefixo = "OS"
     numero = ''.join(random.choices(string.digits, k=6))
     return f"{prefixo}{numero}"
+
+@main.route('/instalar-certificado')
+@main.route('/https-ajuda')
+def instalar_certificado():
+    """Ajuda pública para confiar no certificado autoassinado (Windows)."""
+    return render_template(
+        'instalar_certificado.html',
+        is_https=request.is_secure,
+        cert_http_url=_http_cert_download_url(),
+    )
+
+
+@main.route('/certificado.cer')
+def download_certificado_cer():
+    """Serve só o certificado público em DER (.cer). Nunca a chave privada."""
+    from generate_certs import load_public_cert_der
+
+    try:
+        der = load_public_cert_der()
+    except Exception as exc:
+        return (
+            f'Certificado indisponível. Gere com generate_certs.py ({exc})',
+            503,
+            {'Content-Type': 'text/plain; charset=utf-8'},
+        )
+    return Response(
+        der,
+        mimetype='application/x-x509-ca-cert',
+        headers={
+            'Content-Disposition': 'attachment; filename="sao-geraldo-local.cer"',
+            'Cache-Control': 'no-store',
+            'X-Content-Type-Options': 'nosniff',
+        },
+    )
+
+
+@main.route('/downloads/instalar-certificado.bat')
+def download_instalar_certificado_bat():
+    """Instalador Windows: baixa o .cer público e importa no Trusted Root do usuário."""
+    body = _build_trust_installer_bat(_http_cert_download_url())
+    return Response(
+        body,
+        mimetype='application/x-bat',
+        headers={
+            'Content-Disposition': 'attachment; filename="instalar-certificado.bat"',
+            'Cache-Control': 'no-store',
+            'X-Content-Type-Options': 'nosniff',
+        },
+    )
+
+
+@main.route('/downloads/trust_local_cert.ps1')
+def download_trust_local_cert_ps1():
+    """PowerShell one-liner-friendly: importa .cer ao lado ou baixa via HTTP."""
+    cert_url = _http_cert_download_url().replace("'", "''")
+    body = f"""# Instala o certificado PUBLICO no Current User \\ Trusted Root.
+# Uso: clique direito -> Executar com PowerShell
+#  ou: powershell -ExecutionPolicy Bypass -File .\\trust_local_cert.ps1
+#
+# O navegador NAO instala CA sozinho — este script precisa da sua acao.
+
+$ErrorActionPreference = 'Stop'
+$CertUrl = '{cert_url}'
+$CertPath = Join-Path $PSScriptRoot 'sao-geraldo-local.cer'
+if (-not (Test-Path -LiteralPath $CertPath)) {{
+    $CertPath = Join-Path $env:TEMP 'sao-geraldo-local.cer'
+    Write-Host "Baixando certificado de $CertUrl ..."
+    Invoke-WebRequest -Uri $CertUrl -OutFile $CertPath -UseBasicParsing
+}}
+
+$cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2((Resolve-Path -LiteralPath $CertPath))
+$store = New-Object System.Security.Cryptography.X509Certificates.X509Store(
+    [System.Security.Cryptography.X509Certificates.StoreName]::Root,
+    [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser
+)
+$store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+try {{
+    $existing = $store.Certificates | Where-Object {{ $_.Thumbprint -eq $cert.Thumbprint }}
+    if ($existing) {{
+        Write-Host "Ja confiavel: $($cert.Thumbprint)"
+    }} else {{
+        $store.Add($cert)
+        Write-Host "Importado em CurrentUser\\Root: $($cert.Thumbprint)"
+    }}
+}} finally {{
+    $store.Close()
+}}
+
+Write-Host "Subject: $($cert.Subject)"
+Write-Host "Feche e reabra Chrome/Edge, depois abra o site em HTTPS."
+"""
+    return Response(
+        body,
+        mimetype='application/octet-stream',
+        headers={
+            'Content-Disposition': 'attachment; filename="trust_local_cert.ps1"',
+            'Cache-Control': 'no-store',
+            'X-Content-Type-Options': 'nosniff',
+        },
+    )
+
 
 @main.route('/login', methods=['GET', 'POST'])
 def login():
@@ -67,7 +229,7 @@ def login():
             except Exception:
                 pass
             flash('Email ou senha incorretos.', 'error')
-    return render_template('login.html')
+    return render_template('login.html', show_https_cert_help=request.is_secure)
 
 @main.route('/logout')
 def logout():

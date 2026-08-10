@@ -4,43 +4,61 @@ CARDAPIO_OPCOES = {
     'grupos': ['PRINCIPAL', 'ALTERNATIVO', 'FESTIVO'],
     'dias_semana': ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'],
     'acompanhamentos': [
-        'ARROZ S/ SAL', 'ARROZ C/ SAL', 'ARROZ INTEGRAL', 'PURÊ DE BATATA', 'MACARRÃO'
+        'ARROZ S/ SAL', 'ARROZ C/ SAL', 'ARROZ INTEGRAL', 'PURÊ DE BATATA', 'MACARRÃO',
     ],
     'pratos_base': [
-        'ISCA DE CARNE AO MOLHO FERRUGEM', 'BIFE ACEBOLADO', 'FRANGO GRELHADO', 'PEIXE ASSADO'
+        'ISCA DE CARNE AO MOLHO FERRUGEM', 'ISCA DE CARNE MOIDA NO FORNO/ALM',
+        'BIFE ACEBOLADO', 'FRANGO GRELHADO', 'PEIXE ASSADO',
     ],
+    'proteinas_opcionais': [
+        'ISCA DE FRANGO S/ SAL', 'ISCA DE FRANGO C/ SAL', 'OVO MEXIDO', 'QUEIJO BRANCO', 'ATUM',
+    ],
+    # alias legado
     'proteicos_opcionais': [
-        'ISCA DE FRANGO S/ SAL', 'OVO MEXIDO', 'QUEIJO BRANCO', 'ATUM'
+        'ISCA DE FRANGO S/ SAL', 'ISCA DE FRANGO C/ SAL', 'OVO MEXIDO', 'QUEIJO BRANCO', 'ATUM',
     ],
     'guarnicoes': [
-        'BATATA REFOG. S/ SAL', 'LEGUMES REFOGADOS', 'FAROFÁ', 'FEIJÃO'
+        'BATATA REFOG. S/ SAL', 'BATATA DOCE C/ SAL', 'LEGUMES REFOGADOS', 'FAROFÁ', 'FEIJÃO',
     ],
     'sobremesas': [
-        'MAÇÃ COZ À FRANC.', 'BANANA', 'CREME DE BANANA', 'GELATINA', 'PUDIM'
+        'MAÇÃ COZ À FRANC.', 'MACA COZ C/ ADO', 'BANANA', 'CREME DE BANANA', 'GELATINA', 'PUDIM',
+    ],
+    'frutas': [
+        'MAÇÃ', 'BANANA', 'MAMÃO', 'MELÃO', 'LARANJA', 'MATE GELADO',
+    ],
+    'sucos': [
+        'SUCO DE LARANJA', 'SUCO DE MARACUJÁ', 'SUCO DE GOIABA', 'ÁGUA',
+    ],
+    'vitaminas_sucos': [
+        'VIT. MAÇÃ C/ L. INTEG.', 'CHUCHU REFOG. C/ SAL', 'CHUCHU REFOG. S/ SAL',
+        'SOPA DE LEGUMES', 'CALDO VERDE',
+    ],
+    'docinhos_saladas': [
+        'SALADA CRUA', 'DOCINHO', '',
     ],
     'bebidas': [
-        'MATE GELADO', 'CAFÉ C/ LEITE S/ AÇÚC.', 'VIT. MAÇÃ C/ L. INTEG.', 'SUCO DE LARANJA', 'ÁGUA'
+        'MATE GELADO', 'CAFÉ C/ LEITE S/ AÇÚC.', 'VIT. MAÇÃ C/ L. INTEG.', 'SUCO DE LARANJA', 'ÁGUA',
     ],
     'entradas_sopas': [
-        'CHUCHU REFOG. S/ SAL', 'SOPA DE LEGUMES', 'SALADA CRUA', 'CALDO VERDE'
+        'CHUCHU REFOG. S/ SAL', 'SOPA DE LEGUMES', 'SALADA CRUA', 'CALDO VERDE',
     ],
     'outros': [
-        'ADOÇANTE IND.', 'AÇÚCAR IND.', 'SAL', 'AZEITE'
+        'ADOÇANTE IND.', 'ADOÇANTE PO', 'AÇÚCAR IND.', 'SAL', 'AZEITE',
     ],
     'pratos_pequenos': [
         'PÃO CARECA SAL', 'MANTEIGA IND.', 'QUEIJO MINAS', 'AÇÚCAR IND.',
-        'PÃO FRANCÊS', 'BISCOITO ÁGUA E SAL', 'IOGURTE'
+        'PÃO FRANCÊS', 'BISCOITO ÁGUA E SAL', 'IOGURTE',
     ],
     'principais_liquidos': [
-        'GELÉIA DE MOCOTÓ', 'CALDO DE CARNE', 'SOPA CREME', 'MINGAU'
+        'GELÉIA DE MOCOTÓ', 'CALDO DE CARNE', 'SOPA CREME', 'MINGAU',
     ],
     'organizar_opcoes': [
-        'Dia;Dieta;Horário',
-        'Dia;Horário;Dieta',
-        'Dieta;Dia;Horário',
-        'Dieta;Horário;Dia',
-        'Horário;Dia;Dieta',
-        'Horário;Dieta;Dia',
+        'Ord, Dieta, Horário',
+        'Ord, Horário, Dieta',
+        'Dieta, Ord, Horário',
+        'Dieta, Horário, Ord',
+        'Horário, Ord, Dieta',
+        'Horário, Dieta, Ord',
     ],
 }
 
@@ -56,21 +74,21 @@ CARDAPIOS_SEED = [
         'hr_jantar': True,
         'itens': {
             'entrada_tipo': 'Salada',
-            'proteico_tipo': 'Aves',
+            'proteina_tipo': 'Aves',
             'acompanhamento': 'ARROZ S/ SAL',
             'prato_base': 'ISCA DE CARNE AO MOLHO FERRUGEM',
-            'proteico_opcional': 'ISCA DE FRANGO S/ SAL',
+            'proteina_opcional': 'ISCA DE FRANGO S/ SAL',
             'guarnicao': 'BATATA REFOG. S/ SAL',
-            'diversos_salada': '',
+            'docinho_salada': '',
             'sobremesa': 'MAÇÃ COZ À FRANC.',
-            'bebida': 'MATE GELADO',
-            'molhos': '',
-            'entrada_sopa': 'CHUCHU REFOG. S/ SAL',
+            'fruta': 'MATE GELADO',
+            'suco': '',
+            'vitamina_suco': 'CHUCHU REFOG. S/ SAL',
             'outros': 'ADOÇANTE IND.',
         },
         'vet': 0,
         'custo': 0,
-        'organizar_por': 'Dia;Dieta;Horário',
+        'organizar_por': 'Ord, Dieta, Horário',
         'usuario_alteracao': 'silvana',
     },
     {
@@ -93,7 +111,7 @@ CARDAPIOS_SEED = [
         },
         'vet': 0,
         'custo': 0,
-        'organizar_por': 'Dia;Dieta;Horário',
+        'organizar_por': 'Ord, Dieta, Horário',
         'usuario_alteracao': 'silvana',
     },
     {
@@ -116,7 +134,7 @@ CARDAPIOS_SEED = [
         },
         'vet': 0,
         'custo': 0,
-        'organizar_por': 'Dia;Dieta;Horário',
+        'organizar_por': 'Ord, Dieta, Horário',
         'usuario_alteracao': 'silvana',
     },
     {
@@ -139,7 +157,7 @@ CARDAPIOS_SEED = [
         },
         'vet': 0,
         'custo': 0,
-        'organizar_por': 'Dia;Dieta;Horário',
+        'organizar_por': 'Ord, Dieta, Horário',
         'usuario_alteracao': 'silvana',
     },
     {
@@ -162,7 +180,7 @@ CARDAPIOS_SEED = [
         },
         'vet': 0,
         'custo': 0,
-        'organizar_por': 'Dia;Dieta;Horário',
+        'organizar_por': 'Ord, Dieta, Horário',
         'usuario_alteracao': 'silvana',
     },
     {
@@ -185,7 +203,7 @@ CARDAPIOS_SEED = [
         },
         'vet': 0,
         'custo': 0,
-        'organizar_por': 'Dia;Dieta;Horário',
+        'organizar_por': 'Ord, Dieta, Horário',
         'usuario_alteracao': 'silvana',
     },
     {
@@ -208,7 +226,7 @@ CARDAPIOS_SEED = [
         },
         'vet': 0,
         'custo': 0,
-        'organizar_por': 'Dia;Dieta;Horário',
+        'organizar_por': 'Ord, Dieta, Horário',
         'usuario_alteracao': 'silvana',
     },
     {
@@ -231,7 +249,7 @@ CARDAPIOS_SEED = [
         },
         'vet': 0,
         'custo': 0,
-        'organizar_por': 'Dia;Dieta;Horário',
+        'organizar_por': 'Ord, Dieta, Horário',
         'usuario_alteracao': 'silvana',
     },
 ]

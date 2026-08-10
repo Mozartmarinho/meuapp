@@ -1,0 +1,132 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Cadastro de Grupos de Dietas</h1>
+  <p>Agrupamentos usados no cadastro de dietas e na grade de preços (ex.: DIETAS ORAIS, LACTÁRIO)</p>
+</div>
+
+<div class="toolbar">
+  <div class="toolbar-search">
+    <i class="fas fa-search"></i>
+    <input type="text" id="buscaGrupo" placeholder="Buscar grupo..." oninput="filtrarGrupos()">
+  </div>
+  <button class="btn btn-primary btn-sm" type="button" onclick="abrirGrupo()">
+    <i class="fas fa-plus"></i> Novo Grupo
+  </button>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden">
+  <div class="table-container" style="box-shadow:none;border-radius:0;">
+    <table class="data-table" id="tabelaGrupos">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th style="width:90px;text-align:center">Ordem</th>
+          <th style="width:90px;text-align:center">Ativo</th>
+          <th style="width:110px">Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tabelaGruposBody">
+        {% for g in grupos %}
+        <tr data-id="{{ g.id }}" data-nome="{{ g.nome }}" data-ordem="{{ g.ordem }}" data-ativo="{{ '1' if g.ativo else '0' }}">
+          <td>{{ g.nome }}</td>
+          <td style="text-align:center">{{ g.ordem or '—' }}</td>
+          <td style="text-align:center">
+            <input type="checkbox" {% if g.ativo %}checked{% endif %} onchange="toggleGrupoAtivo({{ g.id }}, this.checked)">
+          </td>
+          <td>
+            <button class="btn btn-ghost btn-sm" type="button"
+              onclick='abrirGrupo({{ {"id": g.id, "nome": g.nome, "ordem": g.ordem, "ativo": g.ativo}|tojson }})'
+              title="Editar">
+              <i class="fas fa-edit"></i>
+            </button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="excluirGrupo({{ g.id }})" title="Desativar">
+              <i class="fas fa-trash"></i>
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr id="linhaVazia">
+          <td colspan="4" style="text-align:center;color:#6B7280;">Nenhum grupo cadastrado.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function filtrarGrupos(){
+  const q = (document.getElementById('buscaGrupo').value || '').toLowerCase().trim();
+  document.querySelectorAll('#tabelaGruposBody tr').forEach(tr => {
+    if (tr.id === 'linhaVazia') return;
+    const nome = (tr.dataset.nome || '').toLowerCase();
+    tr.style.display = (!q || nome.includes(q)) ? '' : 'none';
+  });
+}
+
+function abrirGrupo(data){
+  const isEdit = !!(data && data.id);
+  const ordem = (data && data.ordem != null) ? String(data.ordem) : '';
+  const html = `
+    <div class="form-group">
+      <label class="form-label">Nome *</label>
+      <input class="form-control" id="f-grupo-nome" value="${(data && data.nome) ? String(data.nome).replace(/"/g,'&quot;') : ''}" placeholder="Ex: DIETAS ORAIS">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Ordem</label>
+      <input class="form-control" id="f-grupo-ordem" type="number" min="0" step="1"
+        value="${ordem.replace(/"/g,'&quot;')}" placeholder="Ex: 10">
+    </div>
+    <div class="form-group" style="display:flex;align-items:center;gap:8px;margin-top:12px;">
+      <input type="checkbox" id="f-grupo-ativo" ${(data ? data.ativo !== false : true) ? 'checked' : ''}>
+      <label class="form-label" for="f-grupo-ativo" style="margin:0">Ativo</label>
+    </div>
+  `;
+  window._editGrupoId = isEdit ? data.id : null;
+  abrirModal(isEdit ? 'Editar Grupo de Dieta' : 'Novo Grupo de Dieta', html, isEdit ? 'Atualizar' : 'Salvar', salvarGrupo);
+}
+
+async function salvarGrupo(){
+  const nome = (document.getElementById('f-grupo-nome')?.value || '').trim();
+  if (!nome){ showToast('Informe o nome do grupo','error'); return; }
+  const ordemRaw = (document.getElementById('f-grupo-ordem')?.value || '').trim();
+  const body = {
+    nome,
+    ativo: !!document.getElementById('f-grupo-ativo')?.checked,
+  };
+  if (ordemRaw !== ''){
+    const n = parseInt(ordemRaw, 10);
+    if (!isFinite(n) || n < 0){ showToast('Ordem inválida','error'); return; }
+    body.ordem = n;
+  }
+  const id = window._editGrupoId;
+  const url = id ? `/nutricao/api/grupos-dietas/${id}` : '/nutricao/api/grupos-dietas';
+  const method = id ? 'PUT' : 'POST';
+  const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao salvar','error'); return; }
+  fecharModal();
+  showToast(id ? 'Grupo atualizado' : 'Grupo cadastrado','success');
+  setTimeout(() => location.reload(), 450);
+}
+
+async function toggleGrupoAtivo(id, ativo){
+  const r = await fetch(`/nutricao/api/grupos-dietas/${id}`, {
+    method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ativo: !!ativo })
+  });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao atualizar','error'); return; }
+  showToast(ativo ? 'Grupo ativado' : 'Grupo desativado','success');
+}
+
+async function excluirGrupo(id){
+  if (!confirm('Desativar este grupo de dieta?')) return;
+  const r = await fetch(`/nutricao/api/grupos-dietas/${id}`, { method: 'DELETE' });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao desativar','error'); return; }
+  showToast('Grupo desativado','success');
+  setTimeout(() => location.reload(), 450);
+}
+</script>
+{% endblock %}

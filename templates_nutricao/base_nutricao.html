@@ -40,12 +40,12 @@
                 </a>
             </li>
             <li>
-                <a href="javascript:void(0);" onclick="toggleCadastroMenu()" class="{% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas','cadastro_tipos_refeicao','cadastro_cardapios','cadastro_precos_refeicoes','cadastro_nutricional','cadastro_pratos_liquidos','cadastro_produtos','cadastro_fornecedores','cadastro_etiquetas'] %}active{% endif %}">
+                <a href="javascript:void(0);" onclick="toggleCadastroMenu()" class="{% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas','cadastro_grupos_dietas','cadastro_tipos_refeicao','cadastro_cardapios','cadastro_precos_refeicoes','cadastro_nutricional','cadastro_pratos_liquidos','cadastro_produtos','cadastro_fornecedores','cadastro_etiquetas'] %}active{% endif %}">
                     <i class="fas fa-folder-open" style="margin-right: 0.75rem;"></i>
                     Cadastro
-                    <i id="cadastro-chevron" class="fas fa-chevron-right chevron {% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas','cadastro_tipos_refeicao','cadastro_cardapios','cadastro_precos_refeicoes','cadastro_nutricional','cadastro_pratos_liquidos','cadastro_produtos','cadastro_fornecedores','cadastro_etiquetas'] %}open{% endif %}"></i>
+                    <i id="cadastro-chevron" class="fas fa-chevron-right chevron {% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas','cadastro_grupos_dietas','cadastro_tipos_refeicao','cadastro_cardapios','cadastro_precos_refeicoes','cadastro_nutricional','cadastro_pratos_liquidos','cadastro_produtos','cadastro_fornecedores','cadastro_etiquetas'] %}open{% endif %}"></i>
                 </a>
-                <ul id="cadastro-submenu" class="sidebar-submenu {% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas','cadastro_tipos_refeicao','cadastro_cardapios','cadastro_precos_refeicoes','cadastro_nutricional','cadastro_pratos_liquidos','cadastro_produtos','cadastro_fornecedores','cadastro_etiquetas'] %}open{% endif %}">
+                <ul id="cadastro-submenu" class="sidebar-submenu {% if active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas','cadastro_grupos_dietas','cadastro_tipos_refeicao','cadastro_cardapios','cadastro_precos_refeicoes','cadastro_nutricional','cadastro_pratos_liquidos','cadastro_produtos','cadastro_fornecedores','cadastro_etiquetas'] %}open{% endif %}">
                     <li>
                         <a href="{{ url_for('nutricao.pacientes') }}" class="{% if active_page == 'cadastro_pacientes' or active_page == 'pacientes' %}active{% endif %}">
                             <i class="fas fa-user-injured" style="margin-right: 0.75rem;"></i>
@@ -74,6 +74,12 @@
                         <a href="{{ url_for('nutricao.dietas') }}" class="{% if active_page == 'cadastro_dietas' %}active{% endif %}">
                             <i class="fas fa-utensils" style="margin-right: 0.75rem;"></i>
                             Dietas
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.grupos_dietas') }}" class="{% if active_page == 'cadastro_grupos_dietas' %}active{% endif %}">
+                            <i class="fas fa-layer-group" style="margin-right: 0.75rem;"></i>
+                            Grupos de Dietas
                         </a>
                     </li>
                     <li>

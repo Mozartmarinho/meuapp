@@ -1,6 +1,6 @@
 from app import create_app
 from models import db, Usuario
-from werkzeug.security import generate_password_hash
+from password_utils import generate_password_hash
 
 app = create_app()
 with app.app_context():

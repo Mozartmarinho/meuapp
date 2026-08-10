@@ -1,5 +1,6 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
+<div class="mapa-page">
 <div class="page-header">
   <h1>MAPA DE PRODUÇÃO</h1>
   <p>Grade do dia com flags de refeição e campos complementares</p>
@@ -13,21 +14,20 @@
 
   <div class="mapa-filtro-clinica">
     <label for="filtroClinica">Clínica:</label>
-    <select id="filtroClinica" class="form-control" onchange="onFiltroClinicaChange()">
-      <option value="">Todas</option>
+    <select id="filtroClinica" class="form-control" autocomplete="off" onchange="onFiltroClinicaChange()">
+      <option value="" selected>Selecione clínica...</option>
+      <option value="__todas__">Todas</option>
       {% for c in clinicas or [] %}
-      <option value="{{ c.nome }}">{{ c.nome }}</option>
+      <option value="{{ c.nome }}" data-id="{{ c.id }}">{{ c.nome }}</option>
       {% endfor %}
     </select>
   </div>
 
   <div class="mapa-filtro-clinica">
     <label for="filtroEnfermaria">Enfermaria:</label>
-    <select id="filtroEnfermaria" class="form-control" onchange="filtrarTabelaPrincipal()">
-      <option value="">Todas</option>
-      {% for e in enfermarias or [] %}
-      <option value="{{ e.nome }}">{{ e.nome }}</option>
-      {% endfor %}
+    <select id="filtroEnfermaria" class="form-control" autocomplete="off" disabled onchange="onFiltroEnfermariaChange()">
+      <option value="" selected>Selecione enfermaria...</option>
+      <option value="__todas__">Todas</option>
     </select>
   </div>
 
@@ -46,8 +46,8 @@
   </button>
 </div>
 
-<div class="card" style="padding:0;overflow:hidden">
-  <div class="table-scroll">
+<div class="card mapa-grid-card">
+  <div class="mapa-table-scroll">
     <table id="mapaProducao" class="mapa-table">
       <thead>
         <tr>
@@ -79,50 +79,11 @@
         </tr>
       </thead>
       <tbody id="mapaBody">
-        {% for l in mapa_linhas %}
-        <tr class="linha-mapa" data-id="{{ l.id }}" data-clinica="{{ (l.clinica or '')|e }}" data-enfermaria="{{ (l.enfermaria or '')|e }}"
-            data-obs_etiqueta="{{ (l.obs_etiqueta or '')|e }}"
-            data-extras="{{ (l.extras or '')|e }}"
-            data-suplementos="{{ (l.suplementos or '')|e }}"
-            data-enteral="{{ (l.enteral or '')|e }}"
-            data-formula_infantil="{{ (l.formula_infantil or '')|e }}"
-            data-lve="{{ (l.lve or '')|e }}"
-            data-text="{{ (l.leito ~ ' ' ~ l.prontuario ~ ' ' ~ l.nome ~ ' ' ~ l.dieta ~ ' ' ~ l.diagnostico ~ ' ' ~ l.observacoes ~ ' ' ~ (l.clinica or '') ~ ' ' ~ (l.enfermaria or ''))|lower }}">
-          <td>{{ l.adm or '-' }}</td>
-          <td class="cell-leito">{{ l.leito or '-' }}</td>
-          <td>{{ l.prontuario or '-' }}</td>
-          <td>{{ l.nome or '-' }}</td>
-          <td>{{ l.idade if l.idade is not none else '-' }}</td>
-          <td title="{{ l.diagnostico or '' }}">{{ l.diagnostico or '-' }}</td>
-          <td title="{{ l.dieta or '' }}">{{ l.dieta or '-' }}</td>
-          <td title="{{ l.observacoes or '' }}">{{ l.observacoes or '-' }}</td>
-          <td class="col-flag"><button type="button" class="flag-btn {{ 'on' if l.fl_desjejum else '' }}" data-campo="fl_desjejum" onclick="toggleFlag(this)">{{ '●' if l.fl_desjejum else '○' }}</button></td>
-          <td class="col-flag"><button type="button" class="flag-btn {{ 'on' if l.fl_colacao else '' }}" data-campo="fl_colacao" onclick="toggleFlag(this)">{{ '●' if l.fl_colacao else '○' }}</button></td>
-          <td class="col-flag"><button type="button" class="flag-btn {{ 'on' if l.fl_almoco else '' }}" data-campo="fl_almoco" onclick="toggleFlag(this)">{{ '●' if l.fl_almoco else '○' }}</button></td>
-          <td class="col-flag"><button type="button" class="flag-btn {{ 'on' if l.fl_merenda else '' }}" data-campo="fl_merenda" onclick="toggleFlag(this)">{{ '●' if l.fl_merenda else '○' }}</button></td>
-          <td class="col-flag"><button type="button" class="flag-btn {{ 'on' if l.fl_jantar else '' }}" data-campo="fl_jantar" onclick="toggleFlag(this)">{{ '●' if l.fl_jantar else '○' }}</button></td>
-          <td class="col-flag"><button type="button" class="flag-btn {{ 'on' if l.fl_ceia else '' }}" data-campo="fl_ceia" onclick="toggleFlag(this)">{{ '●' if l.fl_ceia else '○' }}</button></td>
-          <td>{{ l.data_saida or '-' }}</td>
-          <td class="cell-texto" data-campo="obs_etiqueta">{% if l.obs_etiqueta %}<button type="button" class="ver-texto" onclick="abrirTextoCampo(this)"> (Ver Texto)</button>{% endif %}</td>
-          <td class="cell-texto" data-campo="extras">{% if l.extras %}<button type="button" class="ver-texto" onclick="abrirTextoCampo(this)"> (Ver Texto)</button>{% endif %}</td>
-          <td class="cell-texto" data-campo="suplementos">{% if l.suplementos %}<button type="button" class="ver-texto" onclick="abrirTextoCampo(this)"> (Ver Texto)</button>{% endif %}</td>
-          <td class="cell-texto" data-campo="enteral">{% if l.enteral %}<button type="button" class="ver-texto" onclick="abrirTextoCampo(this)"> (Ver Texto)</button>{% endif %}</td>
-          <td class="cell-texto" data-campo="formula_infantil">{% if l.formula_infantil %}<button type="button" class="ver-texto" onclick="abrirTextoCampo(this)"> (Ver Texto)</button>{% endif %}</td>
-          <td class="cell-texto" data-campo="lve">{% if l.lve %}<button type="button" class="ver-texto" onclick="abrirTextoCampo(this)"> (Ver Texto)</button>{% endif %}</td>
-          <td>{{ l.data_inclusao or '-' }}</td>
-          <td title="{{ l.ultima_alteracao or '' }}">{{ l.ultima_alteracao or '-' }}</td>
-          <td class="cell-motivo">{{ l.motivo_saida or '-' }}</td>
-          <td class="cell-acoes">
-            <button type="button" class="btn btn-ghost btn-sm" title="Editar" onclick="editarLinhaMapa({{ l.id }})"><i class="fas fa-pen"></i></button>
-            <button type="button" class="btn btn-ghost btn-sm" title="Excluir" onclick="abrirExcluirLinhaMapa({{ l.id }})"><i class="fas fa-trash"></i></button>
-          </td>
-        </tr>
-        {% else %}
-        <tr id="mapaVazio"><td colspan="25" style="text-align:center;padding:1.5rem;color:#64748b">Nenhum paciente no mapa deste dia. Use Inserir paciente.</td></tr>
-        {% endfor %}
+        <tr id="mapaVazio"><td colspan="25" style="text-align:center;padding:1.5rem;color:#64748b">Selecione clínica e/ou enfermaria para ver o mapa</td></tr>
       </tbody>
     </table>
   </div>
+</div>
 </div>
 
 <nav id="mapaContextMenu" class="mapa-ctx" hidden>
@@ -255,11 +216,53 @@
 </div>
 
 <style>
-.table-scroll { overflow: auto; }
+/* Pin mapa page to the viewport so both scrollbars stay on-screen. */
+.mapa-page {
+  display: flex;
+  flex-direction: column;
+  /* main padding (3rem) + system-switch (~4.5rem incl. margin) */
+  max-height: calc(100vh - 7.5rem);
+  min-height: 0;
+}
+.mapa-page .page-header,
+.mapa-page .toolbar {
+  flex-shrink: 0;
+}
+.mapa-grid-card {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden; /* radius only; scroll lives on .mapa-table-scroll */
+  max-width: 100%;
+  min-width: 0;
+  margin-bottom: 0;
+}
+.mapa-table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-width: 100%;
+  /* Fallback if flex parent height is not applied; keeps H-bar above taskbar */
+  max-height: calc(100vh - 300px);
+  -webkit-overflow-scrolling: touch;
+}
+@media (max-width: 768px) {
+  .mapa-page {
+    max-height: calc(100vh - var(--topbar-height) - 8.5rem);
+  }
+  .mapa-table-scroll {
+    max-height: calc(100vh - var(--topbar-height) - 360px);
+  }
+}
 .mapa-table {
-  width: 100%;
-  min-width: 2580px;
+  width: max-content;
+  min-width: max(100%, 2580px);
+  max-width: none;
   border-collapse: collapse;
+  table-layout: auto;
 }
 .mapa-table th,
 .mapa-table td {
@@ -788,6 +791,9 @@ const CAMPOS_TEXTO = {
   formula_infantil: 'Fórm. Infantil',
   lve: 'LVE'
 };
+const FILTRO_TODAS = '__todas__';
+const MSG_MAPA_SELECIONE = 'Selecione clínica e/ou enfermaria para ver o mapa';
+const MSG_MAPA_VAZIO = 'Nenhum paciente no mapa deste dia. Use Inserir paciente.';
 let dataAtual = DATA_INICIAL ? new Date(DATA_INICIAL + 'T12:00:00') : new Date();
 let ctxLinha = null;
 let ctxCampo = null;
@@ -795,6 +801,7 @@ let mapaBloqueado = false;
 let buscaPacienteTimer = null;
 let pacienteSelecionadoInserir = null;
 let linhasMapaCache = {};
+let mapaCarregadoParaData = null;
 let substState = null;
 
 function formatDateISO(d){
@@ -816,7 +823,11 @@ function formatDateTimeBR(d){
 }
 
 function esc(s){
-  return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  return String(s || '')
+    .replace(/&/g,'&amp;')
+    .replace(/"/g,'&quot;')
+    .replace(/</g,'&lt;')
+    .replace(/\r\n|\r|\n/g, ' ');
 }
 
 function atualizarLabelData(){
@@ -827,7 +838,71 @@ function atualizarLabelData(){
 async function alterarData(deltaDias){
   dataAtual.setDate(dataAtual.getDate() + deltaDias);
   atualizarLabelData();
+  mapaCarregadoParaData = null;
   await carregarMapa();
+}
+
+function temFiltroMapa(){
+  const cli = document.getElementById('filtroClinica')?.value || '';
+  const enf = document.getElementById('filtroEnfermaria')?.value || '';
+  return cli !== '' || enf !== '';
+}
+
+function filtroEhTodas(v){
+  return !v || v === FILTRO_TODAS;
+}
+
+function mostrarMapaPlaceholder(msg){
+  const body = document.getElementById('mapaBody');
+  if (!body) return;
+  linhasMapaCache = {};
+  body.innerHTML = `<tr id="mapaVazio"><td colspan="25" style="text-align:center;padding:1.5rem;color:#64748b">${msg}</td></tr>`;
+}
+
+function montarOpcoesEnfermaria(lista, manterValor){
+  const sel = document.getElementById('filtroEnfermaria');
+  if (!sel) return;
+  const prev = manterValor ? (sel.value || '') : '';
+  const opts = [`<option value="">Selecione enfermaria...</option>`, `<option value="${FILTRO_TODAS}">Todas</option>`];
+  (lista || []).forEach(e => {
+    const nome = typeof e === 'string' ? e : (e.nome || '');
+    if (!nome) return;
+    opts.push(`<option value="${esc(nome)}">${esc(nome)}</option>`);
+  });
+  sel.innerHTML = opts.join('');
+  if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+  else sel.value = '';
+}
+
+async function popularEnfermariasFiltro(){
+  const selCli = document.getElementById('filtroClinica');
+  const selEnf = document.getElementById('filtroEnfermaria');
+  if (!selCli || !selEnf) return;
+  const cliVal = selCli.value || '';
+  if (!cliVal){
+    selEnf.disabled = true;
+    montarOpcoesEnfermaria([], false);
+    return;
+  }
+  selEnf.disabled = false;
+  if (cliVal === FILTRO_TODAS){
+    montarOpcoesEnfermaria(ENFERMARIAS_MAPA || [], false);
+    return;
+  }
+  const opt = selCli.selectedOptions[0];
+  const cid = opt?.dataset?.id || (CLINICAS_MAPA || []).find(c => c.nome === cliVal)?.id;
+  if (!cid){
+    montarOpcoesEnfermaria(ENFERMARIAS_MAPA || [], false);
+    return;
+  }
+  try {
+    const r = await fetch(`/nutricao/api/clinicas/${cid}/enfermarias`);
+    const j = await r.json();
+    const lista = (j.clinica && j.clinica.enfermarias) || [];
+    montarOpcoesEnfermaria(lista.length ? lista : (ENFERMARIAS_MAPA || []), false);
+  } catch (e) {
+    montarOpcoesEnfermaria(ENFERMARIAS_MAPA || [], false);
+  }
 }
 
 function flagCell(campo, on){
@@ -844,7 +919,7 @@ function renderLinhas(linhas){
   if (!body) return;
   linhasMapaCache = {};
   if (!linhas || !linhas.length){
-    body.innerHTML = '<tr id="mapaVazio"><td colspan="25" style="text-align:center;padding:1.5rem;color:#64748b">Nenhum paciente no mapa deste dia. Use Inserir paciente.</td></tr>';
+    body.innerHTML = `<tr id="mapaVazio"><td colspan="25" style="text-align:center;padding:1.5rem;color:#64748b">${MSG_MAPA_VAZIO}</td></tr>`;
     return;
   }
   body.innerHTML = linhas.map(l => {
@@ -888,8 +963,14 @@ function renderLinhas(linhas){
   filtrarTabelaPrincipal();
 }
 
-async function carregarMapa(){
+async function carregarMapa(opts){
+  const forcar = !!(opts && opts.forcar);
   const iso = formatDateISO(dataAtual);
+  if (!temFiltroMapa() && !forcar){
+    mapaCarregadoParaData = null;
+    mostrarMapaPlaceholder(MSG_MAPA_SELECIONE);
+    return;
+  }
   try {
     const r = await fetch('/nutricao/api/mapa?data=' + encodeURIComponent(iso));
     const j = await r.json();
@@ -897,11 +978,26 @@ async function carregarMapa(){
       showToast((j && j.error) || 'Falha ao carregar mapa','error');
       return;
     }
+    mapaCarregadoParaData = iso;
     renderLinhas(j.linhas || []);
     abrirAvisoAlta(j.avisos_alta || []);
   } catch (e) {
     showToast('Erro ao carregar mapa','error');
   }
+}
+
+async function garantirMapaVisivel(){
+  if (!temFiltroMapa()){
+    mapaCarregadoParaData = null;
+    mostrarMapaPlaceholder(MSG_MAPA_SELECIONE);
+    return;
+  }
+  const iso = formatDateISO(dataAtual);
+  if (mapaCarregadoParaData !== iso){
+    await carregarMapa();
+    return;
+  }
+  filtrarTabelaPrincipal();
 }
 
 let avisosAltaAtual = [];
@@ -998,9 +1094,17 @@ async function toggleFlag(btn){
 }
 
 function filtrarTabelaPrincipal(){
-  const q = (document.getElementById('filtroPrincipal').value || '').toLowerCase().trim();
-  const clinicaFiltro = (document.getElementById('filtroClinica')?.value || '').toLowerCase().trim();
-  const enfermariaFiltro = (document.getElementById('filtroEnfermaria')?.value || '').toLowerCase().trim();
+  if (!temFiltroMapa()){
+    const temLinhas = document.querySelectorAll('#mapaBody tr.linha-mapa').length;
+    if (temLinhas) mostrarMapaPlaceholder(MSG_MAPA_SELECIONE);
+    return;
+  }
+  const q = (document.getElementById('filtroPrincipal')?.value || '').toLowerCase().trim();
+  const clinicaFiltroRaw = document.getElementById('filtroClinica')?.value || '';
+  const enfermariaFiltroRaw = document.getElementById('filtroEnfermaria')?.value || '';
+  const clinicaFiltro = filtroEhTodas(clinicaFiltroRaw) ? '' : clinicaFiltroRaw.toLowerCase().trim();
+  const enfermariaFiltro = filtroEhTodas(enfermariaFiltroRaw) ? '' : enfermariaFiltroRaw.toLowerCase().trim();
+  let visiveis = 0;
   document.querySelectorAll('#mapaBody tr.linha-mapa').forEach(tr => {
     const txt = (tr.dataset.text || tr.textContent || '').toLowerCase();
     const clinica = (tr.dataset.clinica || '').toLowerCase().trim();
@@ -1008,12 +1112,21 @@ function filtrarTabelaPrincipal(){
     const okTexto = !q || txt.includes(q);
     const okClinica = !clinicaFiltro || clinica === clinicaFiltro;
     const okEnfermaria = !enfermariaFiltro || enfermaria === enfermariaFiltro;
-    tr.style.display = (okTexto && okClinica && okEnfermaria) ? '' : 'none';
+    const show = okTexto && okClinica && okEnfermaria;
+    tr.style.display = show ? '' : 'none';
+    if (show) visiveis++;
   });
+  const vazio = document.getElementById('mapaVazio');
+  if (vazio) vazio.style.display = visiveis ? 'none' : '';
 }
 
-function onFiltroClinicaChange(){
-  filtrarTabelaPrincipal();
+async function onFiltroClinicaChange(){
+  await popularEnfermariasFiltro();
+  await garantirMapaVisivel();
+}
+
+async function onFiltroEnfermariaChange(){
+  await garantirMapaVisivel();
 }
 
 function fecharContextMenu(){
@@ -2048,8 +2161,8 @@ async function confirmarSaidaLinhaMapa(){
 
 document.addEventListener('DOMContentLoaded', function(){
   atualizarLabelData();
-  filtrarTabelaPrincipal();
-  carregarMapa();
+  popularEnfermariasFiltro();
+  mostrarMapaPlaceholder(MSG_MAPA_SELECIONE);
 
   const body = document.getElementById('mapaBody');
   body?.addEventListener('contextmenu', function(e){

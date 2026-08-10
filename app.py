@@ -9,6 +9,8 @@ import models_nutricao  # noqa: F401 — registra tabelas de nutrição
 import models_pesagem  # noqa: F401 — registra tabelas de pesagem
 import models_audit  # noqa: F401 — registra tabelas de auditoria
 import os
+import socket
+import threading
 
 
 def create_app():
@@ -16,6 +18,9 @@ def create_app():
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'saogeraldo2025')
     app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    # Dual HTTP/HTTPS: cookies must work on both (do not force Secure-only).
+    app.config['SESSION_COOKIE_SECURE'] = False
+    app.config['REMEMBER_COOKIE_SECURE'] = False
 
     db.init_app(app)
     app.register_blueprint(main)
@@ -27,6 +32,72 @@ def create_app():
     register_audit_hooks(app)
 
     return app
+
+
+def _port_available(host: str, port: int) -> bool:
+    """Return True if we can bind host:port (then immediately release it)."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((host, port))
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+
+def _resolve_https_port(host: str, preferred: int, fallback: int = 8443) -> int:
+    if _port_available(host, preferred):
+        return preferred
+    if preferred != fallback and _port_available(host, fallback):
+        print(
+            f"AVISO: porta HTTPS {preferred} indisponível "
+            f"(permissão de admin ou em uso). Usando {fallback}."
+        )
+        return fallback
+    print(
+        f"AVISO: não foi possível reservar HTTPS em {preferred} nem {fallback}; "
+        f"tentando {preferred} mesmo assim."
+    )
+    return preferred
+
+
+def run_http_and_https(app, host: str, http_port: int, https_port: int):
+    """Serve HTTP on the main thread and HTTPS in a background thread."""
+    from generate_certs import generate_self_signed_certs
+
+    cert_file, key_file = generate_self_signed_certs()
+    https_port = _resolve_https_port(host, https_port)
+
+    def _serve_https():
+        try:
+            app.run(
+                host=host,
+                port=https_port,
+                ssl_context=(cert_file, key_file),
+                debug=False,
+                use_reloader=False,
+                threaded=True,
+            )
+        except OSError as exc:
+            print(f"Falha ao iniciar HTTPS em {host}:{https_port}: {exc}")
+
+    threading.Thread(target=_serve_https, name='flask-https', daemon=True).start()
+
+    http_display = f"http://127.0.0.1:{http_port}/" if http_port != 80 else "http://127.0.0.1/"
+    https_display = (
+        f"https://127.0.0.1:{https_port}/" if https_port != 443 else "https://127.0.0.1/"
+    )
+    print(f"HTTP:  {http_display}  (bind {host}:{http_port})")
+    print(f"HTTPS: {https_display}  (bind {host}:{https_port}, cert {cert_file})")
+    print(
+        "Nota: cert autoassinado. Sem trust no Windows, o Chrome/Edge avisa "
+        "(rode trust_local_cert.ps1 ou: python generate_certs.py --trust; reinicie o navegador)."
+    )
+
+    # Reloader would spawn a second process and break the HTTPS thread.
+    app.run(host=host, port=http_port, debug=True, use_reloader=False, threaded=True)
 
 
 def ensure_usuarios_schema():
@@ -110,7 +181,7 @@ def ensure_clientes_schema():
 
 
 if __name__ == '__main__':
-    from werkzeug.security import generate_password_hash
+    from password_utils import generate_password_hash
 
     app = create_app()
     with app.app_context():
@@ -137,5 +208,11 @@ if __name__ == '__main__':
 
     host = os.environ.get('HOST', '0.0.0.0')
     port = int(os.environ.get('PORT', '80'))
-    print(f"Servidor em http://{host}:{port}/ (acesse http://localhost/ )")
-    app.run(host=host, port=port, debug=True)
+    https_port = int(os.environ.get('HTTPS_PORT', '443'))
+    enable_https = os.environ.get('ENABLE_HTTPS', '1').strip().lower() not in ('0', 'false', 'no')
+
+    if enable_https:
+        run_http_and_https(app, host=host, http_port=port, https_port=https_port)
+    else:
+        print(f"Servidor em http://{host}:{port}/ (acesse http://localhost/ )")
+        app.run(host=host, port=port, debug=True, use_reloader=False, threaded=True)

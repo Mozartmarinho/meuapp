@@ -57,7 +57,43 @@ SQLALCHEMY_DATABASE_URI = 'mysql://usuario:senha@localhost/sao_geraldo_db'
 python app.py
 ```
 
-A aplicação estará disponível em: `http://localhost:5000`
+Por padrão sobe **HTTP (porta 80)** e **HTTPS (porta 443)** em `0.0.0.0`:
+
+- `http://127.0.0.1/`
+- `https://127.0.0.1/` (certificado autoassinado em `certs/`)
+
+Se a porta 443 exigir admin ou estiver ocupada, o app tenta **8443** e imprime o aviso.
+
+Variáveis úteis: `HOST`, `PORT`, `HTTPS_PORT`, `ENABLE_HTTPS=0` (só HTTP).
+
+#### Certificado local (HTTPS)
+
+Certs em `certs/cert.pem` + `certs/key.pem` são gerados automaticamente na 1ª subida (ou manualmente):
+
+```bash
+.\.venv\Scripts\python.exe generate_certs.py
+# regenerar:
+.\.venv\Scripts\python.exe generate_certs.py --force
+```
+
+Sem confiança no sistema, Chrome/Edge mostram `net::ERR_CERT_AUTHORITY_INVALID` (cert autoassinado).
+
+**Como remover o aviso neste PC (dev local):**
+
+```powershell
+# Opção A — script
+powershell -ExecutionPolicy Bypass -File .\trust_local_cert.ps1
+
+# Opção B — via generate_certs
+.\.venv\Scripts\python.exe generate_certs.py --trust
+```
+
+Isso importa `certs/cert.pem` no store **Current User → Trusted Root Certification Authorities**. Depois **reinicie o Chrome/Edge** e abra `https://127.0.0.1/`.
+
+- Só vale para **este usuário nesta máquina**. Outros PCs precisam repetir o trust (ou usar mkcert).
+- Em **produção** use um domínio real + CA pública (ex.: Let's Encrypt) — não dá para sumir o aviso para usuários aleatórios com cert local.
+- Se regenerar com `--force`, rode o trust de novo (thumbprint muda).
+- `certs/` está no `.gitignore` (não commitar chave privada).
 
 ## Estrutura do Projeto
 

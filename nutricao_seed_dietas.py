@@ -192,3 +192,18 @@ GRUPO_POR_PAYER = {
     'paciente': 'LACTÁRIO',
     'acompanhante': 'ACOMPANHANTE',
 }
+
+# Cadastro de Grupos de Dietas — (nome, ordem). Seed idempotente; também absorve
+# valores distintos já gravados em NutDieta.grupo.
+GRUPOS_DIETA_SEED = [
+    ('LACTÁRIO', 10),
+    ('DIETAS ORAIS', 20),
+    ('DIETAS PEDIATRICAS', 30),
+    ('NUTRICAO ENTERAL', 40),
+    ('FORMULAS INFANTIS', 50),
+    ('SUPLEMENTOS E MODULOS', 60),
+    ('ACOMPANHANTE E KITS', 70),
+    ('ACOMPANHANTE', 80),
+    ('FUNCIONARIO', 90),
+    ('EMPRESA', 100),
+]
