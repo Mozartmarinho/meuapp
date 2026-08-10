@@ -1,0 +1,126 @@
+{% extends "base_acesso.html" %}
+{% block title %}Eventos{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Eventos de Acesso</h1>
+  <p>Histórico Liberado / Negado / Desistência de entradas e saídas.</p>
+</div>
+
+<div class="card" style="padding:1.1rem 1.2rem;margin-bottom:1.1rem;">
+  <h3 style="margin:0 0 0.85rem;font-family:var(--font-brand);color:var(--brand-navy);">Registrar evento (manual / teste)</h3>
+  <form id="formEvento" class="form-inline-grid">
+    <label>Nome *<input name="nome" required placeholder="Nome da pessoa"></label>
+    <label>Matrícula / ID<input name="pessoa_ref" placeholder="1001 ou V00001"></label>
+    <label>Tipo
+      <select name="tipo_pessoa">
+        <option value="PESSOA">Pessoa</option>
+        <option value="VISITANTE">Visitante</option>
+      </select>
+    </label>
+    <label>Status
+      <select name="status">
+        <option>Liberado</option>
+        <option>Negado</option>
+        <option>Desistência</option>
+      </select>
+    </label>
+    <label>Direção
+      <select name="direction">
+        <option value="Entrada">Entrada</option>
+        <option value="Saída">Saída</option>
+      </select>
+    </label>
+    <label>Modo
+      <select name="event_type">
+        <option value="manual">Manual</option>
+        <option value="facial">Facial</option>
+        <option value="cartao">Cartão</option>
+        <option value="qr">QR Code</option>
+      </select>
+    </label>
+    <label>Equipamento
+      <select name="equipamento_id">
+        <option value="">—</option>
+        {% for eq in equipamentos %}
+        <option value="{{ eq.id }}">{{ eq.nome }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Motivo<input name="motivo" placeholder="Opcional (ex.: fora do horário)"></label>
+  </form>
+  <button type="button" class="btn-acesso" id="btnSalvarEvento"><i class="fas fa-plus"></i> Registrar</button>
+</div>
+
+<div class="toolbar">
+  <form method="get" style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+    <input type="search" name="q" value="{{ q }}" placeholder="Buscar nome, matrícula, equipamento…">
+    <select name="status">
+      <option value="">Todos os status</option>
+      <option value="Liberado" {% if status == 'Liberado' %}selected{% endif %}>Liberado</option>
+      <option value="Negado" {% if status == 'Negado' %}selected{% endif %}>Negado</option>
+      <option value="Desistência" {% if status == 'Desistência' %}selected{% endif %}>Desistência</option>
+    </select>
+    <button class="btn btn-secondary" type="submit">Filtrar</button>
+  </form>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden;">
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Data/Hora</th>
+          <th>Pessoa</th>
+          <th>Tipo</th>
+          <th>Status</th>
+          <th>Direção</th>
+          <th>Equipamento</th>
+          <th>Modo</th>
+          <th>Motivo</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in eventos %}
+        <tr>
+          <td>{{ e.data_hora }}</td>
+          <td>
+            <strong>{{ e.nome }}</strong>
+            {% if e.pessoa_ref %}<div style="font-size:0.8rem;color:#64748b;">{{ e.pessoa_ref }}</div>{% endif %}
+          </td>
+          <td>{{ e.tipo_pessoa }}</td>
+          <td>
+            {% if e.status == 'Liberado' %}
+              <span class="badge-status badge-liberado">Liberado</span>
+            {% elif e.status == 'Negado' %}
+              <span class="badge-status badge-negado">Negado</span>
+            {% else %}
+              <span class="badge-status badge-desistencia">{{ e.status }}</span>
+            {% endif %}
+          </td>
+          <td>{{ e.direction or '—' }}</td>
+          <td>{{ e.equipamento_nome or '—' }}</td>
+          <td>{{ e.event_type or '—' }}</td>
+          <td>{{ e.motivo or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" style="text-align:center;padding:1.5rem;color:#64748b;">Nenhum evento encontrado.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('btnSalvarEvento').addEventListener('click', async () => {
+  const data = Object.fromEntries(new FormData(document.getElementById('formEvento')).entries());
+  const r = await fetch("{{ url_for('acesso.api_eventos') }}", {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)
+  });
+  const res = await r.json();
+  if (!res.ok) { alert(res.error || 'Erro'); return; }
+  location.reload();
+});
+</script>
+{% endblock %}

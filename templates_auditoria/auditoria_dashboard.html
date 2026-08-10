@@ -19,7 +19,7 @@
     <label class="form-label">Módulo</label>
     <select class="form-control" name="modulo">
       <option value="">Todos</option>
-      {% for m in ['chamados','nutricao','pesagem','sistema','auditoria'] %}
+      {% for m in ['chamados','nutricao','pesagem','acesso','sistema','auditoria'] %}
       <option value="{{ m }}" {% if filtros.modulo == m %}selected{% endif %}>{{ m }}</option>
       {% endfor %}
     </select>

@@ -1,0 +1,111 @@
+{% extends "base_acesso.html" %}
+{% block title %}Grupos / Horários{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Grupos e Horários</h1>
+  <p>Defina regras de acesso por grupo e associe equipamentos (grupos → equipamentos → horários).</p>
+</div>
+
+<div class="card" style="padding:1.1rem 1.2rem;margin-bottom:1.1rem;">
+  <h3 style="margin:0 0 0.85rem;font-family:var(--font-brand);color:var(--brand-navy);">Novo grupo</h3>
+  <form id="formGrupo" class="form-inline-grid">
+    <label>Nome *<input name="nome" required placeholder="Ex: Manutenção"></label>
+    <label>Descrição<input name="descricao" placeholder="Resumo da regra"></label>
+    <label>Dia
+      <select name="dia_semana">
+        <option value="TODOS">Todos os dias</option>
+        <option value="SEG">SEG</option>
+        <option value="TER">TER</option>
+        <option value="QUA">QUA</option>
+        <option value="QUI">QUI</option>
+        <option value="SEX">SEX</option>
+        <option value="SAB">SAB</option>
+        <option value="DOM">DOM</option>
+      </select>
+    </label>
+    <label>Hora inicial<input type="time" name="hora_inicial" value="00:00"></label>
+    <label>Hora final<input type="time" name="hora_final" value="23:59"></label>
+  </form>
+  <div style="margin:0.5rem 0 1rem;">
+    <div style="font-size:0.82rem;font-weight:600;color:#64748b;margin-bottom:0.4rem;">Equipamentos do grupo</div>
+    <div style="display:flex;flex-wrap:wrap;gap:0.65rem;">
+      {% for e in equipamentos %}
+      <label style="display:inline-flex;align-items:center;gap:0.35rem;font-size:0.9rem;">
+        <input type="checkbox" name="equipamento_ids" value="{{ e.id }}" form="formGrupo"> {{ e.nome }}
+      </label>
+      {% else %}
+      <span style="color:#64748b;">Cadastre equipamentos primeiro.</span>
+      {% endfor %}
+    </div>
+  </div>
+  <button type="button" class="btn-acesso" id="btnSalvarGrupo"><i class="fas fa-plus"></i> Criar grupo</button>
+</div>
+
+<div style="display:grid;gap:1rem;">
+  {% for g in grupos %}
+  <div class="card" style="padding:1.1rem 1.2rem;">
+    <div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:flex-start;">
+      <div>
+        <h3 style="margin:0;font-family:var(--font-brand);color:var(--brand-navy);">{{ g.nome }}</h3>
+        <p style="margin:0.35rem 0 0;color:#64748b;">{{ g.descricao or 'Sem descrição' }}</p>
+        <p style="margin:0.5rem 0 0;font-size:0.9rem;">
+          {{ g.qtd_pessoas }} pessoas · {{ g.qtd_equipamentos }} equipamentos
+          {% if g.ativo %} · <span class="badge-status badge-liberado">Ativo</span>{% else %} · Inativo{% endif %}
+        </p>
+      </div>
+      <button type="button" class="btn btn-secondary btn-del" data-id="{{ g.id }}">Excluir</button>
+    </div>
+    <div style="margin-top:0.85rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.75rem;">
+      <div>
+        <div style="font-size:0.8rem;font-weight:700;color:#64748b;margin-bottom:0.35rem;">HORÁRIOS</div>
+        <ul style="margin:0;padding-left:1.1rem;color:var(--brand-navy);">
+          {% for h in g.horarios %}
+          <li>{{ h.dia_semana }} · {{ h.hora_inicial }} – {{ h.hora_final }}</li>
+          {% else %}
+          <li>Sem faixa cadastrada</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div>
+        <div style="font-size:0.8rem;font-weight:700;color:#64748b;margin-bottom:0.35rem;">EQUIPAMENTOS</div>
+        <ul style="margin:0;padding-left:1.1rem;color:var(--brand-navy);">
+          {% for e in equipamentos if e.id in g.equipamento_ids %}
+          <li>{{ e.nome }}{% if e.ip %} ({{ e.ip }}){% endif %}</li>
+          {% else %}
+          <li>Nenhum vinculado</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="card" style="padding:1.5rem;text-align:center;color:#64748b;">Nenhum grupo cadastrado.</div>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('btnSalvarGrupo').addEventListener('click', async () => {
+  const form = document.getElementById('formGrupo');
+  const data = Object.fromEntries(new FormData(form).entries());
+  data.equipamento_ids = Array.from(form.querySelectorAll('input[name="equipamento_ids"]:checked')).map(c => +c.value);
+  const r = await fetch("{{ url_for('acesso.api_grupos') }}", {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)
+  });
+  const res = await r.json();
+  if (!res.ok) { alert(res.error || 'Erro'); return; }
+  location.reload();
+});
+
+document.querySelectorAll('.btn-del').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (!confirm('Excluir este grupo?')) return;
+    const r = await fetch(`/acesso/api/grupos/${btn.dataset.id}`, {method: 'DELETE'});
+    const res = await r.json();
+    if (!res.ok) { alert(res.error || 'Erro'); return; }
+    location.reload();
+  });
+});
+</script>
+{% endblock %}

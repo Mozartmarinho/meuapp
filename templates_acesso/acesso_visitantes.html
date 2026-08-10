@@ -1,0 +1,958 @@
+{% extends "base_acesso.html" %}
+{% block title %}Cadastro de Visitantes{% endblock %}
+{% block content %}
+{% set view = view or 'cadastro' %}
+
+<div class="vis-wrap">
+  <header class="vis-top">
+    <nav class="vis-tabs">
+      <a href="{{ url_for('acesso.visitantes_page', view='cadastro') }}" class="{% if view == 'cadastro' %}active{% endif %}">
+        <i class="fas fa-user-plus"></i> Cadastro
+      </a>
+      <a href="{{ url_for('acesso.visitantes_page', view='lista') }}" class="{% if view == 'lista' %}active{% endif %}">
+        <i class="fas fa-list"></i> Lista
+      </a>
+      <a href="{{ url_for('acesso.visitantes_page', view='relatorios') }}" class="{% if view == 'relatorios' %}active{% endif %}">
+        <i class="fas fa-chart-column"></i> Relatórios
+      </a>
+    </nav>
+    <div class="vis-top-actions">
+      <button type="button" class="btn btn-outline-sg btn-sm" id="btnTiposDoc"><i class="fas fa-gears"></i> Tipos Doc</button>
+      <button type="button" class="btn btn-outline-sg btn-sm" id="btnAjuda"><i class="fas fa-circle-question"></i> Ajuda</button>
+    </div>
+  </header>
+
+  {% if view == 'cadastro' %}
+  <form id="formVisitante" class="vis-layout" autocomplete="off">
+    <input type="hidden" name="id" id="vis_id" value="">
+    <input type="hidden" name="visitor_id" id="visitor_id" value="">
+    <input type="hidden" name="foto" id="webcam_foto" value="">
+
+    <aside class="identity-card">
+      <h3>Identificação</h3>
+      <div class="camera-box" id="cameraBox">
+        <div class="camera-ph" id="photoPlaceholder">
+          <i class="fas fa-camera"></i>
+          <span>Aguardando Webcam</span>
+        </div>
+        <video id="webcam" playsinline autoplay muted hidden></video>
+        <canvas id="canvasCapture" hidden></canvas>
+        <img id="fotoPreview" alt="Foto" hidden>
+        <img id="qrPreview" alt="QR" hidden>
+      </div>
+
+      <div class="cam-actions">
+        <button type="button" class="btn-cam light" id="btnVideo"><i class="fas fa-video"></i> Vídeo</button>
+        <button type="button" class="btn-cam icon" id="btnFlip" title="Inverter"><i class="fas fa-arrows-rotate"></i></button>
+      </div>
+      <div class="cam-actions">
+        <button type="button" class="btn-cam capture" id="btnCapturar" disabled><i class="fas fa-camera"></i> Capturar</button>
+        <button type="button" class="btn-cam icon" id="btnRefazer" disabled title="Refazer"><i class="fas fa-rotate-left"></i></button>
+      </div>
+      <div class="cam-links">
+        <label class="link-btn"><i class="fas fa-upload"></i> Arquivo<input type="file" id="fotoFile" accept="image/*" hidden></label>
+        <button type="button" class="link-btn" id="btnLimparFoto" disabled><i class="fas fa-trash"></i> Limpar</button>
+      </div>
+      <button type="button" class="btn-cam outline full" id="btnTerminal" onclick="alert('Captura remota do terminal será liberada quando o equipamento estiver integrado.')">
+        <i class="fas fa-camera"></i> Capturar do Terminal
+      </button>
+      <div class="clock-box">
+        <div id="relogio">00:00:00</div>
+        <div id="dataHoje">--/--/----</div>
+      </div>
+    </aside>
+
+    <section class="vis-form card-panel">
+      <div class="search-box">
+        <div class="search-row">
+          <label class="grow-sm">Tipo Doc.
+            <select name="tipo_documento" id="tipo_documento">
+              {% for t in tipos_doc %}
+              <option value="{{ t.descricao }}" data-digitos="{{ t.digitos }}" {% if t.descricao == 'CPF' %}selected{% endif %}>{{ t.descricao }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="grow">Documento
+            <input type="text" name="documento" id="documento" placeholder="Número do documento" required>
+          </label>
+          <button type="button" class="btn-acesso btn-search" id="btnBuscarDoc" title="Buscar"><i class="fas fa-magnifying-glass"></i></button>
+        </div>
+        <div class="search-links">
+          <button type="button" class="link-txt" id="btnBuscaNome"><i class="fas fa-user-magnifying-glass"></i> Buscar por Nome</button>
+          <button type="button" class="link-txt muted" id="btnGerenciarTipos"><i class="fas fa-user-gear"></i> Gerenciar Tipos</button>
+        </div>
+      </div>
+
+      <div id="restanteCampos" class="restante is-locked">
+        <div class="section-div">Informações Pessoais</div>
+        <label>Nome Completo do Visitante
+          <input type="text" name="nome" id="nome" required disabled>
+        </label>
+
+        <div class="section-div">Vínculo &amp; Destino</div>
+        <div class="grid-3">
+          <label>Grupo *
+            <select name="grupo_id" id="grupo_id" required disabled>
+              <option value="">Selecione...</option>
+              {% for g in grupos %}
+              <option value="{{ g.id }}" {% if g.nome == 'Visitantes' %}selected{% endif %}>{{ g.nome }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Classificação *
+            <select name="classificacao_id" id="classificacao_id" required disabled>
+              <option value="">Selecione...</option>
+              {% for c in classificacoes %}
+              <option value="{{ c.id }}">{{ c.descricao }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Empresa *
+            <select name="empresa_id" id="empresa_id" required disabled>
+              <option value="">— Empresa —</option>
+              {% for e in empresas %}
+              <option value="{{ e.id }}">{{ e.nome }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <label class="host-wrap">Visitando quem? (Anfitrião)
+          <input type="text" name="anfitriao" id="anfitriao" placeholder="Nome do colaborador" autocomplete="off" disabled>
+          <div id="hostResults" class="ac-drop" hidden></div>
+        </label>
+
+        <div class="section-div">Refeições / Vouchers</div>
+        <label class="switch-line">
+          <input type="checkbox" name="refeicao" id="refeicao" value="1" disabled>
+          <span>Participar de Refeições?</span>
+        </label>
+        <div id="paneRefeicao" class="grid-2" hidden>
+          <label>Qtd. Refeições
+            <input type="number" name="refeicao_creditos" id="refeicao_creditos" min="0" value="0" disabled>
+          </label>
+        </div>
+
+        <div class="section-div">Acesso &amp; Credenciais</div>
+        <div class="grid-2">
+          <label>Modo Identificação
+            <select name="ident_modo" id="ident_modo" disabled>
+              <option value="foto">Facial</option>
+              <option value="qr">QR / Senha</option>
+              <option value="cartao">TAG / Cartão</option>
+            </select>
+          </label>
+          <label>Local de Acesso
+            <select name="local_acesso" id="local_acesso" disabled>
+              <option value="">— Local —</option>
+              {% for e in equipamentos %}
+              <option value="{{ e.nome }}">{{ e.nome }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+
+        <div id="paneQr" class="cred-pane" hidden>
+          <div class="grid-2">
+            <label>Código QR / Senha
+              <input type="text" name="qr_code" id="qr_code" maxlength="40" disabled>
+            </label>
+            <div class="inline-btns">
+              <button type="button" class="btn btn-outline-sg btn-sm" id="btnGerarQr">Gerar</button>
+            </div>
+          </div>
+        </div>
+        <div id="paneCartao" class="cred-pane" hidden>
+          <div class="grid-2">
+            <label>Número do Cartão
+              <input type="text" name="cartao" id="cartao" disabled>
+            </label>
+            <label>Tipo
+              <select name="tipo_cartao" id="tipo_cartao" disabled>
+                <option value="wiegand">Wiegand</option>
+                <option value="mifare">Mifare</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="grid-4">
+          <label>Início (Data)<input type="date" name="data_inicial" id="data_inicial" disabled></label>
+          <label>Hora<input type="time" name="hora_inicial" id="hora_inicial" value="07:00" disabled></label>
+          <label>Fim (Data)<input type="date" name="data_final" id="data_final" disabled></label>
+          <label>Hora<input type="time" name="hora_final" id="hora_final" value="19:00" disabled></label>
+        </div>
+
+        <label class="switch-line">
+          <input type="checkbox" name="visita_unica" id="visita_unica" value="1" disabled>
+          <span>Visita Única (Auto-Expirar ao girar SAÍDA)</span>
+        </label>
+        <div class="grid-2">
+          <label class="switch-line">
+            <input type="checkbox" name="imprimir_ao_salvar" id="imprimir_ao_salvar" value="1" disabled>
+            <span>Imprimir ao Salvar</span>
+          </label>
+          <label class="switch-line">
+            <input type="checkbox" name="baixar_qr_ao_salvar" id="baixar_qr_ao_salvar" value="1" disabled>
+            <span>Baixar QR ao Salvar</span>
+          </label>
+        </div>
+        <div class="grid-2">
+          <label>Impressora
+            <select name="impressora" id="impressora" disabled>
+              <option value="">Padrão do sistema</option>
+              <option value="crachas">Impressora de Crachás</option>
+              <option value="recepcao">Recepção</option>
+            </select>
+          </label>
+          <label>Modelo
+            <select name="modelo_impressao" id="modelo_impressao" disabled>
+              <option value="">Padrão</option>
+              <option value="cracha_visitante">Crachá Visitante</option>
+              <option value="etiqueta">Etiqueta</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn-acesso btn-save" id="btnSalvar" disabled>
+          <i class="fas fa-floppy-disk"></i> SALVAR CADASTRO
+        </button>
+        <button type="button" class="btn-clear" id="btnLimparForm" title="Limpar formulário">
+          <i class="fas fa-eraser"></i>
+        </button>
+      </div>
+    </section>
+  </form>
+  {% elif view == 'lista' %}
+  <div class="vis-lista">
+    <div class="kpi-row">
+      <div class="kpi"><div class="kpi-v">{{ total_visitantes }}</div><div class="kpi-l">Total cadastrados</div></div>
+      <div class="kpi"><div class="kpi-v">{{ ativos_hoje }}</div><div class="kpi-l">Ativos hoje</div></div>
+    </div>
+    <div class="toolbar">
+      <form method="get" class="search-inline">
+        <input type="hidden" name="view" value="lista">
+        <input type="search" name="q" value="{{ q }}" placeholder="Buscar nome, ID, CPF, anfitrião…">
+        <button class="btn-acesso" type="submit"><i class="fas fa-magnifying-glass"></i> Buscar</button>
+        <a class="btn btn-outline-sg" href="{{ url_for('acesso.visitantes_page', view='cadastro') }}"><i class="fas fa-user-plus"></i> Novo</a>
+      </form>
+    </div>
+    <div class="card-panel">
+      <div class="panel-head">Visitantes</div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Foto</th>
+              <th>ID</th>
+              <th>Nome</th>
+              <th>Documento</th>
+              <th>Empresa</th>
+              <th>Anfitrião</th>
+              <th>Grupo</th>
+              <th>Validade</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for v in visitantes %}
+            <tr>
+              <td>
+                <div class="avatar {% if not v.tem_foto %}no-photo{% endif %}">
+                  {% if v.foto %}<img src="{{ v.foto }}" alt="">{% else %}<i class="fas fa-user"></i>{% endif %}
+                </div>
+              </td>
+              <td>{{ v.visitor_id }}</td>
+              <td>
+                <strong>{{ v.nome }}</strong>
+                {% if v.visita_unica %}<div class="meta warn">Visita única</div>{% endif %}
+              </td>
+              <td>{{ v.tipo_documento }} {{ v.documento or v.cpf or '—' }}</td>
+              <td>{{ v.empresa_nome or '—' }}</td>
+              <td>{{ v.anfitriao or '—' }}</td>
+              <td>{{ v.grupo_nome or '—' }}</td>
+              <td>{{ v.data_inicial }} {{ v.hora_inicial }}{% if v.data_final %} → {{ v.data_final }} {{ v.hora_final }}{% endif %}</td>
+              <td>{% if v.ativo %}<span class="badge-status badge-liberado">Ativo</span>{% else %}<span class="badge-status badge-offline">Inativo</span>{% endif %}</td>
+              <td class="acoes">
+                <a class="btn-edit" href="{{ url_for('acesso.visitantes_page', view='cadastro') }}#edit={{ v.id }}">Editar</a>
+                <button type="button" class="btn-del btn-del-vis" data-id="{{ v.id }}">Excluir</button>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="10" class="empty">Nenhum visitante encontrado.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="vis-rel">
+    <div class="kpi-row three">
+      <div class="kpi"><div class="kpi-v">{{ total_visitantes }}</div><div class="kpi-l">Total de visitantes</div></div>
+      <div class="kpi"><div class="kpi-v">{{ ativos_hoje }}</div><div class="kpi-l">Com acesso válido hoje</div></div>
+      <div class="kpi"><div class="kpi-v">{{ visitantes|selectattr('visita_unica')|list|length }}</div><div class="kpi-l">Visitas únicas (lista)</div></div>
+    </div>
+    <div class="card-panel">
+      <div class="panel-head">Resumo rápido</div>
+      <div class="panel-body">
+        <p class="hint">Use a aba <strong>Lista</strong> para filtrar e exportar. Relatórios detalhados de permanência e acessos ficam em Relatórios → Acessos / Permanência.</p>
+        <a class="btn-acesso" href="{{ url_for('acesso.dashboard') }}"><i class="fas fa-gauge-high"></i> Ir ao Dashboard</a>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{# Modal busca por nome #}
+<div class="modal-backdrop" id="modalBuscaNome" hidden>
+  <div class="modal-card">
+    <div class="modal-head">
+      <div>
+        <h3>Buscar por Nome</h3>
+        <p class="modal-sub">Localize um visitante já cadastrado.</p>
+      </div>
+      <button type="button" class="modal-close" data-close>&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="search-inline">
+        <input type="search" id="inputBuscaNome" placeholder="Digite o nome…">
+        <button type="button" class="btn-acesso" id="btnExecBuscaNome">Buscar</button>
+      </div>
+      <div id="listaBuscaNome" class="busca-list"></div>
+    </div>
+  </div>
+</div>
+
+{# Modal tipos documento #}
+<div class="modal-backdrop" id="modalTipos" hidden>
+  <div class="modal-card">
+    <div class="modal-head">
+      <div>
+        <h3>Tipos de Documento</h3>
+        <p class="modal-sub">Gerencie os tipos usados na busca do visitante.</p>
+      </div>
+      <button type="button" class="modal-close" data-close>&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="search-inline">
+        <input type="text" id="novoTipoDesc" placeholder="Descrição (ex: RNE)">
+        <input type="number" id="novoTipoDig" placeholder="Dígitos" min="0" style="max-width:110px;">
+        <button type="button" class="btn-acesso" id="btnAddTipo">Adicionar</button>
+      </div>
+      <div class="table-scroll" style="margin-top:.85rem;">
+        <table class="data-table" id="tblTipos">
+          <thead><tr><th>Descrição</th><th>Dígitos</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Modal ajuda #}
+<div class="modal-backdrop" id="modalAjuda" hidden>
+  <div class="modal-card">
+    <div class="modal-head">
+      <div><h3>Ajuda — Visitantes</h3></div>
+      <button type="button" class="modal-close" data-close>&times;</button>
+    </div>
+    <div class="modal-body help-body">
+      <ol>
+        <li>Informe o <strong>tipo</strong> e o <strong>documento</strong>, depois clique na lupa para buscar um cadastro existente.</li>
+        <li>Preencha nome, grupo, classificação, empresa e anfitrião.</li>
+        <li>Capture a foto (vídeo → capturar) ou envie um arquivo.</li>
+        <li>Defina validade, modo de identificação (facial / QR / cartão) e salve.</li>
+      </ol>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.vis-wrap { display:flex; flex-direction:column; gap:1rem; }
+.vis-top { display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; }
+.vis-tabs {
+  display:inline-flex; gap:.25rem; padding:.3rem; background:#fff;
+  border:1px solid rgba(15,42,86,.1); border-radius:12px; box-shadow:0 2px 8px rgba(13,43,92,.04);
+}
+.vis-tabs a {
+  display:inline-flex; align-items:center; gap:.4rem; padding:.5rem 1rem; border-radius:10px;
+  color:var(--brand-blue); font-weight:700; text-decoration:none; font-size:.92rem;
+}
+.vis-tabs a.active { background:var(--brand-blue); color:#fff; }
+.vis-top-actions { display:flex; gap:.5rem; flex-wrap:wrap; }
+.btn-outline-sg {
+  background:#fff; color:var(--brand-blue); border:1px solid rgba(27,79,156,.35); border-radius:10px;
+  padding:.45rem .8rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:.35rem; font-size:.85rem;
+}
+.btn-sm { font-size:.82rem; padding:.4rem .7rem; }
+
+.vis-layout { display:grid; grid-template-columns:minmax(220px,280px) 1fr; gap:1rem; align-items:start; }
+@media (max-width:980px){ .vis-layout { grid-template-columns:1fr; } }
+
+.identity-card {
+  background: linear-gradient(160deg, var(--brand-navy) 0%, var(--brand-blue) 70%, #163a72 100%);
+  color:#fff; border-radius:16px; padding:1rem 1rem 1.1rem;
+  box-shadow:0 10px 28px rgba(13,43,92,.22); display:flex; flex-direction:column; gap:.65rem;
+}
+.identity-card h3 {
+  margin:0; font-family:var(--font-brand); font-size:1.05rem; font-weight:700;
+  letter-spacing:.04em; text-transform:uppercase; opacity:.9; text-align:center;
+}
+.camera-box {
+  position:relative; width:100%; max-width:200px; aspect-ratio:3/4; margin:0 auto;
+  border-radius:12px; overflow:hidden; background:rgba(0,0,0,.25);
+  border:3px solid rgba(255,255,255,.22);
+}
+.camera-ph {
+  height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:.5rem; opacity:.7; font-size:.78rem; font-weight:700;
+}
+.camera-ph i { font-size:2.4rem; }
+.camera-box video, .camera-box img { width:100%; height:100%; object-fit:cover; }
+#webcam { transform:scaleX(-1); }
+#qrPreview { object-fit:contain; background:#fff; padding:.5rem; }
+
+.cam-actions { display:flex; gap:.45rem; }
+.btn-cam {
+  border:none; border-radius:10px; padding:.55rem .7rem; font-weight:800; cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:center; gap:.35rem; font-size:.85rem; flex:1;
+}
+.btn-cam.light { background:#fff; color:var(--brand-navy); }
+.btn-cam.capture { background:var(--brand-lime, #A8C53A); color:#1a2e05; }
+.btn-cam.icon { flex:0 0 42px; background:rgba(255,255,255,.18); color:#fff; }
+.btn-cam.outline { background:transparent; color:#fff; border:1px solid rgba(255,255,255,.45); }
+.btn-cam.full { width:100%; }
+.btn-cam:disabled { opacity:.45; cursor:not-allowed; }
+.cam-links { display:flex; justify-content:space-between; padding:0 .15rem; }
+.link-btn {
+  background:none; border:none; color:rgba(255,255,255,.9); font-size:.8rem; font-weight:700;
+  cursor:pointer; display:inline-flex; align-items:center; gap:.3rem;
+}
+.clock-box { margin-top:auto; padding-top:.85rem; border-top:1px solid rgba(255,255,255,.2); text-align:center; }
+#relogio { font-family:var(--font-brand); font-size:1.55rem; font-weight:700; letter-spacing:.04em; }
+#dataHoje { font-size:.75rem; text-transform:uppercase; opacity:.8; letter-spacing:.06em; }
+
+.card-panel {
+  background:#fff; border:1px solid rgba(15,42,86,.1); border-radius:14px;
+  box-shadow:0 4px 12px rgba(0,0,0,.04); overflow:hidden; padding:1rem 1.15rem 1.15rem;
+}
+.search-box {
+  background:#f3f7fc; border:1px solid rgba(15,42,86,.08); border-radius:12px;
+  padding:.85rem; margin-bottom:1rem;
+}
+.search-row { display:flex; gap:.55rem; align-items:flex-end; }
+.search-row label { display:flex; flex-direction:column; gap:.3rem; font-size:.78rem; font-weight:700; color:#64748b; }
+.search-row .grow { flex:1; }
+.search-row .grow-sm { width:140px; flex:0 0 140px; }
+.search-row input, .search-row select,
+.vis-form label > input, .vis-form label > select {
+  padding:.55rem .7rem; border:1px solid rgba(15,42,86,.14); border-radius:10px;
+  font:inherit; color:var(--brand-navy); background:#fff; width:100%;
+}
+.btn-search { padding:.7rem 1rem; }
+.search-links { display:flex; justify-content:space-between; margin-top:.45rem; }
+.link-txt {
+  border:none; background:none; color:var(--brand-blue); font-weight:700; font-size:.78rem;
+  cursor:pointer; display:inline-flex; align-items:center; gap:.3rem; padding:0;
+}
+.link-txt.muted { color:#64748b; }
+
+.section-div {
+  display:flex; align-items:center; gap:.5rem; margin:1rem 0 .55rem;
+  color:var(--brand-blue); font-weight:800; font-size:.68rem; text-transform:uppercase; letter-spacing:.06em;
+}
+.section-div::after { content:""; flex:1; height:1px; background:rgba(15,42,86,.08); }
+
+.vis-form label {
+  display:flex; flex-direction:column; gap:.3rem; font-size:.8rem; font-weight:700; color:#64748b; margin-bottom:.65rem;
+}
+.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:.65rem; }
+.grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:.65rem; }
+.grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:.65rem; }
+@media (max-width:800px){
+  .grid-2, .grid-3, .grid-4 { grid-template-columns:1fr 1fr; }
+  .search-row { flex-wrap:wrap; }
+  .search-row .grow-sm { width:100%; flex:1 1 100%; }
+}
+.switch-line {
+  flex-direction:row !important; align-items:center; gap:.65rem !important;
+  background:#f8fafc; border:1px solid rgba(15,42,86,.08); border-radius:10px;
+  padding:.65rem .85rem; color:var(--brand-navy) !important; font-weight:700 !important;
+}
+.switch-line input { width:auto !important; accent-color:var(--brand-blue); }
+.restante.is-locked { opacity:.55; pointer-events:none; filter:grayscale(.15); }
+.host-wrap { position:relative; }
+.ac-drop {
+  position:absolute; left:0; right:0; top:100%; z-index:20; background:#fff;
+  border:1px solid rgba(15,42,86,.12); border-radius:10px; max-height:220px; overflow:auto;
+  box-shadow:0 10px 24px rgba(13,43,92,.12);
+}
+.ac-item { padding:.65rem .85rem; cursor:pointer; border-bottom:1px solid rgba(15,42,86,.06); }
+.ac-item:hover { background:#f3f7fc; }
+.ac-item .n { font-weight:700; color:var(--brand-blue); font-size:.9rem; }
+.ac-item .d { font-size:.75rem; color:#94a3b8; }
+.form-actions { display:flex; gap:.55rem; margin-top:1rem; }
+.btn-save { flex:1; justify-content:center; padding:.85rem 1rem; font-size:1rem; letter-spacing:.03em; }
+.btn-clear {
+  width:52px; border:none; border-radius:10px; background:#dc2626; color:#fff; cursor:pointer; font-size:1.1rem;
+}
+.btn-clear:hover { background:#b91c1c; }
+
+.kpi-row { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; margin-bottom:.85rem; }
+.kpi-row.three { grid-template-columns:repeat(3,1fr); }
+@media (max-width:700px){ .kpi-row.three { grid-template-columns:1fr; } }
+.kpi { background:#fff; border:1px solid rgba(15,42,86,.1); border-radius:12px; padding:.85rem 1rem; }
+.kpi-v { font-family:var(--font-brand); font-size:1.45rem; font-weight:700; color:var(--brand-navy); }
+.kpi-l { color:#64748b; font-size:.8rem; }
+.panel-head {
+  padding:.85rem 1.1rem; background:#f3f7fc; border-bottom:1px solid rgba(15,42,86,.08);
+  font-weight:700; color:#475569; margin:-1rem -1.15rem 0; border-radius:14px 14px 0 0;
+}
+.avatar {
+  width:40px; height:40px; border-radius:50%; background:#e7eef8; color:#64748b;
+  display:grid; place-items:center; overflow:hidden;
+}
+.avatar img { width:100%; height:100%; object-fit:cover; }
+.meta.warn { color:#b45309; font-size:.75rem; }
+.empty { text-align:center; padding:1.5rem; color:#64748b; }
+.btn-edit, .btn-del {
+  border:none; border-radius:8px; padding:.35rem .6rem; font-size:.78rem; font-weight:700; cursor:pointer; margin-right:.25rem; text-decoration:none; display:inline-block;
+}
+.btn-edit { background:var(--brand-blue); color:#fff; }
+.btn-del { background:#dc2626; color:#fff; }
+.search-inline { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
+.search-inline input { padding:.55rem .7rem; border:1px solid rgba(15,42,86,.14); border-radius:10px; min-width:220px; flex:1; }
+.hint { color:#64748b; line-height:1.5; margin:0 0 1rem; }
+.busca-list { margin-top:.85rem; max-height:320px; overflow:auto; }
+.busca-item {
+  display:flex; gap:.75rem; align-items:center; padding:.7rem; border-radius:10px; cursor:pointer;
+  border:1px solid transparent;
+}
+.busca-item:hover { background:#f3f7fc; border-color:rgba(15,42,86,.08); }
+.help-body ol { margin:0; padding-left:1.2rem; color:#475569; line-height:1.65; }
+.modal-backdrop {
+  position:fixed; inset:0; background:rgba(13,43,92,.45); z-index:2000;
+  display:grid; place-items:center; padding:1rem;
+}
+.modal-backdrop[hidden] { display:none !important; }
+.modal-card {
+  width:min(560px,100%); background:#fff; border-radius:16px; overflow:hidden;
+  box-shadow:0 24px 48px rgba(13,43,92,.25); max-height:90vh; display:flex; flex-direction:column;
+}
+.modal-head, .modal-foot {
+  display:flex; justify-content:space-between; align-items:flex-start; gap:.75rem;
+  padding:.95rem 1.2rem; border-bottom:1px solid rgba(15,42,86,.08);
+}
+.modal-head h3 { margin:0; font-family:var(--font-brand); color:var(--brand-navy); font-size:1.3rem; }
+.modal-sub { margin:.35rem 0 0; color:#64748b; font-size:.88rem; }
+.modal-close { border:none; background:transparent; font-size:1.5rem; cursor:pointer; color:#64748b; line-height:1; }
+.modal-body { padding:1.15rem 1.2rem; overflow:auto; }
+</style>
+<script>
+(function(){
+  const VIEW = {{ view|tojson }};
+  const URL_API = {{ url_for('acesso.api_visitantes')|tojson }};
+  const URL_BUSCAR = {{ url_for('acesso.api_visitantes_buscar')|tojson }};
+  const URL_HOST = {{ url_for('acesso.api_visitantes_anfitrioes')|tojson }};
+  const URL_TIPOS = {{ url_for('acesso.api_tipos_documento')|tojson }};
+
+  function tick(){
+    const now = new Date();
+    const r = document.getElementById('relogio');
+    const d = document.getElementById('dataHoje');
+    if(!r) return;
+    r.textContent = now.toLocaleTimeString('pt-BR', {hour12:false});
+    d.textContent = now.toLocaleDateString('pt-BR', {weekday:'short', day:'2-digit', month:'2-digit', year:'numeric'});
+  }
+  tick(); setInterval(tick, 1000);
+
+  document.querySelectorAll('[data-close]').forEach(btn => {
+    btn.addEventListener('click', () => btn.closest('.modal-backdrop').hidden = true);
+  });
+  document.querySelectorAll('.modal-backdrop').forEach(m => {
+    m.addEventListener('click', e => { if(e.target === m) m.hidden = true; });
+  });
+
+  const btnAjuda = document.getElementById('btnAjuda');
+  if(btnAjuda) btnAjuda.addEventListener('click', () => { document.getElementById('modalAjuda').hidden = false; });
+
+  // ---- Lista delete ----
+  document.querySelectorAll('.btn-del-vis').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if(!confirm('Excluir este visitante?')) return;
+      const r = await fetch(URL_API + '/' + btn.dataset.id, {method:'DELETE'});
+      const res = await r.json();
+      if(!res.ok){ alert(res.error || 'Erro'); return; }
+      location.reload();
+    });
+  });
+
+  if(VIEW !== 'cadastro') return;
+
+  const form = document.getElementById('formVisitante');
+  const restante = document.getElementById('restanteCampos');
+  const btnSalvar = document.getElementById('btnSalvar');
+  let stream = null;
+  let facingMode = 'user';
+  let unlocked = false;
+
+  function setUnlocked(on){
+    unlocked = on;
+    restante.classList.toggle('is-locked', !on);
+    restante.querySelectorAll('input,select,button').forEach(el => {
+      if(el.id === 'btnGerarQr') { el.disabled = !on; return; }
+      el.disabled = !on;
+    });
+    btnSalvar.disabled = !on;
+  }
+
+  function todayISO(){
+    const d = new Date();
+    return d.toISOString().slice(0,10);
+  }
+
+  function fillForm(v){
+    document.getElementById('vis_id').value = v.id || '';
+    document.getElementById('visitor_id').value = v.visitor_id || '';
+    document.getElementById('tipo_documento').value = v.tipo_documento || 'CPF';
+    document.getElementById('documento').value = v.documento || v.cpf || v.rg || '';
+    document.getElementById('nome').value = v.nome || '';
+    document.getElementById('grupo_id').value = v.grupo_id || '';
+    document.getElementById('classificacao_id').value = v.classificacao_id || '';
+    document.getElementById('empresa_id').value = v.empresa_id || '';
+    document.getElementById('anfitriao').value = v.anfitriao || '';
+    document.getElementById('refeicao').checked = !!v.refeicao;
+    document.getElementById('refeicao_creditos').value = v.refeicao_creditos || 0;
+    document.getElementById('paneRefeicao').hidden = !v.refeicao;
+    document.getElementById('ident_modo').value = v.ident_modo || 'foto';
+    document.getElementById('local_acesso').value = v.local_acesso || '';
+    document.getElementById('qr_code').value = v.qr_code || '';
+    document.getElementById('cartao').value = v.cartao || '';
+    document.getElementById('tipo_cartao').value = v.tipo_cartao || 'wiegand';
+    document.getElementById('data_inicial').value = v.data_inicial || todayISO();
+    document.getElementById('hora_inicial').value = v.hora_inicial || '07:00';
+    document.getElementById('data_final').value = v.data_final || v.data_inicial || todayISO();
+    document.getElementById('hora_final').value = v.hora_final || '19:00';
+    document.getElementById('visita_unica').checked = !!v.visita_unica;
+    document.getElementById('imprimir_ao_salvar').checked = !!v.imprimir_ao_salvar;
+    document.getElementById('baixar_qr_ao_salvar').checked = !!v.baixar_qr_ao_salvar;
+    document.getElementById('impressora').value = v.impressora || '';
+    document.getElementById('modelo_impressao').value = v.modelo_impressao || '';
+    if(v.foto){
+      document.getElementById('webcam_foto').value = v.foto;
+      showFoto(v.foto);
+    }
+    syncIdentPane();
+    setUnlocked(true);
+  }
+
+  function clearForm(){
+    form.reset();
+    document.getElementById('vis_id').value = '';
+    document.getElementById('visitor_id').value = '';
+    document.getElementById('webcam_foto').value = '';
+    document.getElementById('data_inicial').value = todayISO();
+    document.getElementById('data_final').value = todayISO();
+    document.getElementById('hora_inicial').value = '07:00';
+    document.getElementById('hora_final').value = '19:00';
+    hideFoto();
+    stopCamera();
+    setUnlocked(false);
+    syncIdentPane();
+  }
+
+  function showFoto(src){
+    const img = document.getElementById('fotoPreview');
+    const ph = document.getElementById('photoPlaceholder');
+    const vid = document.getElementById('webcam');
+    img.src = src; img.hidden = false; ph.hidden = true; vid.hidden = true;
+    document.getElementById('btnLimparFoto').disabled = false;
+    document.getElementById('btnRefazer').disabled = false;
+  }
+  function hideFoto(){
+    const img = document.getElementById('fotoPreview');
+    img.hidden = true; img.src = '';
+    document.getElementById('photoPlaceholder').hidden = false;
+    document.getElementById('qrPreview').hidden = true;
+    document.getElementById('btnLimparFoto').disabled = true;
+    document.getElementById('btnRefazer').disabled = true;
+  }
+
+  async function startCamera(){
+    stopCamera();
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode }, audio: false });
+      const vid = document.getElementById('webcam');
+      vid.srcObject = stream;
+      vid.hidden = false;
+      document.getElementById('photoPlaceholder').hidden = true;
+      document.getElementById('fotoPreview').hidden = true;
+      document.getElementById('btnCapturar').disabled = false;
+    }catch(err){
+      alert('Não foi possível abrir a webcam: ' + (err.message || err));
+    }
+  }
+  function stopCamera(){
+    if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
+    const vid = document.getElementById('webcam');
+    vid.srcObject = null; vid.hidden = true;
+    document.getElementById('btnCapturar').disabled = true;
+  }
+
+  document.getElementById('btnVideo').addEventListener('click', startCamera);
+  document.getElementById('btnFlip').addEventListener('click', () => {
+    facingMode = facingMode === 'user' ? 'environment' : 'user';
+    if(stream) startCamera();
+  });
+  document.getElementById('btnCapturar').addEventListener('click', () => {
+    const vid = document.getElementById('webcam');
+    const canvas = document.getElementById('canvasCapture');
+    canvas.width = vid.videoWidth || 480;
+    canvas.height = vid.videoHeight || 640;
+    const ctx = canvas.getContext('2d');
+    ctx.translate(canvas.width, 0); ctx.scale(-1, 1);
+    ctx.drawImage(vid, 0, 0);
+    const data = canvas.toDataURL('image/jpeg', 0.85);
+    document.getElementById('webcam_foto').value = data;
+    showFoto(data);
+    stopCamera();
+    document.getElementById('photoPlaceholder').hidden = true;
+  });
+  document.getElementById('btnRefazer').addEventListener('click', () => {
+    document.getElementById('webcam_foto').value = '';
+    hideFoto();
+    startCamera();
+  });
+  document.getElementById('btnLimparFoto').addEventListener('click', () => {
+    document.getElementById('webcam_foto').value = '';
+    hideFoto();
+    stopCamera();
+    document.getElementById('photoPlaceholder').hidden = false;
+  });
+  document.getElementById('fotoFile').addEventListener('change', e => {
+    const file = e.target.files && e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      document.getElementById('webcam_foto').value = reader.result;
+      showFoto(reader.result);
+      stopCamera();
+    };
+    reader.readAsDataURL(file);
+  });
+
+  function syncIdentPane(){
+    const modo = document.getElementById('ident_modo').value;
+    document.getElementById('paneQr').hidden = modo !== 'qr';
+    document.getElementById('paneCartao').hidden = modo !== 'cartao';
+  }
+  document.getElementById('ident_modo').addEventListener('change', syncIdentPane);
+  document.getElementById('refeicao').addEventListener('change', e => {
+    document.getElementById('paneRefeicao').hidden = !e.target.checked;
+  });
+  document.getElementById('btnGerarQr').addEventListener('click', () => {
+    const code = 'VIS' + Date.now().toString(36).toUpperCase().slice(-8);
+    document.getElementById('qr_code').value = code;
+  });
+
+  async function buscarDoc(){
+    const documento = document.getElementById('documento').value.trim();
+    if(!documento){ alert('Informe o documento'); return; }
+    const r = await fetch(URL_BUSCAR + '?documento=' + encodeURIComponent(documento));
+    const res = await r.json();
+    if(!res.ok){ alert(res.error || 'Erro na busca'); return; }
+    if(res.visitantes && res.visitantes.length){
+      fillForm(res.visitantes[0]);
+    } else {
+      setUnlocked(true);
+      document.getElementById('data_inicial').value = todayISO();
+      document.getElementById('data_final').value = todayISO();
+      document.getElementById('nome').focus();
+    }
+  }
+  document.getElementById('btnBuscarDoc').addEventListener('click', buscarDoc);
+  document.getElementById('documento').addEventListener('keydown', e => {
+    if(e.key === 'Enter'){ e.preventDefault(); buscarDoc(); }
+  });
+
+  // Busca por nome
+  const modalNome = document.getElementById('modalBuscaNome');
+  document.getElementById('btnBuscaNome').addEventListener('click', () => {
+    modalNome.hidden = false;
+    document.getElementById('inputBuscaNome').focus();
+  });
+  async function execBuscaNome(){
+    const termo = document.getElementById('inputBuscaNome').value.trim();
+    const box = document.getElementById('listaBuscaNome');
+    if(termo.length < 2){ box.innerHTML = '<div class="empty">Digite ao menos 2 letras.</div>'; return; }
+    box.innerHTML = '<div class="empty">Buscando…</div>';
+    const r = await fetch(URL_BUSCAR + '?nome=' + encodeURIComponent(termo));
+    const res = await r.json();
+    if(!res.visitantes || !res.visitantes.length){
+      box.innerHTML = '<div class="empty">Nenhum visitante encontrado.</div>';
+      return;
+    }
+    box.innerHTML = '';
+    res.visitantes.forEach(v => {
+      const el = document.createElement('div');
+      el.className = 'busca-item';
+      el.innerHTML = `
+        <div class="avatar">${v.foto ? `<img src="${v.foto}">` : '<i class="fas fa-user"></i>'}</div>
+        <div>
+          <div style="font-weight:700;color:var(--brand-navy)">${v.nome}</div>
+          <div class="meta">${v.tipo_documento || ''} ${v.documento || v.cpf || ''} · ${v.empresa_nome || '—'}</div>
+        </div>`;
+      el.addEventListener('click', () => { fillForm(v); modalNome.hidden = true; });
+      box.appendChild(el);
+    });
+  }
+  document.getElementById('btnExecBuscaNome').addEventListener('click', execBuscaNome);
+  document.getElementById('inputBuscaNome').addEventListener('keydown', e => {
+    if(e.key === 'Enter'){ e.preventDefault(); execBuscaNome(); }
+  });
+
+  // Anfitrião autocomplete
+  let hostTimer = null;
+  const hostInput = document.getElementById('anfitriao');
+  const hostDrop = document.getElementById('hostResults');
+  hostInput.addEventListener('input', () => {
+    clearTimeout(hostTimer);
+    const q = hostInput.value.trim();
+    if(q.length < 2){ hostDrop.hidden = true; return; }
+    hostTimer = setTimeout(async () => {
+      const r = await fetch(URL_HOST + '?q=' + encodeURIComponent(q));
+      const res = await r.json();
+      if(!res.itens || !res.itens.length){ hostDrop.hidden = true; return; }
+      hostDrop.innerHTML = res.itens.map(p => `
+        <div class="ac-item" data-nome="${p.nome}">
+          <div class="n">${p.nome}</div>
+          <div class="d">Mat. ${p.matricula}${p.documento ? ' · ' + p.documento : ''}</div>
+        </div>`).join('');
+      hostDrop.hidden = false;
+      hostDrop.querySelectorAll('.ac-item').forEach(el => {
+        el.addEventListener('click', () => {
+          hostInput.value = el.dataset.nome;
+          hostDrop.hidden = true;
+        });
+      });
+    }, 250);
+  });
+  document.addEventListener('click', e => {
+    if(!e.target.closest('.host-wrap')) hostDrop.hidden = true;
+  });
+
+  // Tipos documento
+  const modalTipos = document.getElementById('modalTipos');
+  async function loadTipos(){
+    const r = await fetch(URL_TIPOS);
+    const res = await r.json();
+    const tb = document.querySelector('#tblTipos tbody');
+    const sel = document.getElementById('tipo_documento');
+    const cur = sel.value;
+    tb.innerHTML = (res.tipos || []).map(t => `
+      <tr>
+        <td><input value="${t.descricao}" data-id="${t.id}" class="tipo-desc" style="width:100%;padding:.4rem;border:1px solid #ddd;border-radius:8px;"></td>
+        <td style="width:90px;"><input type="number" value="${t.digitos}" data-id="${t.id}" class="tipo-dig" style="width:100%;padding:.4rem;border:1px solid #ddd;border-radius:8px;"></td>
+        <td>
+          <button type="button" class="btn-edit tipo-save" data-id="${t.id}">Salvar</button>
+          <button type="button" class="btn-del tipo-del" data-id="${t.id}">Excluir</button>
+        </td>
+      </tr>`).join('');
+    sel.innerHTML = (res.tipos || []).map(t =>
+      `<option value="${t.descricao}" data-digitos="${t.digitos}" ${t.descricao===cur?'selected':''}>${t.descricao}</option>`
+    ).join('');
+    tb.querySelectorAll('.tipo-save').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const tr = btn.closest('tr');
+        const descricao = tr.querySelector('.tipo-desc').value;
+        const digitos = tr.querySelector('.tipo-dig').value;
+        await fetch(URL_TIPOS + '/' + btn.dataset.id, {
+          method:'PUT', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({descricao, digitos})
+        });
+        loadTipos();
+      });
+    });
+    tb.querySelectorAll('.tipo-del').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if(!confirm('Excluir tipo?')) return;
+        await fetch(URL_TIPOS + '/' + btn.dataset.id, {method:'DELETE'});
+        loadTipos();
+      });
+    });
+  }
+  function openTipos(){ modalTipos.hidden = false; loadTipos(); }
+  document.getElementById('btnTiposDoc').addEventListener('click', openTipos);
+  document.getElementById('btnGerenciarTipos').addEventListener('click', openTipos);
+  document.getElementById('btnAddTipo').addEventListener('click', async () => {
+    const descricao = document.getElementById('novoTipoDesc').value.trim();
+    const digitos = document.getElementById('novoTipoDig').value;
+    if(!descricao) return;
+    const r = await fetch(URL_TIPOS, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({descricao, digitos})
+    });
+    const res = await r.json();
+    if(!res.ok){ alert(res.error || 'Erro'); return; }
+    document.getElementById('novoTipoDesc').value = '';
+    loadTipos();
+  });
+
+  document.getElementById('btnLimparForm').addEventListener('click', () => {
+    if(confirm('Limpar o formulário?')) clearForm();
+  });
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    if(!unlocked){ alert('Busque o documento primeiro'); return; }
+    const fd = new FormData(form);
+    const data = Object.fromEntries(fd.entries());
+    ['refeicao','visita_unica','imprimir_ao_salvar','baixar_qr_ao_salvar'].forEach(k => {
+      data[k] = form.querySelector('[name="'+k+'"]').checked ? '1' : '0';
+    });
+    data.foto = document.getElementById('webcam_foto').value || '';
+    const id = document.getElementById('vis_id').value;
+    const url = id ? (URL_API + '/' + id) : URL_API;
+    const method = id ? 'PUT' : 'POST';
+    btnSalvar.disabled = true;
+    try{
+      const r = await fetch(url, {
+        method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)
+      });
+      const res = await r.json();
+      if(!res.ok){ alert(res.error || 'Erro ao salvar'); btnSalvar.disabled = false; return; }
+      if(data.baixar_qr_ao_salvar === '1' && (res.visitante.qr_code || data.qr_code)){
+        const blob = new Blob([res.visitante.qr_code || data.qr_code], {type:'text/plain'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = (res.visitante.visitor_id || 'visitante') + '-qr.txt';
+        a.click();
+      }
+      if(data.imprimir_ao_salvar === '1'){
+        window.print();
+      }
+      alert('Visitante salvo: ' + res.visitante.visitor_id);
+      location.href = {{ url_for('acesso.visitantes_page', view='lista')|tojson }};
+    }catch(err){
+      alert('Falha de rede');
+      btnSalvar.disabled = false;
+    }
+  });
+
+  // Defaults + deep link #edit=id
+  document.getElementById('data_inicial').value = todayISO();
+  document.getElementById('data_final').value = todayISO();
+  const hash = location.hash.match(/edit=(\d+)/);
+  if(hash){
+    fetch(URL_API + '/' + hash[1]).then(r => r.json()).then(res => {
+      if(res.ok && res.visitante) fillForm(res.visitante);
+    });
+  }
+})();
+</script>
+{% endblock %}

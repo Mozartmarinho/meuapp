@@ -105,10 +105,10 @@
         .systems {
             margin-top: 2.2rem;
             display: grid;
-            grid-template-columns: repeat(3, minmax(0, 260px));
+            grid-template-columns: repeat(4, minmax(0, 240px));
             gap: 1rem;
             width: 100%;
-            max-width: 840px;
+            max-width: 1040px;
             justify-content: center;
             animation: rise 0.7s ease 0.22s both;
         }
@@ -159,6 +159,11 @@
             color: #0e7490;
         }
 
+        .system-link.acesso .icon-wrap {
+            background: rgba(180, 83, 9, 0.14);
+            color: #b45309;
+        }
+
         .system-link h2 {
             font-family: 'Rajdhani', sans-serif;
             font-size: 1.25rem;
@@ -187,6 +192,7 @@
 
         .system-link.nutricao .go { color: #5f7a16; }
         .system-link.pesagem .go { color: #0e7490; }
+        .system-link.acesso .go { color: #b45309; }
 
         .footer-note {
             padding: 1rem;
@@ -200,8 +206,8 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        @media (max-width: 980px) {
-            .systems { grid-template-columns: repeat(2, minmax(0, 300px)); max-width: 640px; }
+        @media (max-width: 1100px) {
+            .systems { grid-template-columns: repeat(2, minmax(0, 280px)); max-width: 600px; }
         }
 
         @media (max-width: 720px) {
@@ -243,6 +249,13 @@
                 <div class="icon-wrap"><i class="fas fa-weight-scale"></i></div>
                 <h2>Sistema de Controle de Pesagem</h2>
                 <p>Captura de pesos das balanças (USB/serial) e registro no banco de dados.</p>
+                <span class="go">Acessar <i class="fas fa-arrow-right"></i></span>
+            </a>
+
+            <a class="system-link acesso" href="{{ url_for('acesso.dashboard') }}">
+                <div class="icon-wrap"><i class="fas fa-id-card-clip"></i></div>
+                <h2>Sistema de Controle de Acesso</h2>
+                <p>Pessoas, equipamentos, grupos, horários, visitantes e eventos de entrada/saída.</p>
                 <span class="go">Acessar <i class="fas fa-arrow-right"></i></span>
             </a>
         </div>

@@ -1,0 +1,112 @@
+{% extends "base_acesso.html" %}
+{% block title %}Equipamentos{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Equipamentos</h1>
+  <p>Catracas, leitores faciais e controladoras (Control iD / iDFace).</p>
+</div>
+
+<div class="card" style="padding:1.1rem 1.2rem;margin-bottom:1.1rem;">
+  <h3 style="margin:0 0 0.85rem;font-family:var(--font-brand);color:var(--brand-navy);">Novo equipamento</h3>
+  <form id="formEquip" class="form-inline-grid">
+    <label>Nome *<input name="nome" required placeholder="Ex: Catraca Recepção"></label>
+    <label>Marca<input name="marca" value="Control iD"></label>
+    <label>Modelo<input name="modelo" placeholder="iDFace / iDFlex / iDBlock"></label>
+    <label>IP<input name="ip" placeholder="192.168.1.50"></label>
+    <label>Device ID<input name="device_id" placeholder="ID único do dispositivo"></label>
+    <label>Local<input name="local" placeholder="Recepção, Portaria…"></label>
+    <label>Controle de giro
+      <select name="controle_giro">
+        <option>Ambos os lados</option>
+        <option>Somente Entrada</option>
+        <option>Somente Saida</option>
+        <option>Identificar Ultimo Acesso</option>
+        <option>Entrada/Saida</option>
+      </select>
+    </label>
+    <label>Usuário dispositivo<input name="usuario_disp" value="admin"></label>
+  </form>
+  <button type="button" class="btn-acesso" id="btnSalvarEquip"><i class="fas fa-plus"></i> Cadastrar</button>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden;">
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Modelo</th>
+          <th>IP</th>
+          <th>Device ID</th>
+          <th>Local</th>
+          <th>Giro</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in equipamentos %}
+        <tr>
+          <td><strong>{{ e.nome }}</strong><div style="font-size:0.8rem;color:#64748b;">{{ e.marca }}</div></td>
+          <td>{{ e.modelo or '—' }}</td>
+          <td>{{ e.ip or '—' }}</td>
+          <td>{{ e.device_id or '—' }}</td>
+          <td>{{ e.local or '—' }}</td>
+          <td>{{ e.controle_giro or '—' }}</td>
+          <td>
+            {% if e.online %}<span class="badge-status badge-online">Online</span>
+            {% else %}<span class="badge-status badge-offline">Offline</span>{% endif %}
+            {% if not e.ativo %} · Inativo{% endif %}
+          </td>
+          <td style="white-space:nowrap;">
+            <button type="button" class="btn btn-secondary btn-toggle" data-id="{{ e.id }}" data-online="{{ 1 if e.online else 0 }}">
+              {{ 'Marcar offline' if e.online else 'Marcar online' }}
+            </button>
+            <button type="button" class="btn btn-secondary btn-del" data-id="{{ e.id }}">Excluir</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" style="text-align:center;padding:1.5rem;color:#64748b;">Nenhum equipamento.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('btnSalvarEquip').addEventListener('click', async () => {
+  const data = Object.fromEntries(new FormData(document.getElementById('formEquip')).entries());
+  const r = await fetch("{{ url_for('acesso.api_equipamentos') }}", {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)
+  });
+  const res = await r.json();
+  if (!res.ok) { alert(res.error || 'Erro'); return; }
+  location.reload();
+});
+
+document.querySelectorAll('.btn-toggle').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const online = btn.dataset.online !== '1';
+    const r = await fetch(`/acesso/api/equipamentos/${btn.dataset.id}`, {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({online})
+    });
+    const res = await r.json();
+    if (!res.ok) { alert(res.error || 'Erro'); return; }
+    location.reload();
+  });
+});
+
+document.querySelectorAll('.btn-del').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (!confirm('Excluir equipamento?')) return;
+    const r = await fetch(`/acesso/api/equipamentos/${btn.dataset.id}`, {method: 'DELETE'});
+    const res = await r.json();
+    if (!res.ok) { alert(res.error || 'Erro'); return; }
+    location.reload();
+  });
+});
+</script>
+{% endblock %}

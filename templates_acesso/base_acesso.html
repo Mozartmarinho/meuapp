@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Controle de Acesso{% endblock %} — São Geraldo Service</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <style>
+        .badge-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.2rem 0.55rem;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
+        .badge-liberado { background: rgba(22, 163, 74, 0.12); color: #15803d; }
+        .badge-negado { background: rgba(220, 38, 38, 0.12); color: #b91c1c; }
+        .badge-desistencia { background: rgba(100, 116, 139, 0.15); color: #475569; }
+        .badge-online { background: rgba(22, 163, 74, 0.12); color: #15803d; }
+        .badge-offline { background: rgba(100, 116, 139, 0.15); color: #64748b; }
+        .form-inline-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+        .form-inline-grid label {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+            font-size: 0.82rem;
+            color: var(--gray-500, #64748b);
+            font-weight: 600;
+        }
+        .form-inline-grid input,
+        .form-inline-grid select,
+        .form-inline-grid textarea {
+            padding: 0.55rem 0.7rem;
+            border: 1px solid rgba(15, 42, 86, 0.12);
+            border-radius: 10px;
+            font: inherit;
+            color: var(--brand-navy, #0D2B5C);
+            background: #fff;
+        }
+        .btn-acesso {
+            background: var(--brand-blue);
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            padding: 0.6rem 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-family: var(--font-body);
+        }
+        .btn-acesso:hover { background: var(--brand-navy); }
+        .btn-acesso:disabled { opacity: .55; cursor: not-allowed; }
+
+        /* Menu lateral — estrutura igual à referência, visual São Geraldo */
+        .sidebar-menu .menu-group { margin-bottom: 0.55rem; }
+        .sidebar-menu .menu-group-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+            width: 100%;
+            padding: 0.7rem 0.85rem;
+            border: 0;
+            border-radius: 0.5rem;
+            background: transparent;
+            color: rgba(255, 255, 255, 0.92);
+            font-family: var(--font-body);
+            font-size: 0.95rem;
+            font-weight: 700;
+            cursor: pointer;
+            text-align: left;
+        }
+        .sidebar-menu .menu-group-title:hover {
+            background-color: rgba(255, 255, 255, 0.12);
+        }
+        .sidebar-menu .menu-group-title .left {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .sidebar-menu .menu-group-title .chev {
+            font-size: 0.75rem;
+            opacity: 0.85;
+            transition: transform 0.2s ease;
+        }
+        .sidebar-menu .menu-group-title.open .chev {
+            transform: rotate(180deg);
+        }
+        .sidebar-menu .menu-sub {
+            list-style: none;
+            margin: 0.15rem 0 0.35rem;
+            padding: 0 0 0 0.55rem;
+            display: none;
+        }
+        .sidebar-menu .menu-sub.open { display: block; }
+        .sidebar-menu .menu-sub a {
+            padding: 0.55rem 0.85rem 0.55rem 2.1rem;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.88);
+        }
+        .sidebar-menu .menu-sub a i {
+            width: 1.1rem;
+            margin-right: 0.55rem;
+            opacity: 0.9;
+        }
+        .sidebar-menu .menu-sub a.active {
+            background-color: var(--accent-color);
+            color: var(--brand-navy);
+            font-weight: 700;
+        }
+        .sidebar-menu .menu-footer {
+            margin-top: 1rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.65rem;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .toolbar input[type="search"],
+        .toolbar select {
+            padding: 0.55rem 0.75rem;
+            border-radius: 10px;
+            border: 1px solid rgba(15, 42, 86, 0.12);
+            min-width: 180px;
+        }
+        .placeholder-page {
+            background: #fff;
+            border: 1px solid rgba(15, 42, 86, 0.1);
+            border-radius: 14px;
+            padding: 2rem 1.5rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,.04);
+        }
+        .placeholder-page h1 {
+            font-family: var(--font-brand);
+            color: var(--brand-navy);
+            margin: 0 0 0.4rem;
+        }
+        .placeholder-page p { color: #64748b; margin: 0; }
+    </style>
+</head>
+<body>
+    {% set grp_pessoas = active_page in ['pessoas','visitantes'] %}
+    {% set grp_acesso = active_page in ['grupos','ambientes','estacionamentos','impressoras','equipamentos'] %}
+    {% set grp_relatorios = active_page in ['dashboard','eventos','veiculos','permanencia'] %}
+
+    <header class="app-topbar">
+        <button type="button" class="menu-toggle" id="menuToggle" aria-label="Abrir menu">
+            <i class="fas fa-bars"></i>
+        </button>
+        <img class="brand-logo-compact" src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service">
+    </header>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <nav class="sidebar" id="appSidebar">
+        <div class="sidebar-logo">
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service">
+            <div class="brand-tagline">Transformando vidas</div>
+            <div class="module-label">Controle de Acesso</div>
+        </div>
+
+        <ul class="sidebar-menu">
+            <li>
+                <a href="{{ url_for('main.inicio') }}">
+                    <i class="fas fa-th-large" style="margin-right: 0.75rem;"></i>
+                    Sistemas
+                </a>
+            </li>
+
+            <li class="menu-group">
+                <button type="button" class="menu-group-title {% if grp_pessoas %}open{% endif %}" data-menu-toggle="menuPessoas">
+                    <span class="left"><i class="fas fa-users"></i> Pessoas</span>
+                    <i class="fas fa-chevron-down chev"></i>
+                </button>
+                <ul class="menu-sub {% if grp_pessoas %}open{% endif %}" id="menuPessoas">
+                    <li>
+                        <a href="{{ url_for('acesso.pessoas_page') }}" class="{% if active_page == 'pessoas' %}active{% endif %}">
+                            <i class="fas fa-id-card"></i> Cadastros
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('acesso.visitantes_page') }}" class="{% if active_page == 'visitantes' %}active{% endif %}">
+                            <i class="fas fa-user-clock"></i> Visitantes
+                        </a>
+                    </li>
+                </ul>
+            </li>
+
+            <li class="menu-group">
+                <button type="button" class="menu-group-title {% if grp_acesso %}open{% endif %}" data-menu-toggle="menuAcesso">
+                    <span class="left"><i class="fas fa-shield-halved"></i> Controle de Acesso</span>
+                    <i class="fas fa-chevron-down chev"></i>
+                </button>
+                <ul class="menu-sub {% if grp_acesso %}open{% endif %}" id="menuAcesso">
+                    <li>
+                        <a href="{{ url_for('acesso.grupos_page') }}" class="{% if active_page == 'grupos' %}active{% endif %}">
+                            <i class="fas fa-clock"></i> Horários &amp; Grupos
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('acesso.ambientes_page') }}" class="{% if active_page == 'ambientes' %}active{% endif %}">
+                            <i class="fas fa-building"></i> Gestão de Ambientes
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('acesso.estacionamentos_page') }}" class="{% if active_page == 'estacionamentos' %}active{% endif %}">
+                            <i class="fas fa-square-parking"></i> Estacionamentos
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('acesso.impressoras_page') }}" class="{% if active_page == 'impressoras' %}active{% endif %}">
+                            <i class="fas fa-print"></i> Impressoras
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('acesso.equipamentos_page') }}" class="{% if active_page == 'equipamentos' %}active{% endif %}">
+                            <i class="fas fa-microchip"></i> Equipamentos
+                        </a>
+                    </li>
+                </ul>
+            </li>
+
+            <li class="menu-group">
+                <button type="button" class="menu-group-title {% if grp_relatorios %}open{% endif %}" data-menu-toggle="menuRelatorios">
+                    <span class="left"><i class="fas fa-chart-pie"></i> Relatórios</span>
+                    <i class="fas fa-chevron-down chev"></i>
+                </button>
+                <ul class="menu-sub {% if grp_relatorios %}open{% endif %}" id="menuRelatorios">
+                    <li>
+                        <a href="{{ url_for('acesso.dashboard') }}" class="{% if active_page == 'dashboard' %}active{% endif %}">
+                            <i class="fas fa-gauge-high"></i> Dashboard
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('acesso.eventos_page') }}" class="{% if active_page == 'eventos' %}active{% endif %}">
+                            <i class="fas fa-door-open"></i> Acessos
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('acesso.veiculos_page') }}" class="{% if active_page == 'veiculos' %}active{% endif %}">
+                            <i class="fas fa-car"></i> Veículos
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('acesso.permanencia_page') }}" class="{% if active_page == 'permanencia' %}active{% endif %}">
+                            <i class="fas fa-hourglass-half"></i> Permanência
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('auditoria.dashboard') }}">
+                            <i class="fas fa-clipboard-check"></i> Auditoria
+                        </a>
+                    </li>
+                </ul>
+            </li>
+
+            <li class="menu-footer">
+                <a href="{{ url_for('acesso.sobre_page') }}" class="{% if active_page == 'sobre' %}active{% endif %}">
+                    <i class="fas fa-circle-info" style="margin-right: 0.75rem;"></i>
+                    Sobre o Sistema
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('main.logout') }}">
+                    <i class="fas fa-sign-out-alt" style="margin-right: 0.75rem;"></i>
+                    Sair
+                </a>
+            </li>
+        </ul>
+    </nav>
+
+    <main class="main-content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+    document.querySelectorAll('[data-menu-toggle]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-menu-toggle');
+            const panel = document.getElementById(id);
+            if (!panel) return;
+            const open = panel.classList.toggle('open');
+            btn.classList.toggle('open', open);
+        });
+    });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

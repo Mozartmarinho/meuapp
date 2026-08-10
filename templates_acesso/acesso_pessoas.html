@@ -1,0 +1,714 @@
+{% extends "base_acesso.html" %}
+{% block title %}Colaboradores{% endblock %}
+{% block content %}
+{% set pct = ((total_ativos_licenca / limite_usuarios) * 100) if limite_usuarios else 0 %}
+{% set atingiu = total_ativos_licenca >= limite_usuarios %}
+
+<div class="colab-wrap">
+  <div class="colab-hero">
+    <div>
+      <h1>Colaboradores</h1>
+      <p>Gerencie colaboradores, biometrias, fotos e acessos aos equipamentos.</p>
+    </div>
+    <div class="colab-hero-actions">
+      <div class="licenca-box">
+        <div class="licenca-top">
+          <span>Licença de Uso</span>
+          <strong class="{{ 'text-danger' if atingiu else 'text-ok' }}">{{ total_ativos_licenca }} / {{ limite_usuarios }}</strong>
+        </div>
+        <div class="licenca-bar"><span style="width:{% if pct > 100 %}100{% else %}{{ '%.1f'|format(pct) }}{% endif %}%" class="{{ 'is-danger' if atingiu else '' }}"></span></div>
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm" id="btnAjuda">
+        <i class="fas fa-circle-question"></i> Ajuda
+      </button>
+      <button type="button" class="btn-acesso" id="btnNovo" {% if atingiu %}disabled title="Limite de licença atingido"{% endif %}>
+        <i class="fas fa-user-plus"></i> Novo Colaborador
+      </button>
+      <button type="button" class="btn btn-success-sg" id="btnLote" onclick="alert('Cadastro em lote será liberado em breve.')">
+        <i class="fas fa-users"></i> Cadastro em Lote
+      </button>
+      <button type="button" class="btn btn-outline-sg" onclick="alert('Selecione colaboradores na tabela para enviar aos equipamentos.')">
+        <i class="fas fa-share-from-square"></i> Enviar Selecionados
+      </button>
+      <button type="button" class="btn btn-outline-sg" onclick="alert('Envio em lote será liberado em breve.')">
+        <i class="fas fa-shuffle"></i> Envio em Lote
+      </button>
+    </div>
+  </div>
+
+  <div class="colab-tab">
+    <span class="colab-tab-active"><i class="fas fa-search"></i> Filtros &amp; Colaboradores</span>
+  </div>
+
+  <div class="colab-grid">
+    <aside class="colab-filters card-panel">
+      <div class="panel-head"><i class="fas fa-magnifying-glass"></i> Filtros de Busca</div>
+      <form method="get" class="panel-body" id="formFiltros">
+        <label>Buscar por Nome ou Matrícula
+          <input type="text" name="q" value="{{ filtros.q }}" placeholder="Pesquisar...">
+        </label>
+        <label>Empresa
+          <select name="f_empresa_id">
+            <option value="">Todas</option>
+            {% for e in empresas %}
+            <option value="{{ e.id }}" {% if filtros.empresa_id == e.id|string %}selected{% endif %}>{{ e.nome }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Classificação
+          <select name="f_classificacao">
+            <option value="">Todas</option>
+            {% for c in classificacoes %}
+            <option value="{{ c.id }}" {% if filtros.classificacao_id == c.id|string %}selected{% endif %}>{{ c.descricao }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="two-col">
+          <label>Departamento
+            <select name="f_departamento_id">
+              <option value="">Todos</option>
+              {% for d in departamentos %}
+              <option value="{{ d.id }}" {% if filtros.departamento_id == d.id|string %}selected{% endif %}>{{ d.descricao }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Setor
+            <select name="f_setor_id">
+              <option value="">Todos</option>
+              {% for s in setores %}
+              <option value="{{ s.id }}" {% if filtros.setor_id == s.id|string %}selected{% endif %}>{{ s.descricao }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <label>Centro de Custo
+          <select name="f_centro_de_custo_id">
+            <option value="">Todos</option>
+            {% for cc in centros %}
+            <option value="{{ cc.id }}" {% if filtros.centro_custo_id == cc.id|string %}selected{% endif %}>{{ cc.descricao }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" name="mostrar_inativos" value="1" {% if filtros.mostrar_inativos %}checked{% endif %}> Mostrar inativos</label>
+        <label class="check"><input type="checkbox" name="apenas_sem_foto" value="1" {% if filtros.apenas_sem_foto %}checked{% endif %}> Mostrar apenas sem foto</label>
+        <div class="filter-actions">
+          <button type="submit" class="btn-acesso" style="flex:1;justify-content:center;">Pesquisar</button>
+          <a class="btn btn-secondary" style="flex:1;text-align:center;" href="{{ url_for('acesso.pessoas_page') }}">Limpar</a>
+        </div>
+      </form>
+    </aside>
+
+    <section class="colab-list">
+      <div class="kpi-row">
+        <div class="kpi">
+          <div class="kpi-v" id="kpiTotal">{{ total_encontrados }}</div>
+          <div class="kpi-l">Total de Colaboradores</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-v" id="kpiSel">0</div>
+          <div class="kpi-l" id="kpiSelLabel">Selecionados (sem foto: 0)</div>
+        </div>
+      </div>
+
+      <div class="card-panel">
+        <div class="panel-head">
+          <span>Colaboradores Encontrados</span>
+          <a class="btn btn-outline-success-sg btn-sm" href="{{ url_for('acesso.pessoas_export_csv') }}"><i class="fas fa-file-csv"></i> Exportar CSV</a>
+        </div>
+        <div class="table-scroll">
+          <table class="data-table colab-table" id="tblColab">
+            <thead>
+              <tr>
+                <th style="width:40px;"><input type="checkbox" id="checkAll"></th>
+                <th>Foto</th>
+                <th>Nome</th>
+                <th>Matrícula</th>
+                <th>Status</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in pessoas %}
+              <tr data-id="{{ p.id }}" data-foto="{{ 1 if p.tem_foto else 0 }}">
+                <td><input type="checkbox" class="row-check" value="{{ p.id }}"></td>
+                <td>
+                  <div class="avatar {% if not p.tem_foto %}no-photo{% endif %}">
+                    {% if p.foto %}
+                      <img src="{{ p.foto }}" alt="">
+                    {% else %}
+                      <i class="fas fa-user"></i>
+                    {% endif %}
+                  </div>
+                </td>
+                <td>
+                  <strong class="nome-colab">{{ p.nome }}</strong>
+                  <div class="meta">{{ p.departamento or '—' }}{% if p.setor %} · {{ p.setor }}{% endif %}</div>
+                </td>
+                <td><span class="mat-colab">{{ p.matricula }}</span></td>
+                <td>
+                  {% if p.status == 'Livre' %}
+                    <span class="badge-status badge-livre">Livre</span>
+                  {% elif p.status == 'Inativo' %}
+                    <span class="badge-status badge-offline">Inativo</span>
+                  {% else %}
+                    <span class="badge-status badge-liberado">Ativo</span>
+                  {% endif %}
+                </td>
+                <td class="acoes">
+                  <button type="button" class="btn-edit" data-id="{{ p.id }}"><i class="fas fa-pen"></i> Editar</button>
+                  <button type="button" class="btn-del" data-id="{{ p.id }}"><i class="fas fa-trash"></i> Deletar</button>
+                </td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="6" style="text-align:center;padding:2rem;color:#64748b;">Nenhum colaborador encontrado.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- Modal Novo/Editar Colaborador -->
+<div class="modal-backdrop" id="modalPessoa" hidden>
+  <div class="modal-card modal-wide">
+    <div class="modal-head">
+      <div>
+        <h3 id="modalTitle">Novo Colaborador</h3>
+        <p class="modal-sub">Preencha os dados do colaborador. A biometria pode ser cadastrada depois, no fluxo de Editar.</p>
+      </div>
+      <button type="button" class="modal-close" id="btnCloseModal" aria-label="Fechar">&times;</button>
+    </div>
+
+    <div class="modal-tabs" id="modalTabs">
+      <button type="button" class="tab-btn active" data-tab="basico">Básico</button>
+      <button type="button" class="tab-btn" data-tab="ident">Identificação</button>
+      <button type="button" class="tab-btn" data-tab="org">Organização</button>
+      <button type="button" class="tab-btn" data-tab="acesso">Acesso &amp; Status</button>
+    </div>
+
+    <form id="formPessoa" class="modal-body">
+      <input type="hidden" name="id" id="pessoaId">
+      <input type="hidden" name="equipamentos_ids" id="f_equipamentos_ids">
+
+      <!-- BÁSICO -->
+      <div class="tab-pane active" id="tab-basico">
+        <div class="basico-grid">
+          <div class="foto-col">
+            <div class="foto-preview" id="fotoPreview"><i class="fas fa-user"></i></div>
+            <label class="btn btn-secondary btn-sm full">
+              Trocar Foto
+              <input type="file" id="fotoFile" accept="image/*" hidden>
+            </label>
+            <button type="button" class="btn btn-secondary btn-sm full" onclick="alert('Captura por webcam será liberada em breve.')">
+              <i class="fas fa-camera"></i> Webcam
+            </button>
+            <button type="button" class="btn btn-outline-sg btn-sm full" id="btnTestarFoto">
+              <i class="fas fa-wand-magic-sparkles"></i> Testar Foto
+            </button>
+            <input type="hidden" name="foto" id="f_foto">
+          </div>
+          <div class="fields-col">
+            <label class="req">Nome Completo *
+              <input name="nome" id="f_nome" required placeholder="Nome completo">
+            </label>
+            <label class="req">Matrícula *
+              <input name="matricula" id="f_matricula" required placeholder="ID único">
+            </label>
+            <label>Documento
+              <input name="documento" id="f_documento" placeholder="CPF / RG">
+            </label>
+            <label>Observação
+              <input name="observacao" id="f_observacao">
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- IDENTIFICAÇÃO -->
+      <div class="tab-pane" id="tab-ident" hidden>
+        <div class="ident-box">
+          <div class="ident-title">Cartão / TAG</div>
+          <div class="ident-row">
+            <label class="radio"><input type="radio" name="tipo_cartao" value="wiegand" id="tipo_wiegand" checked> Wiegand</label>
+            <label class="radio"><input type="radio" name="tipo_cartao" value="mifare" id="tipo_mifare"> Mifare</label>
+            <input name="cartao" id="f_cartao" placeholder="Número do cartão" style="flex:1;">
+          </div>
+        </div>
+        <div class="form-inline-grid" style="margin-top:1rem;">
+          <label>QR Code
+            <div class="input-with-btn">
+              <input name="qr_code" id="f_qr_code" placeholder="Valor do QR">
+              <button type="button" class="btn btn-secondary btn-sm" id="btnGerarQr">Gerar</button>
+            </div>
+          </label>
+          <label>Token de Acesso
+            <div class="input-with-btn">
+              <input name="token" id="f_token" readonly placeholder="Gerado automaticamente">
+              <button type="button" class="btn btn-secondary btn-sm" id="btnGerarToken">Gerar</button>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- ORGANIZAÇÃO -->
+      <div class="tab-pane" id="tab-org" hidden>
+        <div class="form-inline-grid">
+          <label class="req">Empresa *
+            <select name="empresa_id" id="f_empresa_id" required>
+              <option value="">Selecione...</option>
+              {% for e in empresas %}
+              <option value="{{ e.id }}">{{ e.nome }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="req">Grupo de Acesso *
+            <select name="grupo_id" id="f_grupo_id" required>
+              <option value="">Selecione...</option>
+              {% for g in grupos %}
+              <option value="{{ g.id }}">{{ g.nome }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Departamento
+            <select name="departamento_id" id="f_departamento_id">
+              <option value="">Nenhum</option>
+              {% for d in departamentos %}
+              <option value="{{ d.id }}">{{ d.descricao }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Setor
+            <select name="setor_id" id="f_setor_id">
+              <option value="">Nenhum</option>
+              {% for s in setores %}
+              <option value="{{ s.id }}">{{ s.descricao }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Centro de Custo
+            <select name="centro_custo_id" id="f_centro_custo_id">
+              <option value="">Nenhum</option>
+              {% for cc in centros %}
+              <option value="{{ cc.id }}">{{ cc.descricao }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="req">Classificação *
+            <select name="classificacao_id" id="f_classificacao_id" required>
+              <option value="">Selecione...</option>
+              {% for c in classificacoes %}
+              <option value="{{ c.id }}">{{ c.descricao }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <!-- ACESSO & STATUS -->
+      <div class="tab-pane" id="tab-acesso" hidden>
+        <div class="acesso-grid">
+          <div class="acesso-col">
+            <div class="section-label req">Validade do Acesso *</div>
+            <div class="validade-grid">
+              <label>Início
+                <input type="date" name="data_inicial" id="f_data_inicial" required>
+              </label>
+              <label>Hora
+                <input type="time" name="hora_inicial" id="f_hora_inicial" value="00:00">
+              </label>
+              <label>Fim (Opcional)
+                <input type="date" name="data_final" id="f_data_final">
+              </label>
+              <label>Hora
+                <input type="time" name="hora_final" id="f_hora_final">
+              </label>
+            </div>
+          </div>
+          <div class="acesso-col">
+            <label class="req">Status do Usuário *
+              <select name="status" id="f_status" required>
+                <option value="Ativo">Ativo</option>
+                <option value="Inativo">Inativo</option>
+                <option value="Livre">Livre (Sem validação de horário)</option>
+              </select>
+            </label>
+            <button type="button" class="btn btn-outline-sg full" id="btnSelEquip" style="margin-top:1rem;">
+              <i class="fas fa-microchip"></i> Selecionar Equipamentos
+            </button>
+            <div id="selectedEquipLabel" class="equip-hint">Nenhum equipamento selecionado</div>
+          </div>
+        </div>
+      </div>
+    </form>
+
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" id="btnCancelModal">Fechar</button>
+      <button type="button" class="btn-acesso" id="btnSalvarPessoa"><i class="fas fa-plus" id="btnSalvarIcon"></i> <span id="btnSalvarText">Criar</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Equipamentos -->
+<div class="modal-backdrop" id="modalEquip" hidden>
+  <div class="modal-card" style="max-width:520px;">
+    <div class="modal-head">
+      <h3>Selecionar Equipamentos</h3>
+      <button type="button" class="modal-close" id="btnCloseEquip">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="equip-checks">
+        {% for eq in equipamentos %}
+        <label class="check-line">
+          <input type="checkbox" class="eq-check" value="{{ eq.id }}">
+          <span><strong>{{ eq.nome }}</strong> <span class="meta">{{ eq.ip or '' }}</span></span>
+        </label>
+        {% else %}
+        <p class="meta">Nenhum equipamento cadastrado.</p>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" id="btnCancelEquip">Cancelar</button>
+      <button type="button" class="btn-acesso" id="btnOkEquip">Confirmar</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.colab-wrap { max-width: 1400px; }
+.colab-hero {
+  display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap;
+  padding:1.15rem 1.25rem; border-radius:14px; background:#fff;
+  border:1px solid rgba(15,42,86,.1); box-shadow:0 4px 12px rgba(0,0,0,.04);
+  margin-bottom:1rem;
+}
+.colab-hero h1 { margin:0; font-family:var(--font-brand); font-size:1.55rem; color:var(--brand-navy); }
+.colab-hero p { margin:.25rem 0 0; color:#64748b; font-size:.92rem; }
+.colab-hero-actions { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; justify-content:flex-end; }
+.licenca-box { min-width:170px; margin-right:.2rem; }
+.licenca-top { display:flex; justify-content:space-between; font-size:.78rem; color:#64748b; font-weight:600; margin-bottom:.25rem; }
+.licenca-top .text-ok { color:#16a34a; }
+.licenca-top .text-danger { color:#dc2626; }
+.licenca-bar { height:6px; background:#e5e7eb; border-radius:99px; overflow:hidden; }
+.licenca-bar span { display:block; height:100%; background:#16a34a; }
+.licenca-bar span.is-danger { background:#dc2626; }
+.btn-success-sg {
+  background:#16a34a; color:#fff; border:none; border-radius:10px; padding:.55rem .9rem;
+  font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:.4rem; font-size:.88rem;
+}
+.btn-outline-sg {
+  background:#fff; color:var(--brand-blue); border:1px solid rgba(27,79,156,.35); border-radius:10px;
+  padding:.55rem .9rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:.4rem; font-size:.88rem;
+}
+.btn-outline-success-sg {
+  background:#fff; color:#15803d; border:1px solid rgba(22,163,74,.4); border-radius:10px;
+  padding:.4rem .75rem; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:.35rem;
+}
+.colab-tab { border-bottom:1px solid rgba(15,42,86,.1); margin-bottom:1rem; }
+.colab-tab-active {
+  display:inline-flex; gap:.4rem; align-items:center; padding:.55rem 0; margin-right:1rem;
+  border-bottom:2px solid var(--brand-blue); color:var(--brand-blue); font-weight:700; font-size:.95rem;
+}
+.colab-grid { display:grid; grid-template-columns:minmax(260px,320px) 1fr; gap:1rem; }
+@media (max-width:980px){ .colab-grid { grid-template-columns:1fr; } }
+.card-panel {
+  background:#fff; border:1px solid rgba(15,42,86,.1); border-radius:14px;
+  box-shadow:0 4px 12px rgba(0,0,0,.04); overflow:hidden;
+}
+.panel-head {
+  display:flex; justify-content:space-between; align-items:center; gap:.75rem;
+  padding:.85rem 1.1rem; background:#f3f7fc; border-bottom:1px solid rgba(15,42,86,.08);
+  font-weight:700; color:#475569; font-size:.92rem;
+}
+.panel-body { padding:1.1rem; display:flex; flex-direction:column; gap:.75rem; }
+.panel-body label { display:flex; flex-direction:column; gap:.3rem; font-size:.8rem; font-weight:700; color:#64748b; }
+.panel-body input, .panel-body select, .modal-body input, .modal-body select {
+  padding:.55rem .7rem; border:1px solid rgba(15,42,86,.14); border-radius:10px;
+  font:inherit; color:var(--brand-navy); background:#fff;
+}
+.panel-body .check, .check-line { flex-direction:row; align-items:center; gap:.5rem; font-weight:500; color:var(--brand-navy); }
+.two-col { display:grid; grid-template-columns:1fr 1fr; gap:.65rem; }
+.filter-actions { display:flex; gap:.5rem; margin-top:.35rem; }
+.kpi-row { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; margin-bottom:.85rem; }
+.kpi { background:#fff; border:1px solid rgba(15,42,86,.1); border-radius:12px; padding:.85rem 1rem; }
+.kpi-v { font-family:var(--font-brand); font-size:1.45rem; font-weight:700; color:var(--brand-navy); }
+.kpi-l { color:#64748b; font-size:.8rem; }
+.colab-table .avatar {
+  width:42px; height:42px; border-radius:50%; background:#e7eef8; color:#64748b;
+  display:grid; place-items:center; overflow:hidden;
+}
+.colab-table .avatar img { width:100%; height:100%; object-fit:cover; }
+.colab-table .nome-colab { text-transform:uppercase; letter-spacing:.02em; color:var(--brand-navy); }
+.colab-table .meta, .meta { font-size:.78rem; color:#94a3b8; margin-top:.15rem; }
+.colab-table .mat-colab { color:#db2777; font-weight:700; }
+.badge-livre { background:rgba(6,182,212,.15); color:#0e7490; }
+.acoes { white-space:nowrap; }
+.btn-edit, .btn-del {
+  border:none; border-radius:8px; padding:.35rem .6rem; font-size:.78rem; font-weight:700; cursor:pointer; margin-right:.25rem;
+}
+.btn-edit { background:var(--brand-blue); color:#fff; }
+.btn-del { background:#dc2626; color:#fff; }
+
+.modal-backdrop {
+  position:fixed; inset:0; background:rgba(13,43,92,.45); z-index:2000;
+  display:grid; place-items:center; padding:1rem;
+}
+.modal-backdrop[hidden] { display:none !important; }
+.modal-card {
+  width:min(640px,100%); background:#fff; border-radius:16px; overflow:hidden;
+  box-shadow:0 24px 48px rgba(13,43,92,.25); max-height:92vh; display:flex; flex-direction:column;
+}
+.modal-wide { width:min(820px,100%); }
+.modal-head, .modal-foot {
+  display:flex; justify-content:space-between; align-items:flex-start; gap:.75rem;
+  padding:.95rem 1.2rem; border-bottom:1px solid rgba(15,42,86,.08);
+}
+.modal-foot { border-bottom:0; border-top:1px solid rgba(15,42,86,.08); justify-content:flex-end; align-items:center; }
+.modal-head h3 { margin:0; font-family:var(--font-brand); color:var(--brand-navy); font-size:1.35rem; }
+.modal-sub { margin:.35rem 0 0; color:#64748b; font-size:.88rem; max-width:36rem; }
+.modal-close { border:none; background:transparent; font-size:1.5rem; cursor:pointer; color:#64748b; line-height:1; }
+.modal-body { padding:1.15rem 1.2rem; overflow:auto; }
+.modal-tabs {
+  display:flex; gap:.35rem; padding:.65rem 1.1rem; background:#f3f7fc;
+  border-bottom:1px solid rgba(15,42,86,.08); flex-wrap:wrap;
+}
+.tab-btn {
+  border:0; background:transparent; color:var(--brand-blue); font-weight:700; font-size:.9rem;
+  padding:.45rem .85rem; border-radius:10px; cursor:pointer; font-family:var(--font-body);
+}
+.tab-btn.active { background:#fff; color:var(--brand-navy); box-shadow:0 1px 4px rgba(13,43,92,.1); }
+.tab-pane[hidden] { display:none !important; }
+.basico-grid { display:grid; grid-template-columns:180px 1fr; gap:1.25rem; }
+@media (max-width:700px){ .basico-grid { grid-template-columns:1fr; } }
+.foto-col { display:flex; flex-direction:column; gap:.5rem; align-items:center; }
+.foto-preview {
+  width:140px; height:140px; border-radius:50%; background:#e7eef8; color:#94a3b8;
+  display:grid; place-items:center; font-size:2.8rem; overflow:hidden; border:3px solid #fff;
+  box-shadow:0 4px 14px rgba(13,43,92,.12);
+}
+.foto-preview img { width:100%; height:100%; object-fit:cover; }
+.full { width:100%; justify-content:center; }
+.fields-col { display:flex; flex-direction:column; gap:.85rem; }
+.fields-col label, .modal-body label {
+  display:flex; flex-direction:column; gap:.3rem; font-size:.82rem; font-weight:700; color:#64748b;
+}
+.req::after { content:""; }
+label.req { color:#64748b; }
+.ident-box {
+  border:1px solid rgba(15,42,86,.12); border-radius:12px; padding:1rem; background:#f8fafc;
+}
+.ident-title { font-weight:800; color:var(--brand-navy); margin-bottom:.65rem; }
+.ident-row { display:flex; flex-wrap:wrap; gap:.75rem; align-items:center; }
+.radio { flex-direction:row !important; align-items:center; gap:.4rem; font-weight:600 !important; color:var(--brand-navy) !important; }
+.input-with-btn { display:flex; gap:.4rem; }
+.input-with-btn input { flex:1; }
+.acesso-grid { display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; }
+@media (max-width:700px){ .acesso-grid { grid-template-columns:1fr; } }
+.acesso-col { border-right:1px solid rgba(15,42,86,.08); padding-right:1rem; }
+.acesso-col:last-child { border-right:0; padding-right:0; }
+.section-label { font-weight:800; color:var(--brand-navy); margin-bottom:.65rem; font-size:.9rem; }
+.validade-grid { display:grid; grid-template-columns:1fr 1fr; gap:.65rem; }
+.equip-hint { margin-top:.55rem; font-size:.82rem; color:#64748b; }
+.equip-checks { display:flex; flex-direction:column; gap:.55rem; }
+.check-line { display:flex; gap:.55rem; align-items:flex-start; }
+</style>
+<script>
+const modal = document.getElementById('modalPessoa');
+const modalEquip = document.getElementById('modalEquip');
+const form = document.getElementById('formPessoa');
+
+function openModal(title, isEdit) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('btnSalvarText').textContent = isEdit ? 'Salvar' : 'Criar';
+  document.getElementById('btnSalvarIcon').className = isEdit ? 'fas fa-save' : 'fas fa-plus';
+  showTab('basico');
+  modal.hidden = false;
+}
+function closeModal() { modal.hidden = true; }
+
+function showTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  ['basico','ident','org','acesso'].forEach(t => {
+    document.getElementById('tab-' + t).hidden = t !== name;
+  });
+}
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => showTab(btn.dataset.tab));
+});
+
+function clearForm() {
+  form.reset();
+  document.getElementById('pessoaId').value = '';
+  document.getElementById('f_equipamentos_ids').value = '';
+  document.getElementById('f_foto').value = '';
+  document.getElementById('fotoPreview').innerHTML = '<i class="fas fa-user"></i>';
+  document.getElementById('tipo_wiegand').checked = true;
+  document.getElementById('f_hora_inicial').value = '00:00';
+  document.getElementById('f_data_inicial').value = new Date().toISOString().slice(0,10);
+  document.getElementById('selectedEquipLabel').textContent = 'Nenhum equipamento selecionado';
+  document.querySelectorAll('.eq-check').forEach(c => c.checked = false);
+}
+
+function setFotoPreview(url) {
+  const box = document.getElementById('fotoPreview');
+  if (url) box.innerHTML = `<img src="${url}" alt="">`;
+  else box.innerHTML = '<i class="fas fa-user"></i>';
+}
+
+function fillForm(p) {
+  document.getElementById('pessoaId').value = p.id || '';
+  document.getElementById('f_matricula').value = p.matricula || '';
+  document.getElementById('f_nome').value = p.nome || '';
+  document.getElementById('f_documento').value = p.documento || '';
+  document.getElementById('f_observacao').value = p.observacao || '';
+  document.getElementById('f_foto').value = p.foto || '';
+  setFotoPreview(p.foto || '');
+  document.getElementById('f_cartao').value = p.cartao || '';
+  document.getElementById('f_qr_code').value = p.qr_code || '';
+  document.getElementById('f_token').value = p.token || '';
+  if ((p.tipo_cartao || 'wiegand') === 'mifare') document.getElementById('tipo_mifare').checked = true;
+  else document.getElementById('tipo_wiegand').checked = true;
+  document.getElementById('f_empresa_id').value = p.empresa_id || '';
+  document.getElementById('f_grupo_id').value = p.grupo_id || '';
+  document.getElementById('f_departamento_id').value = p.departamento_id || '';
+  document.getElementById('f_setor_id').value = p.setor_id || '';
+  document.getElementById('f_centro_custo_id').value = p.centro_custo_id || '';
+  document.getElementById('f_classificacao_id').value = p.classificacao_id || '';
+  document.getElementById('f_data_inicial').value = p.data_inicial || '';
+  document.getElementById('f_hora_inicial').value = p.hora_inicial || '00:00';
+  document.getElementById('f_data_final').value = p.data_final || '';
+  document.getElementById('f_hora_final').value = p.hora_final || '';
+  document.getElementById('f_status').value = p.status || 'Ativo';
+  document.getElementById('f_equipamentos_ids').value = p.equipamentos_ids || '';
+  const ids = (p.equipamentos_ids || '').split(',').filter(Boolean);
+  document.querySelectorAll('.eq-check').forEach(c => { c.checked = ids.includes(c.value); });
+  updateEquipLabel();
+}
+
+function updateEquipLabel() {
+  const ids = (document.getElementById('f_equipamentos_ids').value || '').split(',').filter(Boolean);
+  document.getElementById('selectedEquipLabel').textContent =
+    ids.length ? `${ids.length} equipamento(s) selecionado(s)` : 'Nenhum equipamento selecionado';
+}
+
+function randToken() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for (let i=0;i<12;i++) s += chars[Math.floor(Math.random()*chars.length)];
+  return s;
+}
+
+document.getElementById('btnNovo').addEventListener('click', () => {
+  clearForm();
+  openModal('Novo Colaborador', false);
+});
+document.getElementById('btnCloseModal').addEventListener('click', closeModal);
+document.getElementById('btnCancelModal').addEventListener('click', closeModal);
+document.getElementById('btnAjuda').addEventListener('click', () => {
+  alert('Use os filtros à esquerda. Novo Colaborador abre o cadastro em abas: Básico, Identificação, Organização e Acesso & Status.');
+});
+
+document.getElementById('btnGerarQr').addEventListener('click', () => {
+  document.getElementById('f_qr_code').value = 'QR-' + Date.now().toString(36).toUpperCase();
+});
+document.getElementById('btnGerarToken').addEventListener('click', () => {
+  document.getElementById('f_token').value = randToken();
+});
+document.getElementById('btnTestarFoto').addEventListener('click', () => {
+  const f = document.getElementById('f_foto').value;
+  if (!f) { alert('Nenhuma foto definida.'); return; }
+  window.open(f, '_blank');
+});
+
+document.getElementById('fotoFile').addEventListener('change', (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    document.getElementById('f_foto').value = reader.result;
+    setFotoPreview(reader.result);
+  };
+  reader.readAsDataURL(file);
+});
+
+document.getElementById('btnSelEquip').addEventListener('click', () => {
+  const ids = (document.getElementById('f_equipamentos_ids').value || '').split(',').filter(Boolean);
+  document.querySelectorAll('.eq-check').forEach(c => { c.checked = ids.includes(c.value); });
+  modalEquip.hidden = false;
+});
+document.getElementById('btnCloseEquip').addEventListener('click', () => modalEquip.hidden = true);
+document.getElementById('btnCancelEquip').addEventListener('click', () => modalEquip.hidden = true);
+document.getElementById('btnOkEquip').addEventListener('click', () => {
+  const ids = [...document.querySelectorAll('.eq-check:checked')].map(c => c.value);
+  document.getElementById('f_equipamentos_ids').value = ids.join(',');
+  updateEquipLabel();
+  modalEquip.hidden = true;
+});
+
+document.getElementById('btnSalvarPessoa').addEventListener('click', async () => {
+  const data = Object.fromEntries(new FormData(form).entries());
+  if (!data.nome || !data.matricula) {
+    showTab('basico');
+    alert('Nome e matrícula são obrigatórios.');
+    return;
+  }
+  if (!data.empresa_id || !data.grupo_id || !data.classificacao_id) {
+    showTab('org');
+    alert('Empresa, Grupo de Acesso e Classificação são obrigatórios.');
+    return;
+  }
+  if (!data.data_inicial) {
+    showTab('acesso');
+    alert('Informe a validade inicial do acesso.');
+    return;
+  }
+  const id = data.id;
+  delete data.id;
+  const url = id ? `/acesso/api/pessoas/${id}` : "{{ url_for('acesso.api_pessoas') }}";
+  const method = id ? 'PUT' : 'POST';
+  const r = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+  const res = await r.json();
+  if (!res.ok) { alert(res.error || 'Erro ao salvar'); return; }
+  location.reload();
+});
+
+document.querySelectorAll('.btn-edit').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const r = await fetch(`/acesso/api/pessoas/${btn.dataset.id}`);
+    const res = await r.json();
+    if (!res.ok) { alert('Erro ao carregar'); return; }
+    clearForm();
+    fillForm(res.pessoa);
+    openModal('Editar Colaborador', true);
+  });
+});
+
+document.querySelectorAll('.btn-del').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (!confirm('Deletar este colaborador?')) return;
+    const r = await fetch(`/acesso/api/pessoas/${btn.dataset.id}`, { method: 'DELETE' });
+    const res = await r.json();
+    if (!res.ok) { alert(res.error || 'Erro'); return; }
+    location.reload();
+  });
+});
+
+function updateSel() {
+  const checks = [...document.querySelectorAll('.row-check:checked')];
+  const semFoto = checks.filter(c => c.closest('tr').dataset.foto === '0').length;
+  document.getElementById('kpiSel').textContent = checks.length;
+  document.getElementById('kpiSelLabel').textContent = `Selecionados (sem foto: ${semFoto})`;
+}
+document.getElementById('checkAll')?.addEventListener('change', (e) => {
+  document.querySelectorAll('.row-check').forEach(c => { c.checked = e.target.checked; });
+  updateSel();
+});
+document.querySelectorAll('.row-check').forEach(c => c.addEventListener('change', updateSel));
+</script>
+{% endblock %}

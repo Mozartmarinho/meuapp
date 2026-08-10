@@ -2,11 +2,13 @@ from flask import Flask
 from routes import main
 from routes_nutricao import nutricao
 from routes_pesagem import pesagem
+from routes_acesso import acesso
 from routes_audit import auditoria
 from models import db, Usuario
 from db_config import SQLALCHEMY_DATABASE_URI
 import models_nutricao  # noqa: F401 — registra tabelas de nutrição
 import models_pesagem  # noqa: F401 — registra tabelas de pesagem
+import models_acesso  # noqa: F401 — registra tabelas de controle de acesso
 import models_audit  # noqa: F401 — registra tabelas de auditoria
 import os
 import socket
@@ -26,6 +28,7 @@ def create_app():
     app.register_blueprint(main)
     app.register_blueprint(nutricao)
     app.register_blueprint(pesagem)
+    app.register_blueprint(acesso)
     app.register_blueprint(auditoria)
 
     from audit_service import register_audit_hooks
@@ -191,9 +194,11 @@ if __name__ == '__main__':
         ensure_chamados_schema()
         from nutricao_service import seed_nutricao
         from routes_pesagem import seed_pesagem
+        from routes_acesso import seed_acesso
         from audit_service import ensure_audit_table
         seed_nutricao()
         seed_pesagem()
+        seed_acesso()
         ensure_audit_table()
         if not Usuario.query.first():
             admin = Usuario(
