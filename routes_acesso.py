@@ -1,4 +1,6 @@
 """Rotas do Sistema de Controle de Acesso — São Geraldo Service."""
+from __future__ import annotations
+
 from functools import wraps
 from datetime import datetime, date, time, timedelta
 import csv
