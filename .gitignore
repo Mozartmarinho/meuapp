@@ -13,6 +13,12 @@ instance/
 *.db
 *.sock
 
+# --- Dumps com PII (nunca versionar) ---
+docs/acesso/dumps/*.sql
+docs/acesso/dumps/*.sql.gz
+docs/acesso/dumps/*.sql.bz2
+!docs/acesso/dumps/README.md
+
 # --- Ambiente virtual ---
 venv/
 .venv/

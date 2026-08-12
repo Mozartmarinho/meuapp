@@ -1,36 +1,22 @@
 ﻿# Dump MySQL — Controle de Acesso
 
-Snapshot das tabelas `acesso_*` do banco `meuappdb` para restaurar em outro servidor.
+Pasta reservada para dumps **locais** de migração das tabelas `acesso_*`.
 
-## Arquivo
+## LGPD
 
-- `dumps/meuappdb_acesso_20260812.sql` (~82 MB)
+Dumps com dados pessoais (nomes, CPF, fotos, eventos) **não devem ser enviados ao GitHub**.
 
-## Tabelas incluidas
+O arquivo `meuappdb_acesso_20260812.sql` foi removido do repositório após a restauração no servidor.
 
-Todas as tabelas com prefixo `acesso_` (pessoas, visitantes, eventos, equipamentos, empresas, ambientes, refeicoes, estacionamentos, veiculos, permissoes, etc.), incluindo `acesso_pessoas.foto` e `acesso_visitantes.foto` (LONGTEXT).
-
-Nao inclui tabelas de outros modulos (chamados, nutricao, etc.).
-
-## Restore
-
-Crie o banco (se necessario) e importe:
+## Uso local (não versionar)
 
 ```bash
-mysql -u USER -p -e "CREATE DATABASE IF NOT EXISTS meuappdb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-mysql -u USER -p meuappdb < meuappdb_acesso_20260812.sql
+# gerar (apenas no servidor / máquina segura)
+mysqldump -u USER -p --single-transaction meuappdb $(mysql -u USER -p -N -e "SHOW TABLES LIKE 'acesso_%'" meuappdb) \
+  > /caminho/seguro/meuappdb_acesso_YYYYMMDD.sql
+
+# restaurar
+mysql -u USER -p meuappdb < /caminho/seguro/meuappdb_acesso_YYYYMMDD.sql
 ```
 
-Se o dump estiver compactado (`.sql.gz`):
-
-```bash
-gunzip -c meuappdb_acesso_YYYYMMDD.sql.gz | mysql -u USER -p meuappdb
-```
-
-## Aviso LGPD / PII
-
-Este dump contem dados pessoais (nomes, CPF, fotos e eventos de acesso). O repositorio **meuapp** esta **publico** no GitHub — trate o arquivo como sensivel, restrinja quem baixa e considere tornar o repositorio privado ou remover o dump apos a migracao.
-
-## Geracao
-
-Gerado com `mysqldump --single-transaction` a partir de `meuappdb` filtrando `acesso_%`.
+Arquivos `*.sql` / `*.sql.gz` nesta pasta estão no `.gitignore`.
