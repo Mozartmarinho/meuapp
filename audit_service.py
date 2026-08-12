@@ -265,6 +265,7 @@ def listar_logs(
     data_ate: Optional[date] = None,
     limit: int = 200,
     offset: int = 0,
+    ordem: str = 'desc',
 ):
     ensure_audit_table()
     query = AuditLog.query
@@ -291,8 +292,12 @@ def listar_logs(
         query = query.filter(AuditLog.data_hora <= fim)
 
     total = query.count()
+    if (ordem or 'desc').lower() in ('asc', 'antigos', 'oldest'):
+        order = (AuditLog.data_hora.asc(), AuditLog.id.asc())
+    else:
+        order = (AuditLog.data_hora.desc(), AuditLog.id.desc())
     rows = (
-        query.order_by(AuditLog.data_hora.desc(), AuditLog.id.desc())
+        query.order_by(*order)
         .offset(max(0, offset))
         .limit(min(limit or 200, 500))
         .all()

@@ -185,17 +185,18 @@
       <div class="tab-pane active" id="tab-basico">
         <div class="basico-grid">
           <div class="foto-col">
-            <div class="foto-preview" id="fotoPreview"><i class="fas fa-user"></i></div>
+            <div class="foto-preview" id="fotoPreview" data-status=""><i class="fas fa-user"></i></div>
             <label class="btn btn-secondary btn-sm full">
               Trocar Foto
               <input type="file" id="fotoFile" accept="image/*" hidden>
             </label>
-            <button type="button" class="btn btn-secondary btn-sm full" onclick="alert('Captura por webcam será liberada em breve.')">
+            <button type="button" class="btn btn-secondary btn-sm full" id="btnOpenWebcam">
               <i class="fas fa-camera"></i> Webcam
             </button>
             <button type="button" class="btn btn-outline-sg btn-sm full" id="btnTestarFoto">
-              <i class="fas fa-wand-magic-sparkles"></i> Testar Foto
+              <i class="fas fa-vial"></i> Testar Foto
             </button>
+            <div id="resultadoTesteFoto" class="foto-teste-result" hidden></div>
             <input type="hidden" name="foto" id="f_foto">
           </div>
           <div class="fields-col">
@@ -364,6 +365,57 @@
     </div>
   </div>
 </div>
+
+<!-- Modal Webcam -->
+<div class="modal-backdrop" id="modalWebcam" hidden>
+  <div class="modal-card modal-webcam">
+    <div class="modal-head">
+      <div>
+        <h3>Capturar Foto pela Webcam</h3>
+        <p class="modal-sub">Centralize o rosto, com boa iluminação, e capture.</p>
+      </div>
+      <button type="button" class="modal-close" id="btnCloseWebcam" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="modal-body webcam-body">
+      <div class="webcam-main">
+        <div class="webcam-stage" id="webcamStage">
+          <video id="webcamVideo" autoplay playsinline muted></video>
+          <div class="face-guide" id="faceGuide" aria-hidden="true"></div>
+          <div class="webcam-feedback" id="webcamFeedback">Posicione o rosto</div>
+          <img id="webcamPreview" alt="Prévia da captura" hidden>
+          <div class="webcam-loading" id="webcamLoading" hidden>Abrindo câmera…</div>
+        </div>
+        <canvas id="webcamCanvas" hidden></canvas>
+        <div class="webcam-actions">
+          <button type="button" class="btn-acesso" id="btnCaptureFoto" disabled>
+            <i class="fas fa-camera"></i> Capturar
+          </button>
+          <button type="button" class="btn btn-secondary" id="btnRecaptureFoto" hidden>
+            <i class="fas fa-sync-alt"></i> Tirar Outra
+          </button>
+        </div>
+      </div>
+      <aside class="webcam-tips">
+        <h4>Exemplo de boa foto</h4>
+        <img src="{{ url_for('static', filename='img/exemplo_foto.png') }}" alt="Exemplo de foto bem enquadrada" class="webcam-example">
+        <ul>
+          <li><i class="fas fa-check-circle"></i> Rosto centralizado</li>
+          <li><i class="fas fa-check-circle"></i> Boa iluminação</li>
+          <li><i class="fas fa-check-circle"></i> Sem óculos escuros</li>
+          <li><i class="fas fa-check-circle"></i> Fundo simples</li>
+        </ul>
+      </aside>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" id="btnCancelWebcam">Cancelar</button>
+      <button type="button" class="btn btn-success-sg" id="btnUseFoto" disabled>
+        <i class="fas fa-check"></i> Usar esta foto
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="sg-toast" id="sgToast" role="status" aria-live="polite" hidden></div>
 {% endblock %}
 
 {% block scripts %}
@@ -470,9 +522,18 @@
 .foto-preview {
   width:140px; height:140px; border-radius:50%; background:#e7eef8; color:#94a3b8;
   display:grid; place-items:center; font-size:2.8rem; overflow:hidden; border:3px solid #fff;
-  box-shadow:0 4px 14px rgba(13,43,92,.12);
+  box-shadow:0 4px 14px rgba(13,43,92,.12); position:relative;
 }
 .foto-preview img { width:100%; height:100%; object-fit:cover; }
+.foto-preview[data-status="ok"] { box-shadow:0 0 0 3px #16a34a, 0 4px 14px rgba(13,43,92,.12); }
+.foto-preview[data-status="bad"] { box-shadow:0 0 0 3px #dc2626, 0 4px 14px rgba(13,43,92,.12); }
+.foto-preview[data-status="testing"] { box-shadow:0 0 0 3px #1B4F9C, 0 4px 14px rgba(13,43,92,.12); }
+.foto-teste-result {
+  width:100%; font-size:.78rem; line-height:1.35; text-align:center;
+  padding:.35rem .4rem; border-radius:8px; background:#f8fafc; color:#475569;
+}
+.foto-teste-result.ok { background:#ecfdf5; color:#166534; }
+.foto-teste-result.bad { background:#fef2f2; color:#991b1b; }
 .full { width:100%; justify-content:center; }
 .fields-col { display:flex; flex-direction:column; gap:.85rem; }
 .fields-col label, .modal-body label {
@@ -497,11 +558,79 @@ label.req { color:#64748b; }
 .equip-hint { margin-top:.55rem; font-size:.82rem; color:#64748b; }
 .equip-checks { display:flex; flex-direction:column; gap:.55rem; }
 .check-line { display:flex; gap:.55rem; align-items:flex-start; }
+
+/* Webcam modal */
+.modal-webcam { max-width:820px; width:min(96vw, 820px); }
+.webcam-body {
+  display:grid; grid-template-columns:1.4fr .85fr; gap:1.1rem; align-items:start;
+}
+@media (max-width:760px){ .webcam-body { grid-template-columns:1fr; } }
+.webcam-stage {
+  position:relative; min-height:340px; border-radius:12px; overflow:hidden;
+  background:#0f172a; display:flex; align-items:center; justify-content:center;
+}
+.webcam-stage video, .webcam-stage #webcamPreview {
+  width:100%; height:100%; object-fit:cover; display:block; min-height:340px;
+}
+.webcam-stage video { transform: scaleX(-1); }
+.face-guide {
+  position:absolute; top:50%; left:50%; width:58%; aspect-ratio:3/4; max-height:78%;
+  transform:translate(-50%,-50%); border:2px dashed rgba(255,255,255,.55);
+  border-radius:50% / 42%; pointer-events:none; z-index:2;
+}
+.webcam-feedback {
+  position:absolute; left:50%; bottom:14px; transform:translateX(-50%);
+  background:rgba(15,42,86,.78); color:#fff; font-size:.82rem; font-weight:700;
+  padding:.35rem .75rem; border-radius:999px; z-index:3; white-space:nowrap;
+}
+.webcam-loading {
+  position:absolute; inset:0; display:grid; place-items:center; z-index:4;
+  background:rgba(15,23,42,.72); color:#fff; font-weight:700;
+}
+.webcam-actions { display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.75rem; }
+.webcam-tips h4 {
+  margin:0 0 .55rem; color:var(--brand-navy); font-size:.92rem; font-family:var(--font-brand);
+}
+.webcam-example {
+  width:100%; max-width:180px; border-radius:10px; display:block;
+  border:1px solid rgba(15,42,86,.12); margin-bottom:.65rem;
+}
+.webcam-tips ul { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.35rem; }
+.webcam-tips li { font-size:.82rem; color:#64748b; display:flex; gap:.4rem; align-items:center; }
+.webcam-tips li i { color:#16a34a; }
+
+.sg-toast {
+  position:fixed; right:1.1rem; bottom:1.1rem; z-index:9999;
+  background:var(--brand-navy); color:#fff; padding:.7rem 1rem; border-radius:10px;
+  box-shadow:0 8px 24px rgba(13,43,92,.28); font-size:.9rem; font-weight:600;
+  max-width:min(92vw, 380px);
+}
+.sg-toast.err { background:#b91c1c; }
+.sg-toast.show { display:block; animation:sgToastIn .2s ease; }
+@keyframes sgToastIn { from { opacity:0; transform:translateY(8px);} to { opacity:1; transform:none;} }
 </style>
 <script>
 const modal = document.getElementById('modalPessoa');
 const modalEquip = document.getElementById('modalEquip');
+const modalWebcam = document.getElementById('modalWebcam');
 const form = document.getElementById('formPessoa');
+const toastEl = document.getElementById('sgToast');
+let toastTimer = null;
+let webcamStream = null;
+let webcamCapturedDataUrl = '';
+
+function showToast(msg, ok = true) {
+  if (!toastEl) { alert(msg); return; }
+  toastEl.hidden = false;
+  toastEl.textContent = msg;
+  toastEl.classList.toggle('err', !ok);
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toastEl.classList.remove('show');
+    toastEl.hidden = true;
+  }, 4200);
+}
 
 function openModal(title, isEdit) {
   document.getElementById('modalTitle').textContent = title;
@@ -522,12 +651,21 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => showTab(btn.dataset.tab));
 });
 
+function clearFotoTesteUi() {
+  const preview = document.getElementById('fotoPreview');
+  const out = document.getElementById('resultadoTesteFoto');
+  if (preview) preview.dataset.status = '';
+  if (out) { out.hidden = true; out.textContent = ''; out.className = 'foto-teste-result'; }
+}
+
 function clearForm() {
   form.reset();
   document.getElementById('pessoaId').value = '';
   document.getElementById('f_equipamentos_ids').value = '';
   document.getElementById('f_foto').value = '';
   document.getElementById('fotoPreview').innerHTML = '<i class="fas fa-user"></i>';
+  document.getElementById('fotoFile').value = '';
+  clearFotoTesteUi();
   document.getElementById('tipo_wiegand').checked = true;
   document.getElementById('f_hora_inicial').value = '00:00';
   document.getElementById('f_data_inicial').value = new Date().toISOString().slice(0,10);
@@ -539,6 +677,12 @@ function setFotoPreview(url) {
   const box = document.getElementById('fotoPreview');
   if (url) box.innerHTML = `<img src="${url}" alt="">`;
   else box.innerHTML = '<i class="fas fa-user"></i>';
+  clearFotoTesteUi();
+}
+
+function applyFoto(dataUrl) {
+  document.getElementById('f_foto').value = dataUrl || '';
+  setFotoPreview(dataUrl || '');
 }
 
 function fillForm(p) {
@@ -584,6 +728,250 @@ function randToken() {
   return s;
 }
 
+/* ---- Webcam ---- */
+function resetWebcamUi(live) {
+  const video = document.getElementById('webcamVideo');
+  const preview = document.getElementById('webcamPreview');
+  const feedback = document.getElementById('webcamFeedback');
+  const guide = document.getElementById('faceGuide');
+  document.getElementById('btnCaptureFoto').hidden = !live;
+  document.getElementById('btnCaptureFoto').disabled = !live;
+  document.getElementById('btnRecaptureFoto').hidden = live;
+  document.getElementById('btnUseFoto').disabled = live;
+  video.hidden = !live;
+  preview.hidden = live;
+  if (feedback) {
+    feedback.hidden = !live;
+    feedback.textContent = 'Posicione o rosto';
+  }
+  if (guide) guide.hidden = !live;
+  webcamCapturedDataUrl = '';
+}
+
+async function startWebcam() {
+  const loading = document.getElementById('webcamLoading');
+  loading.hidden = false;
+  resetWebcamUi(true);
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error('Este navegador não oferece webcam (getUserMedia).');
+    }
+    stopWebcam();
+    webcamStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+    });
+    const video = document.getElementById('webcamVideo');
+    video.srcObject = webcamStream;
+    await video.play().catch(() => {});
+    document.getElementById('btnCaptureFoto').disabled = false;
+    document.getElementById('webcamFeedback').textContent = 'Pronto — centralize e capture';
+  } catch (err) {
+    showToast('Erro ao acessar webcam: ' + (err.message || err), false);
+    closeWebcamModal();
+  } finally {
+    loading.hidden = true;
+  }
+}
+
+function stopWebcam() {
+  if (webcamStream) {
+    webcamStream.getTracks().forEach(t => t.stop());
+    webcamStream = null;
+  }
+  const video = document.getElementById('webcamVideo');
+  if (video) video.srcObject = null;
+}
+
+function openWebcamModal() {
+  modalWebcam.hidden = false;
+  startWebcam();
+}
+function closeWebcamModal() {
+  stopWebcam();
+  resetWebcamUi(true);
+  modalWebcam.hidden = true;
+}
+
+function captureWebcamFrame() {
+  const video = document.getElementById('webcamVideo');
+  const canvas = document.getElementById('webcamCanvas');
+  const preview = document.getElementById('webcamPreview');
+  if (!video || !video.videoWidth) {
+    showToast('Aguarde a câmera iniciar.', false);
+    return;
+  }
+  const MAX_WIDTH = 800;
+  let width = video.videoWidth;
+  let height = video.videoHeight;
+  if (width > MAX_WIDTH) {
+    height = Math.round(height * (MAX_WIDTH / width));
+    width = MAX_WIDTH;
+  }
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  // espelha como o preview ao vivo (facingMode user)
+  ctx.translate(width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, 0, 0, width, height);
+  webcamCapturedDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+  preview.src = webcamCapturedDataUrl;
+  preview.hidden = false;
+  video.hidden = true;
+  document.getElementById('faceGuide').hidden = true;
+  document.getElementById('webcamFeedback').hidden = true;
+  document.getElementById('btnCaptureFoto').hidden = true;
+  document.getElementById('btnRecaptureFoto').hidden = false;
+  document.getElementById('btnUseFoto').disabled = false;
+  stopWebcam();
+}
+
+function useCapturedFoto() {
+  if (!webcamCapturedDataUrl) {
+    showToast('Capture uma foto primeiro.', false);
+    return;
+  }
+  document.getElementById('fotoFile').value = '';
+  applyFoto(webcamCapturedDataUrl);
+  closeWebcamModal();
+  showToast('Foto capturada!');
+}
+
+/* ---- Testar Foto (qualidade local inspirada no Sollus) ---- */
+function loadImageFromSrc(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Não foi possível carregar a imagem.'));
+    img.src = src;
+  });
+}
+
+async function analisarQualidadeFoto(src) {
+  const errors = [];
+  const tips = [];
+  if (!src || !String(src).trim()) {
+    return { ok: false, errors: ['Nenhuma foto definida.'], tips: [] };
+  }
+
+  let img;
+  try {
+    img = await loadImageFromSrc(src);
+  } catch (e) {
+    return { ok: false, errors: [e.message || 'Imagem inválida.'], tips: [] };
+  }
+
+  const w = img.naturalWidth || img.width;
+  const h = img.naturalHeight || img.height;
+  if (w < 120 || h < 120) {
+    errors.push(`Resolução baixa (${w}×${h}). Mínimo recomendado: 120×120.`);
+  } else if (w < 240 || h < 240) {
+    tips.push('Resolução aceitável, mas 240×240+ é melhor para reconhecimento facial.');
+  }
+
+  const canvas = document.createElement('canvas');
+  const sample = Math.min(160, w);
+  const scale = sample / w;
+  canvas.width = sample;
+  canvas.height = Math.max(1, Math.round(h * scale));
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const n = data.length / 4;
+  if (n < 100) {
+    errors.push('Imagem vazia ou corrompida.');
+    return { ok: false, errors, tips };
+  }
+
+  let sum = 0, sumSq = 0, dark = 0, bright = 0, nearWhite = 0, nearBlack = 0;
+  let skinish = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+    if (a < 20) continue;
+    const y = 0.299 * r + 0.587 * g + 0.114 * b;
+    sum += y;
+    sumSq += y * y;
+    if (y < 40) dark++;
+    if (y > 230) bright++;
+    if (r > 245 && g > 245 && b > 245) nearWhite++;
+    if (r < 12 && g < 12 && b < 12) nearBlack++;
+    // heurística simples de tom de pele (não é detecção facial)
+    if (r > 60 && g > 30 && b > 15 && r > g && r > b && (r - g) > 10 && y > 50 && y < 230) skinish++;
+  }
+  const mean = sum / n;
+  const variance = Math.max(0, (sumSq / n) - (mean * mean));
+  const std = Math.sqrt(variance);
+  const darkRatio = dark / n;
+  const brightRatio = bright / n;
+  const blankRatio = Math.max(nearWhite, nearBlack) / n;
+  const skinRatio = skinish / n;
+
+  if (blankRatio > 0.92) errors.push('Imagem praticamente em branco ou preta.');
+  if (mean < 35) errors.push('Foto muito escura — melhore a iluminação.');
+  else if (mean > 230) errors.push('Foto muito clara / estourada.');
+  else if (mean < 55) tips.push('Iluminação um pouco baixa.');
+  else if (mean > 200) tips.push('Iluminação um pouco alta.');
+
+  if (std < 12) errors.push('Pouca variação (imagem plana / sem detalhes).');
+  else if (std < 22) tips.push('Nitidez/contraste fracos — aproxime-se e foque o rosto.');
+
+  if (darkRatio > 0.55) tips.push('Muitas áreas escuras no quadro.');
+  if (brightRatio > 0.45) tips.push('Muitas áreas estouradas no quadro.');
+
+  if (skinRatio < 0.04) {
+    tips.push('Poucos tons de pele detectados — centralize o rosto (heurística local).');
+  } else if (skinRatio < 0.08) {
+    tips.push('Enquadramento pode estar frouxo — aproxime o rosto.');
+  }
+
+  // score inspirado nos scores do iDFace (pose/nitidez simplificados)
+  let score = 100;
+  score -= Math.min(40, errors.length * 22);
+  score -= Math.min(25, tips.length * 8);
+  if (std >= 35) score += 5;
+  if (skinRatio >= 0.12) score += 5;
+  score = Math.max(0, Math.min(100, Math.round(score)));
+
+  const ok = errors.length === 0 && score >= 55;
+  return { ok, errors, tips, score, meta: { w, h, mean: Math.round(mean), std: Math.round(std) } };
+}
+
+async function testarFotoAtual() {
+  const src = document.getElementById('f_foto').value;
+  const preview = document.getElementById('fotoPreview');
+  const out = document.getElementById('resultadoTesteFoto');
+  if (!src) {
+    showToast('Nenhuma foto para testar.', false);
+    if (out) {
+      out.hidden = false;
+      out.className = 'foto-teste-result bad';
+      out.textContent = 'Nenhuma foto definida.';
+    }
+    if (preview) preview.dataset.status = 'bad';
+    return;
+  }
+  if (preview) preview.dataset.status = 'testing';
+  if (out) {
+    out.hidden = false;
+    out.className = 'foto-teste-result';
+    out.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Validando foto…';
+  }
+  const result = await analisarQualidadeFoto(src);
+  if (preview) preview.dataset.status = result.ok ? 'ok' : 'bad';
+  const lines = [];
+  lines.push(`<strong>${result.ok ? 'Aprovada' : 'Reprovada'}</strong>`);
+  if (result.score != null) lines.push(`Score estimado: ${result.score}%`);
+  if (result.meta) lines.push(`${result.meta.w}×${result.meta.h} · brilho ${result.meta.mean} · contraste ${result.meta.std}`);
+  (result.errors || []).forEach(e => lines.push(`• ${e}`));
+  (result.tips || []).slice(0, 3).forEach(t => lines.push(`• ${t}`));
+  if (out) {
+    out.className = 'foto-teste-result ' + (result.ok ? 'ok' : 'bad');
+    out.innerHTML = lines.join('<br>');
+  }
+  showToast(result.ok ? 'Foto aprovada' : 'Foto reprovada', result.ok);
+}
+
 document.getElementById('btnNovo').addEventListener('click', () => {
   clearForm();
   openModal('Novo Colaborador', false);
@@ -597,20 +985,29 @@ document.getElementById('btnGerarQr').addEventListener('click', () => {
 document.getElementById('btnGerarToken').addEventListener('click', () => {
   document.getElementById('f_token').value = randToken();
 });
-document.getElementById('btnTestarFoto').addEventListener('click', () => {
-  const f = document.getElementById('f_foto').value;
-  if (!f) { alert('Nenhuma foto definida.'); return; }
-  window.open(f, '_blank');
-});
+
+document.getElementById('btnOpenWebcam').addEventListener('click', openWebcamModal);
+document.getElementById('btnCloseWebcam').addEventListener('click', closeWebcamModal);
+document.getElementById('btnCancelWebcam').addEventListener('click', closeWebcamModal);
+document.getElementById('btnCaptureFoto').addEventListener('click', captureWebcamFrame);
+document.getElementById('btnRecaptureFoto').addEventListener('click', () => startWebcam());
+document.getElementById('btnUseFoto').addEventListener('click', useCapturedFoto);
+document.getElementById('btnTestarFoto').addEventListener('click', () => { testarFotoAtual(); });
 
 document.getElementById('fotoFile').addEventListener('change', (e) => {
   const file = e.target.files?.[0];
   if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    showToast('Selecione um arquivo de imagem.', false);
+    e.target.value = '';
+    return;
+  }
   const reader = new FileReader();
   reader.onload = () => {
-    document.getElementById('f_foto').value = reader.result;
-    setFotoPreview(reader.result);
+    applyFoto(reader.result);
+    showToast('Foto selecionada!');
   };
+  reader.onerror = () => showToast('Falha ao ler o arquivo.', false);
   reader.readAsDataURL(file);
 });
 
@@ -632,34 +1029,41 @@ document.getElementById('btnSalvarPessoa').addEventListener('click', async () =>
   const data = Object.fromEntries(new FormData(form).entries());
   if (!data.nome || !data.matricula) {
     showTab('basico');
-    alert('Nome e matrícula são obrigatórios.');
+    showToast('Nome e matrícula são obrigatórios.', false);
     return;
   }
   if (!data.empresa_id || !data.grupo_id || !data.classificacao_id) {
     showTab('org');
-    alert('Empresa, Grupo de Acesso e Classificação são obrigatórios.');
+    showToast('Empresa, Grupo de Acesso e Classificação são obrigatórios.', false);
     return;
   }
   if (!data.data_inicial) {
     showTab('acesso');
-    alert('Informe a validade inicial do acesso.');
+    showToast('Informe a validade inicial do acesso.', false);
     return;
   }
+  // garante campo foto (FormData já inclui hidden #f_foto)
+  data.foto = document.getElementById('f_foto').value || data.foto || '';
   const id = data.id;
   delete data.id;
   const url = id ? `/acesso/api/pessoas/${id}` : "{{ url_for('acesso.api_pessoas') }}";
   const method = id ? 'PUT' : 'POST';
-  const r = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
-  const res = await r.json();
-  if (!res.ok) { alert(res.error || 'Erro ao salvar'); return; }
-  location.reload();
+  try {
+    const r = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+    const res = await r.json();
+    if (!res.ok) { showToast(res.error || 'Erro ao salvar', false); return; }
+    showToast(id ? 'Colaborador atualizado' : 'Colaborador criado');
+    location.reload();
+  } catch (err) {
+    showToast('Erro de rede ao salvar.', false);
+  }
 });
 
 document.querySelectorAll('.btn-edit').forEach(btn => {
   btn.addEventListener('click', async () => {
     const r = await fetch(`/acesso/api/pessoas/${btn.dataset.id}`);
     const res = await r.json();
-    if (!res.ok) { alert('Erro ao carregar'); return; }
+    if (!res.ok) { showToast('Erro ao carregar', false); return; }
     clearForm();
     fillForm(res.pessoa);
     openModal('Editar Colaborador', true);
@@ -671,7 +1075,7 @@ document.querySelectorAll('.btn-del').forEach(btn => {
     if (!confirm('Deletar este colaborador?')) return;
     const r = await fetch(`/acesso/api/pessoas/${btn.dataset.id}`, { method: 'DELETE' });
     const res = await r.json();
-    if (!res.ok) { alert(res.error || 'Erro'); return; }
+    if (!res.ok) { showToast(res.error || 'Erro', false); return; }
     location.reload();
   });
 });
@@ -687,5 +1091,7 @@ document.getElementById('checkAll')?.addEventListener('change', (e) => {
   updateSel();
 });
 document.querySelectorAll('.row-check').forEach(c => c.addEventListener('change', updateSel));
+
+window.addEventListener('beforeunload', stopWebcam);
 </script>
 {% endblock %}

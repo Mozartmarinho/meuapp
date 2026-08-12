@@ -1,0 +1,470 @@
+{% extends "base_acesso.html" %}
+{% block title %}Gerenciador de Backup{% endblock %}
+{% block content %}
+<style>
+.bk-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: #fff;
+  border: 1px solid rgba(15, 42, 86, 0.1);
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.04);
+  padding: 1.15rem 1.3rem;
+  margin-bottom: 1.1rem;
+}
+.bk-hero-left {
+  display: flex;
+  gap: 0.9rem;
+  align-items: flex-start;
+  min-width: 0;
+}
+.bk-hero-icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 12px;
+  background: rgba(27, 79, 156, 0.12);
+  color: var(--brand-blue);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+.bk-hero h1 {
+  margin: 0;
+  font-family: var(--font-brand);
+  font-size: 1.45rem;
+  color: var(--brand-navy);
+}
+.bk-hero p {
+  margin: 0.3rem 0 0;
+  color: #64748b;
+  font-size: 0.92rem;
+  max-width: 42rem;
+}
+.bk-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+@media (max-width: 980px) {
+  .bk-grid { grid-template-columns: 1fr; }
+}
+.bk-card {
+  background: #fff;
+  border: 1px solid rgba(15, 42, 86, 0.1);
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.04);
+  overflow: hidden;
+}
+.bk-card-body { padding: 1.1rem 1.2rem; }
+.bk-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+.bk-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0;
+  font-family: var(--font-brand);
+  font-size: 1.05rem;
+  color: var(--brand-navy);
+}
+.bk-card-title i { color: var(--brand-blue); }
+.bk-card-desc {
+  margin: 0 0 1rem;
+  color: #64748b;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.bk-stack { display: grid; gap: 1rem; }
+.bk-btn-wide {
+  width: 100%;
+  justify-content: center;
+  padding: 0.85rem 1rem;
+  font-size: 0.98rem;
+}
+.bk-btn-save {
+  width: 100%;
+  justify-content: center;
+  padding: 0.75rem 1rem;
+  background: var(--brand-lime);
+  color: var(--brand-navy);
+  border: none;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: var(--font-body);
+}
+.bk-btn-save:hover { background: var(--brand-lime-dark); color: #fff; }
+.bk-btn-save:disabled { opacity: .55; cursor: not-allowed; }
+.bk-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.85rem;
+  font-size: 0.82rem;
+  color: #64748b;
+  font-weight: 600;
+}
+.bk-field input,
+.bk-field select {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(15, 42, 86, 0.12);
+  border-radius: 10px;
+  font: inherit;
+  color: var(--brand-navy);
+  background: #fff;
+}
+.bk-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.95rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid rgba(15, 42, 86, 0.08);
+}
+.bk-toggle-row span {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--brand-navy);
+}
+.bk-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+.bk-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.bk-switch .slider {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+  background: #cbd5e1;
+  border-radius: 999px;
+  transition: background .2s ease;
+}
+.bk-switch .slider::before {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 3px;
+  top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform .2s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,.15);
+}
+.bk-switch input:checked + .slider { background: var(--brand-blue); }
+.bk-switch input:checked + .slider::before { transform: translateX(20px); }
+.bk-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.bk-badge.off { background: rgba(100, 116, 139, 0.15); color: #64748b; }
+.bk-badge.on { background: rgba(22, 163, 74, 0.12); color: #15803d; }
+.bk-note {
+  margin: 0.75rem 0 0;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+.bk-status {
+  margin-top: 0.75rem;
+  font-size: 0.88rem;
+  color: #15803d;
+  display: none;
+}
+.bk-hist-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.95rem 1.15rem;
+  border-bottom: 1px solid rgba(15, 42, 86, 0.08);
+  cursor: pointer;
+  user-select: none;
+}
+.bk-hist-head:hover { background: #f8fafc; }
+.bk-hist-chev {
+  color: #64748b;
+  transition: transform .2s ease;
+}
+.bk-hist-body.collapsed { display: none; }
+.bk-hist-chev.collapsed { transform: rotate(-90deg); }
+.bk-hist-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.9rem 1.15rem;
+  border-bottom: 1px solid rgba(15, 42, 86, 0.06);
+}
+.bk-hist-item:last-child { border-bottom: none; }
+.bk-hist-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.85rem;
+  margin-top: 0.25rem;
+  font-size: 0.82rem;
+  color: #64748b;
+}
+.bk-hist-empty {
+  padding: 2.5rem 1.25rem;
+  text-align: center;
+  color: #94a3b8;
+}
+.bk-hist-empty i {
+  display: block;
+  font-size: 1.75rem;
+  margin-bottom: 0.55rem;
+  opacity: .55;
+}
+.bk-help-panel {
+  display: none;
+  margin: -0.35rem 0 1.1rem;
+  padding: 0.9rem 1.1rem;
+  background: rgba(27, 79, 156, 0.06);
+  border: 1px solid rgba(27, 79, 156, 0.12);
+  border-radius: 12px;
+  color: var(--brand-navy);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.bk-help-panel.open { display: block; }
+</style>
+
+<div class="bk-hero">
+  <div class="bk-hero-left">
+    <div class="bk-hero-icon" aria-hidden="true"><i class="fas fa-shield-halved"></i></div>
+    <div>
+      <h1>Gerenciador de Backup</h1>
+      <p>Execute backups manuais, agende rotinas e consulte o histórico de execuções.</p>
+    </div>
+  </div>
+  <button type="button" class="btn btn-secondary btn-sm" id="btnAjuda">
+    <i class="fas fa-circle-question"></i> Ajuda
+  </button>
+</div>
+
+<div class="bk-help-panel" id="ajudaPanel">
+  O backup exporta as tabelas <strong>acesso_*</strong> (pessoas, visitantes, equipamentos, eventos, regras e cadastros auxiliares) em arquivo JSON.
+  Backups manuais registram o operador logado. O agendamento salva a configuração; a execução automática será processada pelo serviço de jobs do sistema.
+</div>
+
+<div class="bk-grid">
+  <div class="bk-stack">
+    <div class="bk-card">
+      <div class="bk-card-body">
+        <div class="bk-card-head">
+          <h3 class="bk-card-title"><i class="fas fa-play"></i> Backup Manual</h3>
+        </div>
+        <p class="bk-card-desc">
+          Gera um backup completo imediato dos dados do Controle de Acesso e registra o operador responsável pela execução.
+        </p>
+        <button type="button" class="btn-acesso bk-btn-wide" id="btnGerar">
+          <i class="fas fa-play"></i> Iniciar Backup Agora
+        </button>
+        <div class="bk-status" id="backupStatus"></div>
+      </div>
+    </div>
+
+    <div class="bk-card">
+      <div class="bk-card-body">
+        <div class="bk-card-head">
+          <h3 class="bk-card-title"><i class="fas fa-calendar-days"></i> Backup Agendado</h3>
+          <span class="bk-badge {% if config.ativo %}on{% else %}off{% endif %}" id="badgeAgendamento">
+            {% if config.ativo %}Ativado{% else %}Desativado{% endif %}
+          </span>
+        </div>
+
+        <div class="bk-toggle-row">
+          <span>Ativar backup agendado</span>
+          <label class="bk-switch" title="Ativar ou desativar">
+            <input type="checkbox" id="chkAtivo" {% if config.ativo %}checked{% endif %}>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <label class="bk-field">
+          Frequência
+          <select id="selFrequencia">
+            <option value="Diário" {% if config.frequencia == 'Diário' %}selected{% endif %}>Diário</option>
+            <option value="Semanal" {% if config.frequencia == 'Semanal' %}selected{% endif %}>Semanal</option>
+            <option value="Mensal" {% if config.frequencia == 'Mensal' %}selected{% endif %}>Mensal</option>
+          </select>
+        </label>
+
+        <label class="bk-field">
+          Horário
+          <input type="time" id="inpHorario" value="{{ config.horario or '02:00' }}">
+        </label>
+
+        <button type="button" class="bk-btn-save" id="btnSalvarAgenda">
+          <i class="fas fa-floppy-disk"></i> Salvar Agendamento
+        </button>
+        <p class="bk-note" id="agendaNota">
+          Status: {% if config.ativo %}agendamento ativo ({{ config.frequencia }} às {{ config.horario }}){% else %}agendamento desativado{% endif %}.
+          A execução automática será feita pelo serviço de jobs.
+        </p>
+        <div class="bk-status" id="agendaStatus"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bk-card">
+    <div class="bk-hist-head" id="histToggle" role="button" tabindex="0" aria-expanded="true">
+      <h3 class="bk-card-title" style="margin:0;">
+        <i class="fas fa-rotate"></i> Histórico de Backups
+      </h3>
+      <i class="fas fa-chevron-down bk-hist-chev" id="histChevron"></i>
+    </div>
+    <div class="bk-hist-body" id="histBody">
+      {% if backups %}
+        {% for b in backups %}
+        <div class="bk-hist-item">
+          <div>
+            <strong style="color:var(--brand-navy);">{{ b.arquivo }}</strong>
+            <div class="bk-hist-meta">
+              <span><i class="far fa-clock"></i> {{ b.data_criacao }}</span>
+              <span><i class="fas fa-hard-drive"></i> {{ b.tamanho_fmt }}</span>
+              <span><i class="fas fa-user"></i> {{ b.usuario_nome or '—' }}</span>
+            </div>
+          </div>
+          <a class="btn btn-secondary btn-sm" href="{{ url_for('acesso.backup_download', bid=b.id) }}">
+            <i class="fas fa-download"></i> Baixar
+          </a>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="bk-hist-empty">
+          <i class="fas fa-box-archive"></i>
+          Nenhum backup gerado ainda.
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const API_BACKUP = {{ url_for('acesso.api_backup_gerar')|tojson }};
+const API_AGENDA = {{ url_for('acesso.api_backup_agendamento')|tojson }};
+
+function syncBadge() {
+  const on = document.getElementById('chkAtivo').checked;
+  const badge = document.getElementById('badgeAgendamento');
+  badge.textContent = on ? 'Ativado' : 'Desativado';
+  badge.className = 'bk-badge ' + (on ? 'on' : 'off');
+}
+
+document.getElementById('chkAtivo').addEventListener('change', syncBadge);
+
+document.getElementById('btnAjuda').addEventListener('click', () => {
+  document.getElementById('ajudaPanel').classList.toggle('open');
+});
+
+const histToggle = document.getElementById('histToggle');
+histToggle.addEventListener('click', () => {
+  const body = document.getElementById('histBody');
+  const chev = document.getElementById('histChevron');
+  const collapsed = body.classList.toggle('collapsed');
+  chev.classList.toggle('collapsed', collapsed);
+  histToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+});
+histToggle.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    histToggle.click();
+  }
+});
+
+document.getElementById('btnGerar').addEventListener('click', async () => {
+  const btn = document.getElementById('btnGerar');
+  const status = document.getElementById('backupStatus');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Gerando…';
+  status.style.display = 'none';
+  try {
+    const r = await fetch(API_BACKUP, { method: 'POST' });
+    const res = await r.json();
+    if (!res.ok) {
+      alert(res.error || 'Erro ao gerar backup');
+      return;
+    }
+    status.style.display = 'block';
+    status.textContent = `Backup gerado: ${res.arquivo} (${res.tamanho_fmt}).`;
+    setTimeout(() => location.reload(), 700);
+  } catch (e) {
+    alert('Falha ao gerar backup.');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-play"></i> Iniciar Backup Agora';
+  }
+});
+
+document.getElementById('btnSalvarAgenda').addEventListener('click', async () => {
+  const btn = document.getElementById('btnSalvarAgenda');
+  const status = document.getElementById('agendaStatus');
+  const nota = document.getElementById('agendaNota');
+  const ativo = document.getElementById('chkAtivo').checked;
+  const frequencia = document.getElementById('selFrequencia').value;
+  const horario = document.getElementById('inpHorario').value;
+  if (!horario) {
+    alert('Informe o horário.');
+    return;
+  }
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando…';
+  status.style.display = 'none';
+  try {
+    const r = await fetch(API_AGENDA, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ativo, frequencia, horario }),
+    });
+    const res = await r.json();
+    if (!res.ok) {
+      alert(res.error || 'Erro ao salvar agendamento');
+      return;
+    }
+    const cfg = res.config || {};
+    syncBadge();
+    nota.textContent = cfg.ativo
+      ? `Status: agendamento ativo (${cfg.frequencia} às ${cfg.horario}). A execução automática será feita pelo serviço de jobs.`
+      : 'Status: agendamento desativado. A execução automática será feita pelo serviço de jobs.';
+    status.style.display = 'block';
+    status.textContent = res.nota || 'Agendamento salvo.';
+  } catch (e) {
+    alert('Falha ao salvar agendamento.');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Salvar Agendamento';
+  }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,586 @@
+{% extends "base_acesso.html" %}
+{% block title %}Gerenciamento de Escalas{% endblock %}
+{% block content %}
+<div class="esc-wrap">
+  <header class="esc-hero">
+    <div>
+      <h1>Gerenciamento de Escalas</h1>
+      <p>Configure turnos, folgas e exceções de acesso dos colaboradores.</p>
+    </div>
+    <div class="esc-hero-actions">
+      <button type="button" class="btn btn-secondary btn-sm" id="btnAjuda">
+        <i class="fas fa-circle-info"></i> Ajuda
+      </button>
+      <button type="button" class="btn-success-sg btn-sm" id="btnRelatorio" title="Imprimir relatório">
+        <i class="fas fa-print"></i> Relatório
+      </button>
+      <button type="button" class="btn-acesso" id="btnNova">
+        <i class="fas fa-plus"></i> Nova Escala
+      </button>
+    </div>
+  </header>
+
+  <section class="esc-toolbar card">
+    <span class="esc-badge" id="escBadge">{{ total }} Escala{{ 's' if total != 1 else '' }} Encontrada{{ 's' if total != 1 else '' }}</span>
+    <form method="get" class="esc-filters" id="formFiltros">
+      <label class="esc-search">
+        <i class="fas fa-magnifying-glass"></i>
+        <input type="search" name="q" value="{{ q }}" placeholder="Buscar colaborador..." autocomplete="off">
+      </label>
+      <label class="esc-status-filter">Status
+        <select name="status" id="filtroStatus">
+          <option value="">Todos</option>
+          <option value="ativo" {% if status == 'ativo' %}selected{% endif %}>Ativo</option>
+          <option value="inativo" {% if status == 'inativo' %}selected{% endif %}>Inativo</option>
+        </select>
+      </label>
+    </form>
+  </section>
+
+  <section class="esc-list" id="listaEscalas">
+    {% for e in escalas %}
+    <article class="esc-card" data-id="{{ e.id }}">
+      <div class="esc-card-main">
+        <div class="esc-card-icon" aria-hidden="true"><i class="fas fa-calendar-days"></i></div>
+        <div class="esc-card-info">
+          <h3>{{ e.nome_pessoa }}</h3>
+          <div class="esc-card-meta">
+            <span class="esc-tipo">{{ e.tipo }}</span>
+            <span class="esc-periodo">
+              <i class="fas fa-calendar"></i>
+              {{ e.data_inicio_fmt }} — {{ e.data_fim_fmt }}
+            </span>
+            {% if e.hora_entrada or e.hora_saida %}
+            <span class="esc-horas">
+              <i class="fas fa-clock"></i>
+              {{ e.hora_entrada or '--:--' }} – {{ e.hora_saida or '--:--' }}
+            </span>
+            {% endif %}
+            {% if e.ativo %}
+            <span class="badge-status badge-online">Ativo</span>
+            {% else %}
+            <span class="badge-status badge-offline">Inativo</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="esc-card-actions">
+        <button type="button" class="btn btn-secondary btn-sm btn-print-esc" data-id="{{ e.id }}" title="Imprimir">
+          <i class="fas fa-print"></i>
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm btn-edit-esc" data-id="{{ e.id }}" title="Editar">
+          <i class="fas fa-pen"></i>
+        </button>
+      </div>
+    </article>
+    {% endfor %}
+  </section>
+
+  <div class="esc-empty" id="emptyEscalas" {% if escalas %}hidden{% endif %}>
+    <i class="fas fa-calendar-xmark"></i>
+    <p>Nenhuma escala cadastrada</p>
+    <span>Clique em <strong>+ Nova Escala</strong> para configurar o primeiro ciclo.</span>
+  </div>
+</div>
+
+<!-- Modal Configurar Escala -->
+<div class="modal-backdrop" id="modalEscala" hidden>
+  <div class="modal-card esc-modal">
+    <div class="esc-modal-head">
+      <h3 id="modalEscalaTitle">Configurar Escala</h3>
+      <button type="button" class="modal-close" data-close="modalEscala" aria-label="Fechar">&times;</button>
+    </div>
+
+    <form id="formEscala" class="esc-modal-body" autocomplete="off">
+      <input type="hidden" id="f_id" value="">
+      <input type="hidden" id="f_pessoa_id" value="">
+
+      <div class="esc-modal-grid">
+        <div class="esc-modal-left">
+          <section class="esc-block">
+            <h4>COLABORADOR</h4>
+            <div class="esc-pessoa-wrap">
+              <i class="fas fa-user esc-pessoa-ico" aria-hidden="true"></i>
+              <input type="search" id="f_pessoa_busca" placeholder="Pesquisar..." autocomplete="off">
+              <div class="esc-ac-drop" id="pessoaDrop" hidden></div>
+            </div>
+            <div class="esc-pessoa-sel" id="pessoaSel" hidden>
+              <span id="pessoaSelNome"></span>
+              <button type="button" class="esc-pessoa-clear" id="btnClearPessoa" aria-label="Limpar">&times;</button>
+            </div>
+          </section>
+
+          <section class="esc-block">
+            <h4>Período e Ciclo</h4>
+            <div class="esc-row-2">
+              <label>Data Inicial <span class="req">*</span>
+                <input type="date" id="f_data_inicio" required>
+              </label>
+              <label>Data Final
+                <input type="date" id="f_data_fim">
+              </label>
+            </div>
+            <div class="esc-row-2">
+              <label>Dias Trabalho
+                <input type="number" id="f_dias_trabalho" min="0" max="366" value="5">
+              </label>
+              <label>Dias Folga
+                <input type="number" id="f_dias_folga" min="0" max="366" value="2">
+              </label>
+            </div>
+          </section>
+
+          <section class="esc-block">
+            <h4>Horários</h4>
+            <div class="esc-row-2">
+              <label>Entrada
+                <input type="time" id="f_hora_entrada" placeholder="--:--">
+              </label>
+              <label>Saída
+                <input type="time" id="f_hora_saida" placeholder="--:--">
+              </label>
+            </div>
+          </section>
+
+          <section class="esc-block esc-status-block">
+            <h4>Status da Escala</h4>
+            <label class="esc-toggle">
+              <input type="checkbox" id="f_ativo" checked>
+              <span class="esc-toggle-track" aria-hidden="true"></span>
+              <span class="esc-toggle-label" id="f_ativo_label">ON</span>
+            </label>
+          </section>
+        </div>
+
+        <aside class="esc-modal-right" id="escCalPanel">
+          <div class="esc-cal-empty" id="escCalEmpty">
+            <i class="fas fa-calendar-days"></i>
+            <p>Salve a escala para habilitar o calendário de exceções.</p>
+          </div>
+          <div class="esc-cal-placeholder" id="escCalReady" hidden>
+            <i class="fas fa-calendar-check"></i>
+            <p>Calendário de exceções</p>
+            <span>Em breve: marque folgas e liberações extras neste painel.</span>
+          </div>
+        </aside>
+      </div>
+    </form>
+
+    <div class="esc-modal-foot">
+      <button type="button" class="btn btn-secondary" data-close="modalEscala">Fechar</button>
+      <button type="button" class="btn-acesso" id="btnSalvarEscala">
+        <i class="fas fa-check"></i> Salvar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Ajuda -->
+<div class="modal-backdrop" id="modalAjuda" hidden>
+  <div class="modal-card" style="width:min(520px,100%)">
+    <div class="modal-head">
+      <h3>Ajuda — Escalas</h3>
+      <button type="button" class="modal-close" data-close="modalAjuda" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="modal-body" style="padding:1.15rem 1.2rem;color:#475569;line-height:1.55;">
+      <p style="margin:0 0 .75rem;">Defina o ciclo de trabalho (dias trabalhados × folga), o período de vigência e os horários de entrada/saída do colaborador.</p>
+      <ul style="margin:0;padding-left:1.2rem;">
+        <li>Busque e selecione o colaborador cadastrado.</li>
+        <li>Ex.: 5 dias de trabalho e 2 de folga gera a escala <strong>5x2</strong>.</li>
+        <li>Após salvar, o calendário de exceções fica disponível na edição.</li>
+      </ul>
+    </div>
+    <div class="modal-foot" style="justify-content:flex-end;">
+      <button type="button" class="btn-acesso" data-close="modalAjuda">Entendi</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.esc-wrap { display:flex; flex-direction:column; gap:1rem; }
+.esc-hero {
+  display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap;
+}
+.esc-hero h1 {
+  margin:0; font-family:var(--font-brand); font-size:1.85rem; color:var(--brand-navy); font-weight:700;
+}
+.esc-hero p { margin:.35rem 0 0; color:#64748b; font-size:.95rem; }
+.esc-hero-actions { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
+
+.btn-success-sg {
+  background:#16a34a; color:#fff; border:none; border-radius:10px; padding:.55rem .9rem;
+  font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:.4rem; font:inherit;
+}
+.btn-success-sg:hover { background:#15803d; color:#fff; }
+
+.esc-toolbar {
+  display:flex; flex-wrap:wrap; gap:.75rem; align-items:center; justify-content:space-between;
+  padding:.85rem 1rem; background:#fff; border:1px solid rgba(15,42,86,.1);
+  border-radius:14px; box-shadow:0 4px 12px rgba(0,0,0,.04);
+}
+.esc-badge {
+  display:inline-flex; align-items:center; padding:.35rem .75rem; border-radius:999px;
+  background:rgba(27,79,156,.1); color:var(--brand-blue); font-weight:700; font-size:.82rem;
+}
+.esc-filters { display:flex; flex-wrap:wrap; gap:.65rem; align-items:center; }
+.esc-search {
+  position:relative; display:flex; align-items:center; min-width:min(280px,100%);
+}
+.esc-search i {
+  position:absolute; left:.75rem; color:#94a3b8; pointer-events:none;
+}
+.esc-search input {
+  width:100%; padding:.55rem .75rem .55rem 2.1rem; border:1px solid rgba(15,42,86,.12);
+  border-radius:10px; font:inherit; color:var(--brand-navy); background:#fff;
+}
+.esc-status-filter {
+  display:flex; align-items:center; gap:.45rem; font-size:.82rem; font-weight:700; color:#64748b;
+}
+.esc-status-filter select {
+  padding:.55rem .7rem; border:1px solid rgba(15,42,86,.12); border-radius:10px;
+  font:inherit; color:var(--brand-navy); background:#fff;
+}
+
+.esc-list { display:flex; flex-direction:column; gap:.75rem; }
+.esc-card {
+  display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;
+  padding:1rem 1.15rem; background:#fff; border:1px solid rgba(15,42,86,.1);
+  border-radius:14px; box-shadow:0 4px 12px rgba(0,0,0,.04);
+}
+.esc-card-main { display:flex; gap:.9rem; align-items:center; min-width:0; }
+.esc-card-icon {
+  width:48px; height:48px; border-radius:12px; flex-shrink:0;
+  display:grid; place-items:center; background:rgba(27,79,156,.1); color:var(--brand-blue); font-size:1.15rem;
+}
+.esc-card-info h3 {
+  margin:0 0 .35rem; font-family:var(--font-brand); font-size:1.15rem; color:var(--brand-navy);
+}
+.esc-card-meta {
+  display:flex; flex-wrap:wrap; gap:.55rem .85rem; align-items:center;
+  font-size:.85rem; color:#64748b;
+}
+.esc-tipo {
+  font-weight:800; color:var(--brand-blue); background:rgba(27,79,156,.08);
+  padding:.15rem .55rem; border-radius:999px; font-size:.78rem;
+}
+.esc-card-actions { display:flex; gap:.4rem; }
+
+.esc-empty {
+  text-align:center; padding:3rem 1rem; color:#94a3b8;
+  display:flex; flex-direction:column; align-items:center; gap:.45rem;
+  background:#fff; border:1px dashed rgba(15,42,86,.18); border-radius:14px;
+}
+.esc-empty[hidden] { display:none !important; }
+.esc-empty i { font-size:2rem; opacity:.7; color:var(--brand-blue); }
+.esc-empty p { margin:0; font-weight:700; color:var(--brand-navy); font-family:var(--font-brand); font-size:1.15rem; }
+
+.modal-backdrop {
+  position:fixed; inset:0; background:rgba(13,43,92,.45); z-index:2000;
+  display:grid; place-items:center; padding:1rem;
+}
+.modal-backdrop[hidden] { display:none !important; }
+
+.esc-modal {
+  width:min(920px,100%); background:#fff; border-radius:16px; overflow:hidden;
+  box-shadow:0 24px 48px rgba(13,43,92,.25); max-height:92vh; display:flex; flex-direction:column;
+}
+.esc-modal-head {
+  display:flex; justify-content:space-between; align-items:center; gap:.75rem;
+  padding:1rem 1.25rem; border-bottom:1px solid rgba(15,42,86,.08);
+}
+.esc-modal-head h3 {
+  margin:0; font-family:var(--font-brand); font-size:1.35rem; color:var(--brand-blue); font-weight:700;
+}
+.modal-close {
+  border:none; background:transparent; font-size:1.55rem; cursor:pointer; color:#64748b; line-height:1;
+}
+.esc-modal-body { padding:1.1rem 1.25rem; overflow:auto; flex:1; }
+.esc-modal-grid {
+  display:grid; grid-template-columns: minmax(280px, 1fr) minmax(240px, .95fr); gap:1.1rem; align-items:stretch;
+}
+@media (max-width: 760px) {
+  .esc-modal-grid { grid-template-columns: 1fr; }
+}
+.esc-modal-left { display:flex; flex-direction:column; gap:1rem; }
+.esc-block h4 {
+  margin:0 0 .55rem; font-size:.78rem; letter-spacing:.04em; text-transform:uppercase;
+  color:#64748b; font-weight:800;
+}
+.esc-block label {
+  display:flex; flex-direction:column; gap:.3rem; font-size:.82rem; font-weight:700; color:#64748b;
+}
+.esc-block input[type="date"],
+.esc-block input[type="number"],
+.esc-block input[type="time"],
+.esc-block input[type="search"] {
+  padding:.55rem .7rem; border:1px solid rgba(15,42,86,.12); border-radius:10px;
+  font:inherit; color:var(--brand-navy); background:#fff;
+}
+.esc-row-2 { display:grid; grid-template-columns:1fr 1fr; gap:.65rem; }
+@media (max-width: 520px) { .esc-row-2 { grid-template-columns:1fr; } }
+.req { color:#dc2626; }
+
+.esc-pessoa-wrap { position:relative; }
+.esc-pessoa-ico {
+  position:absolute; left:.75rem; top:50%; transform:translateY(-50%); color:#94a3b8; z-index:1;
+}
+.esc-pessoa-wrap input {
+  width:100%; padding:.6rem .75rem .6rem 2.2rem !important;
+}
+.esc-ac-drop {
+  position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:5;
+  background:#fff; border:1px solid rgba(15,42,86,.12); border-radius:10px;
+  box-shadow:0 12px 28px rgba(13,43,92,.16); max-height:220px; overflow:auto;
+}
+.esc-ac-drop[hidden] { display:none !important; }
+.esc-ac-item {
+  padding:.65rem .8rem; cursor:pointer; border-bottom:1px solid rgba(15,42,86,.06);
+}
+.esc-ac-item:hover { background:rgba(27,79,156,.06); }
+.esc-ac-item .n { font-weight:700; color:var(--brand-navy); font-size:.9rem; }
+.esc-ac-item .d { font-size:.78rem; color:#94a3b8; margin-top:.15rem; }
+.esc-pessoa-sel {
+  margin-top:.5rem; display:inline-flex; align-items:center; gap:.45rem;
+  padding:.35rem .65rem; border-radius:999px; background:rgba(27,79,156,.1); color:var(--brand-navy);
+  font-weight:700; font-size:.85rem;
+}
+.esc-pessoa-sel[hidden] { display:none !important; }
+.esc-pessoa-clear {
+  border:none; background:transparent; cursor:pointer; color:#64748b; font-size:1.1rem; line-height:1;
+}
+
+.esc-status-block { display:flex; align-items:center; justify-content:space-between; gap:1rem; }
+.esc-toggle {
+  display:inline-flex !important; flex-direction:row !important; align-items:center; gap:.55rem;
+  cursor:pointer; font-weight:800 !important; color:var(--brand-navy) !important;
+}
+.esc-toggle input { position:absolute; opacity:0; width:0; height:0; }
+.esc-toggle-track {
+  width:46px; height:26px; border-radius:999px; background:#cbd5e1; position:relative; transition:.2s;
+}
+.esc-toggle-track::after {
+  content:""; position:absolute; top:3px; left:3px; width:20px; height:20px;
+  border-radius:50%; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.2); transition:.2s;
+}
+.esc-toggle input:checked + .esc-toggle-track { background:#16a34a; }
+.esc-toggle input:checked + .esc-toggle-track::after { transform:translateX(20px); }
+
+.esc-modal-right {
+  background:linear-gradient(180deg, rgba(27,79,156,.04), rgba(13,43,92,.06));
+  border:1px dashed rgba(15,42,86,.18); border-radius:14px; min-height:280px;
+  display:grid; place-items:center; padding:1.5rem;
+}
+.esc-cal-empty, .esc-cal-placeholder {
+  text-align:center; color:#94a3b8; display:flex; flex-direction:column; align-items:center; gap:.55rem;
+}
+.esc-cal-empty i, .esc-cal-placeholder i { font-size:2.2rem; color:var(--brand-blue); opacity:.75; }
+.esc-cal-empty p, .esc-cal-placeholder p {
+  margin:0; font-weight:700; color:var(--brand-navy); max-width:16rem; line-height:1.4;
+}
+.esc-cal-placeholder span { font-size:.85rem; max-width:16rem; }
+
+.esc-modal-foot {
+  display:flex; justify-content:flex-end; align-items:center; gap:.55rem;
+  padding:.95rem 1.25rem; border-top:1px solid rgba(15,42,86,.08);
+}
+.modal-head, .modal-foot {
+  display:flex; justify-content:space-between; align-items:center; gap:.75rem;
+  padding:.95rem 1.2rem; border-bottom:1px solid rgba(15,42,86,.08);
+}
+.modal-foot { border-bottom:0; border-top:1px solid rgba(15,42,86,.08); }
+.modal-head h3 { margin:0; font-family:var(--font-brand); color:var(--brand-navy); font-size:1.25rem; }
+
+@media print {
+  .sidebar, .app-topbar, .esc-hero-actions, .esc-toolbar, .esc-card-actions, .modal-backdrop { display:none !important; }
+  .esc-card { break-inside:avoid; box-shadow:none; }
+}
+</style>
+
+<script>
+(function () {
+  const API = {{ url_for('acesso.api_escalas')|tojson }};
+  const PESSOAS = {{ pessoas|tojson }};
+  const modal = document.getElementById('modalEscala');
+  const modalAjuda = document.getElementById('modalAjuda');
+  const form = document.getElementById('formEscala');
+  const drop = document.getElementById('pessoaDrop');
+  const busca = document.getElementById('f_pessoa_busca');
+  const pessoaId = document.getElementById('f_pessoa_id');
+  const pessoaSel = document.getElementById('pessoaSel');
+  const pessoaSelNome = document.getElementById('pessoaSelNome');
+  const calEmpty = document.getElementById('escCalEmpty');
+  const calReady = document.getElementById('escCalReady');
+  const ativoChk = document.getElementById('f_ativo');
+  const ativoLabel = document.getElementById('f_ativo_label');
+
+  function openModal(el) { el.hidden = false; }
+  function closeModal(el) { el.hidden = true; }
+
+  document.querySelectorAll('[data-close]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-close');
+      const el = document.getElementById(id);
+      if (el) closeModal(el);
+    });
+  });
+  [modal, modalAjuda].forEach(m => {
+    m.addEventListener('click', e => { if (e.target === m) closeModal(m); });
+  });
+
+  function syncAtivoLabel() {
+    ativoLabel.textContent = ativoChk.checked ? 'ON' : 'OFF';
+  }
+  ativoChk.addEventListener('change', syncAtivoLabel);
+
+  function setPessoa(id, nome) {
+    pessoaId.value = id || '';
+    if (id && nome) {
+      pessoaSelNome.textContent = nome;
+      pessoaSel.hidden = false;
+      busca.value = '';
+      busca.placeholder = 'Trocar colaborador...';
+    } else {
+      pessoaSel.hidden = true;
+      pessoaSelNome.textContent = '';
+      busca.placeholder = 'Pesquisar...';
+    }
+    drop.hidden = true;
+  }
+
+  document.getElementById('btnClearPessoa').addEventListener('click', () => setPessoa('', ''));
+
+  function renderDrop(items) {
+    if (!items.length) { drop.hidden = true; return; }
+    drop.innerHTML = items.map(p => `
+      <div class="esc-ac-item" data-id="${p.id}" data-nome="${String(p.nome).replace(/"/g, '&quot;')}">
+        <div class="n">${p.nome}</div>
+        <div class="d">Mat. ${p.matricula || '—'}</div>
+      </div>`).join('');
+    drop.hidden = false;
+    drop.querySelectorAll('.esc-ac-item').forEach(el => {
+      el.addEventListener('click', () => setPessoa(el.dataset.id, el.dataset.nome));
+    });
+  }
+
+  let acTimer = null;
+  busca.addEventListener('input', () => {
+    clearTimeout(acTimer);
+    const q = busca.value.trim().toLowerCase();
+    if (q.length < 1) { drop.hidden = true; return; }
+    acTimer = setTimeout(() => {
+      const hits = PESSOAS.filter(p =>
+        (p.nome || '').toLowerCase().includes(q) ||
+        String(p.matricula || '').toLowerCase().includes(q)
+      ).slice(0, 12);
+      renderDrop(hits);
+    }, 120);
+  });
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.esc-pessoa-wrap')) drop.hidden = true;
+  });
+
+  function resetForm() {
+    form.reset();
+    document.getElementById('f_id').value = '';
+    document.getElementById('f_dias_trabalho').value = 5;
+    document.getElementById('f_dias_folga').value = 2;
+    ativoChk.checked = true;
+    syncAtivoLabel();
+    setPessoa('', '');
+    calEmpty.hidden = false;
+    calReady.hidden = true;
+    document.getElementById('modalEscalaTitle').textContent = 'Configurar Escala';
+  }
+
+  function fillForm(e) {
+    document.getElementById('f_id').value = e.id || '';
+    document.getElementById('f_data_inicio').value = e.data_inicio || '';
+    document.getElementById('f_data_fim').value = e.data_fim || '';
+    document.getElementById('f_dias_trabalho').value = e.dias_trabalho != null ? e.dias_trabalho : 5;
+    document.getElementById('f_dias_folga').value = e.dias_folga != null ? e.dias_folga : 2;
+    document.getElementById('f_hora_entrada').value = e.hora_entrada || '';
+    document.getElementById('f_hora_saida').value = e.hora_saida || '';
+    ativoChk.checked = !!e.ativo;
+    syncAtivoLabel();
+    setPessoa(e.pessoa_id || '', e.nome_pessoa || '');
+    calEmpty.hidden = true;
+    calReady.hidden = false;
+    document.getElementById('modalEscalaTitle').textContent = 'Configurar Escala';
+  }
+
+  document.getElementById('btnNova').addEventListener('click', () => {
+    resetForm();
+    openModal(modal);
+    setTimeout(() => busca.focus(), 50);
+  });
+  document.getElementById('btnAjuda').addEventListener('click', () => openModal(modalAjuda));
+  document.getElementById('btnRelatorio').addEventListener('click', () => window.print());
+
+  document.getElementById('filtroStatus').addEventListener('change', () => {
+    document.getElementById('formFiltros').submit();
+  });
+
+  document.querySelectorAll('.btn-edit-esc').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const r = await fetch(API + '/' + id);
+      const res = await r.json();
+      if (!res.ok || !res.escala) {
+        alert(res.error || 'Não foi possível carregar a escala.');
+        return;
+      }
+      fillForm(res.escala);
+      openModal(modal);
+    });
+  });
+
+  document.querySelectorAll('.btn-print-esc').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const card = btn.closest('.esc-card');
+      if (!card) return;
+      document.querySelectorAll('.esc-card').forEach(c => {
+        if (c !== card) c.style.display = 'none';
+      });
+      window.print();
+      document.querySelectorAll('.esc-card').forEach(c => { c.style.display = ''; });
+    });
+  });
+
+  document.getElementById('btnSalvarEscala').addEventListener('click', async () => {
+    const id = document.getElementById('f_id').value;
+    const payload = {
+      pessoa_id: pessoaId.value || null,
+      nome_pessoa: pessoaSelNome.textContent || busca.value.trim(),
+      data_inicio: document.getElementById('f_data_inicio').value,
+      data_fim: document.getElementById('f_data_fim').value || null,
+      dias_trabalho: document.getElementById('f_dias_trabalho').value,
+      dias_folga: document.getElementById('f_dias_folga').value,
+      hora_entrada: document.getElementById('f_hora_entrada').value || null,
+      hora_saida: document.getElementById('f_hora_saida').value || null,
+      ativo: ativoChk.checked,
+    };
+    if (!payload.pessoa_id && !payload.nome_pessoa) {
+      alert('Selecione um colaborador.');
+      busca.focus();
+      return;
+    }
+    if (!payload.data_inicio) {
+      alert('Informe a data inicial.');
+      return;
+    }
+    const r = await fetch(id ? API + '/' + id : API, {
+      method: id ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const res = await r.json().catch(() => ({}));
+    if (!r.ok || !res.ok) {
+      alert(res.error || 'Erro ao salvar escala.');
+      return;
+    }
+    closeModal(modal);
+    window.location.reload();
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,764 @@
+{% extends "base_acesso.html" %}
+{% block title %}Hub de Documentos{% endblock %}
+{% block content %}
+<div class="hd-wrap">
+  <header class="hd-hero card">
+    <div>
+      <h1>Hub de Documentos</h1>
+      <p>Gerencie os tipos de documento e seus vínculos com os usuários</p>
+    </div>
+    <div class="hd-hero-actions">
+      <button type="button" class="btn btn-secondary btn-sm" id="btnAjuda">
+        <i class="fas fa-circle-info"></i> Ajuda
+      </button>
+      <button type="button" class="btn-outline-sg" id="btnTiposDocumento">
+        <i class="fas fa-file-lines"></i> Tipos de Documento
+      </button>
+    </div>
+  </header>
+
+  <div class="hd-tabs" role="tablist">
+    <button type="button" class="hd-tab active" data-tab="filtros" role="tab" id="tabFiltros">
+      <i class="fas fa-filter"></i> Filtros &amp; Usuários
+    </button>
+    <button type="button" class="hd-tab" data-tab="detalhes" role="tab" id="tabDetalhes">
+      <i class="fas fa-user"></i> Detalhes do Usuário
+    </button>
+  </div>
+
+  <div id="panelFiltros">
+    <div class="hd-grid">
+      <aside class="card hd-panel">
+        <h2>Filtros de Busca</h2>
+        <form id="formFiltros" class="hd-filters" autocomplete="off">
+          <label>Nome / Matrícula
+            <input type="search" name="q" id="f_q" placeholder="Digite nome ou matrícula…">
+          </label>
+          <label>Empresa
+            <select name="empresa_id" id="f_empresa">
+              <option value="">Todas</option>
+              {% for e in empresas %}
+              <option value="{{ e.id }}">{{ e.nome }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Departamento
+            <select name="departamento_id" id="f_departamento">
+              <option value="">Todos</option>
+              {% for d in departamentos %}
+              <option value="{{ d.id }}">{{ d.descricao }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Setor
+            <select name="setor_id" id="f_setor">
+              <option value="">Todos</option>
+              {% for s in setores %}
+              <option value="{{ s.id }}">{{ s.descricao }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Classificação
+            <select name="classificacao_id" id="f_classificacao">
+              <option value="">Todas</option>
+              {% for c in classificacoes %}
+              <option value="{{ c.id }}">{{ c.descricao }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <div class="hd-filter-actions">
+            <button type="submit" class="btn-acesso"><i class="fas fa-filter"></i> Aplicar</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btnLimparFiltros">Limpar</button>
+          </div>
+        </form>
+      </aside>
+
+      <section class="hd-main">
+        <div class="hd-kpi-row">
+          <div class="hd-kpi">
+            <div class="hd-kpi-v" id="kpiPessoas">0</div>
+            <div class="hd-kpi-l">Pessoas Listadas</div>
+          </div>
+          <div class="hd-kpi">
+            <div class="hd-kpi-v" id="kpiDocsTotal">0</div>
+            <div class="hd-kpi-l">Documentos (Total)</div>
+          </div>
+          <div class="hd-kpi">
+            <div class="hd-kpi-v green" id="kpiDocsValidos">0</div>
+            <div class="hd-kpi-l">Documentos Válidos</div>
+          </div>
+        </div>
+
+        <div class="card hd-panel">
+          <div class="hd-list-head">
+            <h2>Usuários Encontrados</h2>
+            <span class="hd-count" id="listaCount">0 registro(s)</span>
+          </div>
+          <ul class="hd-user-list" id="listaUsuarios"></ul>
+          <div class="hd-empty" id="emptyUsuarios" hidden>
+            <i class="fas fa-users"></i>
+            <p>Nenhum usuário encontrado</p>
+          </div>
+          <div class="hd-pager" id="pagerUsuarios">
+            <button type="button" class="btn btn-secondary btn-sm" id="btnPrevPage" disabled>‹</button>
+            <span id="pagerLabel">0–0 de 0</span>
+            <button type="button" class="btn btn-secondary btn-sm" id="btnNextPage" disabled>›</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="panelDetalhes" hidden>
+    <div class="card hd-panel">
+      <div class="hd-empty" id="emptyDetalhe">
+        <i class="fas fa-folder-open"></i>
+        <strong>Nenhum usuário selecionado</strong>
+        <p>Selecione um usuário na aba Filtros &amp; Usuários para ver os documentos vinculados.</p>
+      </div>
+
+      <div id="conteudoDetalhe" hidden>
+        <div class="hd-detail-head">
+          <div class="hd-detail-user">
+            <div class="hd-avatar lg" id="detAvatar">?</div>
+            <div>
+              <h2 id="detNome">—</h2>
+              <p class="hd-meta" id="detMeta"></p>
+            </div>
+          </div>
+          <button type="button" class="btn-acesso" id="btnVincularDoc">
+            <i class="fas fa-plus"></i> Vincular Documento
+          </button>
+        </div>
+
+        <div class="hd-docs-section">
+          <h3 class="hd-section-title">Documentos Vinculados</h3>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Tipo</th>
+                  <th>Número</th>
+                  <th>Validade</th>
+                  <th>Status</th>
+                  <th>Arquivo</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="tbodyDocs"></tbody>
+            </table>
+          </div>
+          <div class="hd-empty-mini" id="emptyDocs" hidden>Nenhum documento vinculado a este usuário.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Catálogo de Tipos -->
+<div class="modal-backdrop" id="modalTipos" hidden>
+  <div class="modal-card" style="max-width:640px;">
+    <div class="modal-head">
+      <div>
+        <h3>Catálogo de Tipos de Documento</h3>
+      </div>
+      <button type="button" class="modal-close" id="btnCloseTipos" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="formTipo" class="hd-tipo-form" autocomplete="off">
+        <input type="hidden" id="tipoEditId" value="">
+        <label class="hd-tipo-nome">Nome do Tipo
+          <input type="text" id="tipoNome" placeholder="Ex.: ASO, CNH, RG..." maxlength="40" required>
+        </label>
+        <button type="submit" class="btn-acesso" id="btnSalvarTipo">
+          <i class="fas fa-plus"></i> <span id="btnSalvarTipoLabel">Adicionar Novo</span>
+        </button>
+      </form>
+
+      <div class="table-scroll">
+        <table class="data-table hd-tipos-table">
+          <thead>
+            <tr>
+              <th>NOME</th>
+              <th style="width:110px;">VÍNCULOS</th>
+              <th style="width:100px;">AÇÕES</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyTipos"></tbody>
+        </table>
+      </div>
+      <div class="hd-empty-mini" id="emptyTipos" hidden>Nenhum tipo cadastrado.</div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" id="btnFecharTipos">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Vincular Documento -->
+<div class="modal-backdrop" id="modalVincular" hidden>
+  <div class="modal-card" style="max-width:480px;">
+    <div class="modal-head">
+      <div>
+        <h3>Vincular Novo Documento</h3>
+      </div>
+      <button type="button" class="modal-close" id="btnCloseVinc" aria-label="Fechar">&times;</button>
+    </div>
+    <form id="formVincular" class="modal-body" autocomplete="off" enctype="multipart/form-data">
+      <label>Usuário
+        <input type="text" id="vincUsuario" readonly tabindex="-1">
+      </label>
+      <label class="req">Tipo de Documento
+        <select id="vincTipo" required>
+          <option value="">Selecione...</option>
+        </select>
+      </label>
+      <label>Número
+        <input type="text" id="vincNumero" placeholder="Número / identificação">
+      </label>
+      <label>Validade
+        <input type="date" id="vincValidade">
+        <span class="hd-field-hint">Deixe em branco se não houver validade</span>
+      </label>
+      <label>Foto/Arquivo
+        <input type="file" id="vincArquivo" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.doc,.docx,.xls,.xlsx,.txt,image/*">
+      </label>
+    </form>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" id="btnCancelVinc">Cancelar</button>
+      <button type="button" class="btn-acesso" id="btnSalvarVinc"><i class="fas fa-check"></i> Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Ajuda -->
+<div class="modal-backdrop" id="modalAjuda" hidden>
+  <div class="modal-card" style="max-width:480px;">
+    <div class="modal-head">
+      <div><h3>Ajuda — Hub de Documentos</h3></div>
+      <button type="button" class="modal-close" data-close-modal aria-label="Fechar">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin:0;color:#475569;line-height:1.55;">
+        Filtre colaboradores e clique em um usuário para ver os documentos vinculados.
+        Use <strong>Tipos de Documento</strong> para cadastrar o catálogo (ASO, CNH, RG…).
+        Em seguida, na aba Detalhes, vincule documentos a cada pessoa.
+      </p>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" data-close-modal>Fechar</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.hd-wrap { max-width: 1280px; }
+.hd-hero {
+  display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; align-items:center;
+  padding:1.15rem 1.25rem; margin-bottom:1rem;
+  background:#fff; border:1px solid rgba(15,42,86,.1); border-radius:14px;
+  box-shadow:0 4px 12px rgba(0,0,0,.04);
+}
+.hd-hero h1 { margin:0; font-family:var(--font-brand); font-size:1.45rem; color:var(--brand-navy); }
+.hd-hero p { margin:.3rem 0 0; color:#64748b; font-size:.92rem; }
+.hd-hero-actions { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
+.btn-outline-sg {
+  background:#fff; color:var(--brand-blue); border:1px solid rgba(27,79,156,.35); border-radius:10px;
+  padding:.55rem .9rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:.4rem; font-size:.88rem;
+}
+.btn-outline-sg:hover { background:rgba(27,79,156,.06); }
+
+.hd-tabs {
+  display:flex; gap:0; border-bottom:1px solid rgba(15,42,86,.1); margin-bottom:1rem;
+}
+.hd-tab {
+  border:0; background:transparent; padding:.65rem 1rem; cursor:pointer;
+  font:inherit; font-weight:700; color:#64748b; border-bottom:2px solid transparent;
+  display:inline-flex; align-items:center; gap:.4rem;
+}
+.hd-tab:hover { color:var(--brand-navy); }
+.hd-tab.active { color:var(--brand-blue); border-bottom-color:var(--brand-blue); }
+
+.hd-grid {
+  display:grid; grid-template-columns:minmax(260px,320px) 1fr; gap:1rem; align-items:start;
+}
+@media (max-width:900px){ .hd-grid { grid-template-columns:1fr; } }
+.hd-panel {
+  padding:1.1rem 1.2rem; background:#fff; border:1px solid rgba(15,42,86,.1);
+  border-radius:14px; box-shadow:0 4px 12px rgba(0,0,0,.04);
+}
+.hd-panel h2 {
+  margin:0 0 .9rem; font-family:var(--font-brand); font-size:1.1rem; color:var(--brand-navy);
+}
+.hd-filters { display:flex; flex-direction:column; gap:.75rem; }
+.hd-filters label {
+  display:flex; flex-direction:column; gap:.3rem; font-size:.82rem; font-weight:700; color:#64748b;
+}
+.hd-filters input, .hd-filters select,
+.modal-body input, .modal-body select {
+  padding:.55rem .7rem; border:1px solid rgba(15,42,86,.12); border-radius:10px;
+  font:inherit; color:var(--brand-navy); background:#fff;
+}
+.hd-filter-actions { display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.25rem; }
+
+.hd-kpi-row {
+  display:grid; grid-template-columns:repeat(3,1fr); gap:.75rem; margin-bottom:1rem;
+}
+@media (max-width:700px){ .hd-kpi-row { grid-template-columns:1fr; } }
+.hd-kpi {
+  background:#fff; border:1px solid rgba(15,42,86,.1); border-radius:12px;
+  padding:.85rem 1rem; box-shadow:0 4px 12px rgba(0,0,0,.04);
+}
+.hd-kpi-v { font-family:var(--font-brand); font-size:1.55rem; font-weight:800; color:var(--brand-navy); }
+.hd-kpi-v.green { color:#16a34a; }
+.hd-kpi-l { color:#64748b; font-size:.78rem; font-weight:700; margin-top:.15rem; }
+
+.hd-list-head {
+  display:flex; justify-content:space-between; align-items:center; gap:.75rem; margin-bottom:.85rem;
+}
+.hd-list-head h2 { margin:0; }
+.hd-count { font-size:.82rem; font-weight:700; color:#94a3b8; }
+
+.hd-user-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.35rem; }
+.hd-user-item {
+  display:flex; align-items:center; gap:.75rem; padding:.65rem .75rem;
+  border:1px solid rgba(15,42,86,.08); border-radius:12px; cursor:pointer;
+  background:#fff; transition:background .15s, border-color .15s;
+}
+.hd-user-item:hover {
+  background:rgba(27,79,156,.06); border-color:rgba(27,79,156,.25);
+}
+.hd-avatar {
+  width:2.25rem; height:2.25rem; border-radius:50%;
+  background:rgba(27,79,156,.12); color:var(--brand-blue);
+  display:inline-flex; align-items:center; justify-content:center;
+  font-weight:800; font-size:.85rem; flex-shrink:0;
+}
+.hd-avatar.lg { width:3rem; height:3rem; font-size:1rem; }
+.hd-user-info { min-width:0; }
+.hd-user-info strong {
+  display:block; color:var(--brand-navy); font-size:.95rem;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.hd-user-info span { color:#94a3b8; font-size:.8rem; font-weight:600; }
+
+.hd-pager {
+  display:flex; align-items:center; justify-content:flex-end; gap:.5rem;
+  margin-top:.85rem; font-size:.82rem; font-weight:700; color:#64748b;
+}
+.hd-empty {
+  text-align:center; padding:2.5rem 1rem; color:#94a3b8;
+  display:flex; flex-direction:column; align-items:center; gap:.45rem;
+}
+.hd-empty i { font-size:1.8rem; opacity:.7; }
+.hd-empty p, .hd-empty strong { margin:0; }
+.hd-empty-mini {
+  text-align:center; padding:1.25rem; color:#94a3b8; font-weight:600; font-size:.9rem;
+}
+
+.hd-detail-head {
+  display:flex; justify-content:space-between; align-items:center; gap:1rem;
+  flex-wrap:wrap; margin-bottom:1rem;
+}
+.hd-detail-user { display:flex; align-items:center; gap:.85rem; }
+.hd-detail-user h2 { margin:0; font-family:var(--font-brand); color:var(--brand-navy); font-size:1.25rem; }
+.hd-meta { margin:.2rem 0 0; color:#64748b; font-size:.88rem; }
+.hd-section-title {
+  margin:0 0 .75rem; font-family:var(--font-brand); font-size:1.05rem; color:var(--brand-navy);
+}
+.hd-field-hint { font-size:.75rem; font-weight:600; color:#94a3b8; margin-top:.2rem; }
+.modal-body input[readonly] {
+  background:#f1f5f9; color:var(--brand-navy); cursor:default;
+}
+.hd-user-item.active {
+  background:rgba(27,79,156,.12); border-color:var(--brand-blue);
+  box-shadow:inset 3px 0 0 var(--brand-blue);
+}
+.hd-doc-file {
+  color:var(--brand-blue); font-weight:700; font-size:.85rem; text-decoration:none;
+}
+.hd-doc-file:hover { text-decoration:underline; }
+
+.hd-tipo-form {
+  display:flex; gap:.65rem; align-items:flex-end; flex-wrap:wrap; margin-bottom:1rem;
+}
+.hd-tipo-nome { flex:1; min-width:180px; display:flex; flex-direction:column; gap:.3rem;
+  font-size:.82rem; font-weight:700; color:#64748b; }
+.hd-tipos-table th { font-size:.75rem; letter-spacing:.04em; }
+.hd-acao-btn {
+  border:none; background:transparent; cursor:pointer; padding:.3rem .4rem;
+  color:#64748b; border-radius:6px; font-size:.95rem;
+}
+.hd-acao-btn:hover { background:rgba(15,42,86,.06); color:var(--brand-blue); }
+.hd-acao-btn.danger { color:#dc2626; }
+.hd-acao-btn.danger:hover { background:rgba(220,38,38,.08); color:#b91c1c; }
+.hd-acao-btn.editing { color:var(--brand-blue); background:rgba(27,79,156,.1); }
+
+.modal-backdrop {
+  position:fixed; inset:0; background:rgba(13,43,92,.45); z-index:2000;
+  display:grid; place-items:center; padding:1rem;
+}
+.modal-backdrop[hidden] { display:none !important; }
+.modal-card {
+  width:min(640px,100%); background:#fff; border-radius:16px; overflow:hidden;
+  box-shadow:0 24px 48px rgba(13,43,92,.25); max-height:92vh; display:flex; flex-direction:column;
+}
+.modal-head, .modal-foot {
+  display:flex; justify-content:space-between; align-items:flex-start; gap:.75rem;
+  padding:.95rem 1.2rem; border-bottom:1px solid rgba(15,42,86,.08);
+}
+.modal-foot { border-bottom:0; border-top:1px solid rgba(15,42,86,.08); justify-content:flex-end; align-items:center; }
+.modal-head h3 { margin:0; font-family:var(--font-brand); color:var(--brand-navy); font-size:1.25rem; }
+.modal-sub { margin:.35rem 0 0; color:#64748b; font-size:.88rem; }
+.modal-close { border:none; background:transparent; font-size:1.5rem; cursor:pointer; color:#64748b; line-height:1; }
+.modal-body { padding:1.15rem 1.2rem; overflow:auto; display:flex; flex-direction:column; gap:.85rem; }
+.modal-body label {
+  display:flex; flex-direction:column; gap:.3rem; font-size:.82rem; font-weight:700; color:#64748b;
+}
+.badge-status {
+  display:inline-flex; align-items:center; gap:.3rem; padding:.15rem .5rem;
+  border-radius:999px; font-size:.75rem; font-weight:700;
+}
+.badge-online { background:rgba(22,163,74,.12); color:#15803d; }
+.badge-offline { background:rgba(100,116,139,.15); color:#64748b; }
+</style>
+<script>
+(function () {
+  const API_PESSOAS = {{ url_for('acesso.api_hub_documentos_pessoas')|tojson }};
+  const API_TIPOS = {{ url_for('acesso.api_tipos_documento')|tojson }};
+  const API_DOCS = (pid) => `/acesso/api/hub-documentos/pessoas/${pid}/documentos`;
+  const API_DOC = (did) => `/acesso/api/hub-documentos/documentos/${did}`;
+
+  let page = 1;
+  const perPage = 20;
+  let totalPages = 0;
+  let selectedId = null;
+  let selectedPessoa = null;
+  let tiposCache = [];
+  let editTipoId = null;
+
+  const listaUsuarios = document.getElementById('listaUsuarios');
+  const emptyUsuarios = document.getElementById('emptyUsuarios');
+  const modalTipos = document.getElementById('modalTipos');
+  const modalVincular = document.getElementById('modalVincular');
+  const modalAjuda = document.getElementById('modalAjuda');
+  const tipoNome = document.getElementById('tipoNome');
+  const tipoEditId = document.getElementById('tipoEditId');
+  const btnSalvarTipoLabel = document.getElementById('btnSalvarTipoLabel');
+
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+
+  function setTab(name) {
+    document.querySelectorAll('.hd-tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.tab === name);
+    });
+    document.getElementById('panelFiltros').hidden = name !== 'filtros';
+    document.getElementById('panelDetalhes').hidden = name !== 'detalhes';
+  }
+
+  document.querySelectorAll('.hd-tab').forEach(btn => {
+    btn.addEventListener('click', () => setTab(btn.dataset.tab));
+  });
+
+  function filtrosParams() {
+    const fd = new FormData(document.getElementById('formFiltros'));
+    const p = new URLSearchParams();
+    for (const [k, v] of fd.entries()) {
+      if (String(v).trim()) p.set(k, String(v).trim());
+    }
+    p.set('page', String(page));
+    p.set('per_page', String(perPage));
+    return p;
+  }
+
+  async function loadPessoas() {
+    const r = await fetch(`${API_PESSOAS}?${filtrosParams()}`);
+    const data = await r.json();
+    if (!data.ok) { alert(data.error || 'Erro ao listar pessoas'); return; }
+
+    const k = data.kpis || {};
+    document.getElementById('kpiPessoas').textContent = k.pessoas ?? 0;
+    document.getElementById('kpiDocsTotal').textContent = k.documentos_total ?? 0;
+    document.getElementById('kpiDocsValidos').textContent = k.documentos_validos ?? 0;
+    document.getElementById('listaCount').textContent = `${data.total || 0} registro(s)`;
+
+    totalPages = data.pages || 0;
+    page = data.page || 1;
+    const from = data.total ? ((page - 1) * perPage + 1) : 0;
+    const to = Math.min(page * perPage, data.total || 0);
+    document.getElementById('pagerLabel').textContent = `${from}–${to} de ${data.total || 0}`;
+    document.getElementById('btnPrevPage').disabled = page <= 1;
+    document.getElementById('btnNextPage').disabled = !totalPages || page >= totalPages;
+
+    const pessoas = data.pessoas || [];
+    emptyUsuarios.hidden = pessoas.length > 0;
+    listaUsuarios.innerHTML = pessoas.map(p => `
+      <li class="hd-user-item ${selectedId === p.id ? 'active' : ''}" data-id="${p.id}">
+        <div class="hd-avatar">${esc(p.iniciais || '?')}</div>
+        <div class="hd-user-info">
+          <strong>${esc(p.nome)}</strong>
+          <span>ID / Matrícula: ${esc(p.matricula || '—')}</span>
+        </div>
+      </li>
+    `).join('');
+
+    listaUsuarios.querySelectorAll('.hd-user-item').forEach(el => {
+      el.addEventListener('click', () => selectPessoa(Number(el.dataset.id)));
+    });
+  }
+
+  async function selectPessoa(pid) {
+    selectedId = pid;
+    setTab('detalhes');
+    listaUsuarios.querySelectorAll('.hd-user-item').forEach(el => {
+      el.classList.toggle('active', Number(el.dataset.id) === pid);
+    });
+    await loadDetalhe(pid);
+  }
+
+  async function loadDetalhe(pid) {
+    const r = await fetch(API_DOCS(pid));
+    const data = await r.json();
+    if (!data.ok) { alert(data.error || 'Erro ao carregar documentos'); return; }
+
+    selectedPessoa = data.pessoa;
+    document.getElementById('emptyDetalhe').hidden = true;
+    document.getElementById('conteudoDetalhe').hidden = false;
+    document.getElementById('detAvatar').textContent = selectedPessoa.iniciais || '?';
+    document.getElementById('detNome').textContent = selectedPessoa.nome || '—';
+    const meta = [
+      selectedPessoa.matricula ? `Matrícula ${selectedPessoa.matricula}` : null,
+      selectedPessoa.empresa || null,
+      selectedPessoa.departamento || null,
+    ].filter(Boolean).join(' • ');
+    document.getElementById('detMeta').textContent = meta || '—';
+    document.getElementById('vincUsuario').value = selectedPessoa.nome || '';
+
+    const docs = data.documentos || [];
+    document.getElementById('emptyDocs').hidden = docs.length > 0;
+    document.getElementById('tbodyDocs').innerHTML = docs.map(d => `
+      <tr>
+        <td><strong>${esc(d.tipo_descricao)}</strong></td>
+        <td>${esc(d.numero || '—')}</td>
+        <td>${esc(d.validade_fmt || '—')}</td>
+        <td>
+          ${d.valido_efetivo
+            ? '<span class="badge-status badge-online">Válido</span>'
+            : '<span class="badge-status badge-offline">Inválido</span>'}
+        </td>
+        <td>
+          ${d.arquivo_url
+            ? `<a class="hd-doc-file" href="${esc(d.arquivo_url)}" target="_blank" rel="noopener">
+                 <i class="fas fa-paperclip"></i> Ver
+               </a>`
+            : '—'}
+        </td>
+        <td style="white-space:nowrap;">
+          <button type="button" class="hd-acao-btn danger btn-del-doc" data-id="${d.id}" title="Desvincular">
+            <i class="fas fa-trash"></i>
+          </button>
+        </td>
+      </tr>
+    `).join('');
+
+    document.querySelectorAll('.btn-del-doc').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Desvincular este documento?')) return;
+        const rr = await fetch(API_DOC(btn.dataset.id), { method: 'DELETE' });
+        const res = await rr.json();
+        if (!res.ok) { alert(res.error || 'Erro ao excluir'); return; }
+        await loadDetalhe(selectedId);
+        await loadPessoas();
+      });
+    });
+  }
+
+  /* ---- Catálogo de Tipos (criar / editar) ---- */
+  function resetTipoForm() {
+    editTipoId = null;
+    tipoEditId.value = '';
+    tipoNome.value = '';
+    btnSalvarTipoLabel.textContent = 'Adicionar Novo';
+    document.querySelectorAll('.hd-acao-btn.btn-edit-tipo').forEach(b => b.classList.remove('editing'));
+  }
+
+  function enterEditTipo(id, nome) {
+    editTipoId = id;
+    tipoEditId.value = String(id);
+    tipoNome.value = nome || '';
+    btnSalvarTipoLabel.textContent = 'Salvar Edição';
+    tipoNome.focus();
+    tipoNome.select();
+    document.querySelectorAll('.hd-acao-btn.btn-edit-tipo').forEach(b => {
+      b.classList.toggle('editing', Number(b.dataset.id) === id);
+    });
+  }
+
+  async function loadTipos() {
+    const r = await fetch(API_TIPOS);
+    const data = await r.json();
+    if (!data.ok) { alert(data.error || 'Erro ao carregar tipos'); return; }
+    tiposCache = data.tipos || [];
+    const tbody = document.getElementById('tbodyTipos');
+    const empty = document.getElementById('emptyTipos');
+    empty.hidden = tiposCache.length > 0;
+    tbody.innerHTML = tiposCache.map(t => `
+      <tr data-id="${t.id}">
+        <td><strong class="tipo-nome-cell">${esc(t.descricao || t.nome)}</strong></td>
+        <td>${t.vinculos ?? 0}</td>
+        <td>
+          <button type="button" class="hd-acao-btn btn-edit-tipo ${editTipoId === t.id ? 'editing' : ''}"
+            data-id="${t.id}" title="Editar">
+            <i class="fas fa-pen"></i>
+          </button>
+          <button type="button" class="hd-acao-btn danger btn-del-tipo" data-id="${t.id}" title="Excluir">
+            <i class="fas fa-trash"></i>
+          </button>
+        </td>
+      </tr>
+    `).join('');
+
+    tbody.querySelectorAll('.btn-edit-tipo').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const row = btn.closest('tr');
+        const nome = row?.querySelector('.tipo-nome-cell')?.textContent?.trim() || '';
+        enterEditTipo(Number(btn.dataset.id), nome);
+      });
+    });
+    tbody.querySelectorAll('.btn-del-tipo').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Excluir este tipo de documento?')) return;
+        const rr = await fetch(`${API_TIPOS}/${btn.dataset.id}`, { method: 'DELETE' });
+        const res = await rr.json();
+        if (!res.ok) { alert(res.error || 'Erro ao excluir'); return; }
+        if (editTipoId === Number(btn.dataset.id)) resetTipoForm();
+        await loadTipos();
+      });
+    });
+
+    // atualiza select do vincular
+    const sel = document.getElementById('vincTipo');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">Selecione...</option>' + tiposCache.map(t =>
+      `<option value="${t.id}">${esc(t.descricao || t.nome)}</option>`
+    ).join('');
+    if (cur) sel.value = cur;
+  }
+
+  document.getElementById('formTipo').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const nome = tipoNome.value.trim();
+    if (!nome) { alert('Informe o nome do tipo.'); return; }
+    const body = JSON.stringify({ nome, descricao: nome });
+    let r;
+    if (editTipoId) {
+      r = await fetch(`${API_TIPOS}/${editTipoId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+    } else {
+      r = await fetch(API_TIPOS, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+    }
+    const res = await r.json();
+    if (!res.ok) { alert(res.error || 'Erro ao salvar tipo'); return; }
+    resetTipoForm();
+    await loadTipos();
+  });
+
+  document.getElementById('btnTiposDocumento').addEventListener('click', async () => {
+    resetTipoForm();
+    modalTipos.hidden = false;
+    await loadTipos();
+  });
+  document.getElementById('btnCloseTipos').addEventListener('click', () => {
+    modalTipos.hidden = true;
+    resetTipoForm();
+  });
+  document.getElementById('btnFecharTipos').addEventListener('click', () => {
+    modalTipos.hidden = true;
+    resetTipoForm();
+  });
+  modalTipos.addEventListener('click', (e) => {
+    if (e.target === modalTipos) { modalTipos.hidden = true; resetTipoForm(); }
+  });
+
+  /* ---- Vincular documento ---- */
+  document.getElementById('btnVincularDoc').addEventListener('click', async () => {
+    if (!selectedId || !selectedPessoa) return;
+    await loadTipos();
+    document.getElementById('formVincular').reset();
+    document.getElementById('vincUsuario').value = selectedPessoa.nome || '';
+    modalVincular.hidden = false;
+  });
+  function closeVinc() { modalVincular.hidden = true; }
+  document.getElementById('btnCloseVinc').addEventListener('click', closeVinc);
+  document.getElementById('btnCancelVinc').addEventListener('click', closeVinc);
+  modalVincular.addEventListener('click', (e) => { if (e.target === modalVincular) closeVinc(); });
+
+  document.getElementById('btnSalvarVinc').addEventListener('click', async () => {
+    if (!selectedId) return;
+    const tipo_documento_id = document.getElementById('vincTipo').value;
+    if (!tipo_documento_id) { alert('Selecione o tipo de documento.'); return; }
+    const btn = document.getElementById('btnSalvarVinc');
+    btn.disabled = true;
+    try {
+      const fd = new FormData();
+      fd.append('tipo_documento_id', tipo_documento_id);
+      fd.append('numero', document.getElementById('vincNumero').value.trim());
+      const validade = document.getElementById('vincValidade').value;
+      if (validade) fd.append('validade', validade);
+      fd.append('valido', 'true');
+      const fileInput = document.getElementById('vincArquivo');
+      if (fileInput.files && fileInput.files[0]) {
+        fd.append('arquivo', fileInput.files[0]);
+      }
+      const r = await fetch(API_DOCS(selectedId), { method: 'POST', body: fd });
+      const res = await r.json();
+      if (!res.ok) { alert(res.error || 'Erro ao vincular'); return; }
+      closeVinc();
+      await loadDetalhe(selectedId);
+      await loadPessoas();
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  /* ---- Filtros / pager / ajuda ---- */
+  document.getElementById('formFiltros').addEventListener('submit', (e) => {
+    e.preventDefault();
+    page = 1;
+    loadPessoas();
+  });
+  document.getElementById('btnLimparFiltros').addEventListener('click', () => {
+    document.getElementById('formFiltros').reset();
+    page = 1;
+    loadPessoas();
+  });
+  document.getElementById('btnPrevPage').addEventListener('click', () => {
+    if (page > 1) { page -= 1; loadPessoas(); }
+  });
+  document.getElementById('btnNextPage').addEventListener('click', () => {
+    if (page < totalPages) { page += 1; loadPessoas(); }
+  });
+
+  document.getElementById('btnAjuda').addEventListener('click', () => { modalAjuda.hidden = false; });
+  document.querySelectorAll('[data-close-modal]').forEach(btn => {
+    btn.addEventListener('click', () => { modalAjuda.hidden = true; });
+  });
+  modalAjuda.addEventListener('click', (e) => { if (e.target === modalAjuda) modalAjuda.hidden = true; });
+
+  loadPessoas();
+})();
+</script>
+{% endblock %}

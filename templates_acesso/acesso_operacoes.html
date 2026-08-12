@@ -1,0 +1,953 @@
+{% extends "base_acesso.html" %}
+{% block title %}Central de Operações{% endblock %}
+{% block content %}
+<style>
+.op-wrap { max-width: 1280px; margin: 0 auto; }
+.op-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: #fff;
+  border: 1px solid rgba(15, 42, 86, 0.1);
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.04);
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+.op-hero-left { min-width: 0; }
+.op-hero h1 {
+  margin: 0;
+  font-family: var(--font-brand);
+  font-size: 1.45rem;
+  color: var(--brand-navy);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.op-hero h1 i { color: var(--brand-blue); }
+.op-hero p {
+  margin: 0.3rem 0 0;
+  color: #64748b;
+  font-size: 0.92rem;
+  max-width: 36rem;
+}
+.op-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.op-flags {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  padding: 0.35rem 0.55rem;
+  background: #f8fafc;
+  border: 1px solid rgba(15, 42, 86, 0.08);
+  border-radius: 10px;
+}
+.op-flags label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--brand-navy);
+  cursor: pointer;
+  user-select: none;
+}
+.op-flags input { accent-color: var(--brand-blue); width: 1rem; height: 1rem; }
+.op-dd { position: relative; }
+.op-dd-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 280px;
+  background: #fff;
+  border: 1px solid rgba(15, 42, 86, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(13, 43, 92, 0.14);
+  padding: 0.4rem;
+  z-index: 40;
+}
+.op-dd-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0.7rem 0.8rem;
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--brand-navy);
+  cursor: pointer;
+  text-align: left;
+}
+.op-dd-item:hover { background: rgba(27, 79, 156, 0.08); }
+.op-dd-item i { color: var(--brand-blue); width: 1.1rem; }
+.op-tabs {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 0.85rem;
+  border-bottom: 1px solid rgba(15, 42, 86, 0.1);
+}
+.op-tab {
+  border: 0;
+  background: transparent;
+  padding: 0.7rem 1rem;
+  font: inherit;
+  font-weight: 700;
+  color: #64748b;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.op-tab:hover { color: var(--brand-navy); }
+.op-tab.active {
+  color: var(--brand-blue);
+  border-bottom-color: var(--brand-blue);
+}
+.op-panel { display: none; }
+.op-panel.active { display: block; }
+.op-filters {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
+  gap: 0.65rem;
+  align-items: end;
+  background: #fff;
+  border: 1px solid rgba(15, 42, 86, 0.1);
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+  margin-bottom: 0.9rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,.03);
+}
+@media (max-width: 1100px) {
+  .op-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .op-filters { grid-template-columns: 1fr; }
+}
+.op-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #64748b;
+}
+.op-filters select,
+.op-filters input {
+  padding: 0.5rem 0.65rem;
+  border: 1px solid rgba(15, 42, 86, 0.12);
+  border-radius: 10px;
+  font: inherit;
+  color: var(--brand-navy);
+  background: #fff;
+}
+.op-dual {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0.75rem;
+  align-items: stretch;
+  min-height: 420px;
+}
+@media (max-width: 900px) {
+  .op-dual { grid-template-columns: 1fr; }
+  .op-mid { flex-direction: row !important; }
+}
+.op-card {
+  background: #fff;
+  border: 1px solid rgba(15, 42, 86, 0.1);
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.04);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 420px;
+}
+.op-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid rgba(15, 42, 86, 0.08);
+  background: #f8fafc;
+}
+.op-card-head h2 {
+  margin: 0;
+  font-family: var(--font-brand);
+  font-size: 1rem;
+  color: var(--brand-navy);
+}
+.op-count {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--brand-blue);
+  background: rgba(27, 79, 156, 0.1);
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+}
+.op-card-body { flex: 1; overflow: auto; }
+.op-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.op-table th {
+  text-align: left;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #64748b;
+  background: #fff;
+  position: sticky;
+  top: 0;
+  border-bottom: 1px solid rgba(15, 42, 86, 0.08);
+}
+.op-table td {
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid rgba(15, 42, 86, 0.06);
+  vertical-align: middle;
+  color: var(--brand-navy);
+}
+.op-table tr:hover td { background: rgba(27, 79, 156, 0.04); }
+.op-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(27, 79, 156, 0.1);
+  color: var(--brand-blue);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-size: 0.85rem;
+}
+.op-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.op-avatar.no-photo { background: rgba(100, 116, 139, 0.12); color: #94a3b8; }
+.op-nome { font-weight: 700; display: block; line-height: 1.2; }
+.op-mat { font-size: 0.78rem; color: #64748b; }
+.op-row-add {
+  border: 0;
+  background: transparent;
+  color: var(--brand-blue);
+  cursor: pointer;
+  padding: 0.35rem;
+  border-radius: 8px;
+}
+.op-row-add:hover { background: rgba(27, 79, 156, 0.1); }
+.op-row-rm {
+  border: 0;
+  background: transparent;
+  color: #b91c1c;
+  cursor: pointer;
+  padding: 0.35rem;
+  border-radius: 8px;
+}
+.op-row-rm:hover { background: rgba(220, 38, 38, 0.08); }
+.op-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid rgba(15, 42, 86, 0.08);
+  background: #fff;
+}
+.op-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  color: #64748b;
+  font-weight: 600;
+}
+.op-pager button {
+  border: 1px solid rgba(15, 42, 86, 0.12);
+  background: #fff;
+  color: var(--brand-navy);
+  width: 2rem;
+  height: 2rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.op-pager button:disabled { opacity: .4; cursor: not-allowed; }
+.op-mid {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.25rem 0;
+}
+.op-mid-btn {
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 42, 86, 0.14);
+  background: #fff;
+  color: var(--brand-navy);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  box-shadow: 0 2px 6px rgba(0,0,0,.04);
+}
+.op-mid-btn:hover { background: rgba(27, 79, 156, 0.08); color: var(--brand-blue); }
+.op-mid-btn.danger:hover { background: rgba(220, 38, 38, 0.08); color: #b91c1c; }
+.op-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2.5rem 1.5rem;
+  color: #94a3b8;
+  text-align: center;
+  min-height: 280px;
+}
+.op-empty i { font-size: 2.2rem; opacity: .7; }
+.op-empty strong { color: #64748b; font-size: 0.95rem; }
+.op-empty p { margin: 0; font-size: 0.85rem; max-width: 16rem; }
+.op-sel-summary {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--brand-navy);
+}
+.op-toast {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 80;
+  min-width: 260px;
+  max-width: 420px;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  background: var(--brand-navy);
+  color: #fff;
+  box-shadow: 0 12px 28px rgba(13, 43, 92, 0.25);
+  font-weight: 600;
+  font-size: 0.9rem;
+  display: none;
+}
+.op-toast.show { display: block; animation: opFadeIn .2s ease; }
+.op-toast.err { background: #b91c1c; }
+@keyframes opFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.op-eq-list { list-style: none; margin: 0; padding: 0; }
+.op-eq-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid rgba(15, 42, 86, 0.06);
+}
+.op-eq-meta { min-width: 0; }
+.op-eq-meta strong {
+  display: block;
+  color: var(--brand-navy);
+  font-size: 0.95rem;
+}
+.op-eq-meta span {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+.op-eq-kpis {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+.op-eq-kpi {
+  flex: 1;
+  background: #fff;
+  border: 1px solid rgba(15, 42, 86, 0.1);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,.03);
+}
+.op-eq-kpi .v {
+  font-family: var(--font-brand);
+  font-size: 1.5rem;
+  color: var(--brand-navy);
+  line-height: 1;
+}
+.op-eq-kpi .l {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #64748b;
+  margin-top: 0.25rem;
+  letter-spacing: 0.04em;
+}
+.op-eq-kpi.online .v { color: #15803d; }
+.op-eq-kpi.offline .v { color: #64748b; }
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(13,43,92,.45);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 90; padding: 1rem;
+}
+.modal-backdrop[hidden] { display: none !important; }
+.modal-card {
+  background: #fff; border-radius: 14px; max-width: 480px; width: 100%;
+  box-shadow: 0 20px 40px rgba(0,0,0,.18); overflow: hidden;
+}
+.modal-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 1rem; padding: 1.1rem 1.2rem; border-bottom: 1px solid rgba(15,42,86,.08);
+}
+.modal-head h3 { margin: 0; font-family: var(--font-brand); color: var(--brand-navy); }
+.modal-close {
+  border: 0; background: transparent; font-size: 1.4rem; cursor: pointer; color: #64748b; line-height: 1;
+}
+.modal-body { padding: 1.1rem 1.2rem 1.3rem; color: #475569; font-size: 0.92rem; line-height: 1.5; }
+.modal-body ul { margin: 0.5rem 0 0; padding-left: 1.1rem; }
+</style>
+
+<div class="op-wrap">
+  <header class="op-hero">
+    <div class="op-hero-left">
+      <h1><i class="fas fa-gears"></i> Central de Operações</h1>
+      <p>Gerencie envios, backups e sincronização entre sistema e equipamentos.</p>
+    </div>
+    <div class="op-hero-actions">
+      <button type="button" class="btn btn-secondary btn-sm" id="btnAjuda">
+        <i class="fas fa-circle-question"></i> Ajuda
+      </button>
+      <div class="op-flags">
+        <label><input type="checkbox" id="optFotos" checked> Enviar Fotos</label>
+        <label><input type="checkbox" id="optDigitais" checked> Enviar Digitais</label>
+        <label><input type="checkbox" id="optForcar"> Forçar (Lento)</label>
+      </div>
+      <div class="op-dd" id="execDropdown">
+        <button type="button" class="btn-acesso" id="btnExecutar" aria-haspopup="true" aria-expanded="false">
+          <i class="fas fa-play"></i> Executar Ação <i class="fas fa-chevron-down" style="font-size:.75rem;opacity:.85"></i>
+        </button>
+        <div class="op-dd-menu" id="execMenu" hidden role="menu">
+          <button type="button" class="op-dd-item" role="menuitem" data-acao="enviar_equipamentos">
+            <i class="fas fa-share-from-square"></i> Enviar para equipamentos
+          </button>
+          <button type="button" class="op-dd-item" role="menuitem" data-acao="atualizar_data_hora">
+            <i class="fas fa-clock"></i> Atualizar data-hora nos equipamentos
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="op-tabs" role="tablist">
+    <button type="button" class="op-tab active" data-tab="local" role="tab" aria-selected="true">
+      <i class="fas fa-database"></i> Base Local (Seleção para Envio)
+    </button>
+    <button type="button" class="op-tab" data-tab="remoto" role="tab" aria-selected="false">
+      <i class="fas fa-network-wired"></i> Explorador Remoto (Equipamentos)
+    </button>
+  </div>
+
+  <section class="op-panel active" id="panelLocal" role="tabpanel">
+    <form class="op-filters" id="formFiltros" autocomplete="off">
+      <label>Empresa
+        <select name="empresa_id" id="fEmpresa">
+          <option value="">Todas</option>
+          {% for e in empresas %}
+          <option value="{{ e.id }}">{{ e.nome }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Departamento
+        <select name="departamento_id" id="fDepartamento">
+          <option value="">Todos</option>
+          {% for d in departamentos %}
+          <option value="{{ d.id }}">{{ d.descricao }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Setor
+        <select name="setor_id" id="fSetor">
+          <option value="">Todos</option>
+          {% for s in setores %}
+          <option value="{{ s.id }}">{{ s.descricao }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Classificação
+        <select name="classificacao_id" id="fClassificacao">
+          <option value="">Todas</option>
+          {% for c in classificacoes %}
+          <option value="{{ c.id }}">{{ c.descricao }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Busca nome/matrícula
+        <input type="search" name="q" id="fQ" placeholder="Nome ou matrícula…" >
+      </label>
+      <button type="submit" class="btn-acesso" id="btnFiltrar">
+        <i class="fas fa-filter"></i> Filtrar Resultados
+      </button>
+    </form>
+
+    <div class="op-dual">
+      <div class="op-card" id="cardDisp">
+        <div class="op-card-head">
+          <h2>Disponíveis na Base</h2>
+          <span class="op-count" id="dispCount">0</span>
+        </div>
+        <div class="op-card-body">
+          <table class="op-table">
+            <thead>
+              <tr>
+                <th style="width:36px"><input type="checkbox" id="checkAllDisp" title="Marcar página"></th>
+                <th style="width:44px">Foto</th>
+                <th>Nome / Matrícula</th>
+                <th style="width:40px"></th>
+              </tr>
+            </thead>
+            <tbody id="tbodyDisp"></tbody>
+          </table>
+          <div class="op-empty" id="emptyDisp" hidden>
+            <i class="fas fa-users-slash"></i>
+            <strong>Nenhuma pessoa encontrada</strong>
+            <p>Ajuste os filtros e clique em Filtrar Resultados.</p>
+          </div>
+        </div>
+        <div class="op-card-foot">
+          <div class="op-pager">
+            <button type="button" id="btnPrev" aria-label="Página anterior"><i class="fas fa-chevron-left"></i></button>
+            <span id="pageLabel">1 / 1</span>
+            <button type="button" id="btnNext" aria-label="Próxima página"><i class="fas fa-chevron-right"></i></button>
+          </div>
+          <button type="button" class="btn-acesso" id="btnAddMarcados">
+            <i class="fas fa-plus"></i> Adicionar Marcados
+          </button>
+        </div>
+      </div>
+
+      <div class="op-mid">
+        <button type="button" class="op-mid-btn" id="btnAddAll" title="Adicionar todos (filtro)">
+          <i class="fas fa-angles-right"></i>
+        </button>
+        <button type="button" class="op-mid-btn danger" id="btnClearSel" title="Limpar seleção">
+          <i class="fas fa-trash"></i>
+        </button>
+      </div>
+
+      <div class="op-card" id="cardSel">
+        <div class="op-card-head">
+          <h2>Selecionados para Ação</h2>
+          <span class="op-sel-summary" id="selSummary">0 pessoas (0 sem foto)</span>
+        </div>
+        <div class="op-card-body">
+          <table class="op-table" id="tblSel" hidden>
+            <thead>
+              <tr>
+                <th style="width:44px">Foto</th>
+                <th>Nome / Matrícula</th>
+                <th style="width:40px"></th>
+              </tr>
+            </thead>
+            <tbody id="tbodySel"></tbody>
+          </table>
+          <div class="op-empty" id="emptySel">
+            <i class="fas fa-user-plus"></i>
+            <strong>Ninguém selecionado</strong>
+            <p>Marque pessoas à esquerda ou use a seta para adicionar à ação.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="op-panel" id="panelRemoto" role="tabpanel">
+    <div class="op-eq-kpis">
+      <div class="op-eq-kpi online">
+        <div class="v" id="kpiOnline">0</div>
+        <div class="l">ONLINE</div>
+      </div>
+      <div class="op-eq-kpi offline">
+        <div class="v" id="kpiOffline">0</div>
+        <div class="l">OFFLINE</div>
+      </div>
+    </div>
+    <div class="op-card" style="min-height:auto">
+      <div class="op-card-head">
+        <h2>Equipamentos</h2>
+        <button type="button" class="btn btn-secondary btn-sm" id="btnRefreshEq">
+          <i class="fas fa-arrows-rotate"></i> Atualizar
+        </button>
+      </div>
+      <ul class="op-eq-list" id="listaEquip"></ul>
+      <div class="op-empty" id="emptyEquip" hidden style="min-height:160px">
+        <i class="fas fa-microchip"></i>
+        <strong>Nenhum equipamento</strong>
+        <p>Cadastre equipamentos no Hub para visualizá-los aqui.</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="op-toast" id="opToast" role="status"></div>
+
+<div class="modal-backdrop" id="modalAjuda" hidden>
+  <div class="modal-card">
+    <div class="modal-head">
+      <div><h3>Ajuda — Central de Operações</h3></div>
+      <button type="button" class="modal-close" id="btnCloseAjuda" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p>Selecione colaboradores na base local e execute ações de sincronização com os equipamentos.</p>
+      <ul>
+        <li><strong>Enviar Fotos / Digitais</strong> — inclui biometria e foto no envio.</li>
+        <li><strong>Forçar (Lento)</strong> — reenvia mesmo se o registro já existir no dispositivo.</li>
+        <li><strong>Explorador Remoto</strong> — visão rápida do status online/offline dos equipamentos.</li>
+      </ul>
+      <p style="margin-top:.85rem;font-size:.85rem;color:#94a3b8">Envio real via Control iD (users/cartões/fotos). Digitais biométricas ainda não são enviadas nesta versão.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const state = {
+    page: 1,
+    pages: 1,
+    total: 0,
+    perPage: 20,
+    items: [],
+    selected: new Map(), // id -> {id,nome,matricula,foto,tem_foto}
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const tbodyDisp = $('tbodyDisp');
+  const tbodySel = $('tbodySel');
+  const toastEl = $('opToast');
+  let toastTimer = null;
+
+  function toast(msg, isErr) {
+    toastEl.textContent = msg;
+    toastEl.classList.toggle('err', !!isErr);
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 4200);
+  }
+
+  function filterParams() {
+    const p = new URLSearchParams();
+    const emp = $('fEmpresa').value;
+    const dep = $('fDepartamento').value;
+    const set = $('fSetor').value;
+    const cla = $('fClassificacao').value;
+    const q = $('fQ').value.trim();
+    if (emp) p.set('empresa_id', emp);
+    if (dep) p.set('departamento_id', dep);
+    if (set) p.set('setor_id', set);
+    if (cla) p.set('classificacao_id', cla);
+    if (q) p.set('q', q);
+    return p;
+  }
+
+  function avatarHtml(p) {
+    if (p.foto) {
+      return `<div class="op-avatar"><img src="${p.foto}" alt=""></div>`;
+    }
+    return `<div class="op-avatar no-photo"><i class="fas fa-user"></i></div>`;
+  }
+
+  function renderDisp() {
+    const empty = $('emptyDisp');
+    $('dispCount').textContent = String(state.total);
+    $('pageLabel').textContent = `${state.page} / ${state.pages}`;
+    $('btnPrev').disabled = state.page <= 1;
+    $('btnNext').disabled = state.page >= state.pages;
+    $('checkAllDisp').checked = false;
+
+    const visible = state.items.filter((p) => !state.selected.has(p.id));
+    if (!state.total) {
+      tbodyDisp.innerHTML = '';
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+    if (!visible.length) {
+      tbodyDisp.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:1.5rem;color:#64748b;">
+        Todas as pessoas desta página já estão selecionadas.</td></tr>`;
+      return;
+    }
+    tbodyDisp.innerHTML = visible.map((p) => `
+      <tr data-id="${p.id}">
+        <td><input type="checkbox" class="disp-check" value="${p.id}"></td>
+        <td>${avatarHtml(p)}</td>
+        <td>
+          <span class="op-nome">${escapeHtml(p.nome)}</span>
+          <span class="op-mat">${escapeHtml(p.matricula)}</span>
+        </td>
+        <td>
+          <button type="button" class="op-row-add" data-add="${p.id}" title="Adicionar">
+            <i class="fas fa-arrow-right"></i>
+          </button>
+        </td>
+      </tr>`).join('');
+  }
+
+  function renderSel() {
+    const list = Array.from(state.selected.values());
+    const semFoto = list.filter((p) => !p.tem_foto).length;
+    $('selSummary').textContent = `${list.length} pessoas (${semFoto} sem foto)`;
+    const empty = $('emptySel');
+    const tbl = $('tblSel');
+    if (!list.length) {
+      tbl.hidden = true;
+      empty.hidden = false;
+      tbodySel.innerHTML = '';
+      return;
+    }
+    empty.hidden = true;
+    tbl.hidden = false;
+    tbodySel.innerHTML = list.map((p) => `
+      <tr data-id="${p.id}">
+        <td>${avatarHtml(p)}</td>
+        <td>
+          <span class="op-nome">${escapeHtml(p.nome)}</span>
+          <span class="op-mat">${escapeHtml(p.matricula)}</span>
+        </td>
+        <td>
+          <button type="button" class="op-row-rm" data-rm="${p.id}" title="Remover">
+            <i class="fas fa-xmark"></i>
+          </button>
+        </td>
+      </tr>`).join('');
+  }
+
+  function escapeHtml(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function addPerson(p) {
+    if (!p || !p.id) return;
+    state.selected.set(p.id, {
+      id: p.id,
+      nome: p.nome,
+      matricula: p.matricula,
+      foto: p.foto || '',
+      tem_foto: !!p.tem_foto,
+    });
+  }
+
+  async function loadPessoas(page) {
+    state.page = page || 1;
+    const p = filterParams();
+    p.set('page', String(state.page));
+    p.set('per_page', String(state.perPage));
+    const res = await fetch(`/acesso/api/operacoes/pessoas?${p.toString()}`);
+    const data = await res.json();
+    if (!data.ok) {
+      toast(data.error || 'Falha ao listar pessoas', true);
+      return;
+    }
+    state.items = data.items || [];
+    state.total = data.total || 0;
+    state.page = data.page || 1;
+    state.pages = data.pages || 1;
+    renderDisp();
+  }
+
+  async function addAllFiltered() {
+    const p = filterParams();
+    const res = await fetch(`/acesso/api/operacoes/pessoas/ids?${p.toString()}`);
+    const data = await res.json();
+    if (!data.ok) {
+      toast(data.error || 'Falha ao carregar seleção', true);
+      return;
+    }
+    (data.items || []).forEach(addPerson);
+    renderSel();
+    renderDisp();
+    toast(`${(data.items || []).length} pessoa(s) adicionada(s)`);
+  }
+
+  async function executar(acao) {
+    const ids = Array.from(state.selected.keys());
+    if (!ids.length) {
+      toast('Selecione ao menos uma pessoa', true);
+      return;
+    }
+    const payload = {
+      acao,
+      pessoa_ids: ids,
+      enviar_fotos: $('optFotos').checked,
+      enviar_digitais: $('optDigitais').checked,
+      forcar: $('optForcar').checked,
+    };
+    try {
+      const res = await fetch('/acesso/api/operacoes/executar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        toast(data.error || 'Falha na execução', true);
+        alert(data.error || 'Falha na execução');
+        return;
+      }
+      toast(data.message || 'Ação executada');
+      alert(data.message || (data.ok ? 'Ação executada' : 'Falha'));
+    } catch (err) {
+      toast('Erro de rede ao executar ação', true);
+      alert('Erro de rede ao executar ação');
+    }
+  }
+
+  async function loadEquipamentos() {
+    const res = await fetch('/acesso/api/equipamentos');
+    const list = await res.json();
+    const eqs = Array.isArray(list) ? list : [];
+    const online = eqs.filter((e) => e.online).length;
+    $('kpiOnline').textContent = String(online);
+    $('kpiOffline').textContent = String(eqs.length - online);
+    const ul = $('listaEquip');
+    const empty = $('emptyEquip');
+    if (!eqs.length) {
+      ul.innerHTML = '';
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+    ul.innerHTML = eqs.map((e) => `
+      <li>
+        <div class="op-eq-meta">
+          <strong>${escapeHtml(e.nome)}</strong>
+          <span>${escapeHtml(e.ip || '—')} · ${escapeHtml(e.local || e.modelo || '—')}</span>
+        </div>
+        <span class="badge-status ${e.online ? 'badge-online' : 'badge-offline'}">
+          ${e.online ? 'Online' : 'Offline'}
+        </span>
+      </li>`).join('');
+  }
+
+  // Tabs
+  document.querySelectorAll('.op-tab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.op-tab').forEach((b) => {
+        b.classList.toggle('active', b === btn);
+        b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
+      });
+      const tab = btn.dataset.tab;
+      $('panelLocal').classList.toggle('active', tab === 'local');
+      $('panelRemoto').classList.toggle('active', tab === 'remoto');
+      if (tab === 'remoto') loadEquipamentos();
+    });
+  });
+
+  // Filters
+  $('formFiltros').addEventListener('submit', (e) => {
+    e.preventDefault();
+    loadPessoas(1);
+  });
+
+  $('btnPrev').addEventListener('click', () => {
+    if (state.page > 1) loadPessoas(state.page - 1);
+  });
+  $('btnNext').addEventListener('click', () => {
+    if (state.page < state.pages) loadPessoas(state.page + 1);
+  });
+
+  $('checkAllDisp').addEventListener('change', (e) => {
+    tbodyDisp.querySelectorAll('.disp-check').forEach((c) => {
+      c.checked = e.target.checked;
+    });
+  });
+
+  tbodyDisp.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-add]');
+    if (!btn) return;
+    const id = Number(btn.dataset.add);
+    const p = state.items.find((x) => x.id === id);
+    if (p) {
+      addPerson(p);
+      renderSel();
+      renderDisp();
+    }
+  });
+
+  tbodySel.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-rm]');
+    if (!btn) return;
+    state.selected.delete(Number(btn.dataset.rm));
+    renderSel();
+    renderDisp();
+  });
+
+  $('btnAddMarcados').addEventListener('click', () => {
+    const checks = tbodyDisp.querySelectorAll('.disp-check:checked');
+    if (!checks.length) {
+      toast('Marque ao menos uma pessoa na lista', true);
+      return;
+    }
+    checks.forEach((c) => {
+      const id = Number(c.value);
+      const p = state.items.find((x) => x.id === id);
+      if (p) addPerson(p);
+    });
+    renderSel();
+    renderDisp();
+  });
+
+  $('btnAddAll').addEventListener('click', () => addAllFiltered());
+  $('btnClearSel').addEventListener('click', () => {
+    state.selected.clear();
+    renderSel();
+    renderDisp();
+  });
+
+  // Executar dropdown
+  const btnExec = $('btnExecutar');
+  const menu = $('execMenu');
+  btnExec.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = menu.hidden;
+    menu.hidden = !open;
+    btnExec.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  menu.addEventListener('click', (e) => {
+    const item = e.target.closest('[data-acao]');
+    if (!item) return;
+    menu.hidden = true;
+    btnExec.setAttribute('aria-expanded', 'false');
+    executar(item.dataset.acao);
+  });
+  document.addEventListener('click', () => {
+    menu.hidden = true;
+    btnExec.setAttribute('aria-expanded', 'false');
+  });
+
+  // Ajuda
+  const modalAjuda = $('modalAjuda');
+  $('btnAjuda').addEventListener('click', () => { modalAjuda.hidden = false; });
+  $('btnCloseAjuda').addEventListener('click', () => { modalAjuda.hidden = true; });
+  modalAjuda.addEventListener('click', (e) => {
+    if (e.target === modalAjuda) modalAjuda.hidden = true;
+  });
+
+  $('btnRefreshEq').addEventListener('click', () => loadEquipamentos());
+
+  // Init
+  renderSel();
+  loadPessoas(1);
+})();
+</script>
+{% endblock %}

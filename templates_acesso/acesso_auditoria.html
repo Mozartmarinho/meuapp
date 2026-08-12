@@ -1,0 +1,376 @@
+{% extends "base_acesso.html" %}
+{% block title %}Auditoria de Usuários{% endblock %}
+{% block content %}
+<style>
+.au-wrap { max-width: 1400px; }
+.au-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: #fff;
+  border: 1px solid rgba(15, 42, 86, 0.1);
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.04);
+  padding: 1.15rem 1.3rem;
+  margin-bottom: 1.1rem;
+}
+.au-hero-left {
+  display: flex;
+  gap: 0.9rem;
+  align-items: flex-start;
+  min-width: 0;
+}
+.au-hero-icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 12px;
+  background: rgba(27, 79, 156, 0.12);
+  color: var(--brand-blue);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+.au-hero h1 {
+  margin: 0;
+  font-family: var(--font-brand);
+  font-size: 1.45rem;
+  color: var(--brand-navy);
+}
+.au-hero p {
+  margin: 0.3rem 0 0;
+  color: #64748b;
+  font-size: 0.92rem;
+  max-width: 42rem;
+}
+.au-help-panel {
+  display: none;
+  margin: -0.35rem 0 1.1rem;
+  padding: 0.9rem 1.1rem;
+  background: rgba(27, 79, 156, 0.06);
+  border: 1px solid rgba(27, 79, 156, 0.12);
+  border-radius: 12px;
+  color: var(--brand-navy);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.au-help-panel.open { display: block; }
+.au-card {
+  background: #fff;
+  border: 1px solid rgba(15, 42, 86, 0.1);
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.04);
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+.au-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.95rem 1.15rem;
+  border-bottom: 1px solid rgba(15, 42, 86, 0.08);
+}
+.au-card-title {
+  margin: 0;
+  font-family: var(--font-brand);
+  font-size: 1.05rem;
+  color: var(--brand-navy);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.au-card-title i { color: var(--brand-blue); }
+.au-card-meta {
+  color: #64748b;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.au-card-body { padding: 1.05rem 1.15rem; }
+.au-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.85rem 0.9rem;
+  align-items: end;
+}
+.au-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: #64748b;
+  font-weight: 600;
+}
+.au-filters input,
+.au-filters select {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(15, 42, 86, 0.12);
+  border-radius: 10px;
+  font: inherit;
+  color: var(--brand-navy);
+  background: #fff;
+}
+.au-filters-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.au-btn-clear {
+  width: 2.35rem;
+  height: 2.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 42, 86, 0.12);
+  background: #fff;
+  color: #64748b;
+  text-decoration: none;
+}
+.au-btn-clear:hover {
+  color: var(--brand-navy);
+  border-color: rgba(15, 42, 86, 0.25);
+}
+.au-table-wrap { overflow: auto; max-height: 68vh; }
+.au-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.au-table th,
+.au-table td {
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+  vertical-align: top;
+}
+.au-table th {
+  background: var(--brand-navy);
+  color: #fff;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.au-table tbody tr:nth-child(even) { background: #f8fafc; }
+.au-table tbody tr:hover { background: rgba(27, 79, 156, 0.04); }
+.au-id { color: #64748b; font-weight: 700; font-variant-numeric: tabular-nums; }
+.au-momento { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--brand-navy); }
+.au-pill {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(27, 79, 156, 0.1);
+  color: var(--brand-navy);
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.au-acao {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  color: #334155;
+  word-break: break-word;
+}
+.au-json {
+  margin: 0;
+  max-width: 420px;
+  max-height: 7.5rem;
+  overflow: auto;
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  white-space: pre;
+}
+.au-empty {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: #64748b;
+}
+.au-pager {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.85rem 1.15rem;
+  border-top: 1px solid rgba(15, 42, 86, 0.08);
+  background: #f8fafc;
+}
+.au-pager-links {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+.au-pager-links a,
+.au-pager-links span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid rgba(15, 42, 86, 0.12);
+  background: #fff;
+  color: var(--brand-navy);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.au-pager-links span.disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+</style>
+
+<div class="au-wrap">
+  <div class="au-hero">
+    <div class="au-hero-left">
+      <div class="au-hero-icon" aria-hidden="true"><i class="fas fa-shield-halved"></i></div>
+      <div>
+        <h1>Auditoria de Usuários</h1>
+        <p>Histórico de ações e modificações realizadas por operadores no sistema.</p>
+      </div>
+    </div>
+    <button type="button" class="btn btn-secondary btn-sm" id="btnAjuda">
+      <i class="fas fa-circle-question"></i> Ajuda
+    </button>
+  </div>
+
+  <div class="au-help-panel" id="ajudaPanel">
+    Esta tela lista ações registradas no Controle de Acesso (módulo <strong>acesso</strong>).
+    Use os filtros para localizar por operador, tipo de ação e período.
+    A coluna <strong>Detalhes</strong> exibe o payload JSON da operação (filtros usados, entidade alterada, etc.).
+    Consultas de relatório (ex.: Permanência) e mutações HTTP do módulo também entram automaticamente neste histórico.
+  </div>
+
+  <div class="au-card">
+    <div class="au-card-head">
+      <h2 class="au-card-title"><i class="fas fa-filter"></i> Filtros de Pesquisa</h2>
+    </div>
+    <div class="au-card-body">
+      <form method="get" class="au-filters" id="filtrosForm">
+        <label>Operador
+          <input type="search" name="operador" value="{{ filtros.operador }}" placeholder="Nome do operador">
+        </label>
+        <label>Ação
+          <select name="acao">
+            <option value="">Todas as Ações</option>
+            {% for a in acoes %}
+            <option value="{{ a }}" {% if filtros.acao == a %}selected{% endif %}>{{ a }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Data Inicial
+          <input type="date" name="data_inicial" value="{{ filtros.data_inicial }}">
+        </label>
+        <label>Data Final
+          <input type="date" name="data_final" value="{{ filtros.data_final }}">
+        </label>
+        <label>Ordem
+          <select name="ordem">
+            <option value="recentes" {% if filtros.ordem == 'recentes' %}selected{% endif %}>Mais Recentes</option>
+            <option value="antigos" {% if filtros.ordem == 'antigos' %}selected{% endif %}>Mais Antigos</option>
+          </select>
+        </label>
+        <label>Registros/Pág.
+          <select name="per_page">
+            {% for n in [20, 50, 100] %}
+            <option value="{{ n }}" {% if filtros.per_page == n %}selected{% endif %}>{{ n }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="au-filters-actions">
+          <button type="submit" class="btn-acesso"><i class="fas fa-filter"></i> Filtrar</button>
+          <a class="au-btn-clear" href="{{ url_for('acesso.auditoria_page') }}" title="Limpar filtros" aria-label="Limpar filtros">
+            <i class="fas fa-xmark"></i>
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="au-card">
+    <div class="au-card-head">
+      <h2 class="au-card-title"><i class="fas fa-list"></i> Registros Encontrados</h2>
+      <div class="au-card-meta">
+        {{ total }} registro{{ 's' if total != 1 else '' }} — Página {{ page }} de {{ total_pages }}
+      </div>
+    </div>
+    <div class="au-table-wrap">
+      <table class="au-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Momento</th>
+            <th>Operador</th>
+            <th>Ação</th>
+            <th>Detalhes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in logs %}
+          <tr>
+            <td class="au-id">{{ l.id }}</td>
+            <td class="au-momento">{{ l.data_hora }}</td>
+            <td><span class="au-pill" title="{{ l.usuario_nome }}">{{ l.usuario_nome }}</span></td>
+            <td class="au-acao">{{ l.acao }}</td>
+            <td><pre class="au-json">{{ l.detalhes_json }}</pre></td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5" class="au-empty">
+              Nenhum registro encontrado com os filtros atuais.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if total %}
+    <div class="au-pager">
+      <div class="au-card-meta">Página {{ page }} de {{ total_pages }}</div>
+      <div class="au-pager-links">
+        {% if page > 1 %}
+        <a href="{{ url_for('acesso.auditoria_page', page=page-1, operador=filtros.operador, acao=filtros.acao, data_inicial=filtros.data_inicial, data_final=filtros.data_final, ordem=filtros.ordem, per_page=filtros.per_page) }}">
+          <i class="fas fa-chevron-left"></i> Anterior
+        </a>
+        {% else %}
+        <span class="disabled"><i class="fas fa-chevron-left"></i> Anterior</span>
+        {% endif %}
+        {% if page < total_pages %}
+        <a href="{{ url_for('acesso.auditoria_page', page=page+1, operador=filtros.operador, acao=filtros.acao, data_inicial=filtros.data_inicial, data_final=filtros.data_final, ordem=filtros.ordem, per_page=filtros.per_page) }}">
+          Próxima <i class="fas fa-chevron-right"></i>
+        </a>
+        {% else %}
+        <span class="disabled">Próxima <i class="fas fa-chevron-right"></i></span>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('btnAjuda')?.addEventListener('click', () => {
+  document.getElementById('ajudaPanel')?.classList.toggle('open');
+});
+</script>
+{% endblock %}

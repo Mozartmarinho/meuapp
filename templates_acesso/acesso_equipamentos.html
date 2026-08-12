@@ -1,112 +1,907 @@
 {% extends "base_acesso.html" %}
-{% block title %}Equipamentos{% endblock %}
+{% block title %}Hub de Equipamentos{% endblock %}
 {% block content %}
-<div class="page-header">
-  <h1>Equipamentos</h1>
-  <p>Catracas, leitores faciais e controladoras (Control iD / iDFace).</p>
-</div>
+<div class="he-wrap">
+  <header class="he-header">
+    <div class="he-header-text">
+      <h1><i class="fas fa-microchip"></i> Hub de Equipamentos</h1>
+      <p>Gerencie controladores de acesso, catracas e terminais</p>
+    </div>
+    <div class="he-header-actions">
+      <button type="button" class="he-btn he-btn-primary" id="btnNovoEquip">
+        <i class="fas fa-plus"></i> Novo Equipamento
+      </button>
+      <div class="he-dropdown" id="acoesDropdown">
+        <button type="button" class="he-btn" id="btnAcoes" aria-haspopup="true" aria-expanded="false">
+          <i class="fas fa-gear"></i> Ações <i class="fas fa-chevron-down he-chev"></i>
+        </button>
+        <div class="he-dropdown-menu" id="acoesMenu" hidden role="menu">
+          <button type="button" class="he-dd-item" role="menuitem" data-acao="configurar">
+            <i class="fas fa-database he-dd-icon blue"></i>
+            <span>Configurar Servidor</span>
+          </button>
+          <button type="button" class="he-dd-item" role="menuitem" data-acao="datetime">
+            <i class="fas fa-clock he-dd-icon blue"></i>
+            <span>Atualizar Data/Hora</span>
+          </button>
+          <button type="button" class="he-dd-item" role="menuitem" data-acao="probe">
+            <i class="fas fa-plug he-dd-icon blue"></i>
+            <span>Testar Conexão</span>
+          </button>
+          <div class="he-dd-sep" role="separator"></div>
+          <button type="button" class="he-dd-item danger" role="menuitem" data-acao="reiniciar">
+            <i class="fas fa-arrows-rotate he-dd-icon red"></i>
+            <span>Reiniciar Conexão</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
 
-<div class="card" style="padding:1.1rem 1.2rem;margin-bottom:1.1rem;">
-  <h3 style="margin:0 0 0.85rem;font-family:var(--font-brand);color:var(--brand-navy);">Novo equipamento</h3>
-  <form id="formEquip" class="form-inline-grid">
-    <label>Nome *<input name="nome" required placeholder="Ex: Catraca Recepção"></label>
-    <label>Marca<input name="marca" value="Control iD"></label>
-    <label>Modelo<input name="modelo" placeholder="iDFace / iDFlex / iDBlock"></label>
-    <label>IP<input name="ip" placeholder="192.168.1.50"></label>
-    <label>Device ID<input name="device_id" placeholder="ID único do dispositivo"></label>
-    <label>Local<input name="local" placeholder="Recepção, Portaria…"></label>
-    <label>Controle de giro
-      <select name="controle_giro">
-        <option>Ambos os lados</option>
-        <option>Somente Entrada</option>
-        <option>Somente Saida</option>
-        <option>Identificar Ultimo Acesso</option>
-        <option>Entrada/Saida</option>
-      </select>
-    </label>
-    <label>Usuário dispositivo<input name="usuario_disp" value="admin"></label>
-  </form>
-  <button type="button" class="btn-acesso" id="btnSalvarEquip"><i class="fas fa-plus"></i> Cadastrar</button>
-</div>
+  <div class="he-kpi-row">
+    <div class="he-kpi online">
+      <div class="he-kpi-v" id="kpiOnline">{{ online_count }}</div>
+      <div class="he-kpi-l">ONLINE</div>
+    </div>
+    <div class="he-kpi offline">
+      <div class="he-kpi-v" id="kpiOffline">{{ offline_count }}</div>
+      <div class="he-kpi-l">OFFLINE</div>
+    </div>
+  </div>
 
-<div class="card" style="padding:0;overflow:hidden;">
-  <div class="table-scroll">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Nome</th>
-          <th>Modelo</th>
-          <th>IP</th>
-          <th>Device ID</th>
-          <th>Local</th>
-          <th>Giro</th>
-          <th>Status</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for e in equipamentos %}
-        <tr>
-          <td><strong>{{ e.nome }}</strong><div style="font-size:0.8rem;color:#64748b;">{{ e.marca }}</div></td>
-          <td>{{ e.modelo or '—' }}</td>
-          <td>{{ e.ip or '—' }}</td>
-          <td>{{ e.device_id or '—' }}</td>
-          <td>{{ e.local or '—' }}</td>
-          <td>{{ e.controle_giro or '—' }}</td>
-          <td>
-            {% if e.online %}<span class="badge-status badge-online">Online</span>
-            {% else %}<span class="badge-status badge-offline">Offline</span>{% endif %}
-            {% if not e.ativo %} · Inativo{% endif %}
-          </td>
-          <td style="white-space:nowrap;">
-            <button type="button" class="btn btn-secondary btn-toggle" data-id="{{ e.id }}" data-online="{{ 1 if e.online else 0 }}">
-              {{ 'Marcar offline' if e.online else 'Marcar online' }}
+  <div class="he-grid">
+    <aside class="he-list-panel card">
+      <div class="he-search-wrap">
+        <i class="fas fa-magnifying-glass"></i>
+        <input type="search" id="buscaEquip" placeholder="Buscar..." autocomplete="off">
+      </div>
+      <ul class="he-equip-list" id="listaEquip"></ul>
+      <div class="he-empty-mini" id="emptyLista" hidden>Nenhum equipamento encontrado.</div>
+    </aside>
+
+    <section class="he-manage-panel card">
+      <div class="he-empty-panel" id="emptyPainel">
+        <i class="fas fa-sliders"></i>
+        <strong>Painel de Gestão</strong>
+        <p>Selecione um equipamento da lista para editar ou use o botão superior para cadastrar um novo.</p>
+      </div>
+
+      <div id="painelForm" hidden>
+        <div class="he-form-head">
+          <h2 id="formTitulo">Editar Equipamento</h2>
+          <span class="he-form-hint" id="formHint"></span>
+        </div>
+        <form id="formEquip" class="he-form" autocomplete="off">
+          <input type="hidden" id="f_id" value="">
+          <label>Nome *
+            <input type="text" id="f_nome" name="nome" required placeholder="Ex: Catraca Recepção">
+          </label>
+          <div class="he-form-row">
+            <label>Marca
+              <input type="text" id="f_marca" name="marca" placeholder="Control iD">
+            </label>
+            <label>Modelo
+              <input type="text" id="f_modelo" name="modelo" placeholder="iDFace / iDFlex / iDBlock">
+            </label>
+          </div>
+          <div class="he-form-row">
+            <label>IP
+              <input type="text" id="f_ip" name="ip" placeholder="192.168.1.50">
+            </label>
+            <label>Device ID
+              <div class="he-id-row">
+                <input type="text" id="f_device_id" name="device_id" placeholder="ID único do dispositivo">
+                <button type="button" class="btn btn-secondary he-btn-mini" id="btnPuxarId" title="Puxar da rede">
+                  <i class="fas fa-download"></i>
+                </button>
+              </div>
+            </label>
+          </div>
+          <div class="he-form-row">
+            <label>Usuário do dispositivo
+              <input type="text" id="f_usuario_disp" name="usuario_disp" placeholder="admin" autocomplete="off">
+            </label>
+            <label>Senha do dispositivo
+              <input type="password" id="f_senha_disp" name="senha_disp" placeholder="••••••" autocomplete="new-password">
+            </label>
+          </div>
+          <label>Local
+            <input type="text" id="f_local" name="local" placeholder="Recepção, Portaria…">
+          </label>
+          <label>Controle de giro
+            <select id="f_controle_giro" name="controle_giro">
+              <option>Ambos os lados</option>
+              <option>Somente Entrada</option>
+              <option>Somente Saida</option>
+              <option>Identificar Ultimo Acesso</option>
+              <option>Entrada/Saida</option>
+            </select>
+          </label>
+          <div class="he-checks">
+            <label class="he-check"><input type="checkbox" id="f_online" name="online"> Online</label>
+            <label class="he-check"><input type="checkbox" id="f_ativo" name="ativo" checked> Ativo</label>
+          </div>
+          <div class="he-form-actions">
+            <button type="submit" class="btn-acesso" id="btnSalvar">
+              <i class="fas fa-floppy-disk"></i> Salvar
             </button>
-            <button type="button" class="btn btn-secondary btn-del" data-id="{{ e.id }}">Excluir</button>
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="8" style="text-align:center;padding:1.5rem;color:#64748b;">Nenhum equipamento.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+            <button type="button" class="btn btn-secondary" id="btnCancelar">Cancelar</button>
+            <button type="button" class="btn btn-danger-sg" id="btnExcluir" hidden>
+              <i class="fas fa-trash"></i> Excluir
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="he-toast" id="heToast" role="status" aria-live="polite" hidden>
+  <span class="he-toast-icon" aria-hidden="true"><i class="fas fa-check"></i></span>
+  <span class="he-toast-msg" id="heToastMsg"></span>
+  <button type="button" class="he-toast-close" id="heToastClose" aria-label="Dispensar">&times;</button>
+</div>
+
+<!-- Modal Configurar Servidor -->
+<div class="modal-backdrop" id="modalServidor" hidden>
+  <div class="modal-card" style="max-width:420px;">
+    <div class="modal-head">
+      <div><h3>Configurar Servidor</h3></div>
+      <button type="button" class="modal-close" data-close-modal="modalServidor" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="he-modal-desc" id="modalServidorDesc">
+        Define o servidor de eventos para o equipamento selecionado ou para todos os online.
+      </p>
+      <label class="he-modal-label">Host / IP do servidor
+        <input type="text" id="srvHost" placeholder="192.168.0.10" value="">
+      </label>
+      <label class="he-modal-label">Porta
+        <input type="number" id="srvPorta" placeholder="80" value="80" min="1" max="65535">
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" data-close-modal="modalServidor">Cancelar</button>
+      <button type="button" class="btn-acesso" id="btnSalvarServidor">
+        <i class="fas fa-floppy-disk"></i> Aplicar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Atualizar Data/Hora -->
+<div class="modal-backdrop" id="modalDataHora" hidden>
+  <div class="modal-card he-dh-card">
+    <div class="modal-head">
+      <div><h3>Atualizar Data/Hora</h3></div>
+      <button type="button" class="modal-close" data-close-modal="modalDataHora" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="he-dh-fields">
+        <label class="he-icon-field">
+          <span class="he-icon-field-label">Data</span>
+          <div class="he-icon-input">
+            <input type="text" id="dhData" placeholder="11/08/2026" inputmode="numeric" autocomplete="off">
+            <i class="fas fa-calendar-days" aria-hidden="true"></i>
+          </div>
+        </label>
+        <label class="he-icon-field">
+          <span class="he-icon-field-label">Hora</span>
+          <div class="he-icon-input">
+            <input type="text" id="dhHora" placeholder="07:49" inputmode="numeric" autocomplete="off">
+            <i class="fas fa-clock" aria-hidden="true"></i>
+          </div>
+        </label>
+      </div>
+
+      <div class="he-dh-select">
+        <div class="he-dh-select-label">Selecione:</div>
+        <div class="he-dh-checklist" id="dhChecklist"></div>
+      </div>
+
+      <button type="button" class="btn-acesso he-dh-enviar" id="btnEnviarDataHora">
+        Enviar
+      </button>
+    </div>
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script>
-document.getElementById('btnSalvarEquip').addEventListener('click', async () => {
-  const data = Object.fromEntries(new FormData(document.getElementById('formEquip')).entries());
-  const r = await fetch("{{ url_for('acesso.api_equipamentos') }}", {
-    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)
-  });
-  const res = await r.json();
-  if (!res.ok) { alert(res.error || 'Erro'); return; }
-  location.reload();
-});
+<style>
+.he-wrap { max-width: 1280px; }
+.he-header {
+  display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: center;
+  background: linear-gradient(135deg, var(--brand-navy) 0%, var(--brand-blue) 100%);
+  color: #fff; border-radius: 16px; padding: 1.15rem 1.35rem; margin-bottom: 1rem;
+  box-shadow: 0 8px 24px rgba(13, 43, 92, 0.22);
+}
+.he-header-text h1 {
+  margin: 0; font-family: var(--font-brand); font-size: 1.45rem; font-weight: 700;
+  display: flex; align-items: center; gap: 0.55rem;
+}
+.he-header-text p { margin: 0.35rem 0 0; opacity: 0.9; font-size: 0.88rem; }
+.he-header-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.he-btn {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.5rem 0.9rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.35);
+  background: rgba(255,255,255,0.12); color: #fff; font-weight: 700; font-size: 0.84rem;
+  cursor: pointer; font-family: var(--font-body);
+}
+.he-btn:hover { background: rgba(255,255,255,0.22); }
+.he-btn-primary { background: #fff; color: var(--brand-navy); border-color: #fff; }
+.he-btn-primary:hover { background: #f1f5f9; color: var(--brand-navy); }
+.he-chev { font-size: 0.7rem; opacity: 0.85; margin-left: 0.15rem; }
 
-document.querySelectorAll('.btn-toggle').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    const online = btn.dataset.online !== '1';
-    const r = await fetch(`/acesso/api/equipamentos/${btn.dataset.id}`, {
-      method: 'PUT', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({online})
+.he-dropdown { position: relative; }
+.he-dropdown-menu {
+  position: absolute; right: 0; top: calc(100% + 0.4rem); z-index: 40;
+  min-width: 240px; background: #fff; border-radius: 12px;
+  border: 1px solid rgba(15, 42, 86, 0.12);
+  box-shadow: 0 12px 28px rgba(13, 43, 92, 0.18);
+  padding: 0.4rem; display: flex; flex-direction: column; gap: 0.15rem;
+}
+.he-dd-item {
+  display: flex; align-items: center; gap: 0.7rem;
+  width: 100%; border: 0; background: transparent; text-align: left;
+  padding: 0.65rem 0.75rem; border-radius: 8px; cursor: pointer;
+  font-family: var(--font-body); font-weight: 600; font-size: 0.9rem; color: var(--brand-navy);
+}
+.he-dd-item:hover { background: rgba(27, 79, 156, 0.08); }
+.he-dd-item.danger { color: #b91c1c; }
+.he-dd-item.danger:hover { background: rgba(220, 38, 38, 0.08); }
+.he-dd-icon { width: 1.15rem; text-align: center; font-size: 0.95rem; }
+.he-dd-icon.blue { color: var(--brand-blue); }
+.he-dd-icon.red { color: #dc2626; }
+.he-dd-sep { height: 1px; background: rgba(15, 42, 86, 0.1); margin: 0.25rem 0.35rem; }
+
+.he-kpi-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; margin-bottom: 1rem;
+}
+@media (max-width: 640px) { .he-kpi-row { grid-template-columns: 1fr; } }
+.he-kpi {
+  background: #fff; border: 1px solid rgba(15, 42, 86, 0.1); border-radius: 14px;
+  padding: 1rem 1.15rem; box-shadow: 0 4px 12px rgba(0,0,0,.04);
+  display: flex; align-items: baseline; gap: 0.65rem;
+}
+.he-kpi-v { font-family: var(--font-brand); font-size: 1.75rem; font-weight: 800; line-height: 1; }
+.he-kpi-l { font-size: 0.78rem; font-weight: 800; letter-spacing: 0.06em; }
+.he-kpi.online .he-kpi-v, .he-kpi.online .he-kpi-l { color: #16a34a; }
+.he-kpi.offline .he-kpi-v, .he-kpi.offline .he-kpi-l { color: #dc2626; }
+
+.he-grid {
+  display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 1rem; align-items: start;
+}
+@media (max-width: 900px) { .he-grid { grid-template-columns: 1fr; } }
+.he-list-panel, .he-manage-panel {
+  padding: 1rem 1.1rem; border-radius: 14px; border: 1px solid rgba(15, 42, 86, 0.1);
+  box-shadow: 0 4px 12px rgba(0,0,0,.04); background: #fff;
+}
+.he-search-wrap {
+  display: flex; align-items: center; gap: 0.55rem;
+  border: 1px solid rgba(15, 42, 86, 0.12); border-radius: 10px;
+  padding: 0.55rem 0.75rem; margin-bottom: 0.75rem; background: #f8fafc;
+}
+.he-search-wrap i { color: #94a3b8; }
+.he-search-wrap input {
+  border: 0; background: transparent; outline: none; width: 100%;
+  font: inherit; color: var(--brand-navy);
+}
+
+.he-equip-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; max-height: 62vh; overflow: auto; }
+.he-equip-item {
+  display: flex; align-items: flex-start; gap: 0.7rem;
+  padding: 0.75rem 0.8rem; border-radius: 10px; cursor: pointer;
+  border: 1px solid transparent; transition: background .15s, border-color .15s;
+}
+.he-equip-item:hover { background: #f8fafc; }
+.he-equip-item.active {
+  background: rgba(27, 79, 156, 0.08); border-color: rgba(27, 79, 156, 0.28);
+}
+.he-dot {
+  width: 0.65rem; height: 0.65rem; border-radius: 50%; margin-top: 0.35rem; flex-shrink: 0;
+}
+.he-dot.on { background: #16a34a; box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18); }
+.he-dot.off { background: #dc2626; box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15); }
+.he-equip-info { min-width: 0; flex: 1; }
+.he-equip-info strong {
+  display: block; font-size: 0.95rem; color: var(--brand-navy);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.he-equip-info .ip { color: #64748b; font-size: 0.8rem; font-weight: 600; margin-top: 0.1rem; }
+.he-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.4rem; }
+.he-tag {
+  font-size: 0.68rem; font-weight: 800; letter-spacing: 0.03em;
+  padding: 0.15rem 0.45rem; border-radius: 6px;
+  background: rgba(27, 79, 156, 0.1); color: var(--brand-blue);
+}
+.he-tag.muted { background: #f1f5f9; color: #64748b; }
+.he-tag.warn { background: rgba(245, 158, 11, 0.15); color: #b45309; }
+.he-empty-mini { text-align: center; color: #94a3b8; font-size: 0.88rem; padding: 1.5rem 0.5rem; }
+
+.he-empty-panel {
+  text-align: center; padding: 3.5rem 1.5rem; color: #64748b;
+  display: flex; flex-direction: column; align-items: center; gap: 0.45rem;
+}
+.he-empty-panel i { font-size: 2rem; color: #94a3b8; margin-bottom: 0.35rem; }
+.he-empty-panel strong {
+  font-family: var(--font-brand); font-size: 1.2rem; color: var(--brand-navy); font-weight: 700;
+}
+.he-empty-panel p { margin: 0; max-width: 28rem; font-size: 0.92rem; line-height: 1.45; }
+
+.he-form-head {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 0.75rem;
+  margin-bottom: 1rem; flex-wrap: wrap;
+}
+.he-form-head h2 {
+  margin: 0; font-family: var(--font-brand); color: var(--brand-navy); font-size: 1.25rem;
+}
+.he-form-hint { font-size: 0.8rem; color: #94a3b8; font-weight: 600; }
+.he-form { display: flex; flex-direction: column; gap: 0.75rem; }
+.he-form label {
+  display: flex; flex-direction: column; gap: 0.3rem;
+  font-size: 0.82rem; font-weight: 600; color: #64748b;
+}
+.he-form input, .he-form select {
+  padding: 0.55rem 0.7rem; border: 1px solid rgba(15, 42, 86, 0.12);
+  border-radius: 10px; font: inherit; color: var(--brand-navy); background: #fff;
+}
+.he-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+@media (max-width: 640px) { .he-form-row { grid-template-columns: 1fr; } }
+.he-checks { display: flex; gap: 1.25rem; flex-wrap: wrap; padding-top: 0.15rem; }
+.he-check {
+  flex-direction: row !important; align-items: center; gap: 0.45rem !important;
+  color: var(--brand-navy) !important; cursor: pointer;
+}
+.he-form-actions {
+  display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem;
+  padding-top: 0.85rem; border-top: 1px solid rgba(15, 42, 86, 0.08);
+}
+.btn-danger-sg {
+  background: rgba(220, 38, 38, 0.1); color: #b91c1c; border: 1px solid rgba(220, 38, 38, 0.25);
+  border-radius: 10px; padding: 0.55rem 0.9rem; font-weight: 700; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 0.35rem; font-family: var(--font-body);
+}
+.btn-danger-sg:hover { background: rgba(220, 38, 38, 0.18); }
+
+.he-modal-desc { margin: 0 0 1rem; color: #64748b; font-size: 0.9rem; line-height: 1.45; }
+.he-modal-label {
+  display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.75rem;
+  font-size: 0.82rem; font-weight: 600; color: #64748b;
+}
+.he-modal-label input {
+  padding: 0.55rem 0.7rem; border: 1px solid rgba(15, 42, 86, 0.12);
+  border-radius: 10px; font: inherit; color: var(--brand-navy);
+}
+
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(13, 43, 92, 0.45); z-index: 2000;
+  display: grid; place-items: center; padding: 1rem;
+}
+.modal-backdrop[hidden] { display: none !important; }
+.modal-card {
+  width: min(480px, 100%); background: #fff; border-radius: 16px; overflow: hidden;
+  box-shadow: 0 24px 48px rgba(13, 43, 92, 0.25); max-height: 92vh;
+  display: flex; flex-direction: column;
+}
+.modal-head, .modal-foot {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem;
+  padding: 0.95rem 1.2rem; border-bottom: 1px solid rgba(15, 42, 86, 0.08);
+}
+.modal-foot { border-bottom: 0; border-top: 1px solid rgba(15, 42, 86, 0.08); justify-content: flex-end; }
+.modal-head h3 { margin: 0; font-family: var(--font-brand); color: var(--brand-navy); font-size: 1.3rem; }
+.modal-close { border: none; background: transparent; font-size: 1.5rem; cursor: pointer; color: #64748b; line-height: 1; }
+.modal-body { padding: 1.15rem 1.2rem; overflow: auto; }
+
+.he-dh-card { width: min(420px, 100%); }
+.he-dh-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem; }
+@media (max-width: 480px) { .he-dh-fields { grid-template-columns: 1fr; } }
+.he-icon-field { display: flex; flex-direction: column; gap: 0.3rem; }
+.he-icon-field-label { font-size: 0.8rem; font-weight: 700; color: #64748b; }
+.he-icon-input {
+  position: relative; display: flex; align-items: center;
+}
+.he-icon-input input {
+  width: 100%; padding: 0.6rem 2.2rem 0.6rem 0.75rem;
+  border: 1px solid rgba(15, 42, 86, 0.15); border-radius: 10px;
+  font: inherit; color: var(--brand-navy); background: #fff;
+}
+.he-icon-input i {
+  position: absolute; right: 0.75rem; color: var(--brand-blue); pointer-events: none;
+}
+.he-dh-select-label {
+  font-weight: 700; color: var(--brand-navy); margin-bottom: 0.45rem; font-size: 0.92rem;
+}
+.he-dh-checklist {
+  max-height: 220px; overflow: auto; border: 1px solid rgba(15, 42, 86, 0.12);
+  border-radius: 10px; padding: 0.35rem; margin-bottom: 1rem; background: #f8fafc;
+}
+.he-dh-check {
+  display: flex; align-items: center; gap: 0.55rem;
+  padding: 0.5rem 0.6rem; border-radius: 8px; cursor: pointer;
+  font-weight: 600; color: var(--brand-navy); font-size: 0.9rem;
+}
+.he-dh-check:hover { background: rgba(27, 79, 156, 0.06); }
+.he-dh-check input { width: 1rem; height: 1rem; accent-color: var(--brand-blue); }
+.he-dh-enviar {
+  width: 100%; justify-content: center; padding: 0.75rem 1rem; font-size: 0.95rem;
+}
+.he-id-row { display: flex; gap: 0.4rem; align-items: stretch; }
+.he-id-row input { flex: 1; }
+.he-btn-mini {
+  padding: 0.45rem 0.65rem; border-radius: 8px; white-space: nowrap;
+}
+
+.he-toast {
+  position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 2100;
+  display: flex; align-items: center; gap: 0.75rem;
+  background: #16a34a; color: #fff; padding: 0.85rem 1rem;
+  border-radius: 12px; font-weight: 600; font-size: 0.9rem;
+  box-shadow: 0 10px 28px rgba(22, 163, 74, 0.35); max-width: 420px;
+  animation: heToastIn .22s ease;
+}
+.he-toast[hidden] { display: none !important; }
+.he-toast.error { background: #dc2626; box-shadow: 0 10px 28px rgba(220, 38, 38, 0.35); }
+.he-toast.info { background: var(--brand-navy); box-shadow: 0 10px 28px rgba(13, 43, 92, 0.35); }
+.he-toast-icon {
+  flex: 0 0 auto; width: 1.55rem; height: 1.55rem; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 0.72rem;
+}
+.he-toast-msg { flex: 1 1 auto; line-height: 1.35; }
+.he-toast-close {
+  flex: 0 0 auto; border: 0; background: transparent; color: #fff;
+  font-size: 1.25rem; line-height: 1; cursor: pointer; opacity: 0.85;
+  padding: 0 0.15rem; border-radius: 6px;
+}
+.he-toast-close:hover { opacity: 1; background: rgba(255, 255, 255, 0.12); }
+@keyframes heToastIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+</style>
+
+<script>
+(function () {
+  const API = {{ url_for('acesso.api_equipamentos')|tojson }};
+  const API_ACOES = {{ url_for('acesso.api_equipamentos_acoes')|tojson }};
+  const API_DATA_HORA = {{ url_for('acesso.api_equipamentos_atualizar_data_hora')|tojson }};
+  const API_REINICIAR = {{ url_for('acesso.api_equipamentos_reiniciar_conexao')|tojson }};
+  const API_PUXAR = {{ url_for('acesso.api_equipamentos_puxar_device_id')|tojson }};
+  let equipamentos = {{ equipamentos|tojson }};
+  let selectedId = null;
+  let mode = null; // 'edit' | 'create' | null
+
+  const listaEl = document.getElementById('listaEquip');
+  const emptyLista = document.getElementById('emptyLista');
+  const emptyPainel = document.getElementById('emptyPainel');
+  const painelForm = document.getElementById('painelForm');
+  const buscaEl = document.getElementById('buscaEquip');
+  const toastEl = document.getElementById('heToast');
+  const toastMsgEl = document.getElementById('heToastMsg');
+  const toastIconEl = toastEl ? toastEl.querySelector('.he-toast-icon i') : null;
+  const dhChecklist = document.getElementById('dhChecklist');
+  let toastTimer = null;
+
+  function hideToast() {
+    if (!toastEl) return;
+    toastEl.hidden = true;
+    clearTimeout(toastTimer);
+    toastTimer = null;
+  }
+
+  function toast(msg, type) {
+    if (!toastEl || !toastMsgEl) return;
+    type = type || 'success';
+    toastEl.className = 'he-toast' + (type === 'success' ? '' : ' ' + type);
+    if (toastIconEl) {
+      toastIconEl.className = type === 'error' ? 'fas fa-exclamation' : 'fas fa-check';
+    }
+    toastMsgEl.textContent = msg;
+    toastEl.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, 4500);
+  }
+
+  document.getElementById('heToastClose')?.addEventListener('click', hideToast);
+
+  function nowSaoPaulo() {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(new Date());
+    const get = (t) => (parts.find(p => p.type === t) || {}).value || '';
+    return {
+      data: `${get('day')}/${get('month')}/${get('year')}`,
+      hora: `${get('hour')}:${get('minute')}`,
+    };
+  }
+
+  function openModalDataHora() {
+    const now = nowSaoPaulo();
+    document.getElementById('dhData').value = now.data;
+    document.getElementById('dhHora').value = now.hora;
+    dhChecklist.innerHTML = '';
+    if (!equipamentos.length) {
+      dhChecklist.innerHTML = '<div class="he-empty-mini">Nenhum equipamento cadastrado.</div>';
+    } else {
+      equipamentos.forEach(e => {
+        const label = document.createElement('label');
+        label.className = 'he-dh-check';
+        label.innerHTML = `<input type="checkbox" value="${e.id}" checked> <span>${escapeHtml(e.nome || '—')}</span>`;
+        dhChecklist.appendChild(label);
+      });
+    }
+    document.getElementById('modalDataHora').hidden = false;
+  }
+
+  function tagsFromEquip(e) {
+    const tags = [];
+    const giro = (e.controle_giro || '').toLowerCase();
+    if (giro.includes('somente entrada')) tags.push({ t: 'ENTRADA', c: '' });
+    else if (giro.includes('somente saida') || giro.includes('somente saída')) tags.push({ t: 'SAÍDA', c: '' });
+    else if (giro.includes('identificar')) tags.push({ t: 'FLUXO INV.', c: 'warn' });
+    else if (giro.includes('entrada/saida') || giro.includes('entrada/saída')) tags.push({ t: 'ENTRADA', c: '' }, { t: 'SAÍDA', c: '' });
+    else if (giro.includes('ambos')) tags.push({ t: 'AMBOS', c: 'muted' });
+    if (e.local) tags.push({ t: String(e.local).toUpperCase().slice(0, 18), c: 'muted' });
+    return tags;
+  }
+
+  function updateKpis() {
+    const online = equipamentos.filter(e => e.online).length;
+    document.getElementById('kpiOnline').textContent = online;
+    document.getElementById('kpiOffline').textContent = equipamentos.length - online;
+  }
+
+  function alvoLabel() {
+    if (selectedId) {
+      const eq = equipamentos.find(e => e.id === selectedId);
+      return eq ? `equipamento "${eq.nome}"` : 'equipamento selecionado';
+    }
+    return 'todos os equipamentos online';
+  }
+
+  function renderLista() {
+    const q = (buscaEl.value || '').trim().toLowerCase();
+    const filtered = equipamentos.filter(e => {
+      if (!q) return true;
+      const blob = [e.nome, e.ip, e.modelo, e.marca, e.local, e.device_id, e.controle_giro]
+        .join(' ').toLowerCase();
+      return blob.includes(q);
+    });
+    listaEl.innerHTML = '';
+    emptyLista.hidden = filtered.length > 0;
+    filtered.forEach(e => {
+      const li = document.createElement('li');
+      li.className = 'he-equip-item' + (selectedId === e.id ? ' active' : '');
+      li.dataset.id = e.id;
+      const tags = tagsFromEquip(e).map(x =>
+        `<span class="he-tag ${x.c}">${x.t}</span>`
+      ).join('');
+      li.innerHTML = `
+        <span class="he-dot ${e.online ? 'on' : 'off'}" title="${e.online ? 'Online' : 'Offline'}"></span>
+        <div class="he-equip-info">
+          <strong>${escapeHtml(e.nome || '—')}</strong>
+          <div class="ip">${escapeHtml(e.ip || 'sem IP')}${e.ativo === false ? ' · inativo' : ''}</div>
+          <div class="he-tags">${tags}</div>
+        </div>`;
+      li.addEventListener('click', () => selectEquip(e.id));
+      listaEl.appendChild(li);
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function showEmpty() {
+    mode = null;
+    selectedId = null;
+    emptyPainel.hidden = false;
+    painelForm.hidden = true;
+    document.getElementById('btnExcluir').hidden = true;
+    renderLista();
+  }
+
+  function openCreate() {
+    mode = 'create';
+    selectedId = null;
+    emptyPainel.hidden = true;
+    painelForm.hidden = false;
+    document.getElementById('formTitulo').textContent = 'Novo Equipamento';
+    document.getElementById('formHint').textContent = 'Cadastro no painel direito';
+    document.getElementById('f_id').value = '';
+    document.getElementById('f_nome').value = '';
+    document.getElementById('f_marca').value = 'Control iD';
+    document.getElementById('f_modelo').value = '';
+    document.getElementById('f_ip').value = '';
+    document.getElementById('f_device_id').value = '';
+    document.getElementById('f_usuario_disp').value = 'admin';
+    document.getElementById('f_senha_disp').value = '';
+    document.getElementById('f_senha_disp').placeholder = 'senha do dispositivo';
+    document.getElementById('f_local').value = '';
+    document.getElementById('f_controle_giro').value = 'Ambos os lados';
+    document.getElementById('f_online').checked = false;
+    document.getElementById('f_ativo').checked = true;
+    document.getElementById('btnExcluir').hidden = true;
+    renderLista();
+    document.getElementById('f_nome').focus();
+  }
+
+  function selectEquip(id) {
+    const e = equipamentos.find(x => x.id === id);
+    if (!e) return;
+    mode = 'edit';
+    selectedId = id;
+    emptyPainel.hidden = true;
+    painelForm.hidden = false;
+    document.getElementById('formTitulo').textContent = 'Editar Equipamento';
+    document.getElementById('formHint').textContent = e.online ? 'Online' : 'Offline';
+    document.getElementById('f_id').value = e.id;
+    document.getElementById('f_nome').value = e.nome || '';
+    document.getElementById('f_marca').value = e.marca || 'Control iD';
+    document.getElementById('f_modelo').value = e.modelo || '';
+    document.getElementById('f_ip').value = e.ip || '';
+    document.getElementById('f_device_id').value = e.device_id || '';
+    document.getElementById('f_usuario_disp').value = e.usuario_disp || 'admin';
+    document.getElementById('f_senha_disp').value = '';
+    document.getElementById('f_senha_disp').placeholder = e.tem_senha ? '•••••• (deixe em branco para manter)' : 'senha do dispositivo';
+    document.getElementById('f_local').value = e.local || '';
+    document.getElementById('f_controle_giro').value = e.controle_giro || 'Ambos os lados';
+    document.getElementById('f_online').checked = !!e.online;
+    document.getElementById('f_ativo').checked = e.ativo !== false;
+    document.getElementById('btnExcluir').hidden = false;
+    renderLista();
+  }
+
+  function formPayload() {
+    const payload = {
+      nome: document.getElementById('f_nome').value.trim(),
+      marca: document.getElementById('f_marca').value.trim() || 'Control iD',
+      modelo: document.getElementById('f_modelo').value.trim(),
+      ip: document.getElementById('f_ip').value.trim(),
+      device_id: document.getElementById('f_device_id').value.trim(),
+      usuario_disp: document.getElementById('f_usuario_disp').value.trim() || 'admin',
+      local: document.getElementById('f_local').value.trim(),
+      controle_giro: document.getElementById('f_controle_giro').value,
+      online: document.getElementById('f_online').checked,
+      ativo: document.getElementById('f_ativo').checked,
+    };
+    const senha = document.getElementById('f_senha_disp').value;
+    if (senha) payload.senha_disp = senha;
+    return payload;
+  }
+
+  document.getElementById('formEquip').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const data = formPayload();
+    if (!data.nome) { toast('Nome é obrigatório', 'error'); return; }
+    try {
+      let r, res;
+      if (mode === 'create') {
+        r = await fetch(API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        res = await r.json();
+        if (!res.ok) { toast(res.error || 'Erro ao cadastrar', 'error'); return; }
+        equipamentos.push(res.equipamento);
+        equipamentos.sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt'));
+        updateKpis();
+        toast('Equipamento cadastrado');
+        selectEquip(res.equipamento.id);
+      } else {
+        const id = document.getElementById('f_id').value;
+        r = await fetch(`${API}/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        res = await r.json();
+        if (!res.ok) { toast(res.error || 'Erro ao salvar', 'error'); return; }
+        const idx = equipamentos.findIndex(e => e.id === Number(id));
+        if (idx >= 0) equipamentos[idx] = res.equipamento;
+        updateKpis();
+        toast('Equipamento atualizado');
+        selectEquip(res.equipamento.id);
+      }
+    } catch (err) {
+      toast('Falha de comunicação', 'error');
+    }
+  });
+
+  document.getElementById('btnExcluir').addEventListener('click', async () => {
+    const id = document.getElementById('f_id').value;
+    if (!id || !confirm('Excluir este equipamento?')) return;
+    const r = await fetch(`${API}/${id}`, { method: 'DELETE' });
+    const res = await r.json();
+    if (!res.ok) { toast(res.error || 'Erro ao excluir', 'error'); return; }
+    equipamentos = equipamentos.filter(e => e.id !== Number(id));
+    updateKpis();
+    toast('Equipamento excluído');
+    showEmpty();
+  });
+
+  document.getElementById('btnCancelar').addEventListener('click', showEmpty);
+  document.getElementById('btnNovoEquip').addEventListener('click', openCreate);
+  buscaEl.addEventListener('input', renderLista);
+
+  /* ---- Dropdown Ações ---- */
+  const btnAcoes = document.getElementById('btnAcoes');
+  const menuAcoes = document.getElementById('acoesMenu');
+  const dropdown = document.getElementById('acoesDropdown');
+
+  function closeAcoes() {
+    menuAcoes.hidden = true;
+    btnAcoes.setAttribute('aria-expanded', 'false');
+  }
+  function toggleAcoes() {
+    const open = menuAcoes.hidden;
+    menuAcoes.hidden = !open;
+    btnAcoes.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  btnAcoes.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleAcoes();
+  });
+  document.addEventListener('click', (e) => {
+    if (!dropdown.contains(e.target)) closeAcoes();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeAcoes();
+  });
+
+  async function postAcao(acao, extra) {
+    const body = Object.assign({
+      acao,
+      equipamento_id: selectedId || null,
+    }, extra || {});
+    const r = await fetch(API_ACOES, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     });
     const res = await r.json();
-    if (!res.ok) { alert(res.error || 'Erro'); return; }
-    location.reload();
-  });
-});
+    toast(res.message || (res.ok ? 'OK' : (res.error || 'Erro')), res.ok ? 'success' : 'error');
+    return res;
+  }
 
-document.querySelectorAll('.btn-del').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    if (!confirm('Excluir equipamento?')) return;
-    const r = await fetch(`/acesso/api/equipamentos/${btn.dataset.id}`, {method: 'DELETE'});
-    const res = await r.json();
-    if (!res.ok) { alert(res.error || 'Erro'); return; }
-    location.reload();
+  document.querySelectorAll('[data-acao]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const acao = btn.dataset.acao;
+      closeAcoes();
+      if (acao === 'configurar') {
+        document.getElementById('modalServidorDesc').textContent =
+          `Aplica a configuração do servidor de eventos em ${alvoLabel()}.`;
+        document.getElementById('modalServidor').hidden = false;
+        return;
+      }
+      if (acao === 'datetime') {
+        openModalDataHora();
+        return;
+      }
+      if (acao === 'probe') {
+        if (!selectedId) {
+          toast('Selecione um equipamento para testar', 'error');
+          return;
+        }
+        try {
+          const res = await postAcao('probe');
+          if (res.ok && res.equipamento) {
+            const idx = equipamentos.findIndex(e => e.id === selectedId);
+            if (idx >= 0) equipamentos[idx] = res.equipamento;
+            updateKpis();
+            selectEquip(selectedId);
+          }
+        } catch (err) {
+          toast('Falha de comunicação', 'error');
+        }
+        return;
+      }
+      if (acao === 'reiniciar') {
+        if (!confirm('Reiniciar conexão dos equipamentos (relogin + monitor)?')) return;
+        try {
+          const r = await fetch(API_REINICIAR, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          });
+          const res = await r.json();
+          toast(res.message || (res.ok ? 'Conexão reiniciada' : (res.error || 'Erro')), res.ok ? 'success' : 'error');
+        } catch (err) {
+          toast('Falha de comunicação', 'error');
+        }
+      }
+    });
   });
-});
+
+  document.getElementById('btnPuxarId')?.addEventListener('click', async () => {
+    const id = document.getElementById('f_id').value;
+    const ip = document.getElementById('f_ip').value.trim();
+    if (!ip) { toast('Informe o IP primeiro', 'error'); return; }
+    const body = {
+      equipamento_id: id ? Number(id) : null,
+      ip,
+      usuario_disp: document.getElementById('f_usuario_disp').value.trim() || 'admin',
+    };
+    const senha = document.getElementById('f_senha_disp').value;
+    if (senha) body.senha_disp = senha;
+    if (!body.equipamento_id) {
+      toast('Salve o equipamento antes de puxar o Device ID', 'info');
+      return;
+    }
+    try {
+      const r = await fetch(API_PUXAR, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const res = await r.json();
+      if (!res.ok) { toast(res.error || 'Falha ao puxar ID', 'error'); return; }
+      document.getElementById('f_device_id').value = res.device_id || '';
+      if (res.equipamento) {
+        const idx = equipamentos.findIndex(e => e.id === res.equipamento.id);
+        if (idx >= 0) equipamentos[idx] = res.equipamento;
+        updateKpis();
+        selectEquip(res.equipamento.id);
+      }
+      toast(res.message || `Device ID ${res.device_id}`);
+    } catch (err) {
+      toast('Falha de comunicação', 'error');
+    }
+  });
+
+  document.getElementById('btnSalvarServidor').addEventListener('click', async () => {
+    const host = document.getElementById('srvHost').value.trim();
+    const porta = document.getElementById('srvPorta').value;
+    const res = await postAcao('configurar_servidor', { host, porta });
+    if (res.ok) document.getElementById('modalServidor').hidden = true;
+  });
+
+  document.getElementById('btnEnviarDataHora').addEventListener('click', () => {
+    const data = document.getElementById('dhData').value.trim();
+    const hora = document.getElementById('dhHora').value.trim();
+    const ids = Array.from(dhChecklist.querySelectorAll('input[type="checkbox"]:checked'))
+      .map(el => Number(el.value))
+      .filter(Boolean);
+    if (!data || !hora) { toast('Informe data e hora', 'error'); return; }
+    if (!ids.length) { toast('Selecione ao menos um equipamento', 'error'); return; }
+
+    document.getElementById('modalDataHora').hidden = true;
+    toast('Enviando data/hora aos equipamentos…', 'info');
+
+    fetch(API_DATA_HORA, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data, hora, equipamento_ids: ids }),
+    })
+      .then(r => r.json())
+      .then(res => {
+        toast(res.message || (res.ok ? 'Data/hora atualizada' : (res.error || 'Erro')), res.ok ? 'success' : 'error');
+      })
+      .catch(() => toast('Falha de comunicação', 'error'));
+  });
+
+  document.querySelectorAll('[data-close-modal]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-close-modal');
+      const m = document.getElementById(id);
+      if (m) m.hidden = true;
+    });
+  });
+  document.querySelectorAll('.modal-backdrop').forEach(m => {
+    m.addEventListener('click', (e) => {
+      if (e.target === m) m.hidden = true;
+    });
+  });
+
+  updateKpis();
+  renderLista();
+})();
 </script>
 {% endblock %}

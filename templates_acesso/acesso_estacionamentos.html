@@ -1,0 +1,574 @@
+{% extends "base_acesso.html" %}
+{% block title %}Gestão de Estacionamentos{% endblock %}
+{% block content %}
+<div class="ge-wrap">
+  <header class="ge-header">
+    <div class="ge-header-left">
+      <div class="ge-p-icon" aria-hidden="true">P</div>
+      <div>
+        <h1>Gestão de Estacionamentos</h1>
+        <p>Controle de lotação, equipamentos e as regras de acesso para veículos.</p>
+      </div>
+    </div>
+    <button type="button" class="ge-btn-help" id="btnAjudaManual">
+      <i class="fas fa-circle-info"></i> Ajuda &amp; Manual
+    </button>
+  </header>
+
+  <section class="ge-card">
+    <div class="ge-card-head">
+      <h2>REGISTROS</h2>
+      <button type="button" class="btn-acesso" id="btnNovo">
+        <i class="fas fa-plus"></i> Novo
+      </button>
+    </div>
+    <div class="ge-search">
+      <i class="fas fa-magnifying-glass"></i>
+      <input type="search" id="filtroEst" placeholder="Filtrar estacionamento..." autocomplete="off">
+    </div>
+    <div class="ge-list" id="listaEst"></div>
+    <div class="ge-empty" id="emptyEst">Nenhum estacionamento encontrado.</div>
+  </section>
+</div>
+
+<!-- Modal Novo / Editar Estacionamento -->
+<div class="modal-backdrop" id="modalEst" hidden>
+  <div class="modal-card ge-modal">
+    <div class="modal-head">
+      <div>
+        <h3 id="modalEstTitle">Novo Estacionamento</h3>
+      </div>
+      <button type="button" class="modal-close" data-close="modalEst" aria-label="Fechar">&times;</button>
+    </div>
+    <form id="formEst" class="modal-body" autocomplete="off">
+      <input type="hidden" id="f_id" value="">
+      <label class="ge-label">NOME <span class="req">*</span>
+        <input type="text" id="f_nome" required placeholder="Ex: Estacionamento Visitantes">
+      </label>
+      <div class="ge-row-2">
+        <label class="ge-label">CAPACIDADE TOTAL <span class="req">*</span>
+          <input type="number" id="f_capacidade" min="0" value="50" required>
+          <span class="ge-hint">Use 0 para capacidade ilimitada.</span>
+        </label>
+        <label class="ge-label">STATUS <span class="req">*</span>
+          <select id="f_status" required>
+            <option value="1">Ativo</option>
+            <option value="0">Inativo</option>
+          </select>
+        </label>
+      </div>
+      <div class="ge-label">HORÁRIO DE FUNCIONAMENTO
+        <div class="ge-row-2 ge-times">
+          <div class="ge-time-wrap">
+            <input type="time" id="f_hora_inicio">
+            <i class="fas fa-clock" aria-hidden="true"></i>
+          </div>
+          <div class="ge-time-wrap">
+            <input type="time" id="f_hora_fim">
+            <i class="fas fa-clock" aria-hidden="true"></i>
+          </div>
+        </div>
+      </div>
+
+      <div class="ge-sub-grid">
+        <div class="ge-sub">
+          <div class="ge-sub-title"><i class="fas fa-wrench"></i> Equipamentos</div>
+          <div class="ge-add-row">
+            <select id="eqSelect">
+              <option value="">Selecione...</option>
+              {% for e in equipamentos %}
+              <option value="{{ e.id }}">{{ e.nome }}{% if e.ip %} ({{ e.ip }}){% endif %}</option>
+              {% endfor %}
+            </select>
+            <select id="eqFluxo">
+              <option value="entrada">Entrada</option>
+              <option value="saida">Saída</option>
+            </select>
+            <button type="button" class="ge-btn-add" id="btnAddEq">Add</button>
+          </div>
+          <ul class="ge-chips" id="eqLista"></ul>
+        </div>
+        <div class="ge-sub">
+          <div class="ge-sub-title"><i class="fas fa-users"></i> Permissões</div>
+          <div class="ge-add-row">
+            <select id="permSelect">
+              <option value="">Selecione...</option>
+              {% for p in permissoes_opcoes %}
+              <option value="{{ p.chave }}" data-label="{{ p.label }}" data-grupo="{{ p.grupo_id or '' }}">{{ p.label }}</option>
+              {% endfor %}
+            </select>
+            <input type="number" id="permVagas" min="1" value="1" title="Vagas / prioridade">
+            <button type="button" class="ge-btn-add" id="btnAddPerm">Add</button>
+          </div>
+          <ul class="ge-chips" id="permLista"></ul>
+        </div>
+      </div>
+    </form>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" data-close="modalEst">Cancelar</button>
+      <button type="button" class="btn-acesso" id="btnSalvarEst">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Manual de Estacionamentos -->
+<div class="modal-backdrop" id="modalManual" hidden>
+  <div class="modal-card ge-manual">
+    <div class="ge-manual-head">
+      <div class="ge-manual-title">
+        <i class="fas fa-lightbulb" aria-hidden="true"></i>
+        <h3>Manual de Estacionamentos</h3>
+      </div>
+      <button type="button" class="ge-manual-x" data-close="modalManual" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="ge-manual-body">
+      <div class="ge-manual-grid">
+        <article class="ge-mcard theme-blue">
+          <h4><i class="fas fa-file-lines"></i> Como Funciona</h4>
+          <p>O sistema controla o acesso veicular cruzando duas informações principais:</p>
+          <ul>
+            <li><strong>Capacidade Física:</strong> O limite total de carros que cabem no local (Lotação Geral).</li>
+            <li><strong>Permissões Individuais:</strong> Quantas vagas cada usuário tem direito de usar (Cota Pessoal).</li>
+          </ul>
+        </article>
+        <article class="ge-mcard theme-green">
+          <h4><i class="fas fa-list-ol"></i> Regras de Entrada</h4>
+          <p>Para a cancela abrir, o sistema verifica nesta ordem:</p>
+          <ol>
+            <li>O estacionamento está <strong>Ativo</strong> e dentro do <strong>Horário</strong>?</li>
+            <li>A <strong>Lotação Atual</strong> é menor que a <strong>Capacidade Máxima</strong>?</li>
+            <li>O usuário tem <strong>Permissão</strong> vinculada?</li>
+            <li>O usuário ainda tem <strong>saldo de vagas</strong> (ex: tem direito a 2, já entrou com 1)?</li>
+          </ol>
+        </article>
+        <article class="ge-mcard theme-yellow">
+          <h4><i class="fas fa-ticket"></i> Gestão de Vagas</h4>
+          <p>Configure quem pode entrar:</p>
+          <ul>
+            <li><strong>Vincular Usuário:</strong> Adicione usuários na aba de edição do estacionamento.</li>
+            <li><strong>Limite por Usuário:</strong> Defina quantos carros simultâneos aquele usuário pode ter.</li>
+          </ul>
+          <p class="ge-mnote"><em>Nota:</em> O mesmo cartão/tag pode ser usado em carros diferentes, desde que não ultrapasse o limite simultâneo.</p>
+        </article>
+        <article class="ge-mcard theme-cyan">
+          <h4><i class="fas fa-eye"></i> Monitoramento</h4>
+          <p>Acompanhe a ocupação em tempo real:</p>
+          <ul>
+            <li><strong>Lotação:</strong> Veja quantos carros estão dentro vs. capacidade total.</li>
+            <li><strong>Lista de Ocupantes:</strong> Clique em "Ocupação" para ver placa, modelo e proprietário.</li>
+            <li><strong>Vagas de Direito:</strong> Total de vagas prometidas/vendidas aos usuários.</li>
+          </ul>
+        </article>
+        <article class="ge-mcard theme-red">
+          <h4><i class="fas fa-triangle-exclamation"></i> Correção de Erros</h4>
+          <p>Use a função <strong>Esvaziar / Forçar Saída</strong> quando:</p>
+          <ul>
+            <li>Um veículo saiu de "carona" e o sistema ainda acha que ele está dentro.</li>
+            <li>A lotação está cheia "virtualmente", mas o estacionamento está vazio.</li>
+            <li>Você pode remover um veículo específico ou zerar todo o estacionamento.</li>
+          </ul>
+        </article>
+        <article class="ge-mcard theme-purple">
+          <h4><i class="fas fa-desktop"></i> Equipamentos</h4>
+          <p>Associação de Hardware:</p>
+          <ul>
+            <li>Vincule as controladoras que controlam as cancelas.</li>
+            <li>Defina o fluxo (Entrada, Saída) para cada equipamento.</li>
+            <li>O sistema usa essa configuração para incrementar ou decrementar a contagem.</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+    <div class="ge-manual-foot">
+      <button type="button" class="btn-acesso" id="btnEntendi">Entendi</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.ge-wrap { max-width: 1100px; }
+.ge-header {
+  display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: center;
+  background: linear-gradient(135deg, var(--brand-navy) 0%, var(--brand-blue) 100%);
+  color: #fff; border-radius: 16px; padding: 1.15rem 1.35rem; margin-bottom: 1rem;
+  box-shadow: 0 8px 24px rgba(13, 43, 92, 0.22);
+}
+.ge-header-left { display: flex; align-items: center; gap: 0.9rem; }
+.ge-p-icon {
+  width: 48px; height: 48px; border-radius: 50%; background: #fff; color: var(--brand-blue);
+  display: grid; place-items: center; font-family: var(--font-brand); font-weight: 800; font-size: 1.35rem;
+  flex-shrink: 0;
+}
+.ge-header h1 {
+  margin: 0; font-family: var(--font-brand); font-size: 1.45rem; font-weight: 700;
+}
+.ge-header p { margin: 0.3rem 0 0; opacity: 0.9; font-size: 0.88rem; }
+.ge-btn-help {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  padding: 0.5rem 0.95rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.55);
+  background: rgba(255,255,255,0.12); color: #fff; font-weight: 700; font-size: 0.86rem;
+  cursor: pointer; font-family: var(--font-body);
+}
+.ge-btn-help:hover { background: rgba(255,255,255,0.22); }
+
+.ge-card {
+  background: #fff; border: 1px solid rgba(15,42,86,0.1); border-radius: 14px;
+  padding: 1.15rem 1.25rem; box-shadow: 0 4px 12px rgba(0,0,0,.04); min-height: 280px;
+}
+.ge-card-head {
+  display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; margin-bottom: 0.85rem;
+}
+.ge-card-head h2 {
+  margin: 0; font-family: var(--font-brand); font-size: 1rem; letter-spacing: 0.04em;
+  color: var(--brand-navy); font-weight: 800;
+}
+.ge-search {
+  position: relative; margin-bottom: 1rem;
+}
+.ge-search i {
+  position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: #94a3b8;
+}
+.ge-search input {
+  width: 100%; padding: 0.65rem 0.85rem 0.65rem 2.35rem;
+  border: 1px solid rgba(15,42,86,0.12); border-radius: 10px;
+  font: inherit; color: var(--brand-navy); background: #fff;
+}
+.ge-empty {
+  text-align: center; padding: 3rem 1rem; color: #94a3b8; font-weight: 600;
+}
+.ge-list { display: grid; gap: 0.75rem; }
+.ge-item {
+  display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: center;
+  padding: 0.95rem 1rem; border: 1px solid rgba(15,42,86,0.1); border-radius: 12px;
+  background: #f8fafc;
+}
+.ge-item h3 { margin: 0; font-family: var(--font-brand); color: var(--brand-navy); font-size: 1.05rem; }
+.ge-item p { margin: 0.3rem 0 0; color: #64748b; font-size: 0.86rem; }
+.ge-item-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(13,43,92,.45); z-index: 2000;
+  display: grid; place-items: center; padding: 1rem;
+}
+.modal-backdrop[hidden] { display: none !important; }
+.modal-card {
+  width: min(640px, 100%); background: #fff; border-radius: 16px; overflow: hidden;
+  box-shadow: 0 24px 48px rgba(13,43,92,.25); max-height: 92vh; display: flex; flex-direction: column;
+}
+.modal-head, .modal-foot {
+  display: flex; justify-content: space-between; align-items: center; gap: 0.75rem;
+  padding: 0.95rem 1.2rem; border-bottom: 1px solid rgba(15,42,86,.08);
+}
+.modal-foot { border-bottom: 0; border-top: 1px solid rgba(15,42,86,.08); justify-content: flex-end; }
+.modal-head h3 { margin: 0; font-family: var(--font-brand); color: var(--brand-navy); font-size: 1.25rem; }
+.modal-close { border: none; background: transparent; font-size: 1.5rem; cursor: pointer; color: #64748b; line-height: 1; }
+.modal-body { padding: 1.15rem 1.2rem; overflow: auto; display: flex; flex-direction: column; gap: 0.9rem; }
+.ge-label {
+  display: flex; flex-direction: column; gap: 0.3rem;
+  font-size: 0.78rem; font-weight: 700; color: #64748b; letter-spacing: 0.02em;
+}
+.ge-label .req { color: #dc2626; }
+.ge-label input, .ge-label select,
+.ge-add-row select, .ge-add-row input, .ge-time-wrap input {
+  padding: 0.55rem 0.7rem; border: 1px solid rgba(15,42,86,.12); border-radius: 10px;
+  font: inherit; color: var(--brand-navy); background: #fff;
+}
+.ge-hint { font-size: 0.75rem; font-weight: 500; color: #94a3b8; }
+.ge-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+@media (max-width: 560px) { .ge-row-2 { grid-template-columns: 1fr; } }
+.ge-times { margin-top: 0.35rem; }
+.ge-time-wrap { position: relative; }
+.ge-time-wrap i {
+  position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%);
+  color: #94a3b8; pointer-events: none; font-size: 0.85rem;
+}
+.ge-time-wrap input { width: 100%; padding-right: 2rem; }
+.ge-sub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+@media (max-width: 640px) { .ge-sub-grid { grid-template-columns: 1fr; } }
+.ge-sub-title {
+  display: flex; align-items: center; gap: 0.45rem;
+  color: var(--brand-blue); font-weight: 700; font-size: 0.95rem; margin-bottom: 0.55rem;
+}
+.ge-add-row { display: grid; grid-template-columns: 1fr auto auto; gap: 0.4rem; align-items: center; }
+.ge-btn-add {
+  padding: 0.5rem 0.75rem; border-radius: 8px; border: 1px solid rgba(15,42,86,.18);
+  background: #fff; color: var(--brand-navy); font-weight: 700; cursor: pointer; font-size: 0.84rem;
+}
+.ge-btn-add:hover { background: #f1f5f9; }
+.ge-chips { list-style: none; margin: 0.55rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.ge-chips li {
+  display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
+  padding: 0.4rem 0.55rem; border-radius: 8px; background: #f1f5f9; font-size: 0.84rem; color: var(--brand-navy);
+}
+.ge-chips button {
+  border: 0; background: transparent; color: #b91c1c; cursor: pointer; font-weight: 700;
+}
+
+/* Manual modal */
+.ge-manual { width: min(980px, 100%); }
+.ge-manual-head {
+  display: flex; justify-content: space-between; align-items: center;
+  background: var(--brand-blue); color: #fff; padding: 0.95rem 1.2rem;
+}
+.ge-manual-title { display: flex; align-items: center; gap: 0.65rem; }
+.ge-manual-title i { font-size: 1.25rem; }
+.ge-manual-title h3 { margin: 0; font-family: var(--font-brand); font-size: 1.25rem; font-weight: 700; color: #fff; }
+.ge-manual-x {
+  border: none; background: transparent; color: #fff; font-size: 1.55rem; cursor: pointer; line-height: 1;
+  opacity: 0.92;
+}
+.ge-manual-x:hover { opacity: 1; }
+.ge-manual-body { padding: 1.1rem 1.2rem; overflow: auto; max-height: min(70vh, 620px); }
+.ge-manual-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.85rem;
+}
+@media (max-width: 900px) { .ge-manual-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { .ge-manual-grid { grid-template-columns: 1fr; } }
+.ge-mcard {
+  border: 1px solid rgba(15,42,86,0.1); border-radius: 12px; padding: 0.95rem 1rem;
+  background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.03);
+}
+.ge-mcard h4 {
+  margin: 0 0 0.55rem; font-family: var(--font-brand); font-size: 1rem; font-weight: 700;
+  display: flex; align-items: center; gap: 0.45rem;
+}
+.ge-mcard p { margin: 0 0 0.5rem; font-size: 0.84rem; color: #475569; line-height: 1.45; }
+.ge-mcard ul, .ge-mcard ol {
+  margin: 0; padding-left: 1.15rem; font-size: 0.82rem; color: #334155; line-height: 1.5;
+}
+.ge-mcard li { margin-bottom: 0.3rem; }
+.ge-mnote { margin-top: 0.55rem !important; font-size: 0.8rem !important; color: #64748b !important; }
+.ge-mcard.theme-blue h4 { color: #2563eb; }
+.ge-mcard.theme-green h4 { color: #16a34a; }
+.ge-mcard.theme-yellow h4 { color: #d97706; }
+.ge-mcard.theme-cyan h4 { color: #0891b2; }
+.ge-mcard.theme-red h4 { color: #dc2626; }
+.ge-mcard.theme-purple h4 { color: #7c3aed; }
+.ge-manual-foot {
+  display: flex; justify-content: flex-end; padding: 0.85rem 1.2rem;
+  border-top: 1px solid rgba(15,42,86,.08);
+}
+</style>
+<script>
+(function () {
+  const API = {{ url_for('acesso.api_estacionamentos')|tojson }};
+  const INITIAL = {{ estacionamentos|tojson }};
+  let items = Array.isArray(INITIAL) ? INITIAL.slice() : [];
+  let eqDraft = [];
+  let permDraft = [];
+
+  const listaEl = document.getElementById('listaEst');
+  const emptyEl = document.getElementById('emptyEst');
+  const filtroEl = document.getElementById('filtroEst');
+  const modalEst = document.getElementById('modalEst');
+  const modalManual = document.getElementById('modalManual');
+  const eqLista = document.getElementById('eqLista');
+  const permLista = document.getElementById('permLista');
+
+  function openModal(id) {
+    const el = document.getElementById(id);
+    if (el) el.hidden = false;
+  }
+  function closeModal(id) {
+    const el = document.getElementById(id);
+    if (el) el.hidden = true;
+  }
+
+  document.querySelectorAll('[data-close]').forEach((btn) => {
+    btn.addEventListener('click', () => closeModal(btn.getAttribute('data-close')));
+  });
+  [modalEst, modalManual].forEach((m) => {
+    m.addEventListener('click', (e) => { if (e.target === m) m.hidden = true; });
+  });
+
+  document.getElementById('btnAjudaManual').addEventListener('click', () => openModal('modalManual'));
+  document.getElementById('btnEntendi').addEventListener('click', () => closeModal('modalManual'));
+
+  function capLabel(est) {
+    if (!est.capacidade_total) return 'Ilimitado';
+    return `${est.ocupacao_atual || 0} / ${est.capacidade_total}`;
+  }
+
+  function renderList() {
+    const q = (filtroEl.value || '').trim().toLowerCase();
+    const filtered = items.filter((e) => !q || (e.nome || '').toLowerCase().includes(q));
+    listaEl.innerHTML = '';
+    emptyEl.hidden = filtered.length > 0;
+    filtered.forEach((est) => {
+      const row = document.createElement('div');
+      row.className = 'ge-item';
+      const horario = (est.hora_inicio || est.hora_fim)
+        ? `${est.hora_inicio || '--:--'} – ${est.hora_fim || '--:--'}`
+        : 'Sem horário';
+      row.innerHTML = `
+        <div>
+          <h3>${escapeHtml(est.nome)}</h3>
+          <p>${capLabel(est)} · ${est.ativo ? 'Ativo' : 'Inativo'} · ${horario}
+            · ${est.qtd_equipamentos || 0} equip. · ${est.qtd_permissoes || 0} perm.</p>
+        </div>
+        <div class="ge-item-actions">
+          <button type="button" class="btn btn-secondary btn-sm" data-edit="${est.id}">Editar</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-del="${est.id}">Excluir</button>
+        </div>`;
+      listaEl.appendChild(row);
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  filtroEl.addEventListener('input', renderList);
+
+  listaEl.addEventListener('click', async (e) => {
+    const editId = e.target.closest('[data-edit]')?.getAttribute('data-edit');
+    const delId = e.target.closest('[data-del]')?.getAttribute('data-del');
+    if (editId) {
+      const r = await fetch(`${API}/${editId}`);
+      const res = await r.json();
+      if (!res.ok) { alert(res.error || 'Erro ao carregar'); return; }
+      openForm(res.estacionamento);
+      return;
+    }
+    if (delId) {
+      if (!confirm('Excluir este estacionamento?')) return;
+      const r = await fetch(`${API}/${delId}`, { method: 'DELETE' });
+      const res = await r.json();
+      if (!res.ok) { alert(res.error || 'Erro ao excluir'); return; }
+      items = items.filter((x) => String(x.id) !== String(delId));
+      renderList();
+    }
+  });
+
+  function renderEqChips() {
+    eqLista.innerHTML = eqDraft.map((v, i) => `
+      <li>
+        <span>${escapeHtml(v.equipamento_nome)} · ${v.fluxo === 'saida' ? 'Saída' : 'Entrada'}</span>
+        <button type="button" data-rm-eq="${i}" aria-label="Remover">&times;</button>
+      </li>`).join('');
+  }
+  function renderPermChips() {
+    permLista.innerHTML = permDraft.map((v, i) => `
+      <li>
+        <span>${escapeHtml(v.label)} · ${v.vagas}</span>
+        <button type="button" data-rm-perm="${i}" aria-label="Remover">&times;</button>
+      </li>`).join('');
+  }
+
+  eqLista.addEventListener('click', (e) => {
+    const i = e.target.closest('[data-rm-eq]')?.getAttribute('data-rm-eq');
+    if (i == null) return;
+    eqDraft.splice(+i, 1);
+    renderEqChips();
+  });
+  permLista.addEventListener('click', (e) => {
+    const i = e.target.closest('[data-rm-perm]')?.getAttribute('data-rm-perm');
+    if (i == null) return;
+    permDraft.splice(+i, 1);
+    renderPermChips();
+  });
+
+  document.getElementById('btnAddEq').addEventListener('click', () => {
+    const sel = document.getElementById('eqSelect');
+    const eid = sel.value;
+    if (!eid) { alert('Selecione um equipamento.'); return; }
+    if (eqDraft.some((x) => String(x.equipamento_id) === String(eid))) {
+      alert('Equipamento já adicionado.');
+      return;
+    }
+    const opt = sel.selectedOptions[0];
+    eqDraft.push({
+      equipamento_id: +eid,
+      equipamento_nome: (opt.textContent || '').trim(),
+      fluxo: document.getElementById('eqFluxo').value || 'entrada',
+    });
+    sel.value = '';
+    renderEqChips();
+  });
+
+  document.getElementById('btnAddPerm').addEventListener('click', () => {
+    const sel = document.getElementById('permSelect');
+    const chave = sel.value;
+    if (!chave) { alert('Selecione uma permissão.'); return; }
+    if (permDraft.some((x) => x.chave === chave)) {
+      alert('Permissão já adicionada.');
+      return;
+    }
+    const opt = sel.selectedOptions[0];
+    const vagas = Math.max(1, parseInt(document.getElementById('permVagas').value, 10) || 1);
+    permDraft.push({
+      chave,
+      label: opt.dataset.label || opt.textContent.trim(),
+      grupo_id: opt.dataset.grupo ? +opt.dataset.grupo : null,
+      vagas,
+    });
+    sel.value = '';
+    document.getElementById('permVagas').value = '1';
+    renderPermChips();
+  });
+
+  function openForm(est) {
+    document.getElementById('f_id').value = est?.id || '';
+    document.getElementById('modalEstTitle').textContent = est?.id ? 'Editar Estacionamento' : 'Novo Estacionamento';
+    document.getElementById('f_nome').value = est?.nome || '';
+    document.getElementById('f_capacidade').value = est?.capacidade_total ?? 50;
+    document.getElementById('f_status').value = est && est.ativo === false ? '0' : '1';
+    document.getElementById('f_hora_inicio').value = est?.hora_inicio || '';
+    document.getElementById('f_hora_fim').value = est?.hora_fim || '';
+    eqDraft = (est?.equipamentos || []).map((v) => ({
+      equipamento_id: v.equipamento_id,
+      equipamento_nome: v.equipamento_nome || ('#' + v.equipamento_id),
+      fluxo: v.fluxo || 'entrada',
+    }));
+    permDraft = (est?.permissoes || []).map((v) => ({
+      chave: v.chave,
+      label: v.label || v.chave,
+      grupo_id: v.grupo_id || null,
+      vagas: v.vagas ?? 1,
+    }));
+    renderEqChips();
+    renderPermChips();
+    openModal('modalEst');
+  }
+
+  document.getElementById('btnNovo').addEventListener('click', () => openForm(null));
+
+  document.getElementById('btnSalvarEst').addEventListener('click', async () => {
+    const id = (document.getElementById('f_id').value || '').trim();
+    const nome = document.getElementById('f_nome').value.trim();
+    if (!nome) { alert('Informe o nome.'); return; }
+    const payload = {
+      nome,
+      capacidade_total: parseInt(document.getElementById('f_capacidade').value, 10) || 0,
+      ativo: document.getElementById('f_status').value === '1',
+      hora_inicio: document.getElementById('f_hora_inicio').value || '',
+      hora_fim: document.getElementById('f_hora_fim').value || '',
+      equipamentos: eqDraft,
+      permissoes: permDraft,
+    };
+    const url = id ? `${API}/${id}` : API;
+    const method = id ? 'PUT' : 'POST';
+    const r = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const res = await r.json();
+    if (!res.ok) { alert(res.error || 'Erro ao salvar'); return; }
+    const saved = res.estacionamento;
+    const idx = items.findIndex((x) => x.id === saved.id);
+    if (idx >= 0) items[idx] = saved;
+    else items.push(saved);
+    items.sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
+    closeModal('modalEst');
+    renderList();
+  });
+
+  renderList();
+})();
+</script>
+{% endblock %}

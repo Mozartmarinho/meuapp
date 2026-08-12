@@ -1,0 +1,532 @@
+{% extends "base_acesso.html" %}
+{% block title %}Gestão de Ambientes{% endblock %}
+{% block content %}
+<div class="amb-wrap">
+  <header class="amb-hero">
+    <div>
+      <h1>Gestão de Ambientes</h1>
+      <p>Crie e gerencie ambientes com controle de lotação</p>
+    </div>
+    <div class="amb-hero-actions">
+      <button type="button" class="btn btn-secondary btn-sm" id="btnAjuda">
+        <i class="fas fa-circle-info"></i> Como funciona?
+      </button>
+      <button type="button" class="btn-acesso" id="btnNovo">
+        <i class="fas fa-plus"></i> Novo Ambiente
+      </button>
+    </div>
+  </header>
+
+  <section class="card amb-panel">
+    <div class="amb-section-head">
+      <h2><i class="fas fa-building"></i> AMBIENTES</h2>
+      <span class="amb-count" id="ambCount">{{ ambientes|length }} ambiente(s)</span>
+    </div>
+
+    <div class="amb-list" id="listaAmbientes">
+      {% for a in ambientes %}
+      <article class="amb-card" data-id="{{ a.id }}">
+        <div class="amb-card-main">
+          <div class="amb-card-icon"><i class="fas fa-door-open"></i></div>
+          <div class="amb-card-info">
+            <h3>{{ a.nome }}</h3>
+            <p>{{ a.descricao or 'Sem descrição' }}</p>
+            <div class="amb-card-meta">
+              <span><i class="fas fa-users"></i> {{ a.ocupacao_atual }}/{{ a.capacidade_maxima }}</span>
+              <span class="amb-pct">{{ a.percentual }}%</span>
+              {% if a.vigencia_tipo == 'temporario' %}
+              <span class="badge-status badge-offline">Temporário{% if a.data_fim %} · {{ a.data_fim }}{% endif %}</span>
+              {% else %}
+              <span class="badge-status badge-online">Definitivo</span>
+              {% endif %}
+              {% if not a.ativo %}
+              <span class="badge-status badge-offline">Inativo</span>
+              {% endif %}
+            </div>
+            {% if a.publico %}
+            <div class="amb-tags">
+              {% for p in a.publico %}
+              <span class="amb-tag">{{ {'funcionarios':'Funcionários','alunos':'Alunos','visitantes':'Visitantes','responsaveis':'Responsáveis'}.get(p, p) }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+            {% if a.equipamentos %}
+            <div class="amb-eq-mini">
+              <i class="fas fa-microchip"></i>
+              {{ a.equipamentos|length }} equipamento(s) vinculado(s)
+            </div>
+            {% endif %}
+          </div>
+        </div>
+        <div class="amb-card-actions">
+          <button type="button" class="btn btn-secondary btn-sm btn-edit" data-id="{{ a.id }}">Editar</button>
+          <button type="button" class="btn btn-secondary btn-sm btn-del" data-id="{{ a.id }}">Excluir</button>
+        </div>
+        <div class="amb-progress">
+          <div class="amb-progress-bar {% if a.percentual >= 90 %}crit{% elif a.percentual >= 70 %}warn{% endif %}"
+               style="width: {{ [a.percentual, 100]|min }}%;"></div>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+
+    <div class="amb-empty" id="emptyAmbientes" {% if ambientes %}hidden{% endif %}>
+      <i class="fas fa-building"></i>
+      <p>Nenhum ambiente cadastrado</p>
+    </div>
+  </section>
+</div>
+
+<!-- Modal NOVO / EDITAR AMBIENTE -->
+<div class="modal-backdrop" id="modalAmbiente" hidden>
+  <div class="modal-card amb-modal">
+    <div class="modal-head">
+      <div>
+        <h3 id="modalTitle">NOVO AMBIENTE</h3>
+      </div>
+      <button type="button" class="modal-close" id="btnCloseModal" aria-label="Fechar">&times;</button>
+    </div>
+
+    <form id="formAmbiente" class="modal-body" autocomplete="off">
+      <input type="hidden" id="f_id" value="">
+
+      <div class="amb-form-section">
+        <h4>Informações Básicas</h4>
+        <div class="amb-form-row">
+          <label class="req amb-grow">Nome do Ambiente
+            <input type="text" id="f_nome" name="nome" required placeholder="Ex: Sala de Reuniões A">
+          </label>
+          <label class="req amb-lotacao">Lotação Máxima
+            <input type="number" id="f_lotacao" name="capacidade_maxima" min="0" value="10" required>
+          </label>
+        </div>
+        <label>Descrição / Observações
+          <textarea id="f_descricao" name="descricao" rows="3"
+            placeholder="Descrição interna para controle administrativo."></textarea>
+        </label>
+      </div>
+
+      <div class="amb-form-section">
+        <h4>Regras de Acesso</h4>
+        <div class="amb-field-block">
+          <span class="amb-label">Vigência do Ambiente</span>
+          <div class="amb-radios">
+            <label class="amb-radio">
+              <input type="radio" name="vigencia_tipo" value="definitivo" checked>
+              <span>Definitivo (Sem data fim)</span>
+            </label>
+            <label class="amb-radio">
+              <input type="radio" name="vigencia_tipo" value="temporario">
+              <span>Temporário (Data específica)</span>
+            </label>
+          </div>
+          <label class="amb-data-fim" id="wrapDataFim" hidden>Data fim
+            <input type="date" id="f_data_fim" name="data_fim">
+          </label>
+        </div>
+        <div class="amb-field-block">
+          <span class="amb-label">Público Autorizado</span>
+          <div class="amb-checks">
+            <label class="amb-check"><input type="checkbox" name="publico" value="funcionarios"> Funcionários</label>
+            <label class="amb-check"><input type="checkbox" name="publico" value="alunos"> Alunos</label>
+            <label class="amb-check"><input type="checkbox" name="publico" value="visitantes"> Visitantes</label>
+            <label class="amb-check"><input type="checkbox" name="publico" value="responsaveis"> Responsáveis</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="amb-form-section">
+        <h4>Integração de Hardware</h4>
+        <div class="amb-hw-box">
+          <div class="amb-hw-row">
+            <label class="amb-grow">Equipamento
+              <select id="f_equipamento">
+                <option value="">Selecione...</option>
+                {% for e in equipamentos %}
+                <option value="{{ e.id }}">{{ e.nome }}{% if e.ip %} ({{ e.ip }}){% endif %}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label class="amb-fluxo">Fluxo
+              <select id="f_fluxo">
+                <option value="entrada">Entrada</option>
+                <option value="saida">Saída</option>
+                <option value="ambos">Ambos</option>
+              </select>
+            </label>
+            <button type="button" class="btn btn-secondary amb-add-eq" id="btnAddEquip">
+              <i class="fas fa-plus"></i> Add
+            </button>
+          </div>
+          <div class="amb-vinculos-head">Equipamentos Vinculados</div>
+          <ul class="amb-vinculos" id="listaVinculos"></ul>
+          <div class="amb-vinculos-empty" id="emptyVinculos">Nenhum equipamento vinculado.</div>
+        </div>
+      </div>
+    </form>
+
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" id="btnCancelar">Cancelar</button>
+      <button type="button" class="btn-acesso" id="btnSalvar">
+        <i class="fas fa-floppy-disk"></i> Salvar Alterações
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modalAjuda" hidden>
+  <div class="modal-card" style="max-width:520px;">
+    <div class="modal-head">
+      <div><h3>Como funciona?</h3></div>
+      <button type="button" class="modal-close" data-close-modal aria-label="Fechar">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin:0 0 .75rem;color:#475569;line-height:1.55;">
+        Cadastre ambientes físicos (refeitório, auditório, salas) com <strong>lotação máxima</strong>
+        e acompanhe a ocupação em tempo real no dashboard.
+      </p>
+      <ul style="margin:0;padding-left:1.1rem;color:#475569;line-height:1.55;">
+        <li><strong>Vigência:</strong> definitivo (sem prazo) ou temporário (com data fim).</li>
+        <li><strong>Público:</strong> quem pode acessar (funcionários, alunos, visitantes, responsáveis).</li>
+        <li><strong>Hardware:</strong> vincule catracas/terminais e defina o fluxo (entrada, saída ou ambos).</li>
+      </ul>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" data-close-modal>Fechar</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.amb-wrap { max-width: 1100px; }
+.amb-hero {
+  display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; align-items:center;
+  margin-bottom:1.1rem;
+}
+.amb-hero h1 {
+  margin:0; font-family:var(--font-brand); font-size:1.55rem; color:var(--brand-navy,#0D2B5C);
+}
+.amb-hero p { margin:.3rem 0 0; color:#64748b; font-size:.95rem; }
+.amb-hero-actions { display:flex; gap:.55rem; flex-wrap:wrap; align-items:center; }
+
+.amb-panel {
+  padding:1.15rem 1.25rem; background:#fff; border:1px solid rgba(15,42,86,.1);
+  border-radius:14px; box-shadow:0 4px 12px rgba(0,0,0,.04);
+}
+.amb-section-head {
+  display:flex; justify-content:space-between; align-items:center; gap:.75rem; margin-bottom:1rem;
+}
+.amb-section-head h2 {
+  margin:0; font-family:var(--font-brand); font-size:1rem; letter-spacing:.04em;
+  color:var(--brand-navy); display:flex; align-items:center; gap:.45rem;
+}
+.amb-section-head h2 i { color:var(--brand-blue,#1B4F9C); }
+.amb-count { font-size:.82rem; font-weight:700; color:#94a3b8; }
+
+.amb-list { display:grid; gap:.85rem; }
+.amb-card {
+  border:1px solid rgba(15,42,86,.1); border-radius:12px; padding:1rem 1.1rem .85rem;
+  background:#fff; position:relative; overflow:hidden;
+  display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; align-items:flex-start;
+}
+.amb-card-main { display:flex; gap:.9rem; min-width:0; flex:1; }
+.amb-card-icon {
+  width:44px; height:44px; border-radius:12px; flex-shrink:0;
+  background:rgba(27,79,156,.1); color:var(--brand-blue,#1B4F9C);
+  display:grid; place-items:center; font-size:1.1rem;
+}
+.amb-card-info h3 {
+  margin:0; font-family:var(--font-brand); font-size:1.1rem; color:var(--brand-navy);
+}
+.amb-card-info p { margin:.25rem 0 0; color:#64748b; font-size:.9rem; }
+.amb-card-meta {
+  display:flex; flex-wrap:wrap; gap:.45rem .75rem; align-items:center;
+  margin-top:.55rem; font-size:.85rem; color:#475569; font-weight:600;
+}
+.amb-pct { color:var(--brand-blue,#1B4F9C); }
+.amb-tags { display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.55rem; }
+.amb-tag {
+  font-size:.72rem; font-weight:700; padding:.2rem .5rem; border-radius:999px;
+  background:#f1f5f9; color:#475569;
+}
+.amb-eq-mini { margin-top:.45rem; font-size:.82rem; color:#64748b; }
+.amb-card-actions { display:flex; gap:.4rem; flex-wrap:wrap; }
+.amb-progress {
+  position:absolute; left:0; right:0; bottom:0; height:4px; background:#e2e8f0;
+}
+.amb-progress-bar {
+  height:100%; background:var(--brand-blue,#1B4F9C); transition:width .25s ease;
+}
+.amb-progress-bar.warn { background:#f59e0b; }
+.amb-progress-bar.crit { background:#ef4444; }
+
+.amb-empty {
+  text-align:center; padding:3.2rem 1rem; color:#94a3b8;
+  display:flex; flex-direction:column; align-items:center; gap:.65rem;
+}
+.amb-empty[hidden] { display:none !important; }
+.amb-empty i { font-size:2.4rem; opacity:.55; }
+.amb-empty p { margin:0; font-weight:600; font-size:1rem; }
+
+.modal-backdrop {
+  position:fixed; inset:0; background:rgba(13,43,92,.45); z-index:2000;
+  display:grid; place-items:center; padding:1rem;
+}
+.modal-backdrop[hidden] { display:none !important; }
+.modal-card {
+  width:min(640px,100%); background:#fff; border-radius:16px; overflow:hidden;
+  box-shadow:0 24px 48px rgba(13,43,92,.25); max-height:92vh; display:flex; flex-direction:column;
+}
+.amb-modal { width:min(680px,100%); }
+.modal-head, .modal-foot {
+  display:flex; justify-content:space-between; gap:.75rem; padding:1rem 1.2rem;
+  border-bottom:1px solid rgba(15,42,86,.08);
+}
+.modal-foot { border-bottom:0; border-top:1px solid rgba(15,42,86,.08); justify-content:flex-end; align-items:center; }
+.modal-head h3 {
+  margin:0; font-family:var(--font-brand); color:var(--brand-navy); font-size:1.2rem;
+  letter-spacing:.03em; text-transform:uppercase;
+}
+.modal-close { border:none; background:transparent; font-size:1.5rem; cursor:pointer; color:#64748b; line-height:1; }
+.modal-body { padding:1.1rem 1.2rem 1.25rem; overflow:auto; display:flex; flex-direction:column; gap:1.15rem; }
+
+.amb-form-section h4 {
+  margin:0 0 .85rem; font-size:.95rem; font-weight:800; color:var(--brand-blue,#1B4F9C);
+  padding-bottom:.4rem; border-bottom:2px solid rgba(27,79,156,.25);
+}
+.amb-form-row { display:flex; gap:.75rem; flex-wrap:wrap; margin-bottom:.75rem; }
+.amb-grow { flex:1; min-width:180px; }
+.amb-lotacao { width:140px; flex-shrink:0; }
+.amb-fluxo { width:140px; flex-shrink:0; }
+
+.modal-body label, .amb-label {
+  display:flex; flex-direction:column; gap:.3rem;
+  font-size:.82rem; font-weight:700; color:#64748b;
+}
+.modal-body input, .modal-body select, .modal-body textarea {
+  padding:.55rem .7rem; border:1px solid rgba(15,42,86,.14); border-radius:10px;
+  font:inherit; color:var(--brand-navy); background:#fff;
+}
+.modal-body textarea { resize:vertical; min-height:78px; }
+.amb-label { margin-bottom:.45rem; }
+
+.amb-field-block { margin-bottom:.9rem; }
+.amb-field-block:last-child { margin-bottom:0; }
+.amb-radios, .amb-checks {
+  display:flex; flex-wrap:wrap; gap:.65rem 1.1rem; align-items:center;
+}
+.amb-radio, .amb-check {
+  flex-direction:row !important; align-items:center; gap:.4rem !important;
+  font-weight:600 !important; color:var(--brand-navy) !important; cursor:pointer;
+}
+.amb-radio input, .amb-check input { width:auto; accent-color:var(--brand-blue,#1B4F9C); }
+.amb-data-fim { margin-top:.65rem; max-width:220px; }
+.amb-data-fim[hidden] { display:none !important; }
+
+.amb-hw-box {
+  border:1px solid rgba(15,42,86,.12); border-radius:12px; padding:.9rem;
+  background:#f8fafc;
+}
+.amb-hw-row {
+  display:flex; gap:.65rem; flex-wrap:wrap; align-items:flex-end; margin-bottom:.85rem;
+}
+.amb-add-eq { height:38px; white-space:nowrap; }
+.amb-vinculos-head {
+  font-size:.82rem; font-weight:700; color:#64748b; margin-bottom:.45rem;
+}
+.amb-vinculos { list-style:none; margin:0; padding:0; display:grid; gap:.4rem; }
+.amb-vinculos li {
+  display:flex; justify-content:space-between; align-items:center; gap:.75rem;
+  background:#fff; border:1px solid rgba(15,42,86,.1); border-radius:10px;
+  padding:.55rem .7rem; color:var(--brand-navy); font-size:.9rem;
+}
+.amb-vinculos li strong { font-weight:700; }
+.amb-vinculos .fluxo-tag {
+  font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em;
+  padding:.15rem .45rem; border-radius:6px; background:rgba(27,79,156,.1); color:var(--brand-blue);
+}
+.amb-vinculos .btn-rm {
+  border:none; background:transparent; color:#94a3b8; cursor:pointer; font-size:1rem; padding:.2rem;
+}
+.amb-vinculos .btn-rm:hover { color:#ef4444; }
+.amb-vinculos-empty { font-size:.85rem; color:#94a3b8; }
+.amb-vinculos-empty[hidden], .amb-vinculos:empty + .amb-vinculos-empty { }
+.amb-vinculos:not(:empty) + .amb-vinculos-empty { display:none !important; }
+
+@media (max-width: 640px) {
+  .amb-lotacao, .amb-fluxo { width:100%; }
+  .amb-add-eq { width:100%; }
+}
+</style>
+<script>
+(function () {
+  const API = {{ url_for('acesso.api_ambientes')|tojson }};
+  const AMBIENTES = {{ ambientes|tojson }};
+  const EQUIP_MAP = {{ equip_labels|tojson }};
+
+  const modal = document.getElementById('modalAmbiente');
+  const modalAjuda = document.getElementById('modalAjuda');
+  const form = document.getElementById('formAmbiente');
+  const listaVinculos = document.getElementById('listaVinculos');
+  const wrapDataFim = document.getElementById('wrapDataFim');
+  let vinculos = [];
+
+  const FLUXO_LABEL = { entrada: 'Entrada', saida: 'Saída', ambos: 'Ambos' };
+
+  function renderVinculos() {
+    listaVinculos.innerHTML = '';
+    vinculos.forEach((v, idx) => {
+      const li = document.createElement('li');
+      li.innerHTML =
+        '<div><strong>' + (v.equipamento_nome || EQUIP_MAP[String(v.equipamento_id)] || ('#' + v.equipamento_id)) +
+        '</strong> <span class="fluxo-tag">' + (FLUXO_LABEL[v.fluxo] || v.fluxo) + '</span></div>' +
+        '<button type="button" class="btn-rm" data-idx="' + idx + '" aria-label="Remover"><i class="fas fa-trash"></i></button>';
+      listaVinculos.appendChild(li);
+    });
+    document.getElementById('emptyVinculos').hidden = vinculos.length > 0;
+  }
+
+  function syncVigenciaUI() {
+    const tipo = (form.querySelector('input[name="vigencia_tipo"]:checked') || {}).value || 'definitivo';
+    wrapDataFim.hidden = tipo !== 'temporario';
+    if (tipo !== 'temporario') document.getElementById('f_data_fim').value = '';
+  }
+
+  function openModal(edit) {
+    form.reset();
+    vinculos = [];
+    document.getElementById('f_id').value = edit?.id || '';
+    document.getElementById('modalTitle').textContent = edit ? 'EDITAR AMBIENTE' : 'NOVO AMBIENTE';
+    document.getElementById('f_lotacao').value = '10';
+    form.querySelector('input[name="vigencia_tipo"][value="definitivo"]').checked = true;
+
+    if (edit) {
+      document.getElementById('f_nome').value = edit.nome || '';
+      document.getElementById('f_lotacao').value = edit.capacidade_maxima ?? 10;
+      document.getElementById('f_descricao').value = edit.descricao || '';
+      const vig = edit.vigencia_tipo === 'temporario' ? 'temporario' : 'definitivo';
+      form.querySelector('input[name="vigencia_tipo"][value="' + vig + '"]').checked = true;
+      document.getElementById('f_data_fim').value = edit.data_fim || '';
+      (edit.publico || []).forEach(p => {
+        const cb = form.querySelector('input[name="publico"][value="' + p + '"]');
+        if (cb) cb.checked = true;
+      });
+      vinculos = (edit.equipamentos || []).map(e => ({
+        equipamento_id: e.equipamento_id,
+        equipamento_nome: e.equipamento_nome,
+        fluxo: e.fluxo || 'entrada',
+      }));
+    }
+    syncVigenciaUI();
+    renderVinculos();
+    modal.hidden = false;
+    document.getElementById('f_nome').focus();
+  }
+
+  function closeModals() {
+    modal.hidden = true;
+    modalAjuda.hidden = true;
+  }
+
+  function payloadFromForm() {
+    const publico = Array.from(form.querySelectorAll('input[name="publico"]:checked')).map(c => c.value);
+    const vigencia = (form.querySelector('input[name="vigencia_tipo"]:checked') || {}).value || 'definitivo';
+    return {
+      nome: document.getElementById('f_nome').value.trim(),
+      capacidade_maxima: Number(document.getElementById('f_lotacao').value || 10),
+      descricao: document.getElementById('f_descricao').value.trim(),
+      vigencia_tipo: vigencia,
+      data_fim: vigencia === 'temporario' ? document.getElementById('f_data_fim').value : '',
+      publico,
+      equipamentos: vinculos.map(v => ({
+        equipamento_id: v.equipamento_id,
+        fluxo: v.fluxo,
+      })),
+    };
+  }
+
+  document.getElementById('btnNovo').addEventListener('click', () => openModal(null));
+  document.getElementById('btnAjuda').addEventListener('click', () => { modalAjuda.hidden = false; });
+  document.getElementById('btnCloseModal').addEventListener('click', closeModals);
+  document.getElementById('btnCancelar').addEventListener('click', closeModals);
+  document.querySelectorAll('[data-close-modal]').forEach(btn => btn.addEventListener('click', closeModals));
+  modal.addEventListener('click', e => { if (e.target === modal) closeModals(); });
+  modalAjuda.addEventListener('click', e => { if (e.target === modalAjuda) closeModals(); });
+
+  form.querySelectorAll('input[name="vigencia_tipo"]').forEach(r => {
+    r.addEventListener('change', syncVigenciaUI);
+  });
+
+  document.getElementById('btnAddEquip').addEventListener('click', () => {
+    const sel = document.getElementById('f_equipamento');
+    const eid = Number(sel.value || 0);
+    if (!eid) { alert('Selecione um equipamento'); return; }
+    if (vinculos.some(v => Number(v.equipamento_id) === eid)) {
+      alert('Equipamento já vinculado');
+      return;
+    }
+    const fluxo = document.getElementById('f_fluxo').value || 'entrada';
+    vinculos.push({
+      equipamento_id: eid,
+      equipamento_nome: EQUIP_MAP[String(eid)] || sel.selectedOptions[0]?.textContent || '',
+      fluxo,
+    });
+    sel.value = '';
+    renderVinculos();
+  });
+
+  listaVinculos.addEventListener('click', e => {
+    const btn = e.target.closest('.btn-rm');
+    if (!btn) return;
+    vinculos.splice(Number(btn.dataset.idx), 1);
+    renderVinculos();
+  });
+
+  document.getElementById('btnSalvar').addEventListener('click', async () => {
+    const data = payloadFromForm();
+    if (!data.nome) { alert('Informe o nome do ambiente'); return; }
+    if (data.vigencia_tipo === 'temporario' && !data.data_fim) {
+      alert('Informe a data fim para vigência temporária');
+      return;
+    }
+    const id = document.getElementById('f_id').value;
+    const url = id ? (API + '/' + id) : API;
+    const method = id ? 'PUT' : 'POST';
+    const r = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const res = await r.json().catch(() => ({}));
+    if (!r.ok || !res.ok) {
+      alert(res.error || 'Erro ao salvar ambiente');
+      return;
+    }
+    location.reload();
+  });
+
+  document.querySelectorAll('.btn-edit').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = Number(btn.dataset.id);
+      const amb = AMBIENTES.find(a => Number(a.id) === id);
+      if (amb) openModal(amb);
+    });
+  });
+
+  document.querySelectorAll('.btn-del').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Excluir este ambiente?')) return;
+      const r = await fetch(API + '/' + btn.dataset.id, { method: 'DELETE' });
+      const res = await r.json().catch(() => ({}));
+      if (!r.ok || !res.ok) {
+        alert(res.error || 'Erro ao excluir');
+        return;
+      }
+      location.reload();
+    });
+  });
+})();
+</script>
+{% endblock %}

@@ -3,12 +3,53 @@ document.addEventListener('DOMContentLoaded', function() {
     const sidebar = document.getElementById('appSidebar') || document.querySelector('.sidebar');
     const overlay = document.getElementById('sidebarOverlay');
     const toggle = document.getElementById('menuToggle');
+    const COLLAPSE_KEY = document.body.dataset.sidebarCollapse || '';
+    const collapseEnabled = !!COLLAPSE_KEY;
+    const mqMobile = window.matchMedia('(max-width: 768px)');
+
+    function isMobile() {
+        return mqMobile.matches;
+    }
+
+    function updateToggleAria() {
+        if (!toggle) return;
+        if (isMobile()) {
+            const open = !!(sidebar && sidebar.classList.contains('active'));
+            toggle.setAttribute('aria-label', open ? 'Fechar menu' : 'Abrir menu');
+            toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            return;
+        }
+        if (!collapseEnabled) return;
+        const collapsed = document.body.classList.contains('sidebar-collapsed');
+        toggle.setAttribute('aria-label', collapsed ? 'Expandir menu' : 'Recuar menu');
+        toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    }
+
+    function setCollapsed(collapsed) {
+        document.body.classList.toggle('sidebar-collapsed', !!collapsed);
+        try {
+            localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
+        } catch (err) { /* ignore */ }
+        updateToggleAria();
+    }
+
+    if (collapseEnabled) {
+        try {
+            if (localStorage.getItem(COLLAPSE_KEY) === '1') setCollapsed(true);
+            else setCollapsed(false);
+        } catch (err) {
+            setCollapsed(false);
+        }
+    } else {
+        updateToggleAria();
+    }
 
     function closeSidebar() {
         if (!sidebar) return;
         sidebar.classList.remove('active');
         if (overlay) overlay.classList.remove('show');
         document.body.style.overflow = '';
+        updateToggleAria();
     }
 
     function openSidebar() {
@@ -16,13 +57,18 @@ document.addEventListener('DOMContentLoaded', function() {
         sidebar.classList.add('active');
         if (overlay) overlay.classList.add('show');
         document.body.style.overflow = 'hidden';
+        updateToggleAria();
     }
 
     if (toggle && sidebar) {
         toggle.addEventListener('click', function(e) {
             e.stopPropagation();
-            if (sidebar.classList.contains('active')) closeSidebar();
-            else openSidebar();
+            if (isMobile()) {
+                if (sidebar.classList.contains('active')) closeSidebar();
+                else openSidebar();
+            } else if (collapseEnabled) {
+                setCollapsed(!document.body.classList.contains('sidebar-collapsed'));
+            }
         });
     }
 
@@ -38,13 +84,14 @@ document.addEventListener('DOMContentLoaded', function() {
     if (sidebar) {
         sidebar.querySelectorAll('a[href]:not([href^="javascript"])').forEach(function(link) {
             link.addEventListener('click', function() {
-                if (window.matchMedia('(max-width: 768px)').matches) closeSidebar();
+                if (isMobile()) closeSidebar();
             });
         });
     }
 
     window.addEventListener('resize', function() {
-        if (window.innerWidth > 768) closeSidebar();
+        if (!isMobile()) closeSidebar();
+        updateToggleAria();
     });
 });
 

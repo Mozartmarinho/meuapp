@@ -2735,6 +2735,56 @@ def _seed_faturamento_demo(data_de, data_ate):
         cur = date.fromordinal(cur.toordinal() + 1)
 
 
+# ---- AUDITORIA (layout Nutrição preservado) ----
+@nutricao.route('/nutricao/auditoria')
+def auditoria():
+    """Auditoria dentro do layout de Nutrição Hospitalar (sidebar preservada)."""
+    from datetime import timedelta
+    from audit_service import listar_logs, ensure_audit_table
+
+    ensure_audit_table()
+    hoje = date.today()
+    data_de = _parse_date(request.args.get('data_de')) or (hoje - timedelta(days=7))
+    data_ate = _parse_date(request.args.get('data_ate')) or hoje
+    if 'modulo' in request.args:
+        modulo = (request.args.get('modulo') or '').strip() or None
+    else:
+        modulo = 'nutricao'
+    usuario = (request.args.get('usuario') or '').strip() or None
+    acao = (request.args.get('acao') or '').strip() or None
+    q = (request.args.get('q') or '').strip() or None
+    try:
+        limit = min(int(request.args.get('limit') or 200), 500)
+    except (TypeError, ValueError):
+        limit = 200
+
+    total, logs = listar_logs(
+        modulo=modulo,
+        usuario=usuario,
+        acao=acao,
+        q=q,
+        data_de=data_de,
+        data_ate=data_ate,
+        limit=limit,
+        offset=0,
+    )
+    return render_template(
+        'nutricao_auditoria.html',
+        logs=logs,
+        total=total,
+        filtros={
+            'data_de': data_de.isoformat(),
+            'data_ate': data_ate.isoformat(),
+            'modulo': modulo or '',
+            'usuario': usuario or '',
+            'acao': acao or '',
+            'q': q or '',
+            'limit': limit,
+        },
+        **active('auditoria'),
+    )
+
+
 # ---- ADMIN ----
 @nutricao.route('/nutricao/admin')
 def admin():

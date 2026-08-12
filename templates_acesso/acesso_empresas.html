@@ -1,0 +1,507 @@
+{% extends "base_acesso.html" %}
+{% block title %}Empresas{% endblock %}
+{% block content %}
+<div class="em-wrap">
+  <header class="em-hero card">
+    <div>
+      <h1>Empresas</h1>
+      <p>Gerencie as empresas e logos usadas em colaboradores, visitantes e relatórios.</p>
+    </div>
+    <button type="button" class="btn btn-secondary btn-sm" id="btnAjuda">
+      <i class="fas fa-info-circle"></i> Ajuda &amp; Dicas
+    </button>
+  </header>
+
+  <section class="card em-list-card">
+    <div class="em-toolbar">
+      <h2 class="em-panel-title"><i class="fas fa-building"></i> Empresas Cadastradas</h2>
+      <div class="em-toolbar-actions">
+        <label class="em-search">
+          <i class="fas fa-magnifying-glass"></i>
+          <input type="search" id="filtroEmp" placeholder="Nome ou CNPJ..." value="{{ search_term or '' }}" autocomplete="off">
+        </label>
+        <button type="button" class="btn-acesso" id="btnNova">
+          <i class="fas fa-plus"></i> Nova Empresa
+        </button>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table class="data-table em-table" id="tabelaEmp">
+        <thead>
+          <tr>
+            <th style="width:4.5rem;">ID</th>
+            <th style="width:5rem;">Logo</th>
+            <th>Razão Social</th>
+            <th style="width:11rem;">CNPJ</th>
+            <th style="width:7rem;">Status</th>
+            <th style="width:7rem;">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyEmp">
+          {% for row in items %}
+          <tr data-id="{{ row.id }}"
+              data-nome="{{ row.nome }}"
+              data-cnpj="{{ row.cnpj or '' }}"
+              data-ativo="{{ 1 if row.ativo else 0 }}"
+              data-logo="{{ row.logo_url or '' }}">
+            <td class="em-id">#{{ row.id }}</td>
+            <td>
+              {% if row.logo_url %}
+              <img src="{{ row.logo_url }}" alt="Logo {{ row.nome }}" class="em-logo">
+              {% else %}
+              <div class="em-logo em-logo-empty" title="Sem logo"><i class="fas fa-image"></i></div>
+              {% endif %}
+            </td>
+            <td>
+              <strong class="em-nome">{{ row.nome }}</strong>
+              <div class="em-sub">Empresa cadastrada no sistema</div>
+            </td>
+            <td><code class="em-cnpj">{{ row.cnpj or '—' }}</code></td>
+            <td>
+              {% if row.ativo %}<span class="badge-status badge-liberado">Ativo</span>
+              {% else %}<span class="badge-status badge-offline">Inativo</span>{% endif %}
+            </td>
+            <td class="em-acoes">
+              <button type="button" class="em-icon-btn btn-edit" title="Editar" aria-label="Editar">
+                <i class="fas fa-pen"></i>
+              </button>
+              <button type="button" class="em-icon-btn danger btn-del" title="Excluir" aria-label="Excluir">
+                <i class="fas fa-trash-alt"></i>
+              </button>
+            </td>
+          </tr>
+          {% else %}
+          <tr class="em-empty-row" id="emEmpty"><td colspan="6">Nenhuma empresa cadastrada.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="em-footer">
+      <span class="em-meta" id="emMeta">{{ items|length }} registro(s)</span>
+    </div>
+  </section>
+</div>
+
+<!-- Modal criar / editar -->
+<div class="em-modal" id="modalEmp" hidden>
+  <div class="em-modal-backdrop" data-close></div>
+  <div class="em-modal-dialog card" role="dialog" aria-modal="true" aria-labelledby="modalEmpTitle">
+    <div class="em-modal-head">
+      <h3 id="modalEmpTitle">Nova Empresa</h3>
+      <button type="button" class="em-modal-close" data-close aria-label="Fechar">&times;</button>
+    </div>
+    <form id="formEmp" class="em-modal-body" autocomplete="off">
+      <input type="hidden" id="f_id" value="">
+      <label class="em-field">
+        <span class="em-label">CNPJ</span>
+        <div class="em-cnpj-row">
+          <input type="text" id="f_cnpj" name="cnpj" maxlength="18" placeholder="00.000.000/0000-00" autocomplete="off">
+          <button type="button" class="btn btn-secondary btn-sm" id="btnBuscarCnpj">Buscar CNPJ</button>
+        </div>
+        <span class="em-hint" id="msgCnpj"></span>
+      </label>
+      <label class="em-field">
+        <span class="em-label">Razão Social / Nome *</span>
+        <input type="text" id="f_nome" name="nome" maxlength="255" required placeholder="Ex: São Geraldo Service" autocomplete="off">
+      </label>
+      <label class="em-field">
+        <span class="em-label">Status</span>
+        <select id="f_ativo" name="ativo">
+          <option value="1">Ativo</option>
+          <option value="0">Inativo</option>
+        </select>
+      </label>
+      <div class="em-field">
+        <span class="em-label">Logo (opcional)</span>
+        <div class="em-logo-preview-wrap">
+          <img id="imgLogoPrev" class="em-logo em-logo-preview" alt="Prévia" hidden>
+          <div id="imgLogoEmpty" class="em-logo em-logo-empty"><i class="fas fa-image"></i></div>
+        </div>
+        <input type="file" id="f_logo" name="logo" accept="image/png,image/jpeg,image/webp,image/gif">
+      </div>
+    </form>
+    <div class="em-modal-foot">
+      <button type="button" class="btn btn-secondary" data-close>Cancelar</button>
+      <button type="button" class="btn-acesso" id="btnSalvar">
+        <i class="fas fa-save"></i> <span id="btnLabel">Salvar</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal ajuda -->
+<div class="em-modal" id="modalAjuda" hidden>
+  <div class="em-modal-backdrop" data-close-ajuda></div>
+  <div class="em-modal-dialog card em-ajuda-dialog" role="dialog" aria-modal="true">
+    <div class="em-modal-head em-ajuda-head">
+      <h3><i class="fas fa-lightbulb"></i> Manual de Empresas</h3>
+      <button type="button" class="em-modal-close" data-close-ajuda aria-label="Fechar">&times;</button>
+    </div>
+    <div class="em-modal-body em-ajuda-grid">
+      <div class="em-ajuda-card">
+        <h4><i class="fas fa-cloud-download-alt"></i> Cadastro via CNPJ</h4>
+        <ul>
+          <li>Digite o CNPJ e clique em <strong>Buscar CNPJ</strong>.</li>
+          <li>O sistema preenche a razão social via API pública (BrasilAPI).</li>
+          <li>Se a consulta falhar, preencha o nome manualmente.</li>
+        </ul>
+      </div>
+      <div class="em-ajuda-card">
+        <h4><i class="fas fa-image"></i> Logo e identidade</h4>
+        <ul>
+          <li>Envie PNG/JPG/WEBP ao criar ou editar.</li>
+          <li>A logo aparece na listagem e pode ser usada em documentos.</li>
+        </ul>
+      </div>
+      <div class="em-ajuda-card">
+        <h4><i class="fas fa-users"></i> Vinculação</h4>
+        <ul>
+          <li>Empresa é obrigatória no cadastro de colaboradores.</li>
+          <li>Permite filtrar listas e relatórios por empresa.</li>
+        </ul>
+      </div>
+      <div class="em-ajuda-card">
+        <h4><i class="fas fa-pen"></i> Edição e exclusão</h4>
+        <ul>
+          <li>Atualize nome, CNPJ, status ou logo a qualquer momento.</li>
+          <li>Cuidado ao excluir empresas com pessoas vinculadas.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="em-modal-foot">
+      <button type="button" class="btn-acesso" data-close-ajuda>Entendi</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.em-wrap { display:flex; flex-direction:column; gap:1.1rem; }
+.em-hero {
+  display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;
+  padding:1.25rem 1.4rem;
+}
+.em-hero h1 {
+  margin:0 0 .3rem; font-family:var(--font-brand); color:var(--brand-navy);
+  font-size:1.75rem; font-weight:700; letter-spacing:.02em;
+}
+.em-hero p { margin:0; color:#64748b; font-size:.95rem; }
+
+.em-list-card { padding:0; overflow:hidden; }
+.em-toolbar {
+  display:flex; align-items:center; justify-content:space-between; gap:.85rem; flex-wrap:wrap;
+  padding:.95rem 1.15rem; border-bottom:1px solid rgba(15,42,86,.08);
+  background:rgba(15,42,86,.02);
+}
+.em-panel-title {
+  margin:0; font-family:var(--font-brand); color:var(--brand-navy);
+  font-size:1.05rem; font-weight:700; display:inline-flex; align-items:center; gap:.45rem;
+}
+.em-panel-title i { color:var(--brand-blue); }
+.em-toolbar-actions { display:flex; align-items:center; gap:.65rem; flex-wrap:wrap; }
+.em-search {
+  display:flex; align-items:center; gap:.5rem; min-width:14rem; flex:1 1 14rem; max-width:20rem;
+  padding:.45rem .75rem; border:1px solid rgba(15,42,86,.12); border-radius:10px; background:#fff;
+}
+.em-search i { color:#94a3b8; }
+.em-search input {
+  border:0; outline:none; flex:1; font:inherit; color:var(--brand-navy); background:transparent; min-width:0;
+}
+.em-table { margin:0; }
+.em-table th {
+  font-size:.72rem; letter-spacing:.04em; color:#64748b; background:rgba(15,42,86,.03);
+}
+.em-id { font-weight:700; color:var(--brand-blue); }
+.em-nome { color:var(--brand-navy); font-weight:700; }
+.em-sub { font-size:.78rem; color:#94a3b8; margin-top:.15rem; }
+.em-cnpj {
+  font-size:.85rem; font-weight:600; color:#475569;
+  background:rgba(15,42,86,.04); padding:.15rem .4rem; border-radius:6px;
+}
+.em-logo {
+  width:48px; height:48px; border-radius:8px; object-fit:contain;
+  background:#fff; border:1px solid rgba(15,42,86,.12); padding:3px;
+}
+.em-logo-empty {
+  display:inline-flex; align-items:center; justify-content:center; color:#94a3b8;
+  background:rgba(15,42,86,.04);
+}
+.em-logo-preview { width:72px; height:72px; }
+.em-logo-preview-wrap { display:flex; align-items:center; gap:.75rem; margin-bottom:.45rem; }
+.em-acoes { white-space:nowrap; }
+.em-icon-btn {
+  border:none; background:transparent; cursor:pointer; padding:.35rem .45rem;
+  color:#64748b; border-radius:8px; font-size:.95rem;
+}
+.em-icon-btn:hover { background:rgba(15,42,86,.06); color:var(--brand-blue); }
+.em-icon-btn.danger:hover { background:rgba(220,38,38,.08); color:#b91c1c; }
+.em-empty-row td, .em-empty-filter td { text-align:center; padding:1.6rem; color:#64748b; }
+.em-footer {
+  padding:.7rem 1.15rem; border-top:1px solid rgba(15,42,86,.06);
+}
+.em-meta { font-size:.82rem; color:#64748b; font-weight:600; }
+tr.em-hidden { display:none; }
+
+.em-modal[hidden] { display:none !important; }
+.em-modal {
+  position:fixed; inset:0; z-index:1200; display:flex; align-items:center; justify-content:center;
+  padding:1rem;
+}
+.em-modal-backdrop {
+  position:absolute; inset:0; background:rgba(13,43,92,.45);
+}
+.em-modal-dialog {
+  position:relative; width:min(520px, 100%); max-height:min(92vh, 720px);
+  display:flex; flex-direction:column; padding:0; overflow:hidden;
+  box-shadow:0 18px 40px rgba(13,43,92,.22);
+}
+.em-modal-head {
+  display:flex; align-items:center; justify-content:space-between; gap:.75rem;
+  padding:1rem 1.2rem; border-bottom:1px solid rgba(15,42,86,.08);
+}
+.em-modal-head h3 {
+  margin:0; font-family:var(--font-brand); color:var(--brand-navy); font-size:1.2rem; font-weight:700;
+}
+.em-modal-close {
+  border:0; background:transparent; font-size:1.5rem; line-height:1; cursor:pointer; color:#64748b;
+  width:2rem; height:2rem; border-radius:8px;
+}
+.em-modal-close:hover { background:rgba(15,42,86,.06); color:var(--brand-navy); }
+.em-modal-body {
+  padding:1.1rem 1.2rem; display:flex; flex-direction:column; gap:.9rem; overflow:auto;
+}
+.em-modal-foot {
+  display:flex; justify-content:flex-end; gap:.55rem; flex-wrap:wrap;
+  padding:.9rem 1.2rem; border-top:1px solid rgba(15,42,86,.08); background:rgba(15,42,86,.02);
+}
+.em-field { display:flex; flex-direction:column; gap:.35rem; }
+.em-label {
+  font-size:.78rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.04em;
+}
+.em-field input[type="text"],
+.em-field input[type="file"],
+.em-field select {
+  padding:.6rem .75rem; border:1px solid rgba(15,42,86,.12); border-radius:10px;
+  font:inherit; color:var(--brand-navy); background:#fff;
+}
+.em-field input:focus, .em-field select:focus {
+  outline:none; border-color:var(--brand-blue); box-shadow:0 0 0 3px rgba(37,99,235,.12);
+}
+.em-cnpj-row { display:flex; gap:.5rem; flex-wrap:wrap; }
+.em-cnpj-row input { flex:1 1 12rem; }
+.em-hint { font-size:.78rem; color:#b91c1c; min-height:1em; }
+.em-hint.ok { color:#15803d; }
+
+.em-ajuda-dialog { width:min(860px, 100%); }
+.em-ajuda-head { background:linear-gradient(135deg, var(--brand-navy), var(--brand-blue)); }
+.em-ajuda-head h3 { color:#fff; display:inline-flex; align-items:center; gap:.5rem; }
+.em-ajuda-head .em-modal-close { color:rgba(255,255,255,.85); }
+.em-ajuda-head .em-modal-close:hover { background:rgba(255,255,255,.12); color:#fff; }
+.em-ajuda-grid {
+  display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:.9rem;
+}
+@media (max-width:720px) { .em-ajuda-grid { grid-template-columns:1fr; } }
+.em-ajuda-card {
+  border:1px solid rgba(15,42,86,.08); border-radius:12px; padding:.9rem 1rem;
+  background:rgba(15,42,86,.02);
+}
+.em-ajuda-card h4 {
+  margin:0 0 .55rem; font-family:var(--font-brand); color:var(--brand-navy);
+  font-size:.98rem; display:flex; align-items:center; gap:.4rem;
+}
+.em-ajuda-card h4 i { color:var(--brand-lime-dark, #8FAF28); }
+.em-ajuda-card ul {
+  margin:0; padding-left:1.1rem; color:#64748b; font-size:.86rem; line-height:1.45;
+}
+.em-ajuda-card li + li { margin-top:.25rem; }
+</style>
+<script>
+(function () {
+  const API = {{ api_url|tojson }};
+  const CNPJ_API = {{ cnpj_api_url|tojson }};
+
+  const modal = document.getElementById('modalEmp');
+  const modalAjuda = document.getElementById('modalAjuda');
+  const form = document.getElementById('formEmp');
+  const fId = document.getElementById('f_id');
+  const fNome = document.getElementById('f_nome');
+  const fCnpj = document.getElementById('f_cnpj');
+  const fAtivo = document.getElementById('f_ativo');
+  const fLogo = document.getElementById('f_logo');
+  const imgPrev = document.getElementById('imgLogoPrev');
+  const imgEmpty = document.getElementById('imgLogoEmpty');
+  const msgCnpj = document.getElementById('msgCnpj');
+  const title = document.getElementById('modalEmpTitle');
+  const btnLabel = document.getElementById('btnLabel');
+  const filtro = document.getElementById('filtroEmp');
+  const tbody = document.getElementById('tbodyEmp');
+  const meta = document.getElementById('emMeta');
+
+  function showToast(msg, ok) {
+    if (typeof window.showToast === 'function') {
+      window.showToast(msg, ok !== false);
+      return;
+    }
+    alert(msg);
+  }
+
+  function setLogoPreview(url) {
+    if (url) {
+      imgPrev.src = url;
+      imgPrev.hidden = false;
+      imgEmpty.hidden = true;
+    } else {
+      imgPrev.removeAttribute('src');
+      imgPrev.hidden = true;
+      imgEmpty.hidden = false;
+    }
+  }
+
+  function openModal(mode, row) {
+    form.reset();
+    fId.value = '';
+    msgCnpj.textContent = '';
+    msgCnpj.classList.remove('ok');
+    fLogo.value = '';
+    if (mode === 'edit' && row) {
+      title.textContent = 'Editar Empresa';
+      btnLabel.textContent = 'Salvar alterações';
+      fId.value = row.id;
+      fNome.value = row.nome || '';
+      fCnpj.value = row.cnpj || '';
+      fAtivo.value = row.ativo ? '1' : '0';
+      setLogoPreview(row.logo || '');
+    } else {
+      title.textContent = 'Nova Empresa';
+      btnLabel.textContent = 'Salvar';
+      fAtivo.value = '1';
+      setLogoPreview('');
+    }
+    modal.hidden = false;
+    fCnpj.focus();
+  }
+
+  function closeModal() { modal.hidden = true; }
+  function closeAjuda() { modalAjuda.hidden = true; }
+
+  document.getElementById('btnNova').addEventListener('click', () => openModal('create'));
+  document.getElementById('btnAjuda').addEventListener('click', () => { modalAjuda.hidden = false; });
+  modal.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', closeModal));
+  modalAjuda.querySelectorAll('[data-close-ajuda]').forEach(el => el.addEventListener('click', closeAjuda));
+
+  fLogo.addEventListener('change', () => {
+    const file = fLogo.files && fLogo.files[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setLogoPreview(url);
+  });
+
+  function updateMeta() {
+    const visible = [...tbody.querySelectorAll('tr[data-id]')].filter(r => !r.classList.contains('em-hidden'));
+    meta.textContent = visible.length + ' registro(s)';
+    let empty = tbody.querySelector('.em-empty-filter');
+    const hasRows = tbody.querySelectorAll('tr[data-id]').length > 0;
+    const noneVisible = hasRows && visible.length === 0;
+    if (noneVisible) {
+      if (!empty) {
+        empty = document.createElement('tr');
+        empty.className = 'em-empty-filter';
+        empty.innerHTML = '<td colspan="6">Nenhuma empresa encontrada de acordo com os filtros.</td>';
+        tbody.appendChild(empty);
+      }
+    } else if (empty) {
+      empty.remove();
+    }
+  }
+
+  function applyFilter() {
+    const q = (filtro.value || '').trim().toLowerCase();
+    tbody.querySelectorAll('tr[data-id]').forEach(tr => {
+      const nome = (tr.dataset.nome || '').toLowerCase();
+      const cnpj = (tr.dataset.cnpj || '').toLowerCase();
+      const hit = !q || nome.includes(q) || cnpj.includes(q) || cnpj.replace(/\D/g, '').includes(q.replace(/\D/g, ''));
+      tr.classList.toggle('em-hidden', !hit);
+    });
+    updateMeta();
+  }
+
+  filtro.addEventListener('input', applyFilter);
+  if ((filtro.value || '').trim()) applyFilter();
+
+  tbody.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('.btn-edit, .btn-del');
+    if (!btn) return;
+    const tr = btn.closest('tr[data-id]');
+    if (!tr) return;
+    const row = {
+      id: tr.dataset.id,
+      nome: tr.dataset.nome,
+      cnpj: tr.dataset.cnpj,
+      ativo: tr.dataset.ativo === '1',
+      logo: tr.dataset.logo || '',
+    };
+    if (btn.classList.contains('btn-edit')) {
+      openModal('edit', row);
+      return;
+    }
+    if (!confirm('Excluir empresa? Esta ação não pode ser desfeita.')) return;
+    fetch(`${API}/${row.id}`, { method: 'DELETE' })
+      .then(r => r.json())
+      .then(res => {
+        if (!res.ok) { showToast(res.error || 'Erro ao excluir', false); return; }
+        location.reload();
+      })
+      .catch(() => showToast('Erro de rede ao excluir.', false));
+  });
+
+  document.getElementById('btnBuscarCnpj').addEventListener('click', async () => {
+    msgCnpj.textContent = '';
+    msgCnpj.classList.remove('ok');
+    const cnpj = (fCnpj.value || '').trim();
+    if (!cnpj) {
+      msgCnpj.textContent = 'Informe um CNPJ válido.';
+      return;
+    }
+    try {
+      const resp = await fetch(`${CNPJ_API}?cnpj=${encodeURIComponent(cnpj)}`);
+      const data = await resp.json();
+      if (data && data.ok && data.nome) {
+        fNome.value = data.nome;
+        msgCnpj.textContent = 'CNPJ localizado com sucesso.';
+        msgCnpj.classList.add('ok');
+        showToast('CNPJ localizado com sucesso!');
+      } else {
+        msgCnpj.textContent = data.error || 'CNPJ não encontrado. Preencha o nome manualmente.';
+        showToast(data.error || 'CNPJ não encontrado.', false);
+      }
+    } catch (e) {
+      msgCnpj.textContent = 'Erro ao consultar CNPJ. Preencha manualmente.';
+      showToast('Erro ao consultar CNPJ.', false);
+    }
+  });
+
+  document.getElementById('btnSalvar').addEventListener('click', async () => {
+    if (!form.reportValidity()) return;
+    const id = (fId.value || '').trim();
+    const fd = new FormData();
+    fd.append('nome', (fNome.value || '').trim());
+    fd.append('cnpj', (fCnpj.value || '').trim());
+    fd.append('ativo', fAtivo.value === '1' ? '1' : '0');
+    if (fLogo.files && fLogo.files[0]) fd.append('logo', fLogo.files[0]);
+
+    const url = id ? `${API}/${id}` : API;
+    const method = id ? 'PUT' : 'POST';
+    try {
+      const r = await fetch(url, { method, body: fd });
+      const res = await r.json();
+      if (!res.ok) { showToast(res.error || 'Erro ao salvar', false); return; }
+      showToast(id ? 'Empresa atualizada' : 'Empresa criada');
+      location.reload();
+    } catch (e) {
+      showToast('Erro de rede ao salvar.', false);
+    }
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,360 @@
+{% extends "base_acesso.html" %}
+{% block title %}Controle Adicional - Funcionários{% endblock %}
+{% block content %}
+<div class="ca-wrap">
+  <header class="ca-hero card">
+    <div>
+      <h1>Controle Adicional - Funcionários</h1>
+      <p>Gerencie regras de bloqueio ou liberação de acesso por período.</p>
+    </div>
+    <div class="ca-hero-actions">
+      <button type="button" class="btn btn-secondary btn-sm" id="btnAjuda">
+        <i class="fas fa-circle-info"></i> Ajuda
+      </button>
+      <button type="button" class="btn-acesso" id="btnNovo">
+        <i class="fas fa-plus"></i> Novo Controle
+      </button>
+    </div>
+  </header>
+
+  <div class="ca-grid">
+    <aside class="card ca-panel">
+      <h2>Filtros de Busca</h2>
+      <form method="get" id="formFiltros" class="ca-filters">
+        <label>Nome do Usuário
+          <input type="search" name="nome" value="{{ filtros.nome }}" placeholder="Digite o nome…">
+        </label>
+        <label>Data Início (De)
+          <input type="date" name="de" value="{{ filtros.de }}">
+        </label>
+        <label>Data Início (Até)
+          <input type="date" name="ate" value="{{ filtros.ate }}">
+        </label>
+        <label>Tipo
+          <select name="tipo">
+            <option value="">Todos</option>
+            <option value="bloqueio" {% if filtros.tipo == 'bloqueio' %}selected{% endif %}>Bloqueio</option>
+            <option value="liberacao" {% if filtros.tipo == 'liberacao' %}selected{% endif %}>Liberação</option>
+          </select>
+        </label>
+        <label class="ca-toggle">
+          <input type="checkbox" name="expirados" value="1" {% if filtros.expirados %}checked{% endif %}>
+          <span>Mostrar controles expirados</span>
+        </label>
+        <div class="ca-filter-actions">
+          <button type="submit" class="btn-acesso"><i class="fas fa-filter"></i> Aplicar</button>
+          <a class="btn btn-secondary btn-sm" href="{{ url_for('acesso.controle_adicional_page') }}">Limpar</a>
+        </div>
+      </form>
+    </aside>
+
+    <section class="card ca-panel">
+      <div class="ca-list-head">
+        <h2>Controles Encontrados</h2>
+        <span class="ca-count">{{ controles|length }} registro(s)</span>
+      </div>
+      {% if controles %}
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Tipo</th>
+              <th>Início</th>
+              <th>Fim</th>
+              <th>Motivo</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in controles %}
+            <tr class="{% if c.expirado %}ca-row-exp{% endif %}">
+              <td><strong>{{ c.nome }}</strong></td>
+              <td>
+                {% if c.tipo == 'bloqueio' %}
+                <span class="badge-status badge-negado"><i class="fas fa-ban"></i> Bloqueio</span>
+                {% else %}
+                <span class="badge-status badge-liberado"><i class="fas fa-unlock"></i> Liberação</span>
+                {% endif %}
+              </td>
+              <td>{{ c.data_inicio_fmt }}</td>
+              <td>{{ c.data_fim_fmt }}</td>
+              <td>{{ c.motivo or '—' }}</td>
+              <td>
+                {% if not c.ativo %}
+                <span class="badge-status badge-offline">Inativo</span>
+                {% elif c.expirado %}
+                <span class="badge-status badge-offline">Expirado</span>
+                {% else %}
+                <span class="badge-status badge-online">Vigente</span>
+                {% endif %}
+              </td>
+              <td style="white-space:nowrap;">
+                <button type="button" class="btn btn-secondary btn-sm btn-edit"
+                  data-id="{{ c.id }}"
+                  data-pessoa-id="{{ c.pessoa_id or '' }}"
+                  data-nome="{{ c.nome }}"
+                  data-tipo="{{ c.tipo }}"
+                  data-inicio="{{ c.data_inicio }}"
+                  data-fim="{{ c.data_fim }}"
+                  data-motivo="{{ c.motivo }}"
+                  data-ativo="{{ 1 if c.ativo else 0 }}">Editar</button>
+                <button type="button" class="btn btn-secondary btn-sm btn-del" data-id="{{ c.id }}">Excluir</button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="ca-empty">
+        <i class="fas fa-folder-open"></i>
+        <p>Nenhum controle adicional encontrado</p>
+      </div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modalControle" hidden>
+  <div class="modal-card" style="max-width:540px;">
+    <div class="modal-head">
+      <div>
+        <h3 id="modalTitle">Novo Controle</h3>
+        <p class="modal-sub">Defina bloqueio ou liberação por período.</p>
+      </div>
+      <button type="button" class="modal-close" id="btnCloseModal" aria-label="Fechar">&times;</button>
+    </div>
+    <form id="formControle" class="modal-body" autocomplete="off">
+      <input type="hidden" name="id" id="f_id" value="">
+      <label>Pessoa (opcional)
+        <select name="pessoa_id" id="f_pessoa_id">
+          <option value="">— Sem vínculo —</option>
+          {% for p in pessoas %}
+          <option value="{{ p.id }}">{{ p.nome }}{% if p.matricula %} ({{ p.matricula }}){% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="req">Nome *
+        <input name="nome" id="f_nome" required placeholder="Nome do usuário">
+      </label>
+      <label class="req">Tipo *
+        <select name="tipo" id="f_tipo" required>
+          <option value="bloqueio">Bloqueio</option>
+          <option value="liberacao">Liberação</option>
+        </select>
+      </label>
+      <div class="ca-modal-row">
+        <label class="req">Data início *
+          <input type="date" name="data_inicio" id="f_inicio" required>
+        </label>
+        <label>Data fim
+          <input type="date" name="data_fim" id="f_fim">
+        </label>
+      </div>
+      <label>Motivo / Observação
+        <textarea name="motivo" id="f_motivo" rows="3" placeholder="Motivo do bloqueio ou liberação"></textarea>
+      </label>
+    </form>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" id="btnCancelar">Cancelar</button>
+      <button type="button" class="btn-acesso" id="btnSalvar"><i class="fas fa-save"></i> Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modalAjuda" hidden>
+  <div class="modal-card" style="max-width:480px;">
+    <div class="modal-head">
+      <div>
+        <h3>Ajuda — Controle Adicional</h3>
+      </div>
+      <button type="button" class="modal-close" data-close-modal aria-label="Fechar">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin:0;color:#475569;line-height:1.55;">
+        Use esta tela para criar regras temporárias de <strong>bloqueio</strong> ou <strong>liberação</strong>
+        de acesso. Controles com data fim anterior a hoje são considerados expirados e ficam ocultos
+        até marcar “Mostrar controles expirados”.
+      </p>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" data-close-modal>Fechar</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.ca-wrap { max-width: 1280px; }
+.ca-hero {
+  display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; align-items:center;
+  padding:1.15rem 1.25rem; margin-bottom:1rem;
+  background:#fff; border:1px solid rgba(15,42,86,.1); border-radius:14px;
+  box-shadow:0 4px 12px rgba(0,0,0,.04);
+}
+.ca-hero h1 { margin:0; font-family:var(--font-brand); font-size:1.45rem; color:var(--brand-navy); }
+.ca-hero p { margin:.3rem 0 0; color:#64748b; font-size:.92rem; }
+.ca-hero-actions { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
+
+.ca-grid {
+  display:grid; grid-template-columns: minmax(260px, 320px) 1fr; gap:1rem; align-items:start;
+}
+@media (max-width: 900px) {
+  .ca-grid { grid-template-columns: 1fr; }
+}
+.ca-panel {
+  padding:1.1rem 1.2rem; background:#fff; border:1px solid rgba(15,42,86,.1);
+  border-radius:14px; box-shadow:0 4px 12px rgba(0,0,0,.04);
+}
+.ca-panel h2 {
+  margin:0 0 0.9rem; font-family:var(--font-brand); font-size:1.1rem; color:var(--brand-navy);
+}
+.ca-filters { display:flex; flex-direction:column; gap:.75rem; }
+.ca-filters label {
+  display:flex; flex-direction:column; gap:.3rem; font-size:.82rem; font-weight:700; color:#64748b;
+}
+.ca-filters input, .ca-filters select, .modal-body textarea {
+  padding:.55rem .7rem; border:1px solid rgba(15,42,86,.12); border-radius:10px;
+  font:inherit; color:var(--brand-navy); background:#fff;
+}
+.ca-toggle {
+  flex-direction:row !important; align-items:center; gap:.55rem !important;
+  font-weight:600 !important; color:var(--brand-navy) !important; cursor:pointer;
+}
+.ca-toggle input { width:auto; }
+.ca-filter-actions { display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.25rem; }
+
+.ca-list-head {
+  display:flex; justify-content:space-between; align-items:center; gap:.75rem; margin-bottom:.85rem;
+}
+.ca-list-head h2 { margin:0; }
+.ca-count { font-size:.82rem; font-weight:700; color:#94a3b8; }
+.ca-empty {
+  text-align:center; padding:2.5rem 1rem; color:#94a3b8;
+  display:flex; flex-direction:column; align-items:center; gap:.55rem;
+}
+.ca-empty i { font-size:1.8rem; opacity:.7; }
+.ca-empty p { margin:0; font-weight:600; }
+.ca-row-exp { opacity:.72; }
+
+.modal-backdrop {
+  position:fixed; inset:0; background:rgba(13,43,92,.45); z-index:2000;
+  display:grid; place-items:center; padding:1rem;
+}
+.modal-backdrop[hidden] { display:none !important; }
+.modal-card {
+  width:min(540px,100%); background:#fff; border-radius:16px; overflow:hidden;
+  box-shadow:0 24px 48px rgba(13,43,92,.25); max-height:92vh; display:flex; flex-direction:column;
+}
+.modal-head, .modal-foot {
+  display:flex; justify-content:space-between; align-items:flex-start; gap:.75rem;
+  padding:.95rem 1.2rem; border-bottom:1px solid rgba(15,42,86,.08);
+}
+.modal-foot { border-bottom:0; border-top:1px solid rgba(15,42,86,.08); justify-content:flex-end; align-items:center; }
+.modal-head h3 { margin:0; font-family:var(--font-brand); color:var(--brand-navy); font-size:1.25rem; }
+.modal-sub { margin:.35rem 0 0; color:#64748b; font-size:.88rem; }
+.modal-close { border:none; background:transparent; font-size:1.5rem; cursor:pointer; color:#64748b; line-height:1; }
+.modal-body { padding:1.15rem 1.2rem; overflow:auto; display:flex; flex-direction:column; gap:.85rem; }
+.modal-body label {
+  display:flex; flex-direction:column; gap:.3rem; font-size:.82rem; font-weight:700; color:#64748b;
+}
+.modal-body input, .modal-body select {
+  padding:.55rem .7rem; border:1px solid rgba(15,42,86,.12); border-radius:10px;
+  font:inherit; color:var(--brand-navy); background:#fff;
+}
+.ca-modal-row { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; }
+@media (max-width: 520px) { .ca-modal-row { grid-template-columns:1fr; } }
+</style>
+<script>
+const API = {{ url_for('acesso.api_controles_adicionais')|tojson }};
+const modal = document.getElementById('modalControle');
+const modalAjuda = document.getElementById('modalAjuda');
+const form = document.getElementById('formControle');
+const pessoaSelect = document.getElementById('f_pessoa_id');
+
+function openModal(edit) {
+  form.reset();
+  document.getElementById('f_id').value = edit?.id || '';
+  document.getElementById('modalTitle').textContent = edit ? 'Editar Controle' : 'Novo Controle';
+  if (edit) {
+    document.getElementById('f_pessoa_id').value = edit.pessoa_id || '';
+    document.getElementById('f_nome').value = edit.nome || '';
+    document.getElementById('f_tipo').value = edit.tipo || 'bloqueio';
+    document.getElementById('f_inicio').value = edit.inicio || '';
+    document.getElementById('f_fim').value = edit.fim || '';
+    document.getElementById('f_motivo').value = edit.motivo || '';
+  } else {
+    document.getElementById('f_inicio').value = new Date().toISOString().slice(0, 10);
+  }
+  modal.hidden = false;
+}
+
+function closeModals() {
+  modal.hidden = true;
+  modalAjuda.hidden = true;
+}
+
+pessoaSelect.addEventListener('change', () => {
+  const opt = pessoaSelect.selectedOptions[0];
+  if (opt && opt.value && !document.getElementById('f_nome').value.trim()) {
+    document.getElementById('f_nome').value = opt.textContent.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  }
+});
+
+document.getElementById('btnNovo').addEventListener('click', () => openModal(null));
+document.getElementById('btnAjuda').addEventListener('click', () => { modalAjuda.hidden = false; });
+document.getElementById('btnCloseModal').addEventListener('click', closeModals);
+document.getElementById('btnCancelar').addEventListener('click', closeModals);
+document.querySelectorAll('[data-close-modal]').forEach(btn => {
+  btn.addEventListener('click', closeModals);
+});
+modal.addEventListener('click', (e) => { if (e.target === modal) closeModals(); });
+modalAjuda.addEventListener('click', (e) => { if (e.target === modalAjuda) closeModals(); });
+
+document.querySelectorAll('.btn-edit').forEach(btn => {
+  btn.addEventListener('click', () => openModal({
+    id: btn.dataset.id,
+    pessoa_id: btn.dataset.pessoaId,
+    nome: btn.dataset.nome,
+    tipo: btn.dataset.tipo,
+    inicio: btn.dataset.inicio,
+    fim: btn.dataset.fim,
+    motivo: btn.dataset.motivo,
+  }));
+});
+
+document.querySelectorAll('.btn-del').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (!confirm('Excluir este controle adicional?')) return;
+    const r = await fetch(`${API}/${btn.dataset.id}`, { method: 'DELETE' });
+    const res = await r.json();
+    if (!res.ok) { alert(res.error || 'Erro ao excluir'); return; }
+    location.reload();
+  });
+});
+
+document.getElementById('btnSalvar').addEventListener('click', async () => {
+  const data = Object.fromEntries(new FormData(form).entries());
+  const id = (data.id || '').trim();
+  delete data.id;
+  if (!data.nome || !data.data_inicio || !data.tipo) {
+    alert('Preencha nome, tipo e data início.');
+    return;
+  }
+  if (!data.pessoa_id) delete data.pessoa_id;
+  const url = id ? `${API}/${id}` : API;
+  const method = id ? 'PUT' : 'POST';
+  const r = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  const res = await r.json();
+  if (!res.ok) { alert(res.error || 'Erro ao salvar'); return; }
+  location.reload();
+});
+</script>
+{% endblock %}

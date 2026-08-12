@@ -1,0 +1,430 @@
+{% extends "base_acesso.html" %}
+{% block title %}Centro de Impressão{% endblock %}
+{% block content %}
+<div class="ci-wrap">
+  <header class="ci-header">
+    <div class="ci-header-left">
+      <div class="ci-icon" aria-hidden="true"><i class="fas fa-print"></i></div>
+      <div>
+        <h1>Centro de Impressão</h1>
+        <p>Gerencie hardware e personalize o layout dos seus comprovantes</p>
+      </div>
+    </div>
+    <button type="button" class="ci-btn-primary" id="btnNova">
+      <i class="fas fa-plus"></i> Nova Impressora
+    </button>
+  </header>
+
+  <nav class="ci-tabs" role="tablist" aria-label="Seções do Centro de Impressão">
+    <button type="button" class="ci-tab active" role="tab" aria-selected="true" data-tab="impressoras">
+      <i class="fas fa-print"></i> Impressoras
+    </button>
+    <button type="button" class="ci-tab" role="tab" aria-selected="false" data-tab="layouts">
+      <i class="fas fa-file-lines"></i> Layouts de Impressão
+    </button>
+  </nav>
+
+  <section class="ci-panel card" id="panelImpressoras" role="tabpanel">
+    <div class="ci-panel-head">
+      <h2>Impressoras Cadastradas</h2>
+      <span class="ci-count" id="ciCount">0</span>
+    </div>
+    <div class="table-scroll">
+      <table class="data-table ci-table" id="tblImpressoras">
+        <thead>
+          <tr>
+            <th>Nome</th>
+            <th>Endereço IP</th>
+            <th>Porta</th>
+            <th>Tipo</th>
+            <th>Impressão Vouchers</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyImpressoras"></tbody>
+      </table>
+    </div>
+    <div class="ci-empty" id="emptyImpressoras">
+      <i class="fas fa-print"></i>
+      <p>Nenhuma impressora cadastrada no momento</p>
+    </div>
+  </section>
+
+  <section class="ci-panel card" id="panelLayouts" role="tabpanel" hidden>
+    <div class="ci-placeholder">
+      <i class="fas fa-file-lines"></i>
+      <strong>Layouts de Impressão</strong>
+      <p>Personalização de comprovantes e vouchers — em breve.</p>
+    </div>
+  </section>
+</div>
+
+<!-- Modal Cadastrar / Editar Impressora -->
+<div class="modal-backdrop" id="modalImp" hidden>
+  <div class="modal-card ci-modal">
+    <div class="modal-head">
+      <div>
+        <h3 id="modalImpTitle">Cadastrar Impressora</h3>
+      </div>
+      <button type="button" class="modal-close" data-close="modalImp" aria-label="Fechar">&times;</button>
+    </div>
+    <form id="formImp" class="modal-body" autocomplete="off">
+      <input type="hidden" id="f_id" value="">
+      <label class="ci-label">Nome Identificador
+        <input type="text" id="f_nome" maxlength="120" required placeholder="Ex: Recepção Térmica">
+      </label>
+      <div class="ci-row-2">
+        <label class="ci-label">IP na Rede
+          <input type="text" id="f_ip" maxlength="45" required placeholder="192.168.0.xxx">
+        </label>
+        <label class="ci-label">Porta
+          <input type="number" id="f_porta" min="1" max="65535" value="9100" required>
+        </label>
+      </div>
+      <label class="ci-label">Tipo / Protocolo
+        <select id="f_tipo" required>
+          {% for t in tipos_impressora %}
+          <option value="{{ t }}">{{ t }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="ci-toggle-row">
+        <span>Impressora Ativa</span>
+        <label class="ci-toggle">
+          <input type="checkbox" id="f_ativo" checked>
+          <span class="ci-toggle-track" aria-hidden="true"></span>
+        </label>
+      </label>
+      <label class="ci-toggle-row">
+        <span>Usar como Padrão para Vouchers</span>
+        <label class="ci-toggle">
+          <input type="checkbox" id="f_padrao">
+          <span class="ci-toggle-track" aria-hidden="true"></span>
+        </label>
+      </label>
+    </form>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" data-close="modalImp">Cancelar</button>
+      <button type="button" class="btn-acesso" id="btnSalvarImp">
+        <i class="fas fa-floppy-disk"></i> Salvar Impressora
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="ci-toast" id="ciToast" role="status" aria-live="polite" hidden>
+  <span id="ciToastMsg"></span>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.ci-wrap { max-width: 1100px; }
+.ci-header {
+  display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: center;
+  background: linear-gradient(135deg, var(--brand-navy) 0%, var(--brand-blue) 100%);
+  color: #fff; border-radius: 16px; padding: 1.15rem 1.35rem; margin-bottom: 1rem;
+  box-shadow: 0 8px 24px rgba(13, 43, 92, 0.22);
+}
+.ci-header-left { display: flex; align-items: center; gap: 0.9rem; }
+.ci-icon {
+  width: 48px; height: 48px; border-radius: 14px; background: #fff; color: var(--brand-blue);
+  display: flex; align-items: center; justify-content: center; font-size: 1.25rem; flex-shrink: 0;
+}
+.ci-header h1 {
+  margin: 0; font-family: var(--font-brand); font-size: 1.45rem; font-weight: 700;
+}
+.ci-header p { margin: 0.3rem 0 0; opacity: 0.9; font-size: 0.88rem; }
+.ci-btn-primary {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.55rem 1rem; border-radius: 10px; border: 0;
+  background: #fff; color: var(--brand-navy); font-weight: 700; font-size: 0.88rem;
+  cursor: pointer; font-family: var(--font-body);
+}
+.ci-btn-primary:hover { background: #f1f5f9; }
+
+.ci-tabs {
+  display: flex; gap: 0; border-bottom: 1px solid rgba(15, 42, 86, 0.12); margin-bottom: 1rem;
+}
+.ci-tab {
+  border: 0; background: transparent; padding: 0.7rem 1.1rem; cursor: pointer;
+  font: inherit; font-weight: 700; color: #64748b; border-bottom: 2px solid transparent;
+  display: inline-flex; align-items: center; gap: 0.45rem;
+}
+.ci-tab:hover { color: var(--brand-navy); }
+.ci-tab.active { color: var(--brand-blue); border-bottom-color: var(--brand-blue); }
+
+.ci-panel { padding: 1.1rem 1.2rem; }
+.ci-panel-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+.ci-panel-head h2 {
+  margin: 0; font-family: var(--font-brand); font-size: 1.05rem; color: var(--brand-navy);
+}
+.ci-count {
+  background: rgba(27, 79, 156, 0.1); color: var(--brand-blue);
+  font-weight: 700; font-size: 0.8rem; padding: 0.2rem 0.55rem; border-radius: 999px;
+}
+.ci-table tbody tr.inactive { opacity: 0.65; }
+.ci-badge {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  font-size: 0.78rem; font-weight: 700; padding: 0.2rem 0.55rem; border-radius: 999px;
+}
+.ci-badge-on { background: rgba(22, 163, 74, 0.12); color: #15803d; }
+.ci-badge-off { background: rgba(100, 116, 139, 0.12); color: #64748b; }
+.ci-actions { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+.ci-actions .btn { padding: 0.28rem 0.55rem; font-size: 0.78rem; }
+
+.ci-empty {
+  text-align: center; padding: 2.5rem 1rem; color: #64748b;
+}
+.ci-empty i { font-size: 2rem; color: var(--brand-blue); opacity: 0.45; margin-bottom: 0.6rem; display: block; }
+.ci-empty p { margin: 0; font-weight: 600; }
+.ci-table[data-empty="1"] { display: none; }
+.ci-empty[hidden] { display: none; }
+
+.ci-placeholder {
+  text-align: center; padding: 3rem 1rem; color: #64748b;
+}
+.ci-placeholder i { font-size: 2.2rem; color: var(--brand-blue); opacity: 0.4; display: block; margin-bottom: 0.7rem; }
+.ci-placeholder strong {
+  display: block; font-family: var(--font-brand); font-size: 1.1rem; color: var(--brand-navy); margin-bottom: 0.35rem;
+}
+.ci-placeholder p { margin: 0; }
+
+.ci-modal { max-width: 480px; }
+.ci-label {
+  display: block; margin-bottom: 0.85rem; font-weight: 700; font-size: 0.82rem; color: var(--brand-navy);
+}
+.ci-label input, .ci-label select {
+  display: block; width: 100%; margin-top: 0.35rem; font-weight: 500;
+  padding: 0.55rem 0.7rem; border: 1px solid rgba(15, 42, 86, 0.18); border-radius: 10px;
+  font-family: var(--font-body); font-size: 0.92rem; color: #0f172a; background: #fff;
+}
+.ci-label input:focus, .ci-label select:focus {
+  outline: none; border-color: var(--brand-blue); box-shadow: 0 0 0 3px rgba(27, 79, 156, 0.15);
+}
+.ci-row-2 { display: grid; grid-template-columns: 1.4fr 0.8fr; gap: 0.75rem; }
+@media (max-width: 520px) { .ci-row-2 { grid-template-columns: 1fr; } }
+
+.ci-toggle-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 0.65rem 0; border-top: 1px solid rgba(15, 42, 86, 0.08);
+  font-weight: 700; font-size: 0.88rem; color: var(--brand-navy); cursor: default;
+}
+.ci-toggle { display: inline-flex; align-items: center; cursor: pointer; }
+.ci-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.ci-toggle-track {
+  width: 44px; height: 24px; border-radius: 999px; background: #cbd5e1; position: relative;
+  transition: background 0.2s;
+}
+.ci-toggle-track::after {
+  content: ''; position: absolute; top: 3px; left: 3px;
+  width: 18px; height: 18px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: transform 0.2s;
+}
+.ci-toggle input:checked + .ci-toggle-track { background: #16a34a; }
+.ci-toggle input:checked + .ci-toggle-track::after { transform: translateX(20px); }
+
+.ci-toast {
+  position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 100;
+  background: var(--brand-navy); color: #fff; padding: 0.75rem 1.1rem;
+  border-radius: 10px; font-weight: 600; font-size: 0.88rem;
+  box-shadow: 0 8px 24px rgba(13, 43, 92, 0.28);
+}
+.ci-toast.err { background: #b91c1c; }
+</style>
+<script>
+(function () {
+  const API = '{{ url_for("acesso.api_impressoras") }}';
+  const $ = (id) => document.getElementById(id);
+  let itens = [];
+
+  function toast(msg, isErr) {
+    const el = $('ciToast');
+    $('ciToastMsg').textContent = msg;
+    el.classList.toggle('err', !!isErr);
+    el.hidden = false;
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.hidden = true; }, 2800);
+  }
+
+  function openModal(id) {
+    const el = $(id);
+    if (el) el.hidden = false;
+  }
+  function closeModal(id) {
+    const el = $(id);
+    if (el) el.hidden = true;
+  }
+
+  document.querySelectorAll('[data-close]').forEach(btn => {
+    btn.addEventListener('click', () => closeModal(btn.getAttribute('data-close')));
+  });
+  $('modalImp').addEventListener('click', (e) => {
+    if (e.target === $('modalImp')) closeModal('modalImp');
+  });
+
+  document.querySelectorAll('.ci-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const name = tab.dataset.tab;
+      document.querySelectorAll('.ci-tab').forEach(t => {
+        const on = t === tab;
+        t.classList.toggle('active', on);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      $('panelImpressoras').hidden = name !== 'impressoras';
+      $('panelLayouts').hidden = name !== 'layouts';
+    });
+  });
+
+  function resetForm() {
+    $('f_id').value = '';
+    $('f_nome').value = '';
+    $('f_ip').value = '';
+    $('f_porta').value = '9100';
+    const sel = $('f_tipo');
+    if (sel.options.length) sel.selectedIndex = 0;
+    $('f_ativo').checked = true;
+    $('f_padrao').checked = false;
+    $('modalImpTitle').textContent = 'Cadastrar Impressora';
+  }
+
+  function fillForm(item) {
+    $('f_id').value = item.id;
+    $('f_nome').value = item.nome || '';
+    $('f_ip').value = item.ip || '';
+    $('f_porta').value = item.porta != null ? item.porta : 9100;
+    $('f_tipo').value = item.tipo || '';
+    if ($('f_tipo').value !== item.tipo && item.tipo) {
+      const opt = document.createElement('option');
+      opt.value = item.tipo;
+      opt.textContent = item.tipo;
+      $('f_tipo').appendChild(opt);
+      $('f_tipo').value = item.tipo;
+    }
+    $('f_ativo').checked = !!item.ativo;
+    $('f_padrao').checked = !!item.padrao_voucher;
+    $('modalImpTitle').textContent = 'Editar Impressora';
+  }
+
+  function render() {
+    const tb = $('tbodyImpressoras');
+    const empty = $('emptyImpressoras');
+    const tbl = $('tblImpressoras');
+    $('ciCount').textContent = String(itens.length);
+    tb.innerHTML = '';
+    if (!itens.length) {
+      empty.hidden = false;
+      tbl.setAttribute('data-empty', '1');
+      return;
+    }
+    empty.hidden = true;
+    tbl.setAttribute('data-empty', '0');
+    itens.forEach(item => {
+      const tr = document.createElement('tr');
+      if (!item.ativo) tr.classList.add('inactive');
+      const voucher = item.padrao_voucher
+        ? '<span class="ci-badge ci-badge-on"><i class="fas fa-check"></i> Padrão</span>'
+        : '<span class="ci-badge ci-badge-off">—</span>';
+      tr.innerHTML =
+        '<td><strong>' + esc(item.nome) + '</strong>' +
+          (item.ativo ? '' : ' <span class="ci-badge ci-badge-off">Inativa</span>') +
+        '</td>' +
+        '<td>' + esc(item.ip) + '</td>' +
+        '<td>' + esc(String(item.porta)) + '</td>' +
+        '<td>' + esc(item.tipo) + '</td>' +
+        '<td>' + voucher + '</td>' +
+        '<td class="ci-actions">' +
+          '<button type="button" class="btn btn-secondary btn-sm btn-edit" data-id="' + item.id + '"><i class="fas fa-pen"></i> Editar</button>' +
+          '<button type="button" class="btn btn-secondary btn-sm btn-del" data-id="' + item.id + '"><i class="fas fa-trash"></i></button>' +
+        '</td>';
+      tb.appendChild(tr);
+    });
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  async function load() {
+    try {
+      const r = await fetch(API, { headers: { 'Accept': 'application/json' } });
+      if (!r.ok) throw new Error('Falha ao carregar');
+      itens = await r.json();
+      render();
+    } catch (e) {
+      toast(e.message || 'Erro ao carregar impressoras', true);
+    }
+  }
+
+  $('btnNova').addEventListener('click', () => {
+    resetForm();
+    openModal('modalImp');
+    setTimeout(() => $('f_nome').focus(), 50);
+  });
+
+  $('tbodyImpressoras').addEventListener('click', (e) => {
+    const edit = e.target.closest('.btn-edit');
+    const del = e.target.closest('.btn-del');
+    if (edit) {
+      const item = itens.find(x => x.id === Number(edit.dataset.id));
+      if (!item) return;
+      fillForm(item);
+      openModal('modalImp');
+      return;
+    }
+    if (del) {
+      const id = Number(del.dataset.id);
+      const item = itens.find(x => x.id === id);
+      if (!item) return;
+      if (!confirm('Excluir a impressora "' + item.nome + '"?')) return;
+      fetch(API + '/' + id, { method: 'DELETE', headers: { 'Accept': 'application/json' } })
+        .then(r => r.json())
+        .then(data => {
+          if (!data.ok) throw new Error(data.error || 'Falha ao excluir');
+          toast('Impressora excluída');
+          return load();
+        })
+        .catch(err => toast(err.message || 'Erro ao excluir', true));
+    }
+  });
+
+  $('btnSalvarImp').addEventListener('click', async () => {
+    const id = ($('f_id').value || '').trim();
+    const payload = {
+      nome: $('f_nome').value.trim(),
+      ip: $('f_ip').value.trim(),
+      porta: Number($('f_porta').value) || 9100,
+      tipo: $('f_tipo').value,
+      ativo: $('f_ativo').checked,
+      padrao_voucher: $('f_padrao').checked,
+    };
+    if (!payload.nome) { toast('Informe o Nome Identificador', true); return; }
+    if (!payload.ip) { toast('Informe o IP na Rede', true); return; }
+
+    const url = id ? API + '/' + id : API;
+    const method = id ? 'PUT' : 'POST';
+    try {
+      const r = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Falha ao salvar');
+      closeModal('modalImp');
+      toast(id ? 'Impressora atualizada' : 'Impressora cadastrada');
+      await load();
+    } catch (err) {
+      toast(err.message || 'Erro ao salvar', true);
+    }
+  });
+
+  load();
+})();
+</script>
+{% endblock %}

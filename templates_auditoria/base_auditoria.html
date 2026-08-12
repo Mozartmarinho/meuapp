@@ -10,9 +10,18 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
 </head>
-<body>
+<body data-sidebar-collapse="sg-auditoria-sidebar-collapsed">
+    <script>
+    (function () {
+        try {
+            if (localStorage.getItem('sg-auditoria-sidebar-collapsed') === '1') {
+                document.body.classList.add('sidebar-collapsed');
+            }
+        } catch (e) { /* ignore */ }
+    })();
+    </script>
     <header class="app-topbar">
-        <button type="button" class="menu-toggle" id="menuToggle" aria-label="Abrir menu">
+        <button type="button" class="menu-toggle" id="menuToggle" aria-label="Recuar menu" aria-expanded="true" aria-controls="appSidebar">
             <i class="fas fa-bars"></i>
         </button>
         <img class="brand-logo-compact" src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service">
@@ -28,21 +37,21 @@
 
         <ul class="sidebar-menu">
             <li>
-                <a href="{{ url_for('main.inicio') }}">
-                    <i class="fas fa-th-large" style="margin-right: 0.75rem;"></i>
-                    Sistemas
+                <a href="{{ url_for('main.inicio') }}" title="Sistemas">
+                    <i class="fas fa-th-large menu-icon"></i>
+                    <span class="menu-label">Sistemas</span>
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('auditoria.dashboard') }}" class="{% if active_page == 'dashboard' %}active{% endif %}">
-                    <i class="fas fa-clipboard-check" style="margin-right: 0.75rem;"></i>
-                    Logs do sistema
+                <a href="{{ url_for('auditoria.dashboard') }}" class="{% if active_page == 'dashboard' %}active{% endif %}" title="Logs do sistema">
+                    <i class="fas fa-clipboard-check menu-icon"></i>
+                    <span class="menu-label">Logs do sistema</span>
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('main.logout') }}">
-                    <i class="fas fa-sign-out-alt" style="margin-right: 0.75rem;"></i>
-                    Sair
+                <a href="{{ url_for('main.logout') }}" title="Sair">
+                    <i class="fas fa-sign-out-alt menu-icon"></i>
+                    <span class="menu-label">Sair</span>
                 </a>
             </li>
         </ul>

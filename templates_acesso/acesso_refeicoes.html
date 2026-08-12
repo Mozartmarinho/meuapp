@@ -1,0 +1,281 @@
+{% extends "base_acesso.html" %}
+{% block title %}Análise de Refeições{% endblock %}
+{% block content %}
+<div class="ref-wrap">
+  <header class="ref-header">
+    <div class="ref-header-text">
+      <h1><i class="fas fa-utensils"></i> Análise de Refeições</h1>
+      <p>Totais e detalhamento de refeições por período, colaborador, tipo, setor, empresa e classificação.</p>
+    </div>
+    <div class="ref-header-actions">
+      <a class="ref-btn" target="_blank" rel="noopener"
+         href="{{ url_for('acesso.refeicoes_imprimir', modo=modo, tipo_pessoa=tipo_pessoa, q=q_global, de=de, ate=ate) }}"
+         title="Abrir relatório gerencial para impressão">
+        <i class="fas fa-print"></i> Imprimir
+      </a>
+      <a class="ref-btn" href="{{ url_for('acesso.refeicoes_export', modo=modo, tipo_pessoa=tipo_pessoa, q=q_global, de=de, ate=ate) }}" title="Exportar Excel">
+        <i class="fas fa-file-excel"></i> Excel
+      </a>
+      <button type="button" class="ref-btn" id="btnFiltros" title="Filtros">
+        <i class="fas fa-filter"></i> Filtros
+      </button>
+      <button type="button" class="ref-btn" onclick="window.location.reload()" title="Recalcular">
+        <i class="fas fa-arrows-rotate"></i> Recalcular
+      </button>
+    </div>
+  </header>
+
+  <div class="ref-kpi-grid">
+    <div class="ref-kpi">
+      <div class="ref-kpi-label">Total Hoje (24h)</div>
+      <div class="ref-kpi-value">{{ kpis.hoje_fmt }}</div>
+    </div>
+    <div class="ref-kpi">
+      <div class="ref-kpi-label">Total Últ. 7 Dias</div>
+      <div class="ref-kpi-value">{{ kpis.d7_fmt }}</div>
+    </div>
+    <div class="ref-kpi">
+      <div class="ref-kpi-label">Total Últ. 30 Dias</div>
+      <div class="ref-kpi-value">{{ kpis.d30_fmt }}</div>
+    </div>
+    <div class="ref-kpi accent">
+      <div class="ref-kpi-label">Total Pesquisado</div>
+      <div class="ref-kpi-value">{{ kpis.pesquisado_fmt }}</div>
+    </div>
+  </div>
+
+  <div class="ref-toolbar" id="painelFiltros" hidden>
+    <form method="get" class="ref-filter-form">
+      <input type="hidden" name="modo" value="{{ modo }}">
+      <input type="hidden" name="tipo_pessoa" value="{{ tipo_pessoa }}">
+      <label>Busca geral
+        <input type="search" name="q" value="{{ q_global }}" placeholder="Nome, matrícula, setor…">
+      </label>
+      <label>Data início
+        <input type="date" name="de" value="{{ de }}">
+      </label>
+      <label>Data fim
+        <input type="date" name="ate" value="{{ ate }}">
+      </label>
+      <button type="submit" class="btn-acesso"><i class="fas fa-search"></i> Aplicar</button>
+    </form>
+  </div>
+
+  <div class="ref-modes">
+    {% for key, label in modos %}
+    <a class="ref-mode {% if modo == key %}active{% endif %}"
+       href="{{ url_for('acesso.refeicoes_page', modo=key, tipo_pessoa=tipo_pessoa, q=q_global, de=de, ate=ate) }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+
+  <div class="ref-toggle">
+    <a class="ref-tog {% if tipo_pessoa == 'interno' %}active{% endif %}"
+       href="{{ url_for('acesso.refeicoes_page', modo=modo, tipo_pessoa='interno', q=q_global, de=de, ate=ate) }}">Internos</a>
+    <a class="ref-tog {% if tipo_pessoa == 'visitante' %}active{% endif %}"
+       href="{{ url_for('acesso.refeicoes_page', modo=modo, tipo_pessoa='visitante', q=q_global, de=de, ate=ate) }}">Visitantes</a>
+    <a class="ref-tog {% if tipo_pessoa == 'todos' %}active{% endif %}"
+       href="{{ url_for('acesso.refeicoes_page', modo=modo, tipo_pessoa='todos', q=q_global, de=de, ate=ate) }}">Todos</a>
+  </div>
+
+  <section class="ref-panel">
+    <div class="table-scroll">
+      <table class="ref-table" id="refTable">
+        <thead>
+          <tr>
+            <th>Data/Hora</th>
+            <th>Colaborador</th>
+            <th>Matrícula</th>
+            <th>Setor/Empresa</th>
+            <th>Refeição</th>
+            <th>Valor</th>
+          </tr>
+          <tr class="ref-filters no-print">
+            <th><input type="search" class="col-filter" data-col="0" placeholder="Filtrar…"></th>
+            <th><input type="search" class="col-filter" data-col="1" placeholder="Filtrar…"></th>
+            <th><input type="search" class="col-filter" data-col="2" placeholder="Filtrar…"></th>
+            <th><input type="search" class="col-filter" data-col="3" placeholder="Filtrar…"></th>
+            <th><input type="search" class="col-filter" data-col="4" placeholder="Filtrar…"></th>
+            <th><input type="search" class="col-filter" data-col="5" placeholder="Filtrar…"></th>
+          </tr>
+        </thead>
+        <tbody id="refBody">
+          {% for r in refeicoes %}
+          <tr>
+            <td>{{ r.data_hora_fmt }}</td>
+            <td>{{ r.pessoa_nome }}</td>
+            <td>{{ r.matricula }}</td>
+            <td>{{ r.setor_empresa }}</td>
+            <td>{{ r.tipo_refeicao }}</td>
+            <td>{{ r.valor_fmt }}</td>
+          </tr>
+          {% else %}
+          <tr class="empty-row">
+            <td colspan="6">Nenhum registro encontrado para os filtros atuais</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.ref-wrap { max-width: 1400px; }
+.ref-header {
+  display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: center;
+  background: linear-gradient(135deg, var(--brand-navy) 0%, var(--brand-blue) 100%);
+  color: #fff; border-radius: 16px; padding: 1.15rem 1.35rem; margin-bottom: 1rem;
+  box-shadow: 0 8px 24px rgba(13, 43, 92, 0.22);
+}
+.ref-header-text h1 {
+  margin: 0; font-family: var(--font-brand); font-size: 1.45rem; font-weight: 700;
+  display: flex; align-items: center; gap: 0.55rem;
+}
+.ref-header-text p { margin: 0.35rem 0 0; opacity: 0.9; font-size: 0.88rem; max-width: 42rem; }
+.ref-header-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+.ref-btn {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.45rem 0.85rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.35);
+  background: rgba(255,255,255,0.12); color: #fff; font-weight: 700; font-size: 0.82rem;
+  text-decoration: none; cursor: pointer; font-family: var(--font-body);
+}
+.ref-btn:hover { background: rgba(255,255,255,0.22); color: #fff; }
+
+.ref-kpi-grid {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.85rem; margin-bottom: 1rem;
+}
+@media (max-width: 1100px) { .ref-kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px) { .ref-kpi-grid { grid-template-columns: 1fr; } }
+.ref-kpi {
+  background: #fff; border: 1px solid rgba(15, 42, 86, 0.1); border-radius: 14px;
+  padding: 1rem 1.1rem; box-shadow: 0 4px 12px rgba(0,0,0,.04);
+}
+.ref-kpi.accent { border-color: rgba(27, 79, 156, 0.28); box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.08); }
+.ref-kpi-label {
+  font-size: 0.72rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #64748b;
+}
+.ref-kpi-value {
+  font-family: var(--font-brand); font-size: 1.55rem; font-weight: 800; color: var(--brand-navy); margin-top: 0.25rem;
+}
+
+.ref-toolbar {
+  background: #fff; border: 1px solid rgba(15, 42, 86, 0.1); border-radius: 14px;
+  padding: 0.9rem 1rem; margin-bottom: 0.85rem; box-shadow: 0 4px 12px rgba(0,0,0,.04);
+}
+.ref-filter-form {
+  display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end;
+}
+.ref-filter-form label {
+  display: flex; flex-direction: column; gap: 0.3rem;
+  font-size: 0.78rem; font-weight: 700; color: #64748b;
+}
+.ref-filter-form input {
+  padding: 0.5rem 0.7rem; border-radius: 10px; border: 1px solid rgba(15, 42, 86, 0.14);
+  min-width: 160px; font: inherit; color: var(--brand-navy);
+}
+
+.ref-modes {
+  display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem;
+}
+.ref-mode {
+  padding: 0.42rem 0.8rem; border-radius: 999px; text-decoration: none;
+  font-size: 0.8rem; font-weight: 700; color: #475569;
+  background: #fff; border: 1px solid rgba(15, 42, 86, 0.12);
+}
+.ref-mode.active {
+  background: var(--brand-blue); color: #fff; border-color: var(--brand-blue);
+}
+
+.ref-toggle {
+  display: inline-flex; border: 1px solid rgba(15, 42, 86, 0.14); border-radius: 10px;
+  overflow: hidden; margin-bottom: 0.85rem; background: #fff;
+}
+.ref-tog {
+  padding: 0.42rem 0.9rem; font-size: 0.82rem; font-weight: 700; text-decoration: none;
+  color: #475569; border-right: 1px solid rgba(15, 42, 86, 0.1);
+}
+.ref-tog:last-child { border-right: 0; }
+.ref-tog.active { background: var(--brand-navy); color: #fff; }
+
+.ref-panel {
+  background: #fff; border: 1px solid rgba(15, 42, 86, 0.1); border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.04); overflow: hidden;
+}
+.ref-table { width: 100%; border-collapse: collapse; }
+.ref-table th {
+  text-align: left; padding: 0.7rem 0.85rem; font-size: 0.78rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.03em; color: #64748b;
+  background: var(--brand-mist); border-bottom: 1px solid rgba(15, 42, 86, 0.08);
+}
+.ref-table td {
+  padding: 0.75rem 0.85rem; border-bottom: 1px solid rgba(15, 42, 86, 0.06);
+  color: var(--brand-ink); font-size: 0.9rem;
+}
+.ref-table tbody tr:hover { background: rgba(27, 79, 156, 0.04); }
+.ref-filters th { padding: 0.4rem 0.55rem; background: #fff; }
+.ref-filters input {
+  width: 100%; padding: 0.4rem 0.55rem; border-radius: 8px;
+  border: 1px solid rgba(15, 42, 86, 0.14); font: inherit; font-size: 0.8rem;
+}
+.ref-table .empty-row td {
+  text-align: center; color: #94a3b8; padding: 2.2rem 1rem; font-weight: 600;
+}
+
+@media print {
+  .sidebar, .app-topbar, .no-print, .ref-header-actions, .ref-modes, .ref-toggle, .ref-toolbar { display: none !important; }
+  .main-content { margin: 0 !important; padding: 0 !important; }
+  .ref-header { box-shadow: none; }
+}
+</style>
+<script>
+(function () {
+  const btn = document.getElementById('btnFiltros');
+  const painel = document.getElementById('painelFiltros');
+  if (btn && painel) {
+    btn.addEventListener('click', function () {
+      painel.hidden = !painel.hidden;
+    });
+  }
+
+  const inputs = document.querySelectorAll('.col-filter');
+  const tbody = document.getElementById('refBody');
+  if (!tbody || !inputs.length) return;
+
+  function applyFilters() {
+    const filters = Array.from(inputs).map(function (el) {
+      return (el.value || '').trim().toLowerCase();
+    });
+    let visible = 0;
+    tbody.querySelectorAll('tr').forEach(function (tr) {
+      if (tr.classList.contains('empty-row')) {
+        tr.style.display = 'none';
+        return;
+      }
+      const cells = tr.querySelectorAll('td');
+      let ok = true;
+      filters.forEach(function (f, i) {
+        if (!f) return;
+        const text = (cells[i] && cells[i].textContent || '').toLowerCase();
+        if (text.indexOf(f) === -1) ok = false;
+      });
+      tr.style.display = ok ? '' : 'none';
+      if (ok) visible += 1;
+    });
+    let empty = tbody.querySelector('tr.empty-row');
+    if (!empty) {
+      empty = document.createElement('tr');
+      empty.className = 'empty-row';
+      empty.innerHTML = '<td colspan="6">Nenhum registro encontrado para os filtros atuais</td>';
+      tbody.appendChild(empty);
+    }
+    empty.style.display = visible === 0 ? '' : 'none';
+  }
+
+  inputs.forEach(function (el) {
+    el.addEventListener('input', applyFilters);
+  });
+})();
+</script>
+{% endblock %}

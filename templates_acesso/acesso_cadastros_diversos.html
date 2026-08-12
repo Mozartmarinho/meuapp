@@ -1,0 +1,303 @@
+{% extends "base_acesso.html" %}
+{% block title %}Cadastros Diversos{% endblock %}
+{% block content %}
+<div class="cd-wrap">
+  <header class="cd-header">
+    <div class="cd-header-left">
+      <div class="cd-icon" aria-hidden="true"><i class="fas fa-th"></i></div>
+      <div>
+        <h1>Cadastros Diversos</h1>
+        <p>Gerencie Departamentos, Centros de Custo, Setores e Locais de acesso de forma centralizada.</p>
+      </div>
+    </div>
+  </header>
+
+  <nav class="cd-tabs" role="tablist" aria-label="Tipos de cadastro">
+    {% for key, tab in tabs.items() %}
+    <button type="button"
+      class="cd-tab {% if loop.first %}active{% endif %}"
+      role="tab"
+      aria-selected="{{ 'true' if loop.first else 'false' }}"
+      data-tab="{{ key }}">
+      {{ tab['label'] }}
+      <span class="cd-tab-count" data-count-for="{{ key }}">{{ tab['items']|length }}</span>
+    </button>
+    {% endfor %}
+  </nav>
+
+  {% for key, tab in tabs.items() %}
+  <section class="cd-panel card"
+    id="panel-{{ key }}"
+    role="tabpanel"
+    data-tab="{{ key }}"
+    data-api="{{ tab['api'] }}"
+    data-singular="{{ tab['singular'] }}"
+    {% if not loop.first %}hidden{% endif %}>
+
+    <div class="cd-block">
+      <div class="cd-block-label">NOVO {{ tab['singular']|upper }}</div>
+      <div class="cd-add-row">
+        <input type="hidden" class="cd-edit-id" value="">
+        <input type="text" class="cd-input-desc" maxlength="255" placeholder="Digite a descrição..." autocomplete="off">
+        <button type="button" class="btn-acesso cd-btn-add">
+          <i class="fas fa-plus"></i> <span class="cd-btn-add-label">Adicionar</span>
+        </button>
+        <button type="button" class="btn btn-secondary cd-btn-cancel" hidden>Cancelar</button>
+      </div>
+    </div>
+
+    <div class="cd-block">
+      <div class="cd-block-label">BUSCAR</div>
+      <div class="cd-search-row">
+        <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+        <input type="search" class="cd-filter" placeholder="Filtrar..." autocomplete="off">
+      </div>
+    </div>
+
+    <div class="table-scroll">
+      <table class="data-table cd-table">
+        <thead>
+          <tr>
+            <th>Descrição</th>
+            <th style="width:140px;">Ações</th>
+          </tr>
+        </thead>
+        <tbody class="cd-tbody">
+          {% for row in tab['items'] %}
+          <tr data-id="{{ row.id }}" data-desc="{{ row.descricao|e }}">
+            <td><strong class="cd-desc">{{ row.descricao }}</strong></td>
+            <td class="cd-actions">
+              <button type="button" class="btn btn-secondary btn-sm cd-edit" title="Editar"><i class="fas fa-pen"></i></button>
+              <button type="button" class="btn btn-secondary btn-sm cd-del" title="Excluir"><i class="fas fa-trash"></i></button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="cd-empty" {% if tab['items'] %}hidden{% endif %}>Nenhum registro encontrado.</div>
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.cd-wrap { max-width: 960px; }
+.cd-header {
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  background: linear-gradient(135deg, var(--brand-navy) 0%, var(--brand-blue) 100%);
+  color: #fff; border-radius: 16px; padding: 1.15rem 1.35rem; margin-bottom: 1rem;
+  box-shadow: 0 8px 24px rgba(13, 43, 92, 0.22);
+}
+.cd-header-left { display: flex; align-items: center; gap: 0.9rem; }
+.cd-icon {
+  width: 48px; height: 48px; border-radius: 14px; background: #fff; color: var(--brand-blue);
+  display: flex; align-items: center; justify-content: center; font-size: 1.25rem; flex-shrink: 0;
+}
+.cd-header h1 {
+  margin: 0; font-family: var(--font-brand); font-size: 1.45rem; font-weight: 700;
+}
+.cd-header p { margin: 0.3rem 0 0; opacity: 0.9; font-size: 0.88rem; max-width: 42rem; }
+
+.cd-tabs {
+  display: flex; flex-wrap: wrap; gap: 0; border-bottom: 1px solid rgba(15, 42, 86, 0.12); margin-bottom: 1rem;
+}
+.cd-tab {
+  border: 0; background: transparent; padding: 0.7rem 1rem; cursor: pointer;
+  font: inherit; font-weight: 700; color: #64748b; border-bottom: 2px solid transparent;
+  display: inline-flex; align-items: center; gap: 0.45rem;
+}
+.cd-tab:hover { color: var(--brand-navy); }
+.cd-tab.active { color: var(--brand-blue); border-bottom-color: var(--brand-blue); }
+.cd-tab-count {
+  background: rgba(27, 79, 156, 0.1); color: var(--brand-blue);
+  font-weight: 700; font-size: 0.75rem; padding: 0.12rem 0.45rem; border-radius: 999px; min-width: 1.4rem; text-align: center;
+}
+.cd-tab.active .cd-tab-count { background: rgba(27, 79, 156, 0.18); }
+
+.cd-panel { padding: 1.15rem 1.25rem; }
+.cd-block { margin-bottom: 1rem; }
+.cd-block-label {
+  font-size: 0.72rem; font-weight: 800; letter-spacing: 0.06em; color: #64748b; margin-bottom: 0.45rem;
+}
+.cd-add-row {
+  display: flex; flex-wrap: wrap; gap: 0.55rem; align-items: center;
+}
+.cd-add-row .cd-input-desc {
+  flex: 1 1 220px; min-width: 180px;
+  padding: 0.6rem 0.75rem; border: 1px solid rgba(15, 42, 86, 0.12); border-radius: 10px;
+  font: inherit; color: var(--brand-navy); background: #fff;
+}
+.cd-search-row {
+  display: flex; align-items: center; gap: 0.55rem;
+  padding: 0.55rem 0.75rem; border: 1px solid rgba(15, 42, 86, 0.12); border-radius: 10px; background: #fff;
+}
+.cd-search-row i { color: #94a3b8; }
+.cd-search-row .cd-filter {
+  flex: 1; border: 0; outline: none; font: inherit; color: var(--brand-navy); background: transparent;
+}
+.cd-actions { white-space: nowrap; display: flex; gap: 0.35rem; }
+.cd-actions .btn { padding: 0.28rem 0.55rem; }
+.cd-empty {
+  text-align: center; padding: 1.75rem 1rem; color: #64748b; font-weight: 600;
+}
+.cd-empty[hidden] { display: none; }
+.cd-table[data-empty="1"] { display: none; }
+tr.cd-hidden { display: none; }
+</style>
+<script>
+(function () {
+  const tabsData = {{ tabs|tojson }};
+
+  function activePanel() {
+    return document.querySelector('.cd-panel:not([hidden])');
+  }
+
+  function updateCount(key, n) {
+    const badge = document.querySelector(`.cd-tab-count[data-count-for="${key}"]`);
+    if (badge) badge.textContent = String(n);
+  }
+
+  function syncEmpty(panel) {
+    const tbody = panel.querySelector('.cd-tbody');
+    const visible = [...tbody.querySelectorAll('tr')].filter(tr => !tr.classList.contains('cd-hidden'));
+    const empty = panel.querySelector('.cd-empty');
+    const table = panel.querySelector('.cd-table');
+    const none = visible.length === 0;
+    if (empty) empty.hidden = !none;
+    if (table) table.dataset.empty = none ? '1' : '0';
+  }
+
+  function applyFilter(panel) {
+    const q = (panel.querySelector('.cd-filter').value || '').trim().toLowerCase();
+    panel.querySelectorAll('.cd-tbody tr').forEach(tr => {
+      const desc = (tr.dataset.desc || '').toLowerCase();
+      tr.classList.toggle('cd-hidden', q && !desc.includes(q));
+    });
+    syncEmpty(panel);
+  }
+
+  function resetAddForm(panel) {
+    panel.querySelector('.cd-edit-id').value = '';
+    panel.querySelector('.cd-input-desc').value = '';
+    panel.querySelector('.cd-btn-add-label').textContent = 'Adicionar';
+    panel.querySelector('.cd-btn-add i').className = 'fas fa-plus';
+    panel.querySelector('.cd-btn-cancel').hidden = true;
+  }
+
+  function rowHtml(item) {
+    const tr = document.createElement('tr');
+    tr.dataset.id = item.id;
+    tr.dataset.desc = item.descricao || '';
+    tr.innerHTML = `
+      <td><strong class="cd-desc"></strong></td>
+      <td class="cd-actions">
+        <button type="button" class="btn btn-secondary btn-sm cd-edit" title="Editar"><i class="fas fa-pen"></i></button>
+        <button type="button" class="btn btn-secondary btn-sm cd-del" title="Excluir"><i class="fas fa-trash"></i></button>
+      </td>`;
+    tr.querySelector('.cd-desc').textContent = item.descricao || '';
+    return tr;
+  }
+
+  document.querySelectorAll('.cd-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.tab;
+      document.querySelectorAll('.cd-tab').forEach(b => {
+        const on = b.dataset.tab === key;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      document.querySelectorAll('.cd-panel').forEach(p => {
+        p.hidden = p.dataset.tab !== key;
+      });
+    });
+  });
+
+  document.querySelectorAll('.cd-panel').forEach(panel => {
+    const key = panel.dataset.tab;
+    const api = panel.dataset.api;
+
+    panel.querySelector('.cd-filter').addEventListener('input', () => applyFilter(panel));
+
+    panel.querySelector('.cd-btn-cancel').addEventListener('click', () => resetAddForm(panel));
+
+    panel.querySelector('.cd-btn-add').addEventListener('click', async () => {
+      const input = panel.querySelector('.cd-input-desc');
+      const descricao = (input.value || '').trim();
+      if (!descricao) {
+        input.focus();
+        return;
+      }
+      const id = panel.querySelector('.cd-edit-id').value;
+      const url = id ? `${api}/${id}` : api;
+      const method = id ? 'PUT' : 'POST';
+      const r = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ descricao }),
+      });
+      const res = await r.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(res.error || 'Erro ao salvar');
+        return;
+      }
+      const item = res.item;
+      const tbody = panel.querySelector('.cd-tbody');
+      if (id) {
+        const tr = tbody.querySelector(`tr[data-id="${id}"]`);
+        if (tr) {
+          tr.dataset.desc = item.descricao;
+          tr.querySelector('.cd-desc').textContent = item.descricao;
+        }
+      } else {
+        tbody.appendChild(rowHtml(item));
+        const total = tbody.querySelectorAll('tr').length;
+        updateCount(key, total);
+        if (tabsData[key]) tabsData[key].items = [...(tabsData[key].items || []), item];
+      }
+      resetAddForm(panel);
+      applyFilter(panel);
+    });
+
+    panel.querySelector('.cd-input-desc').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        panel.querySelector('.cd-btn-add').click();
+      }
+    });
+
+    panel.addEventListener('click', async (e) => {
+      const editBtn = e.target.closest('.cd-edit');
+      const delBtn = e.target.closest('.cd-del');
+      if (editBtn) {
+        const tr = editBtn.closest('tr');
+        panel.querySelector('.cd-edit-id').value = tr.dataset.id;
+        panel.querySelector('.cd-input-desc').value = tr.dataset.desc || '';
+        panel.querySelector('.cd-btn-add-label').textContent = 'Salvar';
+        panel.querySelector('.cd-btn-add i').className = 'fas fa-floppy-disk';
+        panel.querySelector('.cd-btn-cancel').hidden = false;
+        panel.querySelector('.cd-input-desc').focus();
+        return;
+      }
+      if (delBtn) {
+        const tr = delBtn.closest('tr');
+        if (!confirm('Excluir este registro?')) return;
+        const r = await fetch(`${api}/${tr.dataset.id}`, { method: 'DELETE' });
+        const res = await r.json().catch(() => ({}));
+        if (!res.ok) {
+          alert(res.error || 'Erro ao excluir');
+          return;
+        }
+        tr.remove();
+        const total = panel.querySelectorAll('.cd-tbody tr').length;
+        updateCount(key, total);
+        applyFilter(panel);
+      }
+    });
+
+    syncEmpty(panel);
+  });
+})();
+</script>
+{% endblock %}

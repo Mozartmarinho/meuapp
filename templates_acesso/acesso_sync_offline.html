@@ -1,0 +1,459 @@
+{% extends "base_acesso.html" %}
+{% block title %}Sincronizar Eventos Offline{% endblock %}
+{% block content %}
+<style>
+.so-wrap { max-width: 1100px; }
+.so-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: #fff;
+  border: 1px solid rgba(15, 42, 86, 0.1);
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.04);
+  padding: 1.15rem 1.3rem;
+  margin-bottom: 1.1rem;
+}
+.so-hero-left {
+  display: flex;
+  gap: 0.9rem;
+  align-items: flex-start;
+  min-width: 0;
+}
+.so-hero-icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 12px;
+  background: rgba(27, 79, 156, 0.12);
+  color: var(--brand-blue);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+.so-hero h1 {
+  margin: 0;
+  font-family: var(--font-brand);
+  font-size: 1.45rem;
+  color: var(--brand-navy);
+}
+.so-hero p {
+  margin: 0.3rem 0 0;
+  color: #64748b;
+  font-size: 0.92rem;
+  max-width: 42rem;
+}
+.so-help-panel {
+  display: none;
+  margin: -0.35rem 0 1.1rem;
+  padding: 0.9rem 1.1rem;
+  background: rgba(27, 79, 156, 0.06);
+  border: 1px solid rgba(27, 79, 156, 0.12);
+  border-radius: 12px;
+  color: var(--brand-navy);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.so-help-panel.open { display: block; }
+.so-card {
+  background: #fff;
+  border: 1px solid rgba(15, 42, 86, 0.1);
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.04);
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+.so-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.95rem 1.15rem;
+  border-bottom: 1px solid rgba(15, 42, 86, 0.08);
+}
+.so-card-title {
+  margin: 0;
+  font-family: var(--font-brand);
+  font-size: 1.05rem;
+  color: var(--brand-navy);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.so-card-title i { color: var(--brand-blue); }
+.so-card-meta {
+  color: #64748b;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.so-card-body { padding: 1.05rem 1.15rem; }
+.so-intro {
+  margin: 0 0 1rem;
+  color: #64748b;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.so-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.85rem 0.9rem;
+  align-items: end;
+}
+.so-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: #64748b;
+  font-weight: 600;
+}
+.so-filters input,
+.so-filters select {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(15, 42, 86, 0.12);
+  border-radius: 10px;
+  font: inherit;
+  color: var(--brand-navy);
+  background: #fff;
+}
+.so-filters-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: end;
+}
+.so-status {
+  margin-top: 0.85rem;
+  font-size: 0.88rem;
+  color: #64748b;
+  min-height: 1.2em;
+}
+.so-status.err { color: #b91c1c; }
+.so-status.ok { color: #15803d; }
+.so-empty {
+  padding: 2.75rem 1.25rem;
+  text-align: center;
+  color: #94a3b8;
+}
+.so-empty i {
+  display: block;
+  font-size: 1.85rem;
+  margin-bottom: 0.55rem;
+  opacity: .55;
+}
+.so-table-wrap { overflow-x: auto; }
+.so-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.so-table th,
+.so-table td {
+  padding: 0.7rem 0.85rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(15, 42, 86, 0.07);
+  vertical-align: middle;
+}
+.so-table th {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: #64748b;
+  background: #f8fafc;
+  white-space: nowrap;
+}
+.so-table tbody tr:hover { background: #f8fafc; }
+.so-table tbody tr.ja-existe { opacity: .72; }
+.so-check { width: 2.2rem; }
+.so-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  padding: 0.85rem 1.15rem;
+  border-top: 1px solid rgba(15, 42, 86, 0.08);
+  background: #fafbfc;
+}
+.so-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #64748b;
+}
+</style>
+
+<div class="so-wrap">
+  <div class="so-hero">
+    <div class="so-hero-left">
+      <div class="so-hero-icon" aria-hidden="true"><i class="fas fa-cloud-arrow-down"></i></div>
+      <div>
+        <h1>Sincronizar Eventos Offline</h1>
+        <p>Coletar eventos de equipamentos que estiveram offline e salvá-los no sistema.</p>
+      </div>
+    </div>
+    <button type="button" class="btn btn-secondary btn-sm" id="btnAjuda">
+      <i class="fas fa-circle-question"></i> Ajuda
+    </button>
+  </div>
+
+  <div class="so-help-panel" id="ajudaPanel">
+    Selecione o equipamento e o período em que ele esteve sem comunicação.
+    <strong>Coletar Eventos Offline</strong> consulta o buffer do dispositivo (simulado) e cruza com eventos já existentes.
+    Revise a lista e use <strong>Salvar no sistema</strong> para persistir apenas os eventos novos em <em>AcessoEvento</em>.
+  </div>
+
+  <div class="so-card">
+    <div class="so-card-head">
+      <h2 class="so-card-title"><i class="fas fa-sliders"></i> 1. Selecione os Parâmetros</h2>
+    </div>
+    <div class="so-card-body">
+      <p class="so-intro">
+        Informe o equipamento e o intervalo de datas para coletar os eventos armazenados localmente enquanto o dispositivo esteve offline.
+      </p>
+      <form id="formColetar" class="so-filters" autocomplete="off">
+        <label>Equipamento
+          <select name="equipamento_id" id="f_equipamento" required>
+            <option value="">-- Escolha um equipamento --</option>
+            {% for e in equipamentos %}
+            <option value="{{ e.id }}">{{ e.nome }}{% if e.local %} — {{ e.local }}{% endif %}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Data Início
+          <input type="date" name="data_inicio" id="f_inicio" value="{{ data_inicio }}" required>
+        </label>
+        <label>Data Fim
+          <input type="date" name="data_fim" id="f_fim" value="{{ data_fim }}" required>
+        </label>
+        <label>Status
+          <select name="status" id="f_status">
+            <option value="Todos">Todos</option>
+            <option value="Liberado">Liberado</option>
+            <option value="Negado">Negado</option>
+            <option value="Desistência">Desistência</option>
+          </select>
+        </label>
+        <div class="so-filters-actions">
+          <button type="submit" class="btn-acesso" id="btnColetar">
+            <i class="fas fa-cloud-arrow-down"></i> Coletar Eventos Offline
+          </button>
+        </div>
+      </form>
+      <div class="so-status" id="coletarStatus"></div>
+    </div>
+  </div>
+
+  <div class="so-card" id="resultCard">
+    <div class="so-card-head">
+      <h2 class="so-card-title"><i class="fas fa-list-check"></i> 2. Revise e Salve</h2>
+      <div class="so-card-meta" id="resultMeta">Nenhuma coleta realizada</div>
+    </div>
+    <div id="resultEmpty" class="so-empty">
+      <i class="fas fa-inbox"></i>
+      <p>Os eventos coletados aparecerão aqui para revisão.</p>
+    </div>
+    <div id="resultTableWrap" class="so-table-wrap" hidden>
+      <table class="so-table">
+        <thead>
+          <tr>
+            <th class="so-check"><input type="checkbox" id="chkAll" title="Selecionar todos os novos"></th>
+            <th>Data/Hora</th>
+            <th>Pessoa</th>
+            <th>Matrícula</th>
+            <th>Sentido</th>
+            <th>Status</th>
+            <th>Origem</th>
+          </tr>
+        </thead>
+        <tbody id="resultBody"></tbody>
+      </table>
+    </div>
+    <div class="so-actions" id="resultActions" hidden>
+      <button type="button" class="btn btn-secondary btn-sm" id="btnLimpar">Limpar</button>
+      <button type="button" class="btn-acesso" id="btnSalvar">
+        <i class="fas fa-floppy-disk"></i> Salvar no sistema
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const API_COLETAR = {{ url_for('acesso.api_sync_offline_coletar')|tojson }};
+  const API_SALVAR = {{ url_for('acesso.api_sync_offline_salvar')|tojson }};
+  let collected = [];
+
+  const ajudaPanel = document.getElementById('ajudaPanel');
+  document.getElementById('btnAjuda')?.addEventListener('click', () => {
+    ajudaPanel.classList.toggle('open');
+  });
+
+  const statusEl = document.getElementById('coletarStatus');
+  const resultMeta = document.getElementById('resultMeta');
+  const resultEmpty = document.getElementById('resultEmpty');
+  const resultTableWrap = document.getElementById('resultTableWrap');
+  const resultBody = document.getElementById('resultBody');
+  const resultActions = document.getElementById('resultActions');
+  const chkAll = document.getElementById('chkAll');
+
+  function setStatus(msg, kind) {
+    statusEl.textContent = msg || '';
+    statusEl.className = 'so-status' + (kind ? ' ' + kind : '');
+  }
+
+  function badgeClass(st) {
+    if (st === 'Liberado') return 'badge-liberado';
+    if (st === 'Negado') return 'badge-negado';
+    return 'badge-desistencia';
+  }
+
+  function renderResults(eventos, metaMsg) {
+    collected = eventos || [];
+    resultMeta.textContent = metaMsg || `${collected.length} evento(s)`;
+    resultBody.innerHTML = '';
+
+    if (!collected.length) {
+      resultEmpty.hidden = false;
+      resultTableWrap.hidden = true;
+      resultActions.hidden = true;
+      resultEmpty.querySelector('p').textContent = 'Nenhum evento encontrado no período.';
+      return;
+    }
+
+    resultEmpty.hidden = true;
+    resultTableWrap.hidden = false;
+    resultActions.hidden = false;
+
+    collected.forEach((ev, i) => {
+      const tr = document.createElement('tr');
+      if (ev.ja_existe) tr.classList.add('ja-existe');
+      const disabled = ev.ja_existe ? 'disabled' : '';
+      const checked = ev.ja_existe ? '' : 'checked';
+      tr.innerHTML = `
+        <td class="so-check">
+          <input type="checkbox" class="chk-ev" data-idx="${i}" ${checked} ${disabled}
+            title="${ev.ja_existe ? 'Já existe no sistema' : 'Incluir no salvamento'}">
+        </td>
+        <td>${ev.data_hora_fmt || ev.data_hora || '—'}</td>
+        <td><strong>${ev.nome || '—'}</strong></td>
+        <td>${ev.pessoa_ref || '—'}</td>
+        <td>${ev.direction || '—'}</td>
+        <td><span class="badge-status ${badgeClass(ev.status)}">${ev.status || '—'}</span></td>
+        <td>
+          <span class="so-tag">
+            <i class="fas ${ev.ja_existe ? 'fa-database' : 'fa-microchip'}"></i>
+            ${ev.ja_existe ? 'Já no sistema' : 'Novo'}
+          </span>
+        </td>`;
+      resultBody.appendChild(tr);
+    });
+    syncChkAll();
+  }
+
+  function syncChkAll() {
+    const boxes = [...document.querySelectorAll('.chk-ev:not(:disabled)')];
+    chkAll.checked = boxes.length > 0 && boxes.every(b => b.checked);
+    chkAll.indeterminate = boxes.some(b => b.checked) && !chkAll.checked;
+  }
+
+  chkAll?.addEventListener('change', () => {
+    document.querySelectorAll('.chk-ev:not(:disabled)').forEach(b => {
+      b.checked = chkAll.checked;
+    });
+  });
+
+  resultBody.addEventListener('change', (e) => {
+    if (e.target.classList.contains('chk-ev')) syncChkAll();
+  });
+
+  document.getElementById('formColetar').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const eq = document.getElementById('f_equipamento').value;
+    if (!eq) {
+      setStatus('Selecione um equipamento.', 'err');
+      return;
+    }
+    const btn = document.getElementById('btnColetar');
+    btn.disabled = true;
+    setStatus('Coletando eventos offline…');
+    try {
+      const res = await fetch(API_COLETAR, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          equipamento_id: eq,
+          data_inicio: document.getElementById('f_inicio').value,
+          data_fim: document.getElementById('f_fim').value,
+          status: document.getElementById('f_status').value,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setStatus(data.error || 'Falha na coleta.', 'err');
+        return;
+      }
+      setStatus(data.message || 'Coleta concluída.', 'ok');
+      renderResults(data.eventos || [], data.message);
+    } catch (err) {
+      setStatus('Erro de comunicação ao coletar.', 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('btnLimpar')?.addEventListener('click', () => {
+    collected = [];
+    resultMeta.textContent = 'Nenhuma coleta realizada';
+    resultEmpty.hidden = false;
+    resultEmpty.querySelector('p').textContent = 'Os eventos coletados aparecerão aqui para revisão.';
+    resultTableWrap.hidden = true;
+    resultActions.hidden = true;
+    resultBody.innerHTML = '';
+    setStatus('');
+  });
+
+  document.getElementById('btnSalvar')?.addEventListener('click', async () => {
+    const idxs = [...document.querySelectorAll('.chk-ev:checked:not(:disabled)')]
+      .map(b => Number(b.dataset.idx));
+    const selecionados = idxs.map(i => collected[i]).filter(Boolean);
+    if (!selecionados.length) {
+      setStatus('Selecione ao menos um evento novo para salvar.', 'err');
+      return;
+    }
+    if (!confirm(`Salvar ${selecionados.length} evento(s) no sistema?`)) return;
+
+    const btn = document.getElementById('btnSalvar');
+    btn.disabled = true;
+    setStatus('Salvando eventos…');
+    try {
+      const res = await fetch(API_SALVAR, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventos: selecionados }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setStatus(data.error || 'Falha ao salvar.', 'err');
+        return;
+      }
+      setStatus(data.message || 'Eventos salvos.', 'ok');
+      // Marca salvos como existentes e desmarca
+      idxs.forEach(i => {
+        if (collected[i]) collected[i].ja_existe = true;
+      });
+      renderResults(collected, data.message);
+    } catch (err) {
+      setStatus('Erro de comunicação ao salvar.', 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+})();
+</script>
+{% endblock %}

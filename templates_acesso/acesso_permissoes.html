@@ -1,0 +1,499 @@
+{% extends "base_acesso.html" %}
+{% block title %}Central de Permissões{% endblock %}
+{% block content %}
+<style>
+.cp-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: #fff;
+  border: 1px solid rgba(15, 42, 86, 0.1);
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.04);
+  padding: 1.15rem 1.3rem;
+  margin-bottom: 1.1rem;
+}
+.cp-hero-left {
+  display: flex;
+  gap: 0.9rem;
+  align-items: flex-start;
+  min-width: 0;
+}
+.cp-hero-icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 12px;
+  background: rgba(27, 79, 156, 0.12);
+  color: var(--brand-blue);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+.cp-hero h1 {
+  margin: 0;
+  font-family: var(--font-brand);
+  font-size: 1.45rem;
+  color: var(--brand-navy);
+}
+.cp-hero p {
+  margin: 0.3rem 0 0;
+  color: #64748b;
+  font-size: 0.92rem;
+  max-width: 42rem;
+}
+.cp-btn-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 0.95rem;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 42, 86, 0.14);
+  background: #fff;
+  color: var(--brand-navy);
+  font-weight: 700;
+  font-family: var(--font-body);
+  cursor: pointer;
+}
+.cp-btn-help:hover { background: var(--brand-mist); }
+
+.cp-perfil-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: linear-gradient(135deg, rgba(27, 79, 156, 0.12) 0%, rgba(13, 43, 92, 0.08) 100%);
+  border: 1px solid rgba(27, 79, 156, 0.22);
+  border-radius: 14px;
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 1.1rem;
+}
+.cp-perfil-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 220px;
+}
+.cp-perfil-field label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--brand-blue);
+  text-transform: uppercase;
+}
+.cp-perfil-field select {
+  max-width: 420px;
+  width: 100%;
+  padding: 0.7rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 42, 86, 0.14);
+  background: #fff;
+  color: var(--brand-navy);
+  font: inherit;
+  font-weight: 600;
+}
+.cp-perfil-icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 12px;
+  background: rgba(27, 79, 156, 0.15);
+  color: var(--brand-blue);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.cp-empty {
+  background: #fff;
+  border: 1px dashed rgba(15, 42, 86, 0.18);
+  border-radius: 14px;
+  padding: 3.2rem 1.5rem;
+  text-align: center;
+  color: #64748b;
+}
+.cp-empty-icon {
+  width: 4.5rem;
+  height: 4.5rem;
+  margin: 0 auto 1rem;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.85rem;
+}
+.cp-empty h3 {
+  margin: 0 0 0.35rem;
+  font-family: var(--font-brand);
+  color: var(--brand-navy);
+  font-size: 1.15rem;
+}
+.cp-empty p { margin: 0; font-size: 0.92rem; }
+
+.cp-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.cp-toolbar h2 {
+  margin: 0;
+  font-family: var(--font-brand);
+  font-size: 1.1rem;
+  color: var(--brand-navy);
+}
+.cp-toolbar .hint {
+  margin: 0.2rem 0 0;
+  color: #64748b;
+  font-size: 0.88rem;
+}
+
+.cp-group {
+  background: #fff;
+  border: 1px solid rgba(15, 42, 86, 0.1);
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.04);
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+.cp-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1.1rem;
+  background: #f8fafc;
+  border-bottom: 1px solid rgba(15, 42, 86, 0.08);
+}
+.cp-group-head h3 {
+  margin: 0;
+  font-family: var(--font-brand);
+  font-size: 1rem;
+  color: var(--brand-navy);
+}
+.cp-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 42, 86, 0.14);
+  background: #fff;
+  color: #64748b;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-body);
+}
+.cp-group-toggle.on {
+  background: rgba(27, 79, 156, 0.1);
+  border-color: rgba(27, 79, 156, 0.28);
+  color: var(--brand-blue);
+}
+.cp-group-toggle .sw {
+  width: 1.7rem;
+  height: 0.95rem;
+  border-radius: 999px;
+  background: #cbd5e1;
+  position: relative;
+  flex-shrink: 0;
+}
+.cp-group-toggle.on .sw { background: var(--brand-blue); }
+.cp-group-toggle .sw::after {
+  content: '';
+  position: absolute;
+  top: 0.12rem;
+  left: 0.12rem;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.15s ease;
+}
+.cp-group-toggle.on .sw::after { left: 0.88rem; }
+
+.cp-services {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.75rem;
+  padding: 1rem 1.1rem 1.15rem;
+}
+
+.cp-svc {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.55rem;
+  min-height: 7.2rem;
+  padding: 0.95rem 0.9rem;
+  border-radius: 12px;
+  border: 1.5px solid rgba(148, 163, 184, 0.45);
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-body);
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  user-select: none;
+}
+.cp-svc:hover { box-shadow: 0 4px 12px rgba(15, 42, 86, 0.06); }
+.cp-svc .svc-icon {
+  width: 2.15rem;
+  height: 2.15rem;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+.cp-svc .svc-label {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--brand-navy);
+  line-height: 1.25;
+  padding-right: 1.4rem;
+}
+.cp-svc .svc-state {
+  margin-top: auto;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+}
+.cp-svc .svc-check {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.7rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  border: 2px solid #cbd5e1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  font-size: 0.65rem;
+  background: #fff;
+}
+
+.cp-svc.active {
+  background: rgba(27, 79, 156, 0.08);
+  border-color: rgba(27, 79, 156, 0.55);
+  box-shadow: 0 0 0 1px rgba(27, 79, 156, 0.08);
+}
+.cp-svc.active .svc-icon {
+  background: rgba(27, 79, 156, 0.14);
+  color: var(--brand-blue);
+}
+.cp-svc.active .svc-state { color: var(--brand-blue); }
+.cp-svc.active .svc-check {
+  border-color: var(--brand-blue);
+  background: var(--brand-blue);
+  color: #fff;
+}
+
+.cp-toast {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 50;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: var(--brand-navy);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.9rem;
+  box-shadow: 0 8px 24px rgba(15, 42, 86, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.cp-toast.show { opacity: 1; transform: translateY(0); }
+</style>
+
+<div class="cp-hero">
+  <div class="cp-hero-left">
+    <div class="cp-hero-icon" aria-hidden="true"><i class="fas fa-shield-halved"></i></div>
+    <div>
+      <h1>Central de Permissões</h1>
+      <p>Ative ou desative os serviços disponíveis para cada perfil.</p>
+    </div>
+  </div>
+  <button type="button" class="cp-btn-help" id="btnAjuda">
+    <i class="fas fa-circle-question"></i> Ajuda
+  </button>
+</div>
+
+<div class="cp-perfil-card">
+  <div class="cp-perfil-field">
+    <label for="perfilSelect">Perfil de acesso</label>
+    <select id="perfilSelect" name="perfil">
+      <option value="">Selecione o perfil para gerenciar...</option>
+      {% for p in perfis %}
+      <option value="{{ p.value }}" {% if perfil == p.value %}selected{% endif %}>{{ p.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="cp-perfil-icon" aria-hidden="true">
+    <i class="fas fa-user-gear"></i>
+  </div>
+</div>
+
+{% if perfil %}
+<div class="cp-toolbar">
+  <div>
+    <h2>Serviços do perfil {{ perfil_label }}</h2>
+    <p class="hint">Clique nos cards para ativar ou desativar. Use “Ativar Grupo” para marcar todos do bloco.</p>
+  </div>
+  <button type="button" class="btn-acesso" id="btnSalvarPerm">
+    <i class="fas fa-save"></i> Salvar permissões
+  </button>
+</div>
+
+{% for grupo, itens in matriz.items() %}
+<section class="cp-group" data-group="{{ grupo }}">
+  <div class="cp-group-head">
+    <h3>{{ grupo }}</h3>
+    <button type="button" class="cp-group-toggle" data-group-toggle title="Ativar ou desativar todo o grupo">
+      <span class="sw" aria-hidden="true"></span>
+      <span class="txt">Ativar Grupo</span>
+    </button>
+  </div>
+  <div class="cp-services">
+    {% for item in itens %}
+    <button type="button"
+      class="cp-svc {% if item.chave in selecionadas %}active{% endif %}"
+      data-chave="{{ item.chave }}"
+      aria-pressed="{{ 'true' if item.chave in selecionadas else 'false' }}">
+      <span class="svc-icon"><i class="fas {{ item.icone }}"></i></span>
+      <span class="svc-label">{{ item.label }}</span>
+      <span class="svc-state">{% if item.chave in selecionadas %}ATIVO{% else %}INATIVO{% endif %}</span>
+      <span class="svc-check"><i class="fas fa-check"></i></span>
+    </button>
+    {% endfor %}
+  </div>
+</section>
+{% endfor %}
+{% else %}
+<div class="cp-empty">
+  <div class="cp-empty-icon" aria-hidden="true"><i class="fas fa-arrow-pointer"></i></div>
+  <h3>Selecione um perfil acima</h3>
+  <p>Os serviços disponíveis aparecerão aqui.</p>
+</div>
+{% endif %}
+
+<div class="cp-toast" id="cpToast" role="status"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const perfilSelect = document.getElementById('perfilSelect');
+  const toastEl = document.getElementById('cpToast');
+  let toastTimer = null;
+
+  function showToast(msg) {
+    if (!toastEl) return;
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2400);
+  }
+
+  document.getElementById('btnAjuda')?.addEventListener('click', () => {
+    alert(
+      'Central de Permissões\n\n' +
+      '1. Selecione um perfil (admin, Agente, Operador, Consulta).\n' +
+      '2. Clique nos cards de serviço para ativar ou desativar.\n' +
+      '3. Use “Ativar Grupo” para marcar/desmarcar todos os serviços do bloco.\n' +
+      '4. Clique em Salvar permissões para gravar as alterações do perfil.'
+    );
+  });
+
+  perfilSelect?.addEventListener('change', () => {
+    const v = perfilSelect.value || '';
+    const url = new URL(window.location.href);
+    if (v) url.searchParams.set('perfil', v);
+    else url.searchParams.delete('perfil');
+    window.location.href = url.pathname + (url.search || '');
+  });
+
+  function syncGroupToggle(groupEl) {
+    const cards = groupEl.querySelectorAll('.cp-svc');
+    const btn = groupEl.querySelector('[data-group-toggle]');
+    if (!btn || !cards.length) return;
+    const allOn = Array.from(cards).every(c => c.classList.contains('active'));
+    btn.classList.toggle('on', allOn);
+    btn.querySelector('.txt').textContent = allOn ? 'Grupo Ativo' : 'Ativar Grupo';
+  }
+
+  function setCardActive(card, on) {
+    card.classList.toggle('active', on);
+    card.setAttribute('aria-pressed', on ? 'true' : 'false');
+    const state = card.querySelector('.svc-state');
+    if (state) state.textContent = on ? 'ATIVO' : 'INATIVO';
+  }
+
+  document.querySelectorAll('.cp-group').forEach(groupEl => {
+    syncGroupToggle(groupEl);
+
+    groupEl.querySelectorAll('.cp-svc').forEach(card => {
+      card.addEventListener('click', () => {
+        setCardActive(card, !card.classList.contains('active'));
+        syncGroupToggle(groupEl);
+      });
+    });
+
+    groupEl.querySelector('[data-group-toggle]')?.addEventListener('click', () => {
+      const cards = groupEl.querySelectorAll('.cp-svc');
+      const turnOn = !Array.from(cards).every(c => c.classList.contains('active'));
+      cards.forEach(c => setCardActive(c, turnOn));
+      syncGroupToggle(groupEl);
+    });
+  });
+
+  {% if perfil %}
+  const btnSalvar = document.getElementById('btnSalvarPerm');
+  if (btnSalvar) {
+    const API = {{ url_for('acesso.api_permissoes_perfil', perfil=perfil)|tojson }};
+    btnSalvar.addEventListener('click', async () => {
+      const chaves = Array.from(document.querySelectorAll('.cp-svc.active'))
+        .map(c => c.dataset.chave)
+        .filter(Boolean);
+      btnSalvar.disabled = true;
+      try {
+        const r = await fetch(API, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ permissoes: chaves }),
+        });
+        const res = await r.json();
+        if (!res.ok) {
+          alert(res.error || 'Erro ao salvar');
+          return;
+        }
+        showToast('Permissões do perfil salvas.');
+      } catch (e) {
+        alert('Falha de comunicação ao salvar.');
+      } finally {
+        btnSalvar.disabled = false;
+      }
+    });
+  }
+  {% endif %}
+})();
+</script>
+{% endblock %}

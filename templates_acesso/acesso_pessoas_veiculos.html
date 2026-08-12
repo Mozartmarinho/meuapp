@@ -1,0 +1,598 @@
+{% extends "base_acesso.html" %}
+{% block title %}Veículos{% endblock %}
+{% block content %}
+<div class="pv-wrap">
+  <header class="pv-hero card">
+    <div>
+      <h1>Veículos</h1>
+      <p>Gerencie proprietários e sua frota de veículos cadastrados.</p>
+    </div>
+    <button type="button" class="btn btn-secondary btn-sm" id="btnAjuda">
+      <i class="fas fa-circle-info"></i> Ajuda
+    </button>
+  </header>
+
+  <div class="pv-tabs" role="tablist">
+    <button type="button" class="pv-tab active" data-tab="busca" role="tab" id="tabBusca">
+      <i class="fas fa-magnifying-glass"></i> Busca &amp; Proprietários
+    </button>
+    <button type="button" class="pv-tab" data-tab="detalhes" role="tab" id="tabDetalhes">
+      <i class="fas fa-user"></i> Detalhes do Proprietário
+    </button>
+  </div>
+
+  <div id="panelBusca">
+    <div class="pv-grid">
+      <aside class="card pv-panel">
+        <h2>Filtros de Busca</h2>
+        <form id="formFiltros" class="pv-filters" autocomplete="off">
+          <label>Nome ou Matrícula
+            <input type="search" name="q" id="f_q" placeholder="Digite nome ou matrícula…">
+          </label>
+          <div class="pv-filter-actions">
+            <button type="submit" class="btn-acesso"><i class="fas fa-filter"></i> Buscar</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btnLimparFiltros">Limpar</button>
+          </div>
+        </form>
+
+        <div class="pv-list-head">
+          <h2>Proprietários</h2>
+          <span class="pv-count" id="listaCount">0</span>
+        </div>
+        <ul class="pv-user-list" id="listaPessoas"></ul>
+        <div class="pv-empty" id="emptyPessoas" hidden>
+          <i class="fas fa-users"></i>
+          <p>Nenhum proprietário encontrado</p>
+        </div>
+        <div class="pv-pager" id="pagerPessoas">
+          <button type="button" class="btn btn-secondary btn-sm" id="btnPrevPage" disabled>‹</button>
+          <span id="pagerLabel">0–0 de 0</span>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnNextPage" disabled>›</button>
+        </div>
+      </aside>
+
+      <section class="pv-main">
+        <div class="pv-kpi-row">
+          <div class="pv-kpi">
+            <div class="pv-kpi-v" id="kpiProprietarios">0</div>
+            <div class="pv-kpi-l">Proprietários</div>
+          </div>
+          <div class="pv-kpi">
+            <div class="pv-kpi-v" id="kpiTotalVeiculos">0</div>
+            <div class="pv-kpi-l">Total Veículos</div>
+          </div>
+          <div class="pv-kpi">
+            <div class="pv-kpi-v green" id="kpiVeiculosAtivos">0</div>
+            <div class="pv-kpi-l">Veículos Ativos</div>
+          </div>
+        </div>
+
+        <div class="card pv-panel pv-select-hint" id="hintSelect">
+          <div class="pv-empty">
+            <i class="fas fa-car-side"></i>
+            <strong>Selecione um proprietário ao lado</strong>
+            <p>Os veículos vinculados aparecerão na aba Detalhes do Proprietário.</p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="panelDetalhes" hidden>
+    <div class="card pv-panel">
+      <div class="pv-empty" id="emptyDetalhe">
+        <i class="fas fa-car"></i>
+        <strong>Nenhum proprietário selecionado</strong>
+        <p>Selecione um proprietário na aba Busca &amp; Proprietários para ver a frota.</p>
+      </div>
+
+      <div id="conteudoDetalhe" hidden>
+        <div class="pv-detail-head">
+          <div class="pv-detail-user">
+            <div class="pv-avatar lg" id="detAvatar">?</div>
+            <div>
+              <h2 id="detNome">—</h2>
+              <p class="pv-meta" id="detMeta"></p>
+            </div>
+          </div>
+          <button type="button" class="btn-acesso" id="btnAdicionar">
+            <i class="fas fa-plus"></i> Adicionar Veículo
+          </button>
+        </div>
+
+        <div class="pv-veic-section">
+          <h3 class="pv-section-title">Veículos do Proprietário</h3>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Placa</th>
+                  <th>Modelo</th>
+                  <th>Cor</th>
+                  <th>Tag UHF</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="tbodyVeiculos"></tbody>
+            </table>
+          </div>
+          <div class="pv-empty-mini" id="emptyVeiculos" hidden>Nenhum veículo cadastrado para este proprietário.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Adicionar / Editar Veículo -->
+<div class="modal-backdrop" id="modalVeiculo" hidden>
+  <div class="modal-card" style="max-width:480px;">
+    <div class="modal-head">
+      <div>
+        <h3 id="modalVeiculoTitle">Adicionar Veículo</h3>
+        <p class="modal-sub" id="modalVeiculoSub"></p>
+      </div>
+      <button type="button" class="modal-close" data-close="modalVeiculo" aria-label="Fechar">&times;</button>
+    </div>
+    <form id="formVeiculo" class="modal-body" autocomplete="off">
+      <input type="hidden" id="f_id" value="">
+      <label class="req">Placa
+        <input type="text" id="f_placa" maxlength="10" placeholder="ABC1D23" required>
+      </label>
+      <label>Modelo
+        <input type="text" id="f_modelo" maxlength="80" placeholder="Ex.: Gol 1.0">
+      </label>
+      <label>Cor
+        <input type="text" id="f_cor" maxlength="40" placeholder="Ex.: Prata">
+      </label>
+      <label>Tag UHF
+        <input type="text" id="f_tag_uhf" maxlength="60" placeholder="Identificador da tag">
+      </label>
+      <label class="pv-toggle-row">
+        <span>Ativo</span>
+        <label class="pv-toggle">
+          <input type="checkbox" id="f_ativo" checked>
+          <span class="pv-toggle-track" aria-hidden="true"></span>
+        </label>
+      </label>
+    </form>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" data-close="modalVeiculo">Cancelar</button>
+      <button type="button" class="btn-acesso" id="btnSalvarVeiculo">
+        <i class="fas fa-check"></i> Salvar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Ajuda -->
+<div class="modal-backdrop" id="modalAjuda" hidden>
+  <div class="modal-card" style="max-width:480px;">
+    <div class="modal-head">
+      <div><h3>Ajuda — Veículos</h3></div>
+      <button type="button" class="modal-close" data-close="modalAjuda" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="modal-body" style="color:#475569;line-height:1.55;">
+      <p style="margin:0 0 .75rem;">
+        Cadastre a frota vinculada a cada colaborador. Busque por nome ou matrícula,
+        selecione o proprietário e adicione veículos com placa, modelo, cor e tag UHF.
+      </p>
+      <ul style="margin:0;padding-left:1.2rem;">
+        <li>Os KPIs mostram o total de proprietários listados e a frota cadastrada.</li>
+        <li>Placas e tags UHF devem ser únicas no sistema.</li>
+        <li>Desative um veículo sem excluí-lo para manter o histórico.</li>
+      </ul>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn-acesso" data-close="modalAjuda">Entendi</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.pv-wrap { max-width: 1280px; }
+.pv-hero {
+  display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; align-items:center;
+  padding:1.15rem 1.25rem; margin-bottom:1rem;
+  background:#fff; border:1px solid rgba(15,42,86,.1); border-radius:14px;
+  box-shadow:0 4px 12px rgba(0,0,0,.04);
+}
+.pv-hero h1 { margin:0; font-family:var(--font-brand); font-size:1.45rem; color:var(--brand-navy); }
+.pv-hero p { margin:.3rem 0 0; color:#64748b; font-size:.92rem; }
+
+.pv-tabs {
+  display:flex; gap:0; border-bottom:1px solid rgba(15,42,86,.1); margin-bottom:1rem;
+}
+.pv-tab {
+  border:0; background:transparent; padding:.65rem 1rem; cursor:pointer;
+  font:inherit; font-weight:700; color:#64748b; border-bottom:2px solid transparent;
+  display:inline-flex; align-items:center; gap:.4rem;
+}
+.pv-tab:hover { color:var(--brand-navy); }
+.pv-tab.active { color:var(--brand-blue); border-bottom-color:var(--brand-blue); }
+
+.pv-grid {
+  display:grid; grid-template-columns:minmax(280px,360px) 1fr; gap:1rem; align-items:start;
+}
+@media (max-width:900px){ .pv-grid { grid-template-columns:1fr; } }
+.pv-panel {
+  padding:1.1rem 1.2rem; background:#fff; border:1px solid rgba(15,42,86,.1);
+  border-radius:14px; box-shadow:0 4px 12px rgba(0,0,0,.04);
+}
+.pv-panel h2 {
+  margin:0 0 .9rem; font-family:var(--font-brand); font-size:1.1rem; color:var(--brand-navy);
+}
+.pv-filters { display:flex; flex-direction:column; gap:.75rem; margin-bottom:1.1rem; }
+.pv-filters label {
+  display:flex; flex-direction:column; gap:.3rem; font-size:.82rem; font-weight:700; color:#64748b;
+}
+.pv-filters input,
+.modal-body input {
+  padding:.55rem .7rem; border:1px solid rgba(15,42,86,.12); border-radius:10px;
+  font:inherit; color:var(--brand-navy); background:#fff;
+}
+.pv-filter-actions { display:flex; gap:.5rem; flex-wrap:wrap; }
+
+.pv-kpi-row {
+  display:grid; grid-template-columns:repeat(3,1fr); gap:.75rem; margin-bottom:1rem;
+}
+@media (max-width:700px){ .pv-kpi-row { grid-template-columns:1fr; } }
+.pv-kpi {
+  background:#fff; border:1px solid rgba(15,42,86,.1); border-radius:12px;
+  padding:.85rem 1rem; box-shadow:0 4px 12px rgba(0,0,0,.04);
+}
+.pv-kpi-v { font-family:var(--font-brand); font-size:1.55rem; font-weight:800; color:var(--brand-navy); }
+.pv-kpi-v.green { color:#16a34a; }
+.pv-kpi-l {
+  color:#64748b; font-size:.72rem; font-weight:700; margin-top:.15rem;
+  text-transform:uppercase; letter-spacing:.04em;
+}
+
+.pv-list-head {
+  display:flex; justify-content:space-between; align-items:center; gap:.75rem; margin-bottom:.65rem;
+}
+.pv-list-head h2 { margin:0; font-size:1rem; }
+.pv-count { font-size:.82rem; font-weight:700; color:#94a3b8; }
+
+.pv-user-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.35rem; max-height:52vh; overflow:auto; }
+.pv-user-item {
+  display:flex; align-items:center; gap:.75rem; padding:.65rem .75rem;
+  border:1px solid rgba(15,42,86,.08); border-radius:12px; cursor:pointer;
+  background:#fff; transition:background .15s, border-color .15s;
+}
+.pv-user-item:hover { background:rgba(27,79,156,.06); border-color:rgba(27,79,156,.25); }
+.pv-user-item.active {
+  background:rgba(27,79,156,.12); border-color:var(--brand-blue);
+  box-shadow:inset 3px 0 0 var(--brand-blue);
+}
+.pv-avatar {
+  width:2.25rem; height:2.25rem; border-radius:50%;
+  background:rgba(27,79,156,.12); color:var(--brand-blue);
+  display:inline-flex; align-items:center; justify-content:center;
+  font-weight:800; font-size:.85rem; flex-shrink:0;
+}
+.pv-avatar.lg { width:3rem; height:3rem; font-size:1rem; }
+.pv-user-info { min-width:0; flex:1; }
+.pv-user-info strong {
+  display:block; color:var(--brand-navy); font-size:.95rem;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.pv-user-info span { color:#94a3b8; font-size:.8rem; font-weight:600; }
+.pv-badge-count {
+  font-size:.75rem; font-weight:800; color:var(--brand-blue);
+  background:rgba(27,79,156,.1); border-radius:999px; padding:.15rem .45rem;
+}
+
+.pv-pager {
+  display:flex; align-items:center; justify-content:flex-end; gap:.5rem;
+  margin-top:.85rem; font-size:.82rem; font-weight:700; color:#64748b;
+}
+.pv-empty {
+  text-align:center; padding:2.5rem 1rem; color:#94a3b8;
+  display:flex; flex-direction:column; align-items:center; gap:.45rem;
+}
+.pv-empty i { font-size:1.8rem; opacity:.7; }
+.pv-empty p, .pv-empty strong { margin:0; }
+.pv-empty-mini {
+  text-align:center; padding:1.25rem; color:#94a3b8; font-weight:600; font-size:.9rem;
+}
+.pv-select-hint { min-height:220px; display:flex; align-items:center; justify-content:center; }
+
+.pv-detail-head {
+  display:flex; justify-content:space-between; align-items:center; gap:1rem;
+  flex-wrap:wrap; margin-bottom:1rem;
+}
+.pv-detail-user { display:flex; align-items:center; gap:.85rem; }
+.pv-detail-user h2 { margin:0; font-family:var(--font-brand); color:var(--brand-navy); font-size:1.25rem; }
+.pv-meta { margin:.2rem 0 0; color:#64748b; font-size:.88rem; }
+.pv-section-title {
+  margin:0 0 .75rem; font-family:var(--font-brand); font-size:1.05rem; color:var(--brand-navy);
+}
+
+.pv-toggle-row {
+  flex-direction:row !important; align-items:center; justify-content:space-between;
+}
+.pv-toggle { display:inline-flex; align-items:center; cursor:pointer; }
+.pv-toggle input { position:absolute; opacity:0; width:0; height:0; }
+.pv-toggle-track {
+  width:2.6rem; height:1.4rem; border-radius:999px; background:#cbd5e1;
+  position:relative; transition:background .15s;
+}
+.pv-toggle-track::after {
+  content:''; position:absolute; top:2px; left:2px; width:1.1rem; height:1.1rem;
+  border-radius:50%; background:#fff; transition:transform .15s;
+  box-shadow:0 1px 3px rgba(0,0,0,.2);
+}
+.pv-toggle input:checked + .pv-toggle-track { background:#16a34a; }
+.pv-toggle input:checked + .pv-toggle-track::after { transform:translateX(1.2rem); }
+
+.pv-acao-btn {
+  border:none; background:transparent; cursor:pointer; padding:.3rem .4rem;
+  color:#64748b; border-radius:6px; font-size:.95rem;
+}
+.pv-acao-btn:hover { background:rgba(15,42,86,.06); color:var(--brand-blue); }
+.pv-acao-btn.danger { color:#dc2626; }
+.pv-acao-btn.danger:hover { background:rgba(220,38,38,.08); color:#b91c1c; }
+
+.modal-backdrop {
+  position:fixed; inset:0; background:rgba(13,43,92,.45); z-index:2000;
+  display:grid; place-items:center; padding:1rem;
+}
+.modal-backdrop[hidden] { display:none !important; }
+.modal-card {
+  width:min(480px,100%); background:#fff; border-radius:16px; overflow:hidden;
+  box-shadow:0 24px 48px rgba(13,43,92,.25); max-height:92vh; display:flex; flex-direction:column;
+}
+.modal-head, .modal-foot {
+  display:flex; justify-content:space-between; align-items:flex-start; gap:.75rem;
+  padding:.95rem 1.2rem; border-bottom:1px solid rgba(15,42,86,.08);
+}
+.modal-foot { border-bottom:0; border-top:1px solid rgba(15,42,86,.08); justify-content:flex-end; align-items:center; }
+.modal-head h3 { margin:0; font-family:var(--font-brand); color:var(--brand-navy); font-size:1.25rem; }
+.modal-sub { margin:.35rem 0 0; color:#64748b; font-size:.88rem; }
+.modal-close { border:none; background:transparent; font-size:1.5rem; cursor:pointer; color:#64748b; line-height:1; }
+.modal-body { padding:1.15rem 1.2rem; overflow:auto; display:flex; flex-direction:column; gap:.85rem; }
+.modal-body label {
+  display:flex; flex-direction:column; gap:.3rem; font-size:.82rem; font-weight:700; color:#64748b;
+}
+.req::after { content:' *'; color:#dc2626; }
+.mono { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing:.04em; }
+</style>
+<script>
+(function () {
+  const API_PESSOAS = {{ url_for('acesso.api_pessoas_veiculos_pessoas')|tojson }};
+  const API_VEICULOS = (pid) => `/acesso/api/pessoas-veiculos/pessoas/${pid}/veiculos`;
+  const API_VEICULO = (vid) => `/acesso/api/pessoas-veiculos/veiculos/${vid}`;
+
+  let page = 1;
+  const perPage = 20;
+  let totalPages = 0;
+  let selectedId = null;
+  let selectedPessoa = null;
+
+  const listaPessoas = document.getElementById('listaPessoas');
+  const emptyPessoas = document.getElementById('emptyPessoas');
+  const modalVeiculo = document.getElementById('modalVeiculo');
+  const modalAjuda = document.getElementById('modalAjuda');
+
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+
+  function setTab(name) {
+    document.querySelectorAll('.pv-tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.tab === name);
+    });
+    document.getElementById('panelBusca').hidden = name !== 'busca';
+    document.getElementById('panelDetalhes').hidden = name !== 'detalhes';
+  }
+
+  document.querySelectorAll('.pv-tab').forEach(btn => {
+    btn.addEventListener('click', () => setTab(btn.dataset.tab));
+  });
+
+  function openModal(el) { el.hidden = false; }
+  function closeModal(el) { el.hidden = true; }
+
+  document.querySelectorAll('[data-close]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const el = document.getElementById(btn.dataset.close);
+      if (el) closeModal(el);
+    });
+  });
+
+  document.getElementById('btnAjuda').addEventListener('click', () => openModal(modalAjuda));
+
+  function filtrosParams() {
+    const fd = new FormData(document.getElementById('formFiltros'));
+    const p = new URLSearchParams();
+    for (const [k, v] of fd.entries()) {
+      if (String(v).trim()) p.set(k, String(v).trim());
+    }
+    p.set('page', String(page));
+    p.set('per_page', String(perPage));
+    return p;
+  }
+
+  async function loadPessoas() {
+    const r = await fetch(`${API_PESSOAS}?${filtrosParams()}`);
+    const data = await r.json();
+    if (!data.ok) { alert(data.error || 'Erro ao listar proprietários'); return; }
+
+    const k = data.kpis || {};
+    document.getElementById('kpiProprietarios').textContent = k.proprietarios ?? 0;
+    document.getElementById('kpiTotalVeiculos').textContent = k.total_veiculos ?? 0;
+    document.getElementById('kpiVeiculosAtivos').textContent = k.veiculos_ativos ?? 0;
+    document.getElementById('listaCount').textContent = `${data.total || 0}`;
+
+    totalPages = data.pages || 0;
+    page = data.page || 1;
+    const from = data.total ? ((page - 1) * perPage + 1) : 0;
+    const to = Math.min(page * perPage, data.total || 0);
+    document.getElementById('pagerLabel').textContent = `${from}–${to} de ${data.total || 0}`;
+    document.getElementById('btnPrevPage').disabled = page <= 1;
+    document.getElementById('btnNextPage').disabled = !totalPages || page >= totalPages;
+
+    const pessoas = data.pessoas || [];
+    emptyPessoas.hidden = pessoas.length > 0;
+    listaPessoas.innerHTML = pessoas.map(p => `
+      <li class="pv-user-item ${p.id === selectedId ? 'active' : ''}" data-id="${p.id}">
+        <div class="pv-avatar">${esc(p.iniciais || '?')}</div>
+        <div class="pv-user-info">
+          <strong>${esc(p.nome)}</strong>
+          <span>ID ${esc(p.matricula || p.id)}</span>
+        </div>
+        ${p.veiculos_count ? `<span class="pv-badge-count">${p.veiculos_count}</span>` : ''}
+      </li>
+    `).join('');
+
+    listaPessoas.querySelectorAll('.pv-user-item').forEach(item => {
+      item.addEventListener('click', () => selectPessoa(Number(item.dataset.id)));
+    });
+  }
+
+  async function selectPessoa(pid) {
+    selectedId = pid;
+    listaPessoas.querySelectorAll('.pv-user-item').forEach(el => {
+      el.classList.toggle('active', Number(el.dataset.id) === pid);
+    });
+    await loadVeiculos(pid);
+    setTab('detalhes');
+  }
+
+  async function loadVeiculos(pid) {
+    const r = await fetch(API_VEICULOS(pid));
+    const data = await r.json();
+    if (!data.ok) { alert(data.error || 'Erro ao carregar veículos'); return; }
+
+    selectedPessoa = data.pessoa;
+    document.getElementById('emptyDetalhe').hidden = true;
+    document.getElementById('conteudoDetalhe').hidden = false;
+    document.getElementById('detAvatar').textContent = selectedPessoa.iniciais || '?';
+    document.getElementById('detNome').textContent = selectedPessoa.nome || '—';
+    const meta = [];
+    if (selectedPessoa.matricula) meta.push(`Matrícula ${selectedPessoa.matricula}`);
+    if (selectedPessoa.empresa) meta.push(selectedPessoa.empresa);
+    if (selectedPessoa.departamento) meta.push(selectedPessoa.departamento);
+    document.getElementById('detMeta').textContent = meta.join(' · ') || `ID ${selectedPessoa.id}`;
+    document.getElementById('modalVeiculoSub').textContent = selectedPessoa.nome || '';
+
+    const veiculos = data.veiculos || [];
+    document.getElementById('emptyVeiculos').hidden = veiculos.length > 0;
+    document.getElementById('tbodyVeiculos').innerHTML = veiculos.map(v => `
+      <tr data-id="${v.id}">
+        <td class="mono">${esc(v.placa)}</td>
+        <td>${esc(v.modelo || '—')}</td>
+        <td>${esc(v.cor || '—')}</td>
+        <td class="mono">${esc(v.tag_uhf || '—')}</td>
+        <td>${v.ativo
+          ? '<span class="badge-status badge-online">Ativo</span>'
+          : '<span class="badge-status badge-offline">Inativo</span>'}</td>
+        <td style="white-space:nowrap;text-align:right;">
+          <button type="button" class="pv-acao-btn btn-edit" title="Editar"><i class="fas fa-pen"></i></button>
+          <button type="button" class="pv-acao-btn danger btn-del" title="Excluir"><i class="fas fa-trash"></i></button>
+        </td>
+      </tr>
+    `).join('');
+
+    document.querySelectorAll('#tbodyVeiculos tr').forEach(tr => {
+      const id = Number(tr.dataset.id);
+      const v = veiculos.find(x => x.id === id);
+      tr.querySelector('.btn-edit').addEventListener('click', () => openEdit(v));
+      tr.querySelector('.btn-del').addEventListener('click', () => removeVeiculo(id));
+    });
+  }
+
+  function resetForm() {
+    document.getElementById('f_id').value = '';
+    document.getElementById('f_placa').value = '';
+    document.getElementById('f_modelo').value = '';
+    document.getElementById('f_cor').value = '';
+    document.getElementById('f_tag_uhf').value = '';
+    document.getElementById('f_ativo').checked = true;
+    document.getElementById('modalVeiculoTitle').textContent = 'Adicionar Veículo';
+  }
+
+  function openEdit(v) {
+    document.getElementById('f_id').value = v.id;
+    document.getElementById('f_placa').value = v.placa || '';
+    document.getElementById('f_modelo').value = v.modelo || '';
+    document.getElementById('f_cor').value = v.cor || '';
+    document.getElementById('f_tag_uhf').value = v.tag_uhf || '';
+    document.getElementById('f_ativo').checked = !!v.ativo;
+    document.getElementById('modalVeiculoTitle').textContent = 'Editar Veículo';
+    openModal(modalVeiculo);
+  }
+
+  document.getElementById('btnAdicionar').addEventListener('click', () => {
+    if (!selectedId) return;
+    resetForm();
+    openModal(modalVeiculo);
+  });
+
+  document.getElementById('btnSalvarVeiculo').addEventListener('click', async () => {
+    if (!selectedId) return;
+    const id = document.getElementById('f_id').value;
+    const payload = {
+      placa: document.getElementById('f_placa').value.trim(),
+      modelo: document.getElementById('f_modelo').value.trim(),
+      cor: document.getElementById('f_cor').value.trim(),
+      tag_uhf: document.getElementById('f_tag_uhf').value.trim(),
+      ativo: document.getElementById('f_ativo').checked,
+    };
+    if (!payload.placa) { alert('Informe a placa'); return; }
+
+    const url = id ? API_VEICULO(id) : API_VEICULOS(selectedId);
+    const method = id ? 'PUT' : 'POST';
+    const r = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json();
+    if (!data.ok) { alert(data.error || 'Erro ao salvar'); return; }
+    closeModal(modalVeiculo);
+    await loadVeiculos(selectedId);
+    await loadPessoas();
+  });
+
+  async function removeVeiculo(vid) {
+    if (!confirm('Excluir este veículo?')) return;
+    const r = await fetch(API_VEICULO(vid), { method: 'DELETE' });
+    const data = await r.json();
+    if (!data.ok) { alert(data.error || 'Erro ao excluir'); return; }
+    await loadVeiculos(selectedId);
+    await loadPessoas();
+  }
+
+  document.getElementById('formFiltros').addEventListener('submit', (e) => {
+    e.preventDefault();
+    page = 1;
+    loadPessoas();
+  });
+  document.getElementById('btnLimparFiltros').addEventListener('click', () => {
+    document.getElementById('f_q').value = '';
+    page = 1;
+    loadPessoas();
+  });
+  document.getElementById('btnPrevPage').addEventListener('click', () => {
+    if (page > 1) { page -= 1; loadPessoas(); }
+  });
+  document.getElementById('btnNextPage').addEventListener('click', () => {
+    if (page < totalPages) { page += 1; loadPessoas(); }
+  });
+
+  let searchTimer = null;
+  document.getElementById('f_q').addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { page = 1; loadPessoas(); }, 320);
+  });
+
+  loadPessoas();
+})();
+</script>
+{% endblock %}

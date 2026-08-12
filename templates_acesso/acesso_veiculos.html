@@ -1,0 +1,416 @@
+{% extends "base_acesso.html" %}
+{% block title %}Relatório de Veículos{% endblock %}
+{% block content %}
+{% set total_n = total if total is number else 0 %}
+{% set page_n = page if page is number else 1 %}
+{% set pages_n = total_pages if total_pages is number else 1 %}
+<div class="vei-wrap">
+  <div class="vei-hero">
+    <div class="vei-hero-left">
+      <div class="vei-hero-icon" aria-hidden="true"><i class="fas fa-car"></i></div>
+      <div>
+        <h1>Relatório de Veículos</h1>
+        <p>Monitoramento detalhado de circulação de veículos e acesso de tags UHF.</p>
+      </div>
+    </div>
+    <a class="btn-export-csv"
+       href="{{ url_for('acesso.veiculos_export_csv', periodo=periodo, equipamento=equipamento, sentido=sentido, placa=placa) }}">
+      <i class="fas fa-file-csv"></i> Exportar CSV
+    </a>
+  </div>
+
+  <div class="vei-card">
+    <div class="vei-card-head">
+      <h2 class="vei-card-title"><i class="fas fa-filter"></i> Filtros</h2>
+    </div>
+    <div class="vei-card-body">
+      <form method="get" class="vei-filters" id="filtrosVeiculos">
+        <input type="hidden" name="page" value="1">
+        <div class="vei-filter-field">
+          <span class="vei-label">Período</span>
+          <div class="vei-periodo" role="group" aria-label="Período">
+            {% for key, label in [('hoje','Hoje'),('ontem','Ontem'),('7dias','7 dias'),('todos','Todos')] %}
+            <label class="vei-periodo-opt {% if periodo == key %}active{% endif %}">
+              <input type="radio" name="periodo" value="{{ key }}" {% if periodo == key %}checked{% endif %}>
+              {{ label }}
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        <label>Equipamento
+          <select name="equipamento">
+            <option value="">Todos</option>
+            {% for nome in equipamentos %}
+            <option value="{{ nome }}" {% if equipamento == nome %}selected{% endif %}>{{ nome }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Sentido
+          <select name="sentido">
+            <option value="">Todos</option>
+            <option value="Entrada" {% if sentido == 'Entrada' %}selected{% endif %}>Entrada</option>
+            <option value="Saída" {% if sentido == 'Saída' %}selected{% endif %}>Saída</option>
+          </select>
+        </label>
+        <label>Placa
+          <input type="search" name="placa" value="{{ placa }}" placeholder="XXX0000" maxlength="10" autocomplete="off">
+        </label>
+        <div class="vei-filters-actions">
+          <a class="btn btn-secondary btn-sm" href="{{ url_for('acesso.veiculos_page') }}">
+            <i class="fas fa-xmark"></i> Limpar
+          </a>
+          <button type="submit" class="btn-acesso">
+            <i class="fas fa-filter"></i> Filtrar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="vei-card">
+    <div class="vei-table-wrap">
+      <table class="vei-table">
+        <thead>
+          <tr>
+            <th>Data/Hora</th>
+            <th>Usuário</th>
+            <th>Veículo</th>
+            <th>Catraca</th>
+            <th>Sentido</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for e in eventos %}
+          <tr>
+            <td class="vei-mono">{{ e.data_hora_fmt }}</td>
+            <td><strong>{{ e.usuario_nome }}</strong></td>
+            <td>
+              <span class="vei-placa"><i class="fas fa-car-side"></i> {{ e.placa or '—' }}</span>
+            </td>
+            <td>{{ e.equipamento }}</td>
+            <td>
+              {% if e.sentido == 'Entrada' %}
+                <span class="badge-dir badge-entrada"><i class="fas fa-arrow-right-to-bracket"></i> ENTRADA</span>
+              {% elif e.sentido == 'Saída' %}
+                <span class="badge-dir badge-saida"><i class="fas fa-arrow-right-from-bracket"></i> SAÍDA</span>
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if e.status == 'Liberado' %}
+                <span class="badge-status badge-liberado">LIBERADO</span>
+              {% elif e.status == 'Negado' %}
+                <span class="badge-status badge-negado">NEGADO</span>
+              {% else %}
+                <span class="badge-status badge-desistencia">{{ (e.status or '—')|upper }}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6" class="vei-empty">
+              Nenhum veículo encontrado para os filtros atuais.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="vei-pager">
+      <div class="vei-pager-meta">
+        PÁGINA {{ page_n }} DE {{ pages_n }} | TOTAL: {{ total_n }}
+      </div>
+      <div class="vei-pager-links">
+        {% if page_n > 1 %}
+        <a href="{{ url_for('acesso.veiculos_page', page=page_n-1, periodo=periodo, equipamento=equipamento, sentido=sentido, placa=placa, per_page=per_page) }}"
+           title="Anterior" aria-label="Página anterior">
+          <i class="fas fa-chevron-left"></i>
+        </a>
+        {% else %}
+        <span class="disabled" aria-disabled="true"><i class="fas fa-chevron-left"></i></span>
+        {% endif %}
+        {% if page_n < pages_n %}
+        <a href="{{ url_for('acesso.veiculos_page', page=page_n+1, periodo=periodo, equipamento=equipamento, sentido=sentido, placa=placa, per_page=per_page) }}"
+           title="Próxima" aria-label="Próxima página">
+          <i class="fas fa-chevron-right"></i>
+        </a>
+        {% else %}
+        <span class="disabled" aria-disabled="true"><i class="fas fa-chevron-right"></i></span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.vei-wrap { max-width: 1400px; }
+.vei-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: #fff;
+  border: 1px solid rgba(15, 42, 86, 0.1);
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.04);
+  padding: 1.15rem 1.3rem;
+  margin-bottom: 1.1rem;
+}
+.vei-hero-left {
+  display: flex;
+  gap: 0.9rem;
+  align-items: flex-start;
+  min-width: 0;
+}
+.vei-hero-icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 12px;
+  background: rgba(13, 110, 253, 0.12);
+  color: #0d6efd;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+.vei-hero h1 {
+  margin: 0;
+  font-family: var(--font-brand);
+  font-size: 1.45rem;
+  color: var(--brand-navy);
+}
+.vei-hero p {
+  margin: 0.3rem 0 0;
+  color: #64748b;
+  font-size: 0.92rem;
+  max-width: 42rem;
+}
+.btn-export-csv {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  border-radius: 10px;
+  background: #16a34a;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.88rem;
+  text-decoration: none;
+  border: none;
+  white-space: nowrap;
+}
+.btn-export-csv:hover { background: #15803d; color: #fff; }
+
+.vei-card {
+  background: #fff;
+  border: 1px solid rgba(15, 42, 86, 0.1);
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.04);
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+.vei-card-head {
+  padding: 0.85rem 1.15rem;
+  border-bottom: 1px solid rgba(15, 42, 86, 0.08);
+}
+.vei-card-title {
+  margin: 0;
+  font-family: var(--font-brand);
+  font-size: 1.05rem;
+  color: var(--brand-navy);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.vei-card-title i { color: var(--brand-blue, #0d6efd); }
+.vei-card-body { padding: 1.05rem 1.15rem; }
+
+.vei-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.85rem 0.9rem;
+  align-items: end;
+}
+.vei-filters label,
+.vei-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.vei-label { display: block; }
+.vei-filters input,
+.vei-filters select {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(15, 42, 86, 0.12);
+  border-radius: 10px;
+  font: inherit;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--brand-navy);
+  background: #fff;
+}
+.vei-periodo {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.vei-periodo-opt {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.42rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 42, 86, 0.14);
+  background: #fff;
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.vei-periodo-opt input { position: absolute; opacity: 0; pointer-events: none; width: 0; height: 0; }
+.vei-periodo-opt.active,
+.vei-periodo-opt:has(input:checked) {
+  background: var(--brand-blue, #0d6efd);
+  border-color: var(--brand-blue, #0d6efd);
+  color: #fff;
+}
+.vei-filters-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.vei-table-wrap { overflow: auto; max-height: 68vh; }
+.vei-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.vei-table th,
+.vei-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+  vertical-align: middle;
+}
+.vei-table th {
+  background: var(--brand-navy);
+  color: #fff;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.vei-table tbody tr:nth-child(even) { background: #f8fafc; }
+.vei-table tbody tr:hover { background: rgba(27, 79, 156, 0.04); }
+.vei-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #64748b;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.vei-placa {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 800;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.06em;
+  color: var(--brand-navy);
+}
+.vei-placa i { color: #0d6efd; }
+.muted { color: #94a3b8; }
+.badge-dir {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+.badge-entrada { background: rgba(22, 163, 74, 0.12); color: #15803d; }
+.badge-saida { background: rgba(13, 110, 253, 0.12); color: #0d6efd; }
+.vei-empty {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: #64748b;
+}
+
+.vei-pager {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.85rem 1.15rem;
+  border-top: 1px solid rgba(15, 42, 86, 0.08);
+  background: #f8fafc;
+}
+.vei-pager-meta {
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--brand-navy);
+  text-transform: uppercase;
+}
+.vei-pager-links {
+  display: flex;
+  gap: 0.4rem;
+}
+.vei-pager-links a,
+.vei-pager-links span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 8px;
+  border: 1px solid rgba(15, 42, 86, 0.12);
+  background: #fff;
+  color: var(--brand-navy);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+.vei-pager-links a:hover {
+  border-color: var(--brand-blue, #0d6efd);
+  color: var(--brand-blue, #0d6efd);
+}
+.vei-pager-links span.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+</style>
+<script>
+(function () {
+  const form = document.getElementById('filtrosVeiculos');
+  if (!form) return;
+  form.querySelectorAll('.vei-periodo-opt input').forEach((input) => {
+    input.addEventListener('change', () => {
+      form.querySelectorAll('.vei-periodo-opt').forEach((el) => el.classList.remove('active'));
+      input.closest('.vei-periodo-opt')?.classList.add('active');
+    });
+  });
+})();
+</script>
+{% endblock %}

@@ -104,20 +104,32 @@ def run_http_and_https(app, host: str, http_port: int, https_port: int):
 
 
 def ensure_usuarios_schema():
-    """Garante coluna senha_hash (modelo mapeia Usuario.senha -> senha_hash)."""
+    """Garante colunas senha_hash, usuario e token em usuarios."""
     from sqlalchemy import inspect, text
     try:
         insp = inspect(db.engine)
         if 'usuarios' not in set(insp.get_table_names()):
             return
         cols = {c['name'] for c in insp.get_columns('usuarios')}
-        if 'senha_hash' in cols:
-            return
-        if 'senha' in cols:
-            db.session.execute(text('ALTER TABLE usuarios CHANGE COLUMN senha senha_hash VARCHAR(255) NOT NULL'))
-        else:
-            db.session.execute(text("ALTER TABLE usuarios ADD COLUMN senha_hash VARCHAR(255) NOT NULL DEFAULT ''"))
-        db.session.commit()
+        if 'senha_hash' not in cols:
+            if 'senha' in cols:
+                db.session.execute(text('ALTER TABLE usuarios CHANGE COLUMN senha senha_hash VARCHAR(255) NOT NULL'))
+            else:
+                db.session.execute(text("ALTER TABLE usuarios ADD COLUMN senha_hash VARCHAR(255) NOT NULL DEFAULT ''"))
+            db.session.commit()
+            cols = {c['name'] for c in insp.get_columns('usuarios')}
+        if 'usuario' not in cols:
+            db.session.execute(text('ALTER TABLE usuarios ADD COLUMN usuario VARCHAR(80) NULL'))
+            db.session.commit()
+        if 'token' not in cols:
+            db.session.execute(text('ALTER TABLE usuarios ADD COLUMN token VARCHAR(64) NULL'))
+            db.session.commit()
+        # Índice único em usuario (ignora se já existir)
+        try:
+            db.session.execute(text('CREATE UNIQUE INDEX uq_usuarios_usuario ON usuarios (usuario)'))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
     except Exception:
         db.session.rollback()
 

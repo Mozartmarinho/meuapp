@@ -1,0 +1,321 @@
+{% extends "base_acesso.html" %}
+{% block title %}Gerenciamento de Acesso{% endblock %}
+{% block content %}
+<div class="ga-wrap">
+  <div class="ga-hero card">
+    <div>
+      <h1>Gerenciamento de Acesso</h1>
+      <p>Administre os usuários e seus níveis de permissão no sistema.</p>
+    </div>
+    <div class="ga-hero-actions">
+      <button type="button" class="btn btn-secondary btn-sm" id="btnAjuda">
+        <i class="fas fa-circle-info"></i> Ajuda
+      </button>
+      <button type="button" class="btn btn-outline-primary btn-sm" id="btnTipos">
+        <i class="fas fa-shield-halved"></i> Gerenciar Tipos
+      </button>
+    </div>
+  </div>
+
+  <div class="ga-toolbar">
+    <form method="get" class="ga-search" id="formBusca">
+      <input type="search" name="q" value="{{ search or '' }}" placeholder="Buscar por nome/usuário..." id="buscaInput">
+      <button type="submit" class="ga-search-btn" title="Buscar" aria-label="Buscar">
+        <i class="fas fa-magnifying-glass"></i>
+      </button>
+    </form>
+    <button type="button" class="btn-acesso" id="btnNovo">
+      <i class="fas fa-plus"></i> Novo Usuário
+    </button>
+  </div>
+
+  <div class="ga-list card">
+    <div class="ga-list-head">
+      {% if total %}
+      Exibindo 1–{{ total }} de {{ total }} usuário(s)
+      {% else %}
+      Nenhum usuário encontrado
+      {% endif %}
+    </div>
+    <ul class="ga-users" id="listaUsuarios">
+      {% for u in usuarios %}
+      <li class="ga-user" data-id="{{ u.id }}">
+        <div class="ga-user-main">
+          <div class="ga-avatar">{{ u.inicial }}</div>
+          <div>
+            <strong class="ga-name">{{ u.nome }}</strong>
+            <div class="ga-meta">
+              Usuário: {{ u.usuario or '—' }} | Tipo: {{ u.tipo_label }} | ID: {{ u.id }}
+            </div>
+          </div>
+        </div>
+        <div class="ga-actions">
+          <button type="button" class="ga-icon-btn edit btn-edit"
+            title="Editar"
+            data-id="{{ u.id }}"
+            data-nome="{{ u.nome }}"
+            data-usuario="{{ u.usuario }}"
+            data-tipo="{{ u.tipo }}"
+            data-token="{{ u.token }}">
+            <i class="fas fa-pen-to-square"></i>
+          </button>
+          <button type="button" class="ga-icon-btn del btn-del" title="Excluir" data-id="{{ u.id }}">
+            <i class="fas fa-trash-can"></i>
+          </button>
+        </div>
+      </li>
+      {% else %}
+      <li class="ga-empty">Cadastre o primeiro usuário com o botão <strong>Novo Usuário</strong>.</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modalUsuario" hidden>
+  <div class="modal-card" style="max-width:520px;">
+    <div class="modal-head">
+      <div>
+        <h3 id="modalTitle">Novo usuário</h3>
+      </div>
+      <button type="button" class="modal-close" id="btnCloseModal" aria-label="Fechar">&times;</button>
+    </div>
+    <form id="formUsuario" class="modal-body" autocomplete="off">
+      <input type="hidden" name="id" id="f_id" value="">
+      <label class="req">Nome *
+        <input name="nome" id="f_nome" required placeholder="Nome completo">
+      </label>
+      <label class="req">Usuário *
+        <input name="usuario" id="f_usuario" required placeholder="login" autocomplete="off">
+      </label>
+      <label>Senha <span id="senhaHint">(obrigatória somente no cadastro)</span>
+        <input type="password" name="senha" id="f_senha" placeholder="••••••••" autocomplete="new-password">
+      </label>
+      <label class="req">Tipo *
+        <select name="tipo" id="f_tipo" required>
+          {% for t in tipos %}
+          <option value="{{ t.value }}">{{ t.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Token
+        <div class="token-row">
+          <input name="token" id="f_token" readonly placeholder="Gerado automaticamente">
+          <button type="button" class="btn btn-secondary" id="btnGerarToken" title="Gerar novo token">
+            <i class="fas fa-arrows-rotate"></i> Gerar
+          </button>
+        </div>
+      </label>
+    </form>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" id="btnCancelar">Cancelar</button>
+      <button type="button" class="btn-acesso" id="btnSalvar"><i class="fas fa-save"></i> Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modalTipos" hidden>
+  <div class="modal-card" style="max-width:420px;">
+    <div class="modal-head">
+      <div>
+        <h3>Tipos de usuário</h3>
+        <p class="modal-sub">Tipos disponíveis no Controle de Acesso.</p>
+      </div>
+      <button type="button" class="modal-close" id="btnCloseTipos" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="modal-body">
+      <ul class="tipos-list">
+        {% for t in tipos %}
+        <li><span class="tipo-badge">{{ t.label }}</span> <code>{{ t.value }}</code></li>
+        {% endfor %}
+      </ul>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" id="btnFecharTipos">Fechar</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.ga-wrap { max-width: 1100px; }
+.ga-hero {
+  display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; align-items:center;
+  padding:1.15rem 1.25rem; margin-bottom:1rem;
+  background:#fff; border:1px solid rgba(15,42,86,.1); border-radius:14px;
+  box-shadow:0 4px 12px rgba(0,0,0,.04);
+}
+.ga-hero h1 { margin:0; font-family:var(--font-brand); font-size:1.45rem; color:var(--brand-navy); }
+.ga-hero p { margin:.3rem 0 0; color:#64748b; font-size:.92rem; }
+.ga-hero-actions { display:flex; gap:.5rem; flex-wrap:wrap; }
+.btn-outline-primary {
+  background:#fff; color:var(--brand-blue); border:1px solid var(--brand-blue);
+  border-radius:10px; padding:.45rem .8rem; font-weight:700; cursor:pointer;
+  display:inline-flex; align-items:center; gap:.4rem; font-family:var(--font-body);
+}
+.btn-outline-primary:hover { background:rgba(13,110,253,.06); }
+
+.ga-toolbar {
+  display:flex; justify-content:space-between; gap:.75rem; flex-wrap:wrap; align-items:center;
+  margin-bottom:1rem;
+}
+.ga-search { display:flex; align-items:stretch; flex:1; min-width:240px; max-width:420px; }
+.ga-search input {
+  flex:1; padding:.6rem .85rem; border:1px solid rgba(15,42,86,.14);
+  border-right:0; border-radius:10px 0 0 10px; font:inherit; color:var(--brand-navy);
+}
+.ga-search-btn {
+  width:46px; border:1px solid var(--brand-blue); background:#fff; color:var(--brand-blue);
+  border-radius:0 10px 10px 0; cursor:pointer;
+}
+.ga-search-btn:hover { background:rgba(13,110,253,.08); }
+
+.ga-list { padding:0; overflow:hidden; background:#fff; border:1px solid rgba(15,42,86,.1); border-radius:14px; box-shadow:0 4px 12px rgba(0,0,0,.04); }
+.ga-list-head {
+  padding:.85rem 1.15rem; background:#f8fafc; color:#64748b; font-weight:700; font-size:.88rem;
+  border-bottom:1px solid rgba(15,42,86,.08);
+}
+.ga-users { list-style:none; margin:0; padding:0; }
+.ga-user {
+  display:flex; justify-content:space-between; gap:1rem; align-items:center;
+  padding:.95rem 1.15rem; border-bottom:1px solid rgba(15,42,86,.07);
+}
+.ga-user:last-child { border-bottom:0; }
+.ga-user-main { display:flex; gap:.85rem; align-items:center; min-width:0; }
+.ga-avatar {
+  width:42px; height:42px; border-radius:50%; background:rgba(13,110,253,.12); color:var(--brand-blue);
+  display:grid; place-items:center; font-weight:800; flex-shrink:0;
+}
+.ga-name { display:block; color:var(--brand-navy); font-size:1rem; }
+.ga-meta { color:#94a3b8; font-size:.82rem; margin-top:.15rem; }
+.ga-actions { display:flex; gap:.45rem; flex-shrink:0; }
+.ga-icon-btn {
+  width:38px; height:38px; border-radius:10px; background:#fff; cursor:pointer;
+  display:grid; place-items:center;
+}
+.ga-icon-btn.edit { border:1px solid var(--brand-blue); color:var(--brand-blue); }
+.ga-icon-btn.del { border:1px solid #dc2626; color:#dc2626; }
+.ga-icon-btn:hover { filter:brightness(.97); }
+.ga-empty { text-align:center; padding:2rem 1rem; color:#94a3b8; }
+
+.modal-backdrop {
+  position:fixed; inset:0; background:rgba(13,43,92,.45); z-index:2000;
+  display:grid; place-items:center; padding:1rem;
+}
+.modal-backdrop[hidden] { display:none !important; }
+.modal-card {
+  width:min(520px,100%); background:#fff; border-radius:16px; overflow:hidden;
+  box-shadow:0 24px 48px rgba(13,43,92,.25); max-height:92vh; display:flex; flex-direction:column;
+}
+.modal-head, .modal-foot {
+  display:flex; justify-content:space-between; align-items:flex-start; gap:.75rem;
+  padding:.95rem 1.2rem; border-bottom:1px solid rgba(15,42,86,.08);
+}
+.modal-foot { border-bottom:0; border-top:1px solid rgba(15,42,86,.08); justify-content:flex-end; align-items:center; }
+.modal-head h3 { margin:0; font-family:var(--font-brand); color:var(--brand-navy); font-size:1.25rem; }
+.modal-sub { margin:.35rem 0 0; color:#64748b; font-size:.88rem; }
+.modal-close { border:none; background:transparent; font-size:1.5rem; cursor:pointer; color:#64748b; line-height:1; }
+.modal-body { padding:1.15rem 1.2rem; overflow:auto; display:flex; flex-direction:column; gap:.85rem; }
+.modal-body label {
+  display:flex; flex-direction:column; gap:.3rem; font-size:.82rem; font-weight:700; color:#64748b;
+}
+.modal-body input, .modal-body select {
+  padding:.55rem .7rem; border:1px solid rgba(15,42,86,.12); border-radius:10px;
+  font:inherit; color:var(--brand-navy); background:#fff;
+}
+.token-row { display:flex; gap:.45rem; }
+.token-row input { flex:1; background:#f8fafc; }
+#senhaHint { font-weight:500; color:#94a3b8; }
+.tipos-list { list-style:none; margin:0; padding:0; display:grid; gap:.55rem; }
+.tipos-list li {
+  display:flex; justify-content:space-between; align-items:center; gap:.75rem;
+  padding:.65rem .8rem; border:1px solid rgba(15,42,86,.1); border-radius:10px;
+}
+.tipo-badge { font-weight:700; color:var(--brand-navy); }
+.tipos-list code { color:#64748b; font-size:.82rem; }
+</style>
+<script>
+const API = {{ url_for('acesso.api_usuarios')|tojson }};
+const modal = document.getElementById('modalUsuario');
+const modalTipos = document.getElementById('modalTipos');
+const form = document.getElementById('formUsuario');
+
+function randomToken() {
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function openModal(edit) {
+  form.reset();
+  document.getElementById('f_id').value = '';
+  document.getElementById('f_tipo').value = 'agente';
+  document.getElementById('f_token').value = randomToken();
+  document.getElementById('f_senha').required = !edit;
+  document.getElementById('modalTitle').textContent = edit ? 'Editar usuário' : 'Novo usuário';
+  modal.hidden = false;
+}
+
+function closeModal() { modal.hidden = true; }
+
+document.getElementById('btnNovo').addEventListener('click', () => openModal(false));
+document.getElementById('btnCloseModal').addEventListener('click', closeModal);
+document.getElementById('btnCancelar').addEventListener('click', closeModal);
+modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+document.getElementById('btnGerarToken').addEventListener('click', () => {
+  document.getElementById('f_token').value = randomToken();
+});
+
+document.getElementById('btnAjuda').addEventListener('click', () => {
+  alert('Cadastre usuários do sistema, defina o tipo (admin/Agente/…) e gere um token. A senha é obrigatória só no cadastro.');
+});
+
+document.getElementById('btnTipos').addEventListener('click', () => { modalTipos.hidden = false; });
+document.getElementById('btnCloseTipos').addEventListener('click', () => { modalTipos.hidden = true; });
+document.getElementById('btnFecharTipos').addEventListener('click', () => { modalTipos.hidden = true; });
+modalTipos.addEventListener('click', (e) => { if (e.target === modalTipos) modalTipos.hidden = true; });
+
+document.querySelectorAll('.btn-edit').forEach(btn => {
+  btn.addEventListener('click', () => {
+    openModal(true);
+    document.getElementById('f_id').value = btn.dataset.id || '';
+    document.getElementById('f_nome').value = btn.dataset.nome || '';
+    document.getElementById('f_usuario').value = btn.dataset.usuario || '';
+    document.getElementById('f_tipo').value = btn.dataset.tipo || 'agente';
+    document.getElementById('f_token').value = btn.dataset.token || randomToken();
+    document.getElementById('f_senha').value = '';
+  });
+});
+
+document.getElementById('btnSalvar').addEventListener('click', async () => {
+  if (!form.reportValidity()) return;
+  const raw = Object.fromEntries(new FormData(form).entries());
+  const id = raw.id;
+  delete raw.id;
+  if (!raw.senha) delete raw.senha;
+  if (!raw.token) raw.token = randomToken();
+
+  const url = id ? `${API}/${id}` : API;
+  const method = id ? 'PUT' : 'POST';
+  const r = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(raw),
+  });
+  const res = await r.json();
+  if (!res.ok) { alert(res.error || 'Erro ao salvar'); return; }
+  location.reload();
+});
+
+document.querySelectorAll('.btn-del').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (!confirm('Excluir este usuário?')) return;
+    const r = await fetch(`${API}/${btn.dataset.id}`, { method: 'DELETE' });
+    const res = await r.json();
+    if (!res.ok) { alert(res.error || 'Erro ao excluir'); return; }
+    location.reload();
+  });
+});
+</script>
+{% endblock %}

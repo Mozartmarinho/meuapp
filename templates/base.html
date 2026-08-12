@@ -10,9 +10,18 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
 </head>
-<body>
+<body data-sidebar-collapse="sg-chamados-sidebar-collapsed">
+    <script>
+    (function () {
+        try {
+            if (localStorage.getItem('sg-chamados-sidebar-collapsed') === '1') {
+                document.body.classList.add('sidebar-collapsed');
+            }
+        } catch (e) { /* ignore */ }
+    })();
+    </script>
     <header class="app-topbar">
-        <button type="button" class="menu-toggle" id="menuToggle" aria-label="Abrir menu">
+        <button type="button" class="menu-toggle" id="menuToggle" aria-label="Recuar menu" aria-expanded="true" aria-controls="appSidebar">
             <i class="fas fa-bars"></i>
         </button>
         <img class="brand-logo-compact" src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service">
@@ -28,77 +37,63 @@
 
         <ul class="sidebar-menu">
             <li>
-                <a href="{{ url_for('main.inicio') }}">
-                    <i class="fas fa-th-large" style="margin-right: 0.75rem;"></i>
-                    Sistemas
+                <a href="{{ url_for('main.inicio') }}" title="Sistemas">
+                    <i class="fas fa-th-large menu-icon"></i>
+                    <span class="menu-label">Sistemas</span>
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('main.dashboard') }}" class="{% if request.endpoint == 'main.dashboard' %}active{% endif %}">
-                    <i class="fas fa-tachometer-alt" style="margin-right: 0.75rem;"></i>
-                    Dashboard
+                <a href="{{ url_for('main.dashboard') }}" class="{% if request.endpoint == 'main.dashboard' %}active{% endif %}" title="Dashboard">
+                    <i class="fas fa-tachometer-alt menu-icon"></i>
+                    <span class="menu-label">Dashboard</span>
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('main.listar_chamados') }}" class="{% if request.endpoint == 'main.listar_chamados' %}active{% endif %}">
-                    <i class="fas fa-clipboard-list" style="margin-right: 0.75rem;"></i>
-                    Chamados
+                <a href="{{ url_for('main.listar_chamados') }}" class="{% if request.endpoint == 'main.listar_chamados' %}active{% endif %}" title="Chamados">
+                    <i class="fas fa-clipboard-list menu-icon"></i>
+                    <span class="menu-label">Chamados</span>
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('main.novo_chamado') }}" class="{% if request.endpoint == 'main.novo_chamado' %}active{% endif %}">
-                    <i class="fas fa-plus-circle" style="margin-right: 0.75rem;"></i>
-                    Novo Chamado
+                <a href="{{ url_for('main.novo_chamado') }}" class="{% if request.endpoint == 'main.novo_chamado' %}active{% endif %}" title="Novo Chamado">
+                    <i class="fas fa-plus-circle menu-icon"></i>
+                    <span class="menu-label">Novo Chamado</span>
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('main.listar_clientes') }}" class="{% if request.endpoint == 'main.listar_clientes' %}active{% endif %}">
-                    <i class="fas fa-users" style="margin-right: 0.75rem;"></i>
-                    Clientes
+                <a href="{{ url_for('main.listar_clientes') }}" class="{% if request.endpoint == 'main.listar_clientes' %}active{% endif %}" title="Clientes">
+                    <i class="fas fa-users menu-icon"></i>
+                    <span class="menu-label">Clientes</span>
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('main.listar_usuarios') }}" class="{% if request.endpoint == 'main.listar_usuarios' %}active{% endif %}">
-                    <i class="fas fa-user-tie" style="margin-right: 0.75rem;"></i>
-                    Usuários
+                <a href="{{ url_for('main.listar_usuarios') }}" class="{% if request.endpoint == 'main.listar_usuarios' %}active{% endif %}" title="Usuários">
+                    <i class="fas fa-user-tie menu-icon"></i>
+                    <span class="menu-label">Usuários</span>
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('main.listar_equipamentos') }}" class="{% if request.endpoint == 'main.listar_equipamentos' %}active{% endif %}">
-                    <i class="fas fa-tools" style="margin-right: 0.75rem;"></i>
-                    Equipamentos
+                <a href="{{ url_for('main.relatorios') }}" class="{% if request.endpoint == 'main.relatorios' %}active{% endif %}" title="Relatórios">
+                    <i class="fas fa-chart-bar menu-icon"></i>
+                    <span class="menu-label">Relatórios</span>
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('main.relatorios') }}" class="{% if request.endpoint == 'main.relatorios' %}active{% endif %}">
-                    <i class="fas fa-chart-bar" style="margin-right: 0.75rem;"></i>
-                    Relatórios
+                <a href="{{ url_for('main.auditoria') }}" class="{% if request.endpoint == 'main.auditoria' %}active{% endif %}" title="Auditoria">
+                    <i class="fas fa-clipboard-check menu-icon"></i>
+                    <span class="menu-label">Auditoria</span>
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('auditoria.dashboard') }}">
-                    <i class="fas fa-clipboard-check" style="margin-right: 0.75rem;"></i>
-                    Auditoria
-                </a>
-            </li>
-            <li>
-                <a href="{{ url_for('main.configuracoes') }}" class="{% if request.endpoint == 'main.configuracoes' %}active{% endif %}">
-                    <i class="fas fa-cog" style="margin-right: 0.75rem;"></i>
-                    Configurações
+                <a href="{{ url_for('main.configuracoes') }}" class="{% if request.endpoint == 'main.configuracoes' %}active{% endif %}" title="Configurações">
+                    <i class="fas fa-cog menu-icon"></i>
+                    <span class="menu-label">Configurações</span>
                 </a>
             </li>
         </ul>
     </nav>
 
     <main class="main-content">
-        <div class="system-switch">
-            <div class="system-switch-wrap">
-                <a href="{{ url_for('main.inicio') }}" class="system-switch-link">Sistemas</a>
-                <a href="{{ url_for('main.dashboard') }}" class="system-switch-link active">Chamados</a>
-                <a href="{{ url_for('nutricao.dashboard') }}" class="system-switch-link">Nutrição</a>
-            </div>
-        </div>
-
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}

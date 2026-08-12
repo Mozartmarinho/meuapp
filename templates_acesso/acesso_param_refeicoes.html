@@ -1,0 +1,984 @@
+{% extends "base_acesso.html" %}
+{% block title %}Gerenciamento de Refeições{% endblock %}
+{% block content %}
+<div class="gr-wrap">
+  <header class="gr-hero card">
+    <div>
+      <h1>Gerenciamento de Refeições</h1>
+      <p>Cadastro de grupos, itens e vínculos de usuários.</p>
+    </div>
+    <div class="gr-hero-actions">
+      <button type="button" class="btn btn-secondary btn-sm" id="btnAjuda">
+        <i class="fas fa-circle-info"></i> Ajuda
+      </button>
+      <button type="button" class="btn-acesso" id="btnNovoGrupo">
+        <i class="fas fa-plus"></i> Novo Grupo
+      </button>
+    </div>
+  </header>
+
+  <div class="gr-grid">
+    <aside class="card gr-panel">
+      <h2>Grupos de Refeição</h2>
+      <div class="gr-search">
+        <i class="fas fa-search"></i>
+        <input type="search" id="filtroGrupos" placeholder="Filtrar grupos..." autocomplete="off">
+      </div>
+      <ul class="gr-list" id="listaGrupos"></ul>
+      <div class="gr-empty-list" id="emptyGrupos" hidden>
+        Nenhum grupo encontrado.
+      </div>
+      <div class="gr-pager" id="pagerGrupos">0-0 de 0</div>
+    </aside>
+
+    <section class="card gr-panel gr-detail" id="painelDetalhe">
+      <div class="gr-empty-detail" id="emptyDetalhe">
+        <i class="fas fa-folder-open"></i>
+        <strong>Nenhum grupo selecionado</strong>
+        <p>Selecione um grupo na lista ao lado para ver seus itens e vínculos.</p>
+      </div>
+
+      <div id="conteudoDetalhe" hidden>
+        <div class="gr-detail-head">
+          <div>
+            <h2 id="detNome">—</h2>
+            <p id="detMeta" class="gr-meta"></p>
+          </div>
+          <div class="gr-detail-actions">
+            <button type="button" class="btn btn-secondary btn-sm" id="btnEditarGrupo">Editar</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btnExcluirGrupo">Excluir</button>
+          </div>
+        </div>
+
+        <div class="gr-tabs" role="tablist">
+          <button type="button" class="gr-tab active" data-tab="itens" role="tab">Itens do Grupo</button>
+          <button type="button" class="gr-tab" data-tab="vinculos" role="tab">Vínculos de Pessoas</button>
+        </div>
+
+        <div class="gr-tab-panel" id="tabItens">
+          <div class="gr-itens-toolbar">
+            <div class="gr-search gr-search-inline">
+              <i class="fas fa-search"></i>
+              <input type="search" id="filtroItens" placeholder="Filtrar por nome/horário..." autocomplete="off">
+            </div>
+            <button type="button" class="btn-acesso btn-sm" id="btnNovoItem">
+              <i class="fas fa-plus"></i> Novo Item
+            </button>
+          </div>
+          <p class="gr-hint" title="Janelas que cruzam meia-noite são válidas quando hora início &gt; hora fim (ex.: 18:00 → 01:00).">
+            <i class="fas fa-info-circle"></i>
+            Janelas que cruzam meia-noite são válidas quando hora início &gt; hora fim (ex.: 18:00 → 01:00).
+          </p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Horário</th>
+                  <th>Preço mensal</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="tbodyItens"></tbody>
+            </table>
+          </div>
+          <div class="gr-empty-mini" id="emptyItens" hidden>Nenhum item cadastrado ou no filtro atual.</div>
+        </div>
+
+        <div class="gr-tab-panel" id="tabVinculos" hidden>
+          <div class="gr-vinculos-head">
+            <h3>Vínculos (Pessoa → Grupo)</h3>
+            <div class="gr-vinculos-actions">
+              <button type="button" class="btn btn-secondary btn-sm" id="btnAddPorGrupo">Add por Grupo</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="btnRemPorGrupo">Remover por Grupo</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="btnRemTodos">Remover Todos</button>
+            </div>
+          </div>
+
+          <div class="gr-dual">
+            <div class="gr-dual-pane">
+              <div class="gr-dual-title">Pessoas vinculadas</div>
+              <div class="gr-dual-toolbar">
+                <div class="gr-search gr-search-inline">
+                  <i class="fas fa-search"></i>
+                  <input type="search" id="buscaVinculadas" placeholder="Buscar pessoa vinculada..." autocomplete="off">
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" id="btnRemSelecionados">Remover selecionados</button>
+              </div>
+              <div class="table-scroll">
+                <table class="data-table gr-dual-table">
+                  <thead>
+                    <tr>
+                      <th style="width:36px;"><input type="checkbox" id="chkAllVinculadas" title="Selecionar todos"></th>
+                      <th>Nome</th>
+                      <th style="width:70px;">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbodyVinculadas"></tbody>
+                </table>
+              </div>
+              <div class="gr-empty-mini" id="emptyVinculadas" hidden>Sem pessoas vinculadas.</div>
+              <div class="gr-pager-row">
+                <button type="button" class="btn btn-secondary btn-sm" id="prevVinculadas" disabled>‹</button>
+                <span id="pagerVinculadas">Mostrando 0-0 de 0</span>
+                <button type="button" class="btn btn-secondary btn-sm" id="nextVinculadas" disabled>›</button>
+              </div>
+            </div>
+
+            <div class="gr-dual-pane">
+              <div class="gr-dual-title">Disponíveis (sem grupo)</div>
+              <div class="gr-dual-toolbar">
+                <div class="gr-search gr-search-inline">
+                  <i class="fas fa-search"></i>
+                  <input type="search" id="buscaDisponiveis" placeholder="Buscar em todos disponíveis..." autocomplete="off">
+                </div>
+                <button type="button" class="btn-acesso btn-sm" id="btnAddSelecionados">Adicionar selecionados</button>
+              </div>
+              <div class="table-scroll">
+                <table class="data-table gr-dual-table">
+                  <thead>
+                    <tr>
+                      <th style="width:36px;"><input type="checkbox" id="chkAllDisponiveis" title="Selecionar todos"></th>
+                      <th>Nome</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbodyDisponiveis"></tbody>
+                </table>
+              </div>
+              <div class="gr-empty-mini" id="emptyDisponiveis" hidden>Nenhuma pessoa disponível.</div>
+              <div class="gr-pager-row">
+                <button type="button" class="btn btn-secondary btn-sm" id="prevDisponiveis" disabled>‹</button>
+                <span id="pagerDisponiveis">Mostrando 0-0 de 0</span>
+                <button type="button" class="btn btn-secondary btn-sm" id="nextDisponiveis" disabled>›</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modalGrupo" hidden>
+  <div class="modal-card" style="max-width:560px;">
+    <div class="modal-head">
+      <div>
+        <h3 id="modalGrupoTitle">Novo grupo de refeições</h3>
+      </div>
+      <button type="button" class="modal-close" id="btnCloseGrupo" aria-label="Fechar">&times;</button>
+    </div>
+    <form id="formGrupo" class="modal-body" autocomplete="off">
+      <input type="hidden" name="id" id="g_id" value="">
+      <div class="gr-modal-row">
+        <label class="req">Nome *
+          <input name="nome" id="g_nome" required placeholder="Ex. REFEITORIO">
+        </label>
+        <label class="req">Tipo de cobrança *
+          <select name="tipo_cobranca" id="g_tipo" required>
+            <option value="MENSAL">Mensal</option>
+            <option value="DIARIO">Diário</option>
+            <option value="POR_REFEICAO">Por refeição</option>
+            <option value="SEMANAL">Semanal</option>
+            <option value="ISENTO">Isento</option>
+          </select>
+        </label>
+      </div>
+      <label>Observações
+        <textarea name="observacoes" id="g_obs" rows="3" placeholder="Ex. CONTROLE"></textarea>
+      </label>
+      <div class="gr-checks">
+        <label class="gr-check">
+          <input type="checkbox" name="ativo" id="g_ativo" checked>
+          <span>Ativo</span>
+        </label>
+        <label class="gr-check">
+          <input type="checkbox" name="exibir_visitantes" id="g_visitantes">
+          <span>Exibir no Cadastro de Visitantes</span>
+        </label>
+      </div>
+    </form>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" id="btnCancelarGrupo">Cancelar</button>
+      <button type="button" class="btn-acesso" id="btnSalvarGrupo"><i class="fas fa-save"></i> Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modalItem" hidden>
+  <div class="modal-card" style="max-width:480px;">
+    <div class="modal-head">
+      <div>
+        <h3 id="modalItemTitle">Novo item de refeição</h3>
+      </div>
+      <button type="button" class="modal-close" id="btnCloseItem" aria-label="Fechar">&times;</button>
+    </div>
+    <form id="formItem" class="modal-body" autocomplete="off">
+      <input type="hidden" id="i_id" value="">
+      <label class="req">Nome *
+        <input name="nome" id="i_nome" required placeholder="Ex: Almoço">
+      </label>
+      <div class="gr-modal-row">
+        <label>Hora início
+          <input type="time" name="hora_inicio" id="i_hora_inicio" placeholder="--:--">
+        </label>
+        <label>Hora fim
+          <input type="time" name="hora_fim" id="i_hora_fim" placeholder="--:--">
+        </label>
+      </div>
+      <div class="gr-modal-row gr-modal-row-ativo">
+        <label>Preço mensal
+          <input name="preco_mensal" id="i_preco" inputmode="decimal" placeholder="Ex: 150,00">
+        </label>
+        <label class="gr-check gr-check-inline">
+          <input type="checkbox" name="ativo" id="i_ativo" checked>
+          <span>Ativo</span>
+        </label>
+      </div>
+      <p class="gr-hint" style="margin:0;">
+        Horários com início &gt; fim (ex.: 18:00 → 01:00) cruzam meia-noite e são válidos.
+      </p>
+    </form>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" id="btnCancelarItem">Cancelar</button>
+      <button type="button" class="btn-acesso" id="btnSalvarItem"><i class="fas fa-save"></i> Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modalPorGrupo" hidden>
+  <div class="modal-card" style="max-width:440px;">
+    <div class="modal-head">
+      <div><h3 id="modalPorGrupoTitle">Add por Grupo</h3></div>
+      <button type="button" class="modal-close" id="btnClosePorGrupo" aria-label="Fechar">&times;</button>
+    </div>
+    <form id="formPorGrupo" class="modal-body" autocomplete="off">
+      <input type="hidden" id="pg_acao" value="add">
+      <label>Origem
+        <select id="pg_origem">
+          <option value="acesso">Grupo de acesso</option>
+          <option value="refeicao">Grupo de refeição</option>
+        </select>
+      </label>
+      <label>Grupo
+        <select id="pg_grupo" required>
+          <option value="">Selecione...</option>
+        </select>
+      </label>
+    </form>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" id="btnCancelarPorGrupo">Cancelar</button>
+      <button type="button" class="btn-acesso" id="btnConfirmarPorGrupo">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modalAjuda" hidden>
+  <div class="modal-card" style="max-width:480px;">
+    <div class="modal-head">
+      <div><h3>Ajuda — Gerenciamento de Refeições</h3></div>
+      <button type="button" class="modal-close" data-close-modal aria-label="Fechar">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin:0;color:#475569;line-height:1.55;">
+        Cadastre <strong>grupos de refeição</strong> com tipo de cobrança, itens (nome, horário e preço)
+        e vínculos de usuários. Use a aba <strong>Vínculos de Pessoas</strong> para adicionar ou remover
+        pessoas em lote. Janelas de horário que cruzam meia-noite (início &gt; fim) são válidas.
+      </p>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" data-close-modal>Fechar</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.gr-wrap { max-width: 1400px; }
+.gr-hero {
+  display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; align-items:center;
+  padding:1.15rem 1.25rem; margin-bottom:1rem;
+  background:#fff; border:1px solid rgba(15,42,86,.1); border-radius:14px;
+  box-shadow:0 4px 12px rgba(0,0,0,.04);
+}
+.gr-hero h1 { margin:0; font-family:var(--font-brand); font-size:1.45rem; color:var(--brand-navy); }
+.gr-hero p { margin:.3rem 0 0; color:#64748b; font-size:.92rem; }
+.gr-hero-actions { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
+
+.gr-grid {
+  display:grid; grid-template-columns: minmax(260px, 300px) 1fr; gap:1rem; align-items:start;
+}
+@media (max-width: 960px) { .gr-grid { grid-template-columns: 1fr; } }
+
+.gr-panel {
+  padding:1.1rem 1.2rem; background:#fff; border:1px solid rgba(15,42,86,.1);
+  border-radius:14px; box-shadow:0 4px 12px rgba(0,0,0,.04); min-height:420px;
+  display:flex; flex-direction:column;
+}
+.gr-panel h2 {
+  margin:0 0 0.85rem; font-family:var(--font-brand); font-size:1.1rem; color:var(--brand-navy);
+}
+.gr-search { position:relative; margin-bottom:.75rem; }
+.gr-search-inline { margin-bottom:0; flex:1; min-width:160px; }
+.gr-search i {
+  position:absolute; left:.75rem; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:.85rem;
+}
+.gr-search input {
+  width:100%; padding:.55rem .7rem .55rem 2.1rem; border:1px solid rgba(15,42,86,.12);
+  border-radius:10px; font:inherit; color:var(--brand-navy); background:#fff; box-sizing:border-box;
+}
+.gr-list { list-style:none; margin:0; padding:0; flex:1; overflow:auto; max-height:480px; }
+.gr-list li {
+  display:flex; justify-content:space-between; align-items:center; gap:.5rem;
+  padding:.7rem .75rem; border-radius:10px; cursor:pointer; border:1px solid transparent;
+  color:var(--brand-navy); font-weight:600; font-size:.92rem;
+}
+.gr-list li:hover { background:rgba(15,42,86,.04); }
+.gr-list li.active {
+  background:rgba(37,99,235,.08); border-color:rgba(37,99,235,.2); color:var(--brand-blue);
+}
+.gr-list .gr-li-meta { font-size:.75rem; font-weight:600; color:#94a3b8; white-space:nowrap; }
+.gr-empty-list {
+  text-align:center; color:#94a3b8; font-weight:600; padding:2rem .5rem; flex:1;
+}
+.gr-pager {
+  margin-top:.75rem; padding-top:.65rem; border-top:1px solid rgba(15,42,86,.08);
+  font-size:.8rem; font-weight:700; color:#94a3b8; text-align:center;
+}
+
+.gr-empty-detail {
+  flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  text-align:center; color:#94a3b8; gap:.45rem; padding:2rem 1rem;
+}
+.gr-empty-detail i { font-size:2.2rem; opacity:.7; }
+.gr-empty-detail strong { color:#64748b; font-size:1.05rem; }
+.gr-empty-detail p { margin:0; max-width:320px; line-height:1.45; font-size:.92rem; }
+
+.gr-detail-head {
+  display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; align-items:flex-start;
+  margin-bottom:1rem;
+}
+.gr-detail-head h2 { margin:0; }
+.gr-meta { margin:.35rem 0 0; color:#64748b; font-size:.88rem; }
+.gr-detail-actions { display:flex; gap:.4rem; flex-wrap:wrap; }
+
+.gr-tabs {
+  display:flex; gap:.35rem; margin-bottom:1rem; border-bottom:1px solid rgba(15,42,86,.08); padding-bottom:.35rem;
+}
+.gr-tab {
+  border:none; background:transparent; padding:.45rem .85rem; border-radius:8px;
+  font:inherit; font-weight:700; color:#64748b; cursor:pointer;
+}
+.gr-tab.active { background:rgba(37,99,235,.1); color:var(--brand-blue); }
+
+.gr-itens-toolbar {
+  display:flex; gap:.55rem; flex-wrap:wrap; align-items:center; margin-bottom:.65rem;
+}
+.gr-hint {
+  margin:0 0 .75rem; color:#64748b; font-size:.8rem; line-height:1.4;
+  display:flex; gap:.35rem; align-items:flex-start;
+}
+.gr-hint i { margin-top:.15rem; color:#94a3b8; }
+.btn-sm { padding:.5rem .85rem !important; font-size:.88rem; }
+.gr-empty-mini { text-align:center; color:#94a3b8; font-weight:600; padding:1.25rem .5rem; }
+.gr-badge {
+  display:inline-block; padding:.15rem .5rem; border-radius:999px; font-size:.72rem; font-weight:700;
+}
+.gr-badge-ok { background:rgba(16,185,129,.12); color:#047857; }
+.gr-badge-off { background:rgba(148,163,184,.2); color:#64748b; }
+
+.gr-vinculos-head {
+  display:flex; justify-content:space-between; gap:.75rem; flex-wrap:wrap; align-items:center;
+  margin-bottom:.85rem;
+}
+.gr-vinculos-head h3 {
+  margin:0; font-family:var(--font-brand); font-size:1rem; color:var(--brand-navy);
+}
+.gr-vinculos-actions { display:flex; gap:.4rem; flex-wrap:wrap; }
+
+.gr-dual {
+  display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:start;
+}
+@media (max-width: 900px) { .gr-dual { grid-template-columns:1fr; } }
+.gr-dual-pane {
+  border:1px solid rgba(15,42,86,.1); border-radius:12px; padding:.85rem;
+  background:#fafbfd; min-height:280px; display:flex; flex-direction:column;
+}
+.gr-dual-title {
+  font-weight:800; color:var(--brand-navy); font-size:.92rem; margin-bottom:.65rem;
+}
+.gr-dual-toolbar {
+  display:flex; gap:.45rem; flex-wrap:wrap; align-items:center; margin-bottom:.65rem;
+}
+.gr-dual-table { background:#fff; }
+.gr-dual-table td, .gr-dual-table th { font-size:.88rem; }
+.gr-pager-row {
+  display:flex; align-items:center; justify-content:center; gap:.55rem;
+  margin-top:.65rem; font-size:.8rem; font-weight:700; color:#94a3b8;
+}
+.gr-pager-row .btn-sm { padding:.25rem .55rem !important; min-width:2rem; }
+
+.modal-backdrop {
+  position:fixed; inset:0; background:rgba(13,43,92,.45); z-index:2000;
+  display:grid; place-items:center; padding:1rem;
+}
+.modal-backdrop[hidden] { display:none !important; }
+.modal-card {
+  width:min(560px,100%); background:#fff; border-radius:16px; overflow:hidden;
+  box-shadow:0 24px 48px rgba(13,43,92,.25); max-height:92vh; display:flex; flex-direction:column;
+}
+.modal-head, .modal-foot {
+  display:flex; justify-content:space-between; align-items:flex-start; gap:.75rem;
+  padding:.95rem 1.2rem; border-bottom:1px solid rgba(15,42,86,.08);
+}
+.modal-foot { border-bottom:0; border-top:1px solid rgba(15,42,86,.08); justify-content:flex-end; align-items:center; }
+.modal-head h3 { margin:0; font-family:var(--font-brand); color:var(--brand-navy); font-size:1.25rem; }
+.modal-close { border:none; background:transparent; font-size:1.5rem; cursor:pointer; color:#64748b; line-height:1; }
+.modal-body { padding:1.15rem 1.2rem; overflow:auto; display:flex; flex-direction:column; gap:.85rem; }
+.modal-body label {
+  display:flex; flex-direction:column; gap:.3rem; font-size:.82rem; font-weight:700; color:#64748b;
+}
+.modal-body input, .modal-body select, .modal-body textarea {
+  padding:.55rem .7rem; border:1px solid rgba(15,42,86,.12); border-radius:10px;
+  font:inherit; color:var(--brand-navy); background:#fff;
+}
+.modal-body textarea { resize:vertical; min-height:84px; width:100%; box-sizing:border-box; }
+.gr-modal-row { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; }
+.gr-modal-row-ativo { align-items:end; }
+@media (max-width: 520px) { .gr-modal-row { grid-template-columns:1fr; } }
+.gr-checks { display:flex; flex-direction:column; gap:.55rem; margin-top:.15rem; }
+.gr-check {
+  flex-direction:row !important; align-items:center; gap:.55rem !important;
+  font-weight:600 !important; color:var(--brand-navy) !important; cursor:pointer;
+}
+.gr-check-inline {
+  padding-bottom:.55rem; justify-content:flex-start;
+}
+.gr-check input { width:auto; }
+</style>
+<script>
+(function () {
+  const API = {{ url_for('acesso.api_grupos_refeicao')|tojson }};
+  const API_GRUPOS_ACESSO = {{ url_for('acesso.api_grupos_acesso_lista')|tojson }};
+  const PAGE_SIZE = 12;
+  const DUAL_PAGE = 5;
+  const TIPO_LABELS = {
+    MENSAL: 'MENSAL',
+    DIARIO: 'DIARIO',
+    POR_REFEICAO: 'POR_REFEICAO',
+    SEMANAL: 'SEMANAL',
+    ISENTO: 'ISENTO',
+  };
+
+  let grupos = [];
+  let filtro = '';
+  let page = 0;
+  let selectedId = null;
+  let detalhe = null;
+  let filtroItens = '';
+  let activeTab = 'itens';
+
+  let vincQ = '';
+  let vincPage = 1;
+  let vincTotal = 0;
+  let dispQ = '';
+  let dispPage = 1;
+  let dispTotal = 0;
+  let timerVinc = null;
+  let timerDisp = null;
+  let porGrupoAcao = 'add';
+
+  const listaEl = document.getElementById('listaGrupos');
+  const emptyGrupos = document.getElementById('emptyGrupos');
+  const pagerEl = document.getElementById('pagerGrupos');
+  const emptyDetalhe = document.getElementById('emptyDetalhe');
+  const conteudoDetalhe = document.getElementById('conteudoDetalhe');
+  const modalGrupo = document.getElementById('modalGrupo');
+  const modalItem = document.getElementById('modalItem');
+  const modalPorGrupo = document.getElementById('modalPorGrupo');
+  const modalAjuda = document.getElementById('modalAjuda');
+  const formGrupo = document.getElementById('formGrupo');
+
+  function filtered() {
+    const q = filtro.trim().toLowerCase();
+    if (!q) return grupos.slice();
+    return grupos.filter(g =>
+      (g.nome || '').toLowerCase().includes(q) ||
+      (g.observacoes || '').toLowerCase().includes(q) ||
+      (g.tipo_cobranca || '').toLowerCase().includes(q)
+    );
+  }
+
+  function renderLista() {
+    const all = filtered();
+    const total = all.length;
+    const pages = Math.max(1, Math.ceil(total / PAGE_SIZE) || 1);
+    if (page >= pages) page = Math.max(0, pages - 1);
+    const start = total ? page * PAGE_SIZE : 0;
+    const slice = all.slice(start, start + PAGE_SIZE);
+    const end = total ? start + slice.length : 0;
+
+    listaEl.innerHTML = '';
+    emptyGrupos.hidden = slice.length > 0;
+    slice.forEach(g => {
+      const li = document.createElement('li');
+      li.dataset.id = g.id;
+      if (selectedId === g.id) li.classList.add('active');
+      li.innerHTML = `<span>${escapeHtml(g.nome)}</span><span class="gr-li-meta">${escapeHtml(g.tipo_cobranca || '')}${g.ativo ? '' : ' · Inativo'}</span>`;
+      li.addEventListener('click', () => selectGrupo(g.id));
+      listaEl.appendChild(li);
+    });
+    pagerEl.textContent = `${total ? start + 1 : 0}-${end} de ${total}`;
+  }
+
+  function escapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  async function loadGrupos(keepSelection) {
+    const r = await fetch(API);
+    const res = await r.json();
+    grupos = res.grupos || [];
+    if (!keepSelection) selectedId = null;
+    if (keepSelection && selectedId && !grupos.find(g => g.id === selectedId)) selectedId = null;
+    renderLista();
+    if (selectedId) await selectGrupo(selectedId);
+    else showEmptyDetail();
+  }
+
+  function showEmptyDetail() {
+    emptyDetalhe.hidden = false;
+    conteudoDetalhe.hidden = true;
+    detalhe = null;
+  }
+
+  async function selectGrupo(id) {
+    selectedId = id;
+    renderLista();
+    const r = await fetch(`${API}/${id}`);
+    const res = await r.json();
+    if (!res.ok) { alert(res.error || 'Erro ao carregar grupo'); return; }
+    detalhe = res.grupo;
+    emptyDetalhe.hidden = true;
+    conteudoDetalhe.hidden = false;
+    document.getElementById('detNome').textContent = detalhe.nome;
+    const tipo = TIPO_LABELS[detalhe.tipo_cobranca] || detalhe.tipo_cobranca || 'MENSAL';
+    document.getElementById('detMeta').textContent = `Tipo: ${tipo} • valores definidos por item`;
+    renderItens();
+    if (activeTab === 'vinculos') {
+      vincPage = 1;
+      dispPage = 1;
+      await Promise.all([loadVinculadas(), loadDisponiveis()]);
+    }
+  }
+
+  function renderItens() {
+    const tbody = document.getElementById('tbodyItens');
+    const empty = document.getElementById('emptyItens');
+    const itens = (detalhe && detalhe.itens) || [];
+    const q = filtroItens.trim().toLowerCase();
+    const filteredItens = !q ? itens : itens.filter(it =>
+      (it.nome || '').toLowerCase().includes(q) ||
+      (it.horario || '').toLowerCase().includes(q) ||
+      (it.hora_inicio || '').includes(q) ||
+      (it.hora_fim || '').includes(q)
+    );
+    tbody.innerHTML = '';
+    empty.hidden = filteredItens.length > 0;
+    filteredItens.forEach(it => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><strong>${escapeHtml(it.nome)}</strong></td>
+        <td>${escapeHtml(it.horario || '—')}</td>
+        <td>${escapeHtml(it.valor_fmt || 'R$ 0,00')}</td>
+        <td><span class="gr-badge ${it.ativo ? 'gr-badge-ok' : 'gr-badge-off'}">${it.ativo ? 'Ativo' : 'Inativo'}</span></td>
+        <td style="white-space:nowrap;">
+          <button type="button" class="btn btn-secondary btn-sm btn-edit-item" data-id="${it.id}">Editar</button>
+          <button type="button" class="btn btn-secondary btn-sm btn-del-item" data-id="${it.id}">Excluir</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+    tbody.querySelectorAll('.btn-edit-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const it = itens.find(x => String(x.id) === String(btn.dataset.id));
+        if (it) openModalItem(it);
+      });
+    });
+    tbody.querySelectorAll('.btn-del-item').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Excluir este item?')) return;
+        const r = await fetch(`/acesso/api/itens-refeicao/${btn.dataset.id}`, { method: 'DELETE' });
+        const res = await r.json();
+        if (!res.ok) { alert(res.error || 'Erro'); return; }
+        await selectGrupo(selectedId);
+        await loadGrupos(true);
+      });
+    });
+  }
+
+  function pagerLabel(pageNum, perPage, total) {
+    if (!total) return 'Mostrando 0-0 de 0';
+    const start = (pageNum - 1) * perPage + 1;
+    const end = Math.min(pageNum * perPage, total);
+    return `Mostrando ${start}-${end} de ${total}`;
+  }
+
+  async function loadVinculadas() {
+    if (!selectedId) return;
+    const url = `${API}/${selectedId}/vinculos?q=${encodeURIComponent(vincQ)}&page=${vincPage}&per_page=${DUAL_PAGE}`;
+    const r = await fetch(url);
+    const res = await r.json();
+    const rows = res.vinculos || [];
+    vincTotal = res.total || 0;
+    const tbody = document.getElementById('tbodyVinculadas');
+    const empty = document.getElementById('emptyVinculadas');
+    tbody.innerHTML = '';
+    empty.hidden = rows.length > 0;
+    document.getElementById('chkAllVinculadas').checked = false;
+    rows.forEach(v => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input type="checkbox" class="chk-vinc" value="${v.id}" data-pessoa="${v.pessoa_id || ''}"></td>
+        <td>
+          <strong>${escapeHtml(v.pessoa_nome)}</strong>
+          ${v.matricula ? `<div style="font-size:.78rem;color:#94a3b8;">${escapeHtml(v.matricula)}</div>` : ''}
+        </td>
+        <td>
+          <button type="button" class="btn btn-secondary btn-sm btn-rem-one" data-id="${v.id}" title="Remover">✕</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+    tbody.querySelectorAll('.btn-rem-one').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const r2 = await fetch(`/acesso/api/vinculos-refeicao/${btn.dataset.id}`, { method: 'DELETE' });
+        const res2 = await r2.json();
+        if (!res2.ok) { alert(res2.error || 'Erro'); return; }
+        await refreshVinculos();
+        await loadGrupos(true);
+      });
+    });
+    document.getElementById('pagerVinculadas').textContent = pagerLabel(vincPage, DUAL_PAGE, vincTotal);
+    document.getElementById('prevVinculadas').disabled = vincPage <= 1;
+    document.getElementById('nextVinculadas').disabled = vincPage * DUAL_PAGE >= vincTotal;
+  }
+
+  async function loadDisponiveis() {
+    if (!selectedId) return;
+    const url = `${API}/${selectedId}/pessoas-disponiveis?q=${encodeURIComponent(dispQ)}&page=${dispPage}&per_page=${DUAL_PAGE}`;
+    const r = await fetch(url);
+    const res = await r.json();
+    const rows = res.pessoas || [];
+    dispTotal = res.total || 0;
+    const tbody = document.getElementById('tbodyDisponiveis');
+    const empty = document.getElementById('emptyDisponiveis');
+    tbody.innerHTML = '';
+    empty.hidden = rows.length > 0;
+    document.getElementById('chkAllDisponiveis').checked = false;
+    rows.forEach(p => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input type="checkbox" class="chk-disp" value="${p.id}"></td>
+        <td>
+          <strong>${escapeHtml(p.nome)}</strong>
+          ${p.matricula ? `<div style="font-size:.78rem;color:#94a3b8;">${escapeHtml(p.matricula)}</div>` : ''}
+        </td>`;
+      tbody.appendChild(tr);
+    });
+    document.getElementById('pagerDisponiveis').textContent = pagerLabel(dispPage, DUAL_PAGE, dispTotal);
+    document.getElementById('prevDisponiveis').disabled = dispPage <= 1;
+    document.getElementById('nextDisponiveis').disabled = dispPage * DUAL_PAGE >= dispTotal;
+  }
+
+  async function refreshVinculos() {
+    await Promise.all([loadVinculadas(), loadDisponiveis()]);
+  }
+
+  function openModalGrupo(edit) {
+    formGrupo.reset();
+    document.getElementById('g_id').value = edit?.id || '';
+    document.getElementById('modalGrupoTitle').textContent = edit
+      ? 'Editar grupo de refeições'
+      : 'Novo grupo de refeições';
+    document.getElementById('g_nome').value = edit?.nome || '';
+    document.getElementById('g_tipo').value = edit?.tipo_cobranca || 'MENSAL';
+    document.getElementById('g_obs').value = edit?.observacoes || '';
+    document.getElementById('g_ativo').checked = edit ? !!edit.ativo : true;
+    document.getElementById('g_visitantes').checked = edit ? !!edit.exibir_visitantes : false;
+    modalGrupo.hidden = false;
+    setTimeout(() => document.getElementById('g_nome').focus(), 50);
+  }
+
+  function openModalItem(edit) {
+    document.getElementById('formItem').reset();
+    document.getElementById('i_id').value = edit?.id || '';
+    document.getElementById('modalItemTitle').textContent = edit
+      ? 'Editar item de refeição'
+      : 'Novo item de refeição';
+    document.getElementById('i_nome').value = edit?.nome || '';
+    document.getElementById('i_hora_inicio').value = edit?.hora_inicio || '';
+    document.getElementById('i_hora_fim').value = edit?.hora_fim || '';
+    document.getElementById('i_preco').value = edit
+      ? (edit.preco_mensal_fmt || String(edit.valor ?? '').replace('.', ','))
+      : '';
+    document.getElementById('i_ativo').checked = edit ? !!edit.ativo : true;
+    modalItem.hidden = false;
+    setTimeout(() => document.getElementById('i_nome').focus(), 50);
+  }
+
+  async function fillPorGrupoSelect() {
+    const origem = document.getElementById('pg_origem').value;
+    const sel = document.getElementById('pg_grupo');
+    sel.innerHTML = '<option value="">Selecione...</option>';
+    if (origem === 'refeicao') {
+      grupos.filter(g => g.id !== selectedId).forEach(g => {
+        const opt = document.createElement('option');
+        opt.value = g.id;
+        opt.textContent = g.nome;
+        sel.appendChild(opt);
+      });
+    } else {
+      const r = await fetch(API_GRUPOS_ACESSO);
+      const res = await r.json();
+      (res.grupos || []).forEach(g => {
+        const opt = document.createElement('option');
+        opt.value = g.id;
+        opt.textContent = g.nome;
+        sel.appendChild(opt);
+      });
+    }
+  }
+
+  async function openModalPorGrupo(acao) {
+    porGrupoAcao = acao;
+    document.getElementById('pg_acao').value = acao;
+    document.getElementById('modalPorGrupoTitle').textContent =
+      acao === 'remove' ? 'Remover por Grupo' : 'Add por Grupo';
+    document.getElementById('pg_origem').value = 'acesso';
+    await fillPorGrupoSelect();
+    modalPorGrupo.hidden = false;
+  }
+
+  function closeModals() {
+    modalGrupo.hidden = true;
+    modalItem.hidden = true;
+    modalPorGrupo.hidden = true;
+    modalAjuda.hidden = true;
+  }
+
+  document.getElementById('btnNovoGrupo').addEventListener('click', () => openModalGrupo(null));
+  document.getElementById('btnAjuda').addEventListener('click', () => { modalAjuda.hidden = false; });
+  document.getElementById('btnCloseGrupo').addEventListener('click', closeModals);
+  document.getElementById('btnCancelarGrupo').addEventListener('click', closeModals);
+  document.getElementById('btnCloseItem').addEventListener('click', closeModals);
+  document.getElementById('btnCancelarItem').addEventListener('click', closeModals);
+  document.getElementById('btnClosePorGrupo').addEventListener('click', closeModals);
+  document.getElementById('btnCancelarPorGrupo').addEventListener('click', closeModals);
+  document.querySelectorAll('[data-close-modal]').forEach(btn => btn.addEventListener('click', closeModals));
+  [modalGrupo, modalItem, modalPorGrupo, modalAjuda].forEach(m => {
+    m.addEventListener('click', e => { if (e.target === m) closeModals(); });
+  });
+
+  document.getElementById('btnNovoItem').addEventListener('click', () => {
+    if (!selectedId) return;
+    openModalItem(null);
+  });
+
+  document.getElementById('btnSalvarItem').addEventListener('click', async () => {
+    if (!selectedId) return;
+    const id = document.getElementById('i_id').value.trim();
+    const payload = {
+      nome: document.getElementById('i_nome').value.trim(),
+      hora_inicio: document.getElementById('i_hora_inicio').value || null,
+      hora_fim: document.getElementById('i_hora_fim').value || null,
+      preco_mensal: document.getElementById('i_preco').value.trim(),
+      ativo: document.getElementById('i_ativo').checked,
+    };
+    if (!payload.nome) { alert('Informe o nome do item.'); return; }
+    const url = id ? `/acesso/api/itens-refeicao/${id}` : `${API}/${selectedId}/itens`;
+    const method = id ? 'PUT' : 'POST';
+    const r = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const res = await r.json();
+    if (!res.ok) { alert(res.error || 'Erro ao salvar item'); return; }
+    closeModals();
+    await selectGrupo(selectedId);
+    await loadGrupos(true);
+  });
+
+  document.getElementById('filtroItens').addEventListener('input', e => {
+    filtroItens = e.target.value || '';
+    renderItens();
+  });
+
+  document.getElementById('btnSalvarGrupo').addEventListener('click', async () => {
+    const id = document.getElementById('g_id').value.trim();
+    const payload = {
+      nome: document.getElementById('g_nome').value.trim(),
+      tipo_cobranca: document.getElementById('g_tipo').value,
+      observacoes: document.getElementById('g_obs').value.trim(),
+      ativo: document.getElementById('g_ativo').checked,
+      exibir_visitantes: document.getElementById('g_visitantes').checked,
+    };
+    if (!payload.nome) { alert('Informe o nome do grupo.'); return; }
+    if (!payload.tipo_cobranca) { alert('Informe o tipo de cobrança.'); return; }
+    const url = id ? `${API}/${id}` : API;
+    const method = id ? 'PUT' : 'POST';
+    const r = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const res = await r.json();
+    if (!res.ok) { alert(res.error || 'Erro ao salvar'); return; }
+    closeModals();
+    selectedId = res.grupo?.id || selectedId;
+    await loadGrupos(true);
+  });
+
+  document.getElementById('btnEditarGrupo').addEventListener('click', () => {
+    if (detalhe) openModalGrupo(detalhe);
+  });
+
+  document.getElementById('btnExcluirGrupo').addEventListener('click', async () => {
+    if (!selectedId || !confirm('Excluir este grupo e todos os itens/vínculos?')) return;
+    const r = await fetch(`${API}/${selectedId}`, { method: 'DELETE' });
+    const res = await r.json();
+    if (!res.ok) { alert(res.error || 'Erro ao excluir'); return; }
+    selectedId = null;
+    await loadGrupos(false);
+  });
+
+  document.getElementById('filtroGrupos').addEventListener('input', e => {
+    filtro = e.target.value || '';
+    page = 0;
+    renderLista();
+  });
+
+  document.querySelectorAll('.gr-tab').forEach(tab => {
+    tab.addEventListener('click', async () => {
+      document.querySelectorAll('.gr-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      activeTab = tab.dataset.tab;
+      document.getElementById('tabItens').hidden = activeTab !== 'itens';
+      document.getElementById('tabVinculos').hidden = activeTab !== 'vinculos';
+      if (activeTab === 'vinculos' && selectedId) {
+        vincPage = 1;
+        dispPage = 1;
+        await refreshVinculos();
+      }
+    });
+  });
+
+  document.getElementById('buscaVinculadas').addEventListener('input', e => {
+    clearTimeout(timerVinc);
+    timerVinc = setTimeout(() => {
+      vincQ = e.target.value.trim();
+      vincPage = 1;
+      loadVinculadas();
+    }, 250);
+  });
+  document.getElementById('buscaDisponiveis').addEventListener('input', e => {
+    clearTimeout(timerDisp);
+    timerDisp = setTimeout(() => {
+      dispQ = e.target.value.trim();
+      dispPage = 1;
+      loadDisponiveis();
+    }, 250);
+  });
+
+  document.getElementById('prevVinculadas').addEventListener('click', () => {
+    if (vincPage > 1) { vincPage -= 1; loadVinculadas(); }
+  });
+  document.getElementById('nextVinculadas').addEventListener('click', () => {
+    if (vincPage * DUAL_PAGE < vincTotal) { vincPage += 1; loadVinculadas(); }
+  });
+  document.getElementById('prevDisponiveis').addEventListener('click', () => {
+    if (dispPage > 1) { dispPage -= 1; loadDisponiveis(); }
+  });
+  document.getElementById('nextDisponiveis').addEventListener('click', () => {
+    if (dispPage * DUAL_PAGE < dispTotal) { dispPage += 1; loadDisponiveis(); }
+  });
+
+  document.getElementById('chkAllVinculadas').addEventListener('change', e => {
+    document.querySelectorAll('.chk-vinc').forEach(c => { c.checked = e.target.checked; });
+  });
+  document.getElementById('chkAllDisponiveis').addEventListener('change', e => {
+    document.querySelectorAll('.chk-disp').forEach(c => { c.checked = e.target.checked; });
+  });
+
+  document.getElementById('btnAddSelecionados').addEventListener('click', async () => {
+    if (!selectedId) return;
+    const ids = [...document.querySelectorAll('.chk-disp:checked')].map(c => Number(c.value));
+    if (!ids.length) { alert('Selecione ao menos uma pessoa disponível.'); return; }
+    const r = await fetch(`${API}/${selectedId}/vinculos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pessoa_ids: ids }),
+    });
+    const res = await r.json();
+    if (!res.ok) { alert(res.error || 'Erro ao adicionar'); return; }
+    await refreshVinculos();
+    await loadGrupos(true);
+  });
+
+  document.getElementById('btnRemSelecionados').addEventListener('click', async () => {
+    if (!selectedId) return;
+    const ids = [...document.querySelectorAll('.chk-vinc:checked')].map(c => Number(c.value));
+    if (!ids.length) { alert('Selecione ao menos uma pessoa vinculada.'); return; }
+    if (!confirm(`Remover ${ids.length} vínculo(s)?`)) return;
+    const r = await fetch(`${API}/${selectedId}/vinculos/remover`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vinculo_ids: ids }),
+    });
+    const res = await r.json();
+    if (!res.ok) { alert(res.error || 'Erro ao remover'); return; }
+    await refreshVinculos();
+    await loadGrupos(true);
+  });
+
+  document.getElementById('btnRemTodos').addEventListener('click', async () => {
+    if (!selectedId) return;
+    if (!confirm('Remover TODOS os vínculos deste grupo?')) return;
+    const r = await fetch(`${API}/${selectedId}/vinculos`, { method: 'DELETE' });
+    const res = await r.json();
+    if (!res.ok) { alert(res.error || 'Erro ao remover'); return; }
+    vincPage = 1;
+    await refreshVinculos();
+    await loadGrupos(true);
+  });
+
+  document.getElementById('btnAddPorGrupo').addEventListener('click', () => openModalPorGrupo('add'));
+  document.getElementById('btnRemPorGrupo').addEventListener('click', () => openModalPorGrupo('remove'));
+  document.getElementById('pg_origem').addEventListener('change', fillPorGrupoSelect);
+
+  document.getElementById('btnConfirmarPorGrupo').addEventListener('click', async () => {
+    if (!selectedId) return;
+    const grupoId = document.getElementById('pg_grupo').value;
+    if (!grupoId) { alert('Selecione o grupo.'); return; }
+    const r = await fetch(`${API}/${selectedId}/vinculos/por-grupo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        acao: document.getElementById('pg_acao').value,
+        origem: document.getElementById('pg_origem').value,
+        grupo_id: Number(grupoId),
+      }),
+    });
+    const res = await r.json();
+    if (!res.ok) { alert(res.error || 'Erro na operação'); return; }
+    closeModals();
+    await refreshVinculos();
+    await loadGrupos(true);
+  });
+
+  loadGrupos(false);
+})();
+</script>
+{% endblock %}

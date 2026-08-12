@@ -91,25 +91,16 @@
   <button type="button" data-acao="substituicoes"><u>S</u>ubstituições</button>
   <button type="button" data-acao="avaliacao"><u>A</u>valiação Nutricional</button>
   <hr>
-  <button type="button" data-acao="limpar"><u>L</u>impar campo</button>
-  <hr>
-  <button type="button" data-acao="carregar"><u>C</u>arregar pacientes</button>
   <button type="button" data-acao="transferir"><u>T</u>ransferir de leito</button>
   <hr>
   <button type="button" data-acao="salvar_arquivo"><u>S</u>alvar mapa para arquivo</button>
-  <button type="button" data-acao="carregar_arquivo"><u>C</u>arregar mapa de arquivo</button>
-  <hr>
-  <button type="button" data-acao="desbloquear"><i class="fas fa-lock" style="color:#ca8a04;margin-right:6px;"></i><u>D</u>esbloquear mapa</button>
   <hr>
   <button type="button" data-acao="importar_extras">Importar <u>E</u>xtras</button>
   <button type="button" data-acao="importar_suplementos">Importar <u>S</u>uplementos</button>
   <button type="button" data-acao="importar_enteral">Importar <u>E</u>nteral</button>
   <button type="button" data-acao="importar_formula">Importar <u>F</u>órmulas Infantis</button>
   <button type="button" data-acao="importar_lve">Importar <u>L</u>VE</button>
-  <hr>
-  <button type="button" data-acao="atalhos"><u>G</u>uia de atalhos</button>
 </nav>
-<input type="file" id="mapaFileInput" accept="application/json,.json" hidden>
 
 <div id="avisoAltaOverlay" class="aviso-alta-overlay" hidden>
   <div class="aviso-alta-dialog" role="dialog" aria-modal="true" aria-labelledby="avisoAltaTitulo">
@@ -220,8 +211,8 @@
 .mapa-page {
   display: flex;
   flex-direction: column;
-  /* main padding (3rem) + system-switch (~4.5rem incl. margin) */
-  max-height: calc(100vh - 7.5rem);
+  /* main padding (3rem) */
+  max-height: calc(100vh - 3rem);
   min-height: 0;
 }
 .mapa-page .page-header,
@@ -309,7 +300,12 @@
 }
 .flag-btn:disabled { opacity: 0.5; cursor: wait; }
 .linha-mapa:hover td { background: #dbeafe !important; }
-.linha-mapa.selected td { outline: 2px solid #2563eb; outline-offset: -2px; }
+/* Destaque da linha no clique direito — verde São Geraldo (--brand-lime) */
+.linha-mapa.selected td,
+.linha-mapa.selected:hover td {
+  background: var(--brand-lime, #A8C53A) !important;
+  color: var(--brand-ink, #0F2A56);
+}
 .ver-texto {
   border: none;
   background: transparent;
@@ -797,7 +793,6 @@ const MSG_MAPA_VAZIO = 'Nenhum paciente no mapa deste dia. Use Inserir paciente.
 let dataAtual = DATA_INICIAL ? new Date(DATA_INICIAL + 'T12:00:00') : new Date();
 let ctxLinha = null;
 let ctxCampo = null;
-let mapaBloqueado = false;
 let buscaPacienteTimer = null;
 let pacienteSelecionadoInserir = null;
 let linhasMapaCache = {};
@@ -1066,7 +1061,6 @@ async function confirmarAvisoAlta(){
 }
 
 async function toggleFlag(btn){
-  if (mapaBloqueado){ showToast('Mapa bloqueado','error'); return; }
   const tr = btn.closest('tr.linha-mapa');
   if (!tr) return;
   const id = tr.dataset.id;
@@ -1134,11 +1128,15 @@ function fecharContextMenu(){
   if (menu) menu.hidden = true;
 }
 
+function limparSelecaoMapa(){
+  document.querySelectorAll('#mapaBody tr.linha-mapa.selected').forEach(r => r.classList.remove('selected'));
+}
+
 function abrirContextMenu(e, tr, campo){
   e.preventDefault();
   ctxLinha = tr;
   ctxCampo = campo || null;
-  document.querySelectorAll('#mapaBody tr.linha-mapa').forEach(r => r.classList.remove('selected'));
+  limparSelecaoMapa();
   tr.classList.add('selected');
   const menu = document.getElementById('mapaContextMenu');
   menu.hidden = false;
@@ -1157,7 +1155,6 @@ function abrirTextoCampo(btn){
 }
 
 function editarCampoTexto(tr, campo, tituloExtra){
-  if (mapaBloqueado){ showToast('Mapa bloqueado','error'); return; }
   const titulo = tituloExtra || CAMPOS_TEXTO[campo] || campo;
   const valor = tr.dataset[campo] || '';
   const html = `<div class="form-group"><label class="form-label">${titulo}</label>
@@ -1188,29 +1185,8 @@ async function salvarCampoTexto(){
   showToast('Campo atualizado','success');
 }
 
-async function limparCampoAtual(){
-  if (!ctxLinha) return;
-  if (!ctxCampo || !CAMPOS_TEXTO[ctxCampo]){
-    showToast('Clique com o direito sobre Extras, Suplementos, Enteral, Fórm. Infantil, LVE ou Observação etiqueta','error');
-    return;
-  }
-  if (mapaBloqueado){ showToast('Mapa bloqueado','error'); return; }
-  const body = {};
-  body[ctxCampo] = '';
-  const r = await fetch(`/nutricao/api/mapa/${ctxLinha.dataset.id}`, {
-    method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
-  });
-  const j = await r.json();
-  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao limpar','error'); return; }
-  ctxLinha.dataset[ctxCampo] = '';
-  const td = ctxLinha.querySelector(`td.cell-texto[data-campo="${ctxCampo}"]`);
-  if (td) td.innerHTML = '';
-  showToast('Campo limpo','success');
-}
-
 function transferirLeito(){
   if (!ctxLinha) return;
-  if (mapaBloqueado){ showToast('Mapa bloqueado','error'); return; }
   const atual = ctxLinha.querySelector('.cell-leito')?.textContent || '';
   const html = `<div class="form-group"><label class="form-label">Novo leito</label>
     <input class="form-control" id="f-novo-leito" value="${atual === '-' ? '' : atual}"></div>`;
@@ -1253,53 +1229,6 @@ function salvarMapaArquivo(){
   a.click();
   URL.revokeObjectURL(a.href);
   showToast('Mapa exportado','success');
-}
-
-function carregarMapaArquivo(){
-  document.getElementById('mapaFileInput').click();
-}
-
-async function onMapaFile(e){
-  const file = e.target.files?.[0];
-  e.target.value = '';
-  if (!file) return;
-  try {
-    const data = JSON.parse(await file.text());
-    const linhas = data.linhas || [];
-    let ok = 0;
-    for (const l of linhas){
-      if (!l.id) continue;
-      const body = {
-        obs_etiqueta: l.obs_etiqueta || '',
-        extras: l.extras || '',
-        suplementos: l.suplementos || '',
-        enteral: l.enteral || '',
-        formula_infantil: l.formula_infantil || '',
-        lve: l.lve || ''
-      };
-      if (l.leito) body.leito = l.leito;
-      const r = await fetch(`/nutricao/api/mapa/${l.id}`, {
-        method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
-      });
-      if (r.ok) ok++;
-    }
-    await carregarMapa();
-    showToast(`Mapa carregado (${ok} linhas)`,'success');
-  } catch (err) {
-    showToast('Arquivo inválido','error');
-  }
-}
-
-function guiaAtalhos(){
-  const html = `<ul style="margin:0;padding-left:1.1rem;line-height:1.7">
-    <li><b>Botão direito</b> na linha: menu do mapa</li>
-    <li><b>Substituições</b>: personaliza o cardápio (Remover/Adicionar) por refeição</li>
-    <li><b>(Ver Texto)</b>: abre o conteúdo do campo</li>
-    <li><b>Importar Extras/Suplementos/...</b>: edita o campo correspondente</li>
-    <li><b>Limpar campo</b>: limpa o campo clicado</li>
-    <li><b>D / C / A / M / J / C</b>: flags de refeição</li>
-  </ul>`;
-  abrirModal('Guia de atalhos', html, 'Fechar', fecharModal);
 }
 
 function _substMealData(){
@@ -1537,10 +1466,6 @@ async function abrirSubstituicoes(mapaId){
     showToast('Selecione uma linha', 'error');
     return;
   }
-  if (mapaBloqueado) {
-    showToast('Mapa bloqueado', 'error');
-    return;
-  }
   try {
     const r = await fetch(`/nutricao/api/mapa/${id}/substituicoes`);
     const j = await r.json();
@@ -1570,7 +1495,7 @@ async function fecharSubstituicoes(salvar){
 
 function acaoContextMenu(acao){
   fecharContextMenu();
-  if (!ctxLinha && !['carregar','carregar_arquivo','salvar_arquivo','atalhos','desbloquear'].includes(acao)){
+  if (!ctxLinha && !['salvar_arquivo'].includes(acao)){
     showToast('Selecione uma linha','error');
     return;
   }
@@ -1578,21 +1503,13 @@ function acaoContextMenu(acao){
     case 'alimentos': editarCampoTexto(ctxLinha, 'obs_etiqueta', 'Alimentos complementares'); break;
     case 'substituicoes': abrirSubstituicoes(ctxLinha?.dataset?.id); break;
     case 'avaliacao': showToast('Avaliação nutricional em breve'); break;
-    case 'limpar': limparCampoAtual(); break;
-    case 'carregar': carregarMapa(); break;
     case 'transferir': transferirLeito(); break;
     case 'salvar_arquivo': salvarMapaArquivo(); break;
-    case 'carregar_arquivo': carregarMapaArquivo(); break;
-    case 'desbloquear':
-      mapaBloqueado = !mapaBloqueado;
-      showToast(mapaBloqueado ? 'Mapa bloqueado' : 'Mapa desbloqueado', mapaBloqueado ? 'error' : 'success');
-      break;
     case 'importar_extras': editarCampoTexto(ctxLinha, 'extras'); break;
     case 'importar_suplementos': editarCampoTexto(ctxLinha, 'suplementos'); break;
     case 'importar_enteral': editarCampoTexto(ctxLinha, 'enteral'); break;
     case 'importar_formula': editarCampoTexto(ctxLinha, 'formula_infantil'); break;
     case 'importar_lve': editarCampoTexto(ctxLinha, 'lve'); break;
-    case 'atalhos': guiaAtalhos(); break;
   }
 }
 
@@ -1927,7 +1844,6 @@ async function salvarInserirPacienteMapa(){
 }
 
 function editarLinhaMapa(id){
-  if (mapaBloqueado){ showToast('Mapa bloqueado','error'); return; }
   const l = linhasMapaCache[id];
   if (!l){ showToast('Linha não encontrada','error'); return; }
   window._editMapaId = id;
@@ -2098,7 +2014,6 @@ async function salvarEdicaoLinhaMapa(){
 }
 
 function abrirExcluirLinhaMapa(id){
-  if (mapaBloqueado){ showToast('Mapa bloqueado','error'); return; }
   const l = linhasMapaCache[id];
   if (!l){ showToast('Linha não encontrada','error'); return; }
   window._excluirMapaId = id;
@@ -2179,15 +2094,17 @@ document.addEventListener('DOMContentLoaded', function(){
   });
 
   document.addEventListener('click', function(e){
-    if (!e.target.closest('#mapaContextMenu')) fecharContextMenu();
+    if (e.target.closest('#mapaContextMenu')) return;
+    fecharContextMenu();
+    if (!e.target.closest('tr.linha-mapa.selected')) limparSelecaoMapa();
   });
   document.addEventListener('keydown', function(e){
     if (e.key === 'Escape') {
       fecharContextMenu();
+      limparSelecaoMapa();
       if (!document.getElementById('substOverlay')?.hidden) fecharSubstituicoes(true);
     }
   });
-  document.getElementById('mapaFileInput')?.addEventListener('change', onMapaFile);
 
   document.getElementById('substTabs')?.addEventListener('click', function(e){
     const btn = e.target.closest('.subst-tab');

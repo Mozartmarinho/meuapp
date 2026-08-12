@@ -1,0 +1,226 @@
+{% extends "base_acesso.html" %}
+{% block title %}Relatório de Permanência{% endblock %}
+{% block content %}
+<div class="rel-wrap">
+  <header class="rel-header">
+    <div>
+      <h1>Relatório de Permanência</h1>
+      <p>Tempo entre entrada e saída por pessoa no período filtrado.</p>
+    </div>
+  </header>
+
+  <div class="card filters-card no-print">
+    <div class="filters-card-title"><i class="fas fa-filter"></i> Filtros do Relatório</div>
+    <form method="get" class="filters-form" id="filtrosForm">
+      <input type="hidden" name="tab" value="{{ tab }}">
+      <label>Data inicial
+        <input type="datetime-local" name="inicio" value="{{ inicio }}">
+      </label>
+      <label>Data final
+        <input type="datetime-local" name="fim" value="{{ fim }}">
+      </label>
+      <label>Nome
+        <input type="search" name="nome" value="{{ nome }}" placeholder="Nome">
+      </label>
+      <label>Matrícula (User ID)
+        <input type="search" name="matricula" value="{{ matricula }}" placeholder="Matrícula / ID">
+      </label>
+      <label>Empresa
+        <select name="empresa_id">
+          <option value="">Todas</option>
+          {% for e in empresas %}
+          <option value="{{ e.id }}" {% if empresa_id == e.id|string %}selected{% endif %}>{{ e.nome }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Setor
+        <select name="setor_id">
+          <option value="">Todos</option>
+          {% for s in setores %}
+          <option value="{{ s.id }}" {% if setor_id == s.id|string %}selected{% endif %}>{{ s.descricao }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Departamento
+        <select name="departamento_id">
+          <option value="">Todos</option>
+          {% for d in departamentos %}
+          <option value="{{ d.id }}" {% if departamento_id == d.id|string %}selected{% endif %}>{{ d.descricao }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Classificação
+        <select name="classificacao_id">
+          <option value="">Todas</option>
+          {% for c in classificacoes %}
+          <option value="{{ c.id }}" {% if classificacao_id == c.id|string %}selected{% endif %}>{{ c.descricao }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Fluxo de Equipamentos
+        <select name="fluxo">
+          <option value="global" {% if fluxo == 'global' %}selected{% endif %}>Global</option>
+        </select>
+      </label>
+      <div class="filters-actions">
+        <button type="submit" class="btn-acesso"><i class="fas fa-filter"></i> Aplicar Filtros</button>
+        <a class="btn btn-secondary btn-sm" href="{{ url_for('acesso.permanencia_page', tab=tab) }}">Limpar</a>
+        <a class="btn btn-success-sg btn-sm"
+           href="{{ url_for('acesso.permanencia_export_csv', inicio=inicio, fim=fim, nome=nome, matricula=matricula, empresa_id=empresa_id, setor_id=setor_id, departamento_id=departamento_id, classificacao_id=classificacao_id, fluxo=fluxo, tab=tab) }}">
+          <i class="fas fa-file-csv"></i> Exportar
+        </a>
+      </div>
+    </form>
+  </div>
+
+  <nav class="rel-tabs no-print">
+    <a class="rel-tab {% if tab == 'todos' %}active{% endif %}"
+       href="{{ url_for('acesso.permanencia_page', inicio=inicio, fim=fim, nome=nome, matricula=matricula, empresa_id=empresa_id, setor_id=setor_id, departamento_id=departamento_id, classificacao_id=classificacao_id, fluxo=fluxo, tab='todos') }}">Todos</a>
+    <a class="rel-tab {% if tab == 'pessoas' %}active{% endif %}"
+       href="{{ url_for('acesso.permanencia_page', inicio=inicio, fim=fim, nome=nome, matricula=matricula, empresa_id=empresa_id, setor_id=setor_id, departamento_id=departamento_id, classificacao_id=classificacao_id, fluxo=fluxo, tab='pessoas') }}">Pessoas</a>
+    <a class="rel-tab {% if tab == 'visitantes' %}active{% endif %}"
+       href="{{ url_for('acesso.permanencia_page', inicio=inicio, fim=fim, nome=nome, matricula=matricula, empresa_id=empresa_id, setor_id=setor_id, departamento_id=departamento_id, classificacao_id=classificacao_id, fluxo=fluxo, tab='visitantes') }}">Visitantes</a>
+  </nav>
+
+  <div class="card table-card">
+    <div class="table-head">
+      <h2>Relatório de Permanência</h2>
+      <span class="table-count">{{ '{:,}'.format(total).replace(',', '.') }} registro{{ '' if total == 1 else 's' }}</span>
+    </div>
+    <div class="table-scroll">
+      <table class="data-table perm-rel-table">
+        <thead>
+          <tr>
+            <th>Dia</th>
+            <th>Nome / Matrícula</th>
+            <th>Empresa / Setor / Depto.</th>
+            <th>Entrada (Hora / Local)</th>
+            <th>Saída (Hora / Local)</th>
+            <th>Permanência</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td class="mono">{{ r.dia }}</td>
+            <td>
+              <strong>{{ r.nome }}</strong>
+              <div class="muted">{{ r.matricula }}</div>
+            </td>
+            <td>
+              <div>{{ r.empresa }}</div>
+              <div class="muted">{{ r.setor }} · {{ r.departamento }}</div>
+            </td>
+            <td>
+              <div class="mono">{{ r.entrada_hora }}</div>
+              <div class="muted">{{ r.entrada_local }}</div>
+            </td>
+            <td>
+              <div class="mono">{{ r.saida_hora }}</div>
+              <div class="muted">{{ r.saida_local }}</div>
+            </td>
+            <td class="mono permanencia-cell {% if r.permanencia == '—' %}open{% endif %}">{{ r.permanencia }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6" class="empty">
+              {% if tab == 'visitantes' %}
+                Nenhuma permanência de visitante no período.
+              {% elif tab == 'pessoas' %}
+                Nenhuma permanência de pessoa no período.
+              {% else %}
+                Nenhuma permanência encontrada com os filtros atuais.
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.rel-wrap { max-width: 1400px; }
+.rel-header {
+  display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; align-items:flex-start;
+  margin-bottom:1rem;
+}
+.rel-header h1 {
+  margin:0; font-family:var(--font-brand); font-size:1.45rem; color:var(--brand-navy);
+}
+.rel-header p { margin:.35rem 0 0; color:#64748b; font-size:.9rem; }
+
+.filters-card { padding:1.1rem 1.2rem; margin-bottom:1.1rem; }
+.filters-card-title {
+  display:flex; align-items:center; gap:.45rem;
+  font-size:.95rem; font-weight:800; color:var(--brand-navy); margin-bottom:.85rem;
+}
+.filters-form {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+  gap:.75rem 1rem;
+  align-items:end;
+}
+.filters-form label {
+  display:flex; flex-direction:column; gap:.3rem;
+  font-size:.72rem; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:#64748b;
+}
+.filters-form input,
+.filters-form select {
+  padding:.55rem .7rem; border:1px solid rgba(15,42,86,.12); border-radius:10px;
+  font:inherit; color:var(--brand-navy,#0D2B5C); background:#fff; text-transform:none; letter-spacing:normal; font-weight:500;
+}
+.filters-actions {
+  grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:.55rem; align-items:center; margin-top:.25rem;
+}
+.btn-success-sg {
+  background:#16a34a; color:#fff; border:none; border-radius:10px; padding:.55rem .9rem;
+  font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:.4rem; font-size:.88rem;
+  text-decoration:none;
+}
+.btn-success-sg:hover { background:#15803d; color:#fff; }
+
+.rel-tabs {
+  display:flex; gap:.15rem; border-bottom:1px solid rgba(15,42,86,.12); margin-bottom:1rem;
+}
+.rel-tab {
+  padding:.7rem 1.1rem; text-decoration:none; color:#64748b; font-weight:700; font-size:.9rem;
+  border-bottom:2px solid transparent; margin-bottom:-1px;
+}
+.rel-tab:hover { color:var(--brand-navy); }
+.rel-tab.active { color:var(--brand-blue,#0d6efd); border-bottom-color:var(--brand-blue,#0d6efd); }
+
+.table-card { padding:0; overflow:hidden; }
+.table-head {
+  display:flex; justify-content:space-between; align-items:center; gap:.75rem; flex-wrap:wrap;
+  padding:.9rem 1.1rem; border-bottom:1px solid rgba(15,42,86,.08); background:#fff;
+}
+.table-head h2 {
+  margin:0; font-size:1rem; font-weight:800; color:var(--brand-navy); font-family:var(--font-brand);
+}
+.table-count {
+  font-size:.82rem; font-weight:700; color:#64748b;
+  background:#f1f5f9; padding:.25rem .6rem; border-radius:999px;
+}
+.perm-rel-table { width:100%; border-collapse:collapse; }
+.perm-rel-table th {
+  text-align:left; font-size:.72rem; text-transform:uppercase; letter-spacing:.04em;
+  color:#64748b; padding:.75rem 1rem; background:#f8fafc; border-bottom:1px solid rgba(15,42,86,.08);
+}
+.perm-rel-table td { padding:.85rem 1rem; border-bottom:1px solid rgba(15,42,86,.06); vertical-align:middle; }
+.muted { color:#94a3b8; font-size:.78rem; }
+.mono { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; color:#64748b; font-size:.85rem; }
+.permanencia-cell { font-weight:800; color:var(--brand-navy); }
+.permanencia-cell.open { color:#94a3b8; font-weight:600; }
+.empty { text-align:center; color:#94a3b8; padding:1.5rem; }
+
+@media print {
+  .no-print, .sidebar, .top-bar, .menu-toggle { display:none !important; }
+  .rel-wrap { max-width:none; }
+  .table-card { box-shadow:none; }
+}
+</style>
+{% endblock %}

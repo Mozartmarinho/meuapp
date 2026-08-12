@@ -1,0 +1,350 @@
+{% extends "base_acesso.html" %}
+{% block title %}Classificações{% endblock %}
+{% block content %}
+<div class="cl-wrap">
+  <header class="cl-hero">
+    <div>
+      <h1>Classificações</h1>
+      <p>Gerencie tipos de usuários e visitantes.</p>
+    </div>
+  </header>
+
+  <section class="card cl-card">
+    <h2 class="cl-card-title">NOVA CLASSIFICAÇÃO</h2>
+    <form id="formClass" class="cl-form" autocomplete="off">
+      <input type="hidden" id="f_id" value="">
+      <label class="cl-field cl-grow">
+        <span class="cl-label">Descrição</span>
+        <input type="text" id="f_descricao" name="descricao" maxlength="255" required
+               placeholder="Descrição..." autocomplete="off">
+      </label>
+      <label class="cl-field">
+        <span class="cl-label">Perfil fixo</span>
+        <select id="f_perfil" name="perfil_fixo">
+          <option value="">Sem Perfil</option>
+          {% for p in perfis %}
+          <option value="{{ p.value }}">{{ p.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="cl-field cl-visit">
+        <span class="cl-label">Visitante</span>
+        <label class="cl-toggle" title="Mostrar na tela de visitantes">
+          <input type="checkbox" id="f_visitante" name="mostrar_visitante">
+          <span class="cl-toggle-track" aria-hidden="true"></span>
+          <span class="cl-toggle-text" id="f_visitante_lbl">Oculto</span>
+        </label>
+      </div>
+      <button type="submit" class="btn-acesso cl-btn-add" id="btnSalvar">
+        <i class="fas fa-plus" id="btnIcon"></i> <span id="btnLabel">Adicionar</span>
+      </button>
+      <button type="button" class="btn btn-secondary cl-btn-cancel" id="btnCancelar" hidden>Cancelar</button>
+    </form>
+  </section>
+
+  <section class="card cl-list-card">
+    <div class="cl-toolbar">
+      <label class="cl-search">
+        <i class="fas fa-magnifying-glass"></i>
+        <input type="search" id="filtroCl" placeholder="Filtrar..." autocomplete="off">
+      </label>
+      <span class="cl-meta" id="clMeta">{{ items|length }} registro(s)</span>
+    </div>
+    <div class="table-scroll">
+      <table class="data-table cl-table" id="tabelaCl">
+        <thead>
+          <tr>
+            <th style="width:4.5rem;">ID</th>
+            <th>DESCRIÇÃO</th>
+            <th style="width:9rem;">PERFIL FIXO</th>
+            <th style="width:11rem;">TELA DE VISITANTES</th>
+            <th style="width:7rem;">AÇÕES</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyCl">
+          {% for row in items %}
+          <tr data-id="{{ row.id }}"
+              data-descricao="{{ row.descricao }}"
+              data-perfil="{{ row.perfil_fixo or '' }}"
+              data-visitante="{{ 1 if row.mostrar_visitante else 0 }}">
+            <td>{{ row.id }}</td>
+            <td><strong class="cl-desc">{{ row.descricao }}</strong></td>
+            <td>
+              {% if row.perfil_fixo %}
+              <span class="cl-perfil">{{ {'admin':'admin','agente':'Agente','operador':'Operador','consulta':'Consulta'}.get(row.perfil_fixo, row.perfil_fixo) }}</span>
+              {% else %}
+              <span class="cl-perfil muted">Sem Perfil</span>
+              {% endif %}
+            </td>
+            <td>
+              <label class="cl-toggle cl-toggle-inline" title="Alternar visibilidade em visitantes">
+                <input type="checkbox" class="cl-vis-toggle" data-id="{{ row.id }}" {% if row.mostrar_visitante %}checked{% endif %}>
+                <span class="cl-toggle-track" aria-hidden="true"></span>
+                <span class="cl-toggle-text">{{ 'Visível' if row.mostrar_visitante else 'Oculto' }}</span>
+              </label>
+            </td>
+            <td class="cl-acoes">
+              <button type="button" class="cl-icon-btn btn-edit" title="Editar" aria-label="Editar"
+                data-id="{{ row.id }}">
+                <i class="fas fa-pen"></i>
+              </button>
+              <button type="button" class="cl-icon-btn danger btn-del" title="Excluir" aria-label="Excluir"
+                data-id="{{ row.id }}">
+                <i class="fas fa-trash-alt"></i>
+              </button>
+            </td>
+          </tr>
+          {% else %}
+          <tr class="cl-empty-row"><td colspan="5">Nenhuma classificação cadastrada.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.cl-wrap { display:flex; flex-direction:column; gap:1.1rem; }
+.cl-hero h1 {
+  margin:0 0 .25rem; font-family:var(--font-brand); color:var(--brand-navy);
+  font-size:1.75rem; font-weight:700; letter-spacing:.02em;
+}
+.cl-hero p { margin:0; color:#64748b; font-size:.95rem; }
+
+.cl-card { padding:1.15rem 1.25rem; }
+.cl-card-title {
+  margin:0 0 .9rem; font-family:var(--font-brand); color:var(--brand-navy);
+  font-size:1.05rem; font-weight:700; letter-spacing:.04em;
+}
+.cl-form {
+  display:flex; flex-wrap:wrap; align-items:flex-end; gap:.75rem 1rem;
+}
+.cl-field { display:flex; flex-direction:column; gap:.3rem; min-width:10rem; }
+.cl-field.cl-grow { flex:1 1 14rem; }
+.cl-label {
+  font-size:.78rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.04em;
+}
+.cl-field input, .cl-field select {
+  padding:.6rem .75rem; border:1px solid rgba(15,42,86,.12); border-radius:10px;
+  font:inherit; color:var(--brand-navy); background:#fff; min-height:2.55rem;
+}
+.cl-field input:focus, .cl-field select:focus {
+  outline:none; border-color:var(--brand-blue); box-shadow:0 0 0 3px rgba(37,99,235,.12);
+}
+.cl-visit { min-width:8.5rem; }
+.cl-toggle {
+  display:inline-flex; align-items:center; gap:.5rem; cursor:pointer; user-select:none;
+  min-height:2.55rem;
+}
+.cl-toggle input { position:absolute; opacity:0; width:0; height:0; }
+.cl-toggle-track {
+  width:2.6rem; height:1.4rem; border-radius:999px; background:#cbd5e1;
+  position:relative; transition:background .15s; flex-shrink:0;
+}
+.cl-toggle-track::after {
+  content:''; position:absolute; top:2px; left:2px; width:1.1rem; height:1.1rem;
+  border-radius:50%; background:#fff; transition:transform .15s;
+  box-shadow:0 1px 3px rgba(0,0,0,.2);
+}
+.cl-toggle input:checked + .cl-toggle-track { background:var(--brand-blue); }
+.cl-toggle input:checked + .cl-toggle-track::after { transform:translateX(1.2rem); }
+.cl-toggle-text { font-size:.82rem; font-weight:700; color:#64748b; min-width:3.4rem; }
+.cl-toggle input:checked ~ .cl-toggle-text { color:var(--brand-navy); }
+.cl-toggle-inline { min-height:auto; }
+
+.cl-btn-add { min-height:2.55rem; }
+.cl-btn-cancel { min-height:2.55rem; }
+
+.cl-list-card { padding:0; overflow:hidden; }
+.cl-toolbar {
+  display:flex; align-items:center; justify-content:space-between; gap:.75rem; flex-wrap:wrap;
+  padding:.85rem 1.1rem; border-bottom:1px solid rgba(15,42,86,.08);
+}
+.cl-search {
+  display:flex; align-items:center; gap:.5rem; flex:1 1 16rem; max-width:22rem;
+  padding:.45rem .75rem; border:1px solid rgba(15,42,86,.12); border-radius:10px; background:#fff;
+}
+.cl-search i { color:#94a3b8; font-size:.9rem; }
+.cl-search input {
+  border:0; outline:none; flex:1; font:inherit; color:var(--brand-navy); background:transparent; min-width:0;
+}
+.cl-meta { font-size:.82rem; color:#64748b; font-weight:600; }
+.cl-table { margin:0; }
+.cl-table th {
+  font-size:.72rem; letter-spacing:.04em; color:#64748b; background:rgba(15,42,86,.03);
+}
+.cl-desc { color:var(--brand-navy); font-weight:700; }
+.cl-perfil {
+  display:inline-flex; padding:.15rem .55rem; border-radius:999px; font-size:.78rem; font-weight:700;
+  background:rgba(37,99,235,.1); color:var(--brand-blue);
+}
+.cl-perfil.muted { background:rgba(100,116,139,.12); color:#64748b; }
+.cl-acoes { white-space:nowrap; }
+.cl-icon-btn {
+  border:none; background:transparent; cursor:pointer; padding:.35rem .45rem;
+  color:#64748b; border-radius:8px; font-size:.95rem;
+}
+.cl-icon-btn:hover { background:rgba(15,42,86,.06); color:var(--brand-blue); }
+.cl-icon-btn.danger:hover { background:rgba(220,38,38,.08); color:#b91c1c; }
+.cl-empty-row td { text-align:center; padding:1.6rem; color:#64748b; }
+tr.cl-hidden { display:none; }
+</style>
+<script>
+(function () {
+  const API = {{ api_url|tojson }};
+  const PERFIS = {{ perfis|tojson }};
+  const perfilLabel = Object.fromEntries(PERFIS.map(p => [p.value, p.label]));
+
+  const form = document.getElementById('formClass');
+  const fId = document.getElementById('f_id');
+  const fDesc = document.getElementById('f_descricao');
+  const fPerfil = document.getElementById('f_perfil');
+  const fVisit = document.getElementById('f_visitante');
+  const fVisitLbl = document.getElementById('f_visitante_lbl');
+  const btnLabel = document.getElementById('btnLabel');
+  const btnIcon = document.getElementById('btnIcon');
+  const btnCancelar = document.getElementById('btnCancelar');
+  const filtro = document.getElementById('filtroCl');
+  const tbody = document.getElementById('tbodyCl');
+  const meta = document.getElementById('clMeta');
+
+  function syncVisitLabel(input, labelEl) {
+    if (labelEl) labelEl.textContent = input.checked ? 'Visível' : 'Oculto';
+  }
+
+  fVisit.addEventListener('change', () => syncVisitLabel(fVisit, fVisitLbl));
+
+  function clearDescValidity() {
+    fDesc.setCustomValidity('');
+  }
+
+  /** Garante mensagem nativa "Preencha este campo." (vazio ou só espaços). */
+  function validateDescricao() {
+    const trimmed = (fDesc.value || '').trim();
+    if (!trimmed) {
+      fDesc.value = '';
+      fDesc.setCustomValidity('Preencha este campo.');
+      fDesc.reportValidity();
+      fDesc.focus();
+      return false;
+    }
+    fDesc.setCustomValidity('');
+    return true;
+  }
+
+  fDesc.addEventListener('input', clearDescValidity);
+
+  function resetForm() {
+    form.reset();
+    fId.value = '';
+    fVisit.checked = false;
+    clearDescValidity();
+    syncVisitLabel(fVisit, fVisitLbl);
+    btnLabel.textContent = 'Adicionar';
+    btnIcon.className = 'fas fa-plus';
+    btnCancelar.hidden = true;
+  }
+
+  btnCancelar.addEventListener('click', resetForm);
+
+  function updateMeta() {
+    const visible = [...tbody.querySelectorAll('tr[data-id]')].filter(r => !r.classList.contains('cl-hidden'));
+    meta.textContent = visible.length + ' registro(s)';
+  }
+
+  filtro.addEventListener('input', () => {
+    const q = (filtro.value || '').trim().toLowerCase();
+    tbody.querySelectorAll('tr[data-id]').forEach(tr => {
+      const hay = [
+        tr.dataset.id,
+        tr.dataset.descricao,
+        tr.dataset.perfil,
+        perfilLabel[tr.dataset.perfil] || '',
+        tr.dataset.visitante === '1' ? 'visível visitante' : 'oculto',
+      ].join(' ').toLowerCase();
+      tr.classList.toggle('cl-hidden', q && !hay.includes(q));
+    });
+    updateMeta();
+  });
+
+  function bindRow(tr) {
+    const editBtn = tr.querySelector('.btn-edit');
+    const delBtn = tr.querySelector('.btn-del');
+    const tog = tr.querySelector('.cl-vis-toggle');
+
+    editBtn?.addEventListener('click', () => {
+      fId.value = tr.dataset.id;
+      fDesc.value = tr.dataset.descricao || '';
+      fPerfil.value = tr.dataset.perfil || '';
+      fVisit.checked = tr.dataset.visitante === '1';
+      syncVisitLabel(fVisit, fVisitLbl);
+      btnLabel.textContent = 'Salvar';
+      btnIcon.className = 'fas fa-save';
+      btnCancelar.hidden = false;
+      fDesc.focus();
+      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    delBtn?.addEventListener('click', async () => {
+      if (!confirm('Excluir esta classificação?')) return;
+      const r = await fetch(`${API}/${tr.dataset.id}`, { method: 'DELETE' });
+      const res = await r.json().catch(() => ({}));
+      if (!res.ok) { alert(res.error || 'Erro ao excluir'); return; }
+      tr.remove();
+      if (!tbody.querySelector('tr[data-id]')) {
+        tbody.innerHTML = '<tr class="cl-empty-row"><td colspan="5">Nenhuma classificação cadastrada.</td></tr>';
+      }
+      updateMeta();
+    });
+
+    tog?.addEventListener('change', async () => {
+      const label = tog.parentElement.querySelector('.cl-toggle-text');
+      syncVisitLabel(tog, label);
+      const r = await fetch(`${API}/${tog.dataset.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mostrar_visitante: tog.checked }),
+      });
+      const res = await r.json().catch(() => ({}));
+      if (!res.ok) {
+        tog.checked = !tog.checked;
+        syncVisitLabel(tog, label);
+        alert(res.error || 'Erro ao atualizar visitante');
+        return;
+      }
+      tr.dataset.visitante = tog.checked ? '1' : '0';
+    });
+  }
+
+  tbody.querySelectorAll('tr[data-id]').forEach(bindRow);
+
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (!validateDescricao()) return;
+    if (!form.reportValidity()) {
+      fDesc.focus();
+      return;
+    }
+    const id = fId.value.trim();
+    const payload = {
+      descricao: fDesc.value.trim(),
+      perfil_fixo: fPerfil.value || null,
+      mostrar_visitante: fVisit.checked,
+    };
+
+    const url = id ? `${API}/${id}` : API;
+    const method = id ? 'PUT' : 'POST';
+    const r = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const res = await r.json().catch(() => ({}));
+    if (!res.ok) { alert(res.error || 'Erro ao salvar'); return; }
+    location.reload();
+  });
+})();
+</script>
+{% endblock %}

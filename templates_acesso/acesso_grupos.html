@@ -1,111 +1,821 @@
 {% extends "base_acesso.html" %}
-{% block title %}Grupos / Horários{% endblock %}
+{% block title %}Configuração de Acesso{% endblock %}
 {% block content %}
-<div class="page-header">
-  <h1>Grupos e Horários</h1>
-  <p>Defina regras de acesso por grupo e associe equipamentos (grupos → equipamentos → horários).</p>
-</div>
+<div class="cfg-wrap">
+  <header class="cfg-hero">
+    <div>
+      <h1>Configuração de Acesso</h1>
+      <p>Controle detalhado de horários e grupos de acesso ao sistema.</p>
+    </div>
+    <button type="button" class="btn btn-secondary btn-sm" id="btnAjuda">
+      <i class="fas fa-circle-info"></i> Como funciona?
+    </button>
+  </header>
 
-<div class="card" style="padding:1.1rem 1.2rem;margin-bottom:1.1rem;">
-  <h3 style="margin:0 0 0.85rem;font-family:var(--font-brand);color:var(--brand-navy);">Novo grupo</h3>
-  <form id="formGrupo" class="form-inline-grid">
-    <label>Nome *<input name="nome" required placeholder="Ex: Manutenção"></label>
-    <label>Descrição<input name="descricao" placeholder="Resumo da regra"></label>
-    <label>Dia
-      <select name="dia_semana">
-        <option value="TODOS">Todos os dias</option>
-        <option value="SEG">SEG</option>
-        <option value="TER">TER</option>
-        <option value="QUA">QUA</option>
-        <option value="QUI">QUI</option>
-        <option value="SEX">SEX</option>
-        <option value="SAB">SAB</option>
-        <option value="DOM">DOM</option>
-      </select>
-    </label>
-    <label>Hora inicial<input type="time" name="hora_inicial" value="00:00"></label>
-    <label>Hora final<input type="time" name="hora_final" value="23:59"></label>
-  </form>
-  <div style="margin:0.5rem 0 1rem;">
-    <div style="font-size:0.82rem;font-weight:600;color:#64748b;margin-bottom:0.4rem;">Equipamentos do grupo</div>
-    <div style="display:flex;flex-wrap:wrap;gap:0.65rem;">
-      {% for e in equipamentos %}
-      <label style="display:inline-flex;align-items:center;gap:0.35rem;font-size:0.9rem;">
-        <input type="checkbox" name="equipamento_ids" value="{{ e.id }}" form="formGrupo"> {{ e.nome }}
-      </label>
+  <nav class="cfg-tabs" role="tablist">
+    <button type="button" class="cfg-tab active" data-tab="horarios" role="tab" aria-selected="true">
+      <i class="fas fa-clock"></i> Horários
+    </button>
+    <button type="button" class="cfg-tab" data-tab="grupos" role="tab" aria-selected="false">
+      <i class="fas fa-users"></i> Grupos de Acesso
+    </button>
+  </nav>
+
+  {# ── Aba Horários ── #}
+  <section class="card cfg-panel" id="tabHorarios" role="tabpanel">
+    <div class="cfg-panel-head">
+      <div>
+        <h2>Lista de Horários</h2>
+        <p class="cfg-meta" id="horariosMeta">Exibindo 0 registro(s) • Página 1 de 1</p>
+      </div>
+      <div class="cfg-toolbar">
+        <label class="cfg-search">
+          <i class="fas fa-search"></i>
+          <input type="search" id="buscaHorario" placeholder="Buscar por nome..." autocomplete="off">
+        </label>
+        <button type="button" class="btn-acesso" id="btnCriarHorario">
+          <i class="fas fa-plus"></i> Criar
+        </button>
+      </div>
+    </div>
+
+    <div class="cfg-table-wrap">
+      <table class="data-table cfg-table" id="tabelaHorarios">
+        <thead>
+          <tr>
+            <th style="width:5rem;">ID</th>
+            <th>NOME DO HORÁRIO</th>
+            <th>DIA(S) VINCULADOS</th>
+            <th style="width:7.5rem;">AÇÕES</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyHorarios"></tbody>
+      </table>
+      <div class="cfg-empty" id="emptyHorarios" hidden>
+        Nenhum horário encontrado.
+      </div>
+    </div>
+
+    <div class="cfg-pager" id="pagerHorarios">
+      <button type="button" class="btn btn-secondary btn-sm" id="prevHorarios" disabled>‹</button>
+      <span id="pageHorariosLabel">1</span>
+      <button type="button" class="btn btn-secondary btn-sm" id="nextHorarios" disabled>›</button>
+    </div>
+  </section>
+
+  {# ── Aba Grupos de Acesso ── #}
+  <section class="card cfg-panel" id="tabGrupos" role="tabpanel" hidden>
+    <div class="cfg-panel-head">
+      <div>
+        <h2>Grupos de Acesso</h2>
+        <p class="cfg-meta">Grupos com equipamentos e faixas vinculadas.</p>
+      </div>
+      <button type="button" class="btn-acesso" id="btnCriarGrupoTab">
+        <i class="fas fa-plus"></i> Criar
+      </button>
+    </div>
+
+    <div class="cfg-grupos-list" id="listaGruposAcesso">
+      {% for g in grupos %}
+      <article class="cfg-grupo-card">
+        <div class="cfg-grupo-main">
+          <h3>{{ g.nome }}</h3>
+          <p>{{ g.descricao or 'Sem descrição' }}</p>
+          <div class="cfg-grupo-meta">
+            <span>{{ g.qtd_pessoas }} pessoas</span>
+            <span>{{ g.qtd_equipamentos }} equipamentos</span>
+            {% if g.ativo %}
+            <span class="badge-status badge-liberado">Ativo</span>
+            {% else %}
+            <span class="badge-status badge-offline">Inativo</span>
+            {% endif %}
+          </div>
+          <div class="cfg-grupo-cols">
+            <div>
+              <div class="cfg-mini-label">HORÁRIOS</div>
+              <ul>
+                {% for h in g.horarios %}
+                <li>{{ h.dia_semana }} · {{ h.hora_inicial }} – {{ h.hora_final }}</li>
+                {% else %}
+                <li>Sem faixa</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div>
+              <div class="cfg-mini-label">EQUIPAMENTOS</div>
+              <ul>
+                {% for e in equipamentos if e.id in g.equipamento_ids %}
+                <li>{{ e.nome }}{% if e.ip %} ({{ e.ip }}){% endif %}</li>
+                {% else %}
+                <li>Nenhum vinculado</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="cfg-grupo-actions">
+          <button type="button" class="cfg-icon-btn" data-edit="{{ g.id }}" title="Editar"><i class="fas fa-pen"></i></button>
+          <button type="button" class="cfg-icon-btn danger" data-del="{{ g.id }}" title="Excluir"><i class="fas fa-trash-alt"></i></button>
+        </div>
+      </article>
       {% else %}
-      <span style="color:#64748b;">Cadastre equipamentos primeiro.</span>
+      <div class="cfg-empty">Nenhum grupo cadastrado.</div>
       {% endfor %}
     </div>
-  </div>
-  <button type="button" class="btn-acesso" id="btnSalvarGrupo"><i class="fas fa-plus"></i> Criar grupo</button>
+  </section>
 </div>
 
-<div style="display:grid;gap:1rem;">
-  {% for g in grupos %}
-  <div class="card" style="padding:1.1rem 1.2rem;">
-    <div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:flex-start;">
-      <div>
-        <h3 style="margin:0;font-family:var(--font-brand);color:var(--brand-navy);">{{ g.nome }}</h3>
-        <p style="margin:0.35rem 0 0;color:#64748b;">{{ g.descricao or 'Sem descrição' }}</p>
-        <p style="margin:0.5rem 0 0;font-size:0.9rem;">
-          {{ g.qtd_pessoas }} pessoas · {{ g.qtd_equipamentos }} equipamentos
-          {% if g.ativo %} · <span class="badge-status badge-liberado">Ativo</span>{% else %} · Inativo{% endif %}
-        </p>
+{# ── Modal Criar / Editar Horário ── #}
+<div class="modal-backdrop" id="modalHorario" hidden>
+  <div class="modal-card hg-modal">
+    <div class="modal-head">
+      <div class="hg-title-row">
+        <span class="hg-icon" aria-hidden="true">
+          <i class="fas fa-calendar-alt"></i>
+          <i class="fas fa-plus hg-icon-plus" id="hgIconPlus"></i>
+        </span>
+        <div>
+          <h3 id="hgTitulo">Criar Novo Horário</h3>
+          <p class="modal-sub" id="hgSubtitulo">Configure as faixas de acesso semanal</p>
+        </div>
       </div>
-      <button type="button" class="btn btn-secondary btn-del" data-id="{{ g.id }}">Excluir</button>
+      <button type="button" class="modal-close" id="btnFecharModal" aria-label="Fechar">&times;</button>
     </div>
-    <div style="margin-top:0.85rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.75rem;">
-      <div>
-        <div style="font-size:0.8rem;font-weight:700;color:#64748b;margin-bottom:0.35rem;">HORÁRIOS</div>
-        <ul style="margin:0;padding-left:1.1rem;color:var(--brand-navy);">
-          {% for h in g.horarios %}
-          <li>{{ h.dia_semana }} · {{ h.hora_inicial }} – {{ h.hora_final }}</li>
-          {% else %}
-          <li>Sem faixa cadastrada</li>
-          {% endfor %}
-        </ul>
+
+    <div class="modal-body">
+      <input type="hidden" id="hgId" value="">
+      <label class="hg-field">
+        <span>Nome do Horário</span>
+        <input type="text" id="hgNome" maxlength="100" placeholder="Ex: Comercial, Noturno, Diretoria..." autocomplete="off">
+      </label>
+
+      <div class="hg-days" role="tablist" aria-label="Dias da semana">
+        <button type="button" class="hg-day active" data-dia="TODOS">TODOS OS DIAS</button>
+        <button type="button" class="hg-day" data-dia="SEG">SEG</button>
+        <button type="button" class="hg-day" data-dia="TER">TER</button>
+        <button type="button" class="hg-day" data-dia="QUA">QUA</button>
+        <button type="button" class="hg-day" data-dia="QUI">QUI</button>
+        <button type="button" class="hg-day" data-dia="SEX">SEX</button>
+        <button type="button" class="hg-day" data-dia="SAB">SAB</button>
+        <button type="button" class="hg-day" data-dia="DOM">DOM</button>
       </div>
-      <div>
-        <div style="font-size:0.8rem;font-weight:700;color:#64748b;margin-bottom:0.35rem;">EQUIPAMENTOS</div>
-        <ul style="margin:0;padding-left:1.1rem;color:var(--brand-navy);">
-          {% for e in equipamentos if e.id in g.equipamento_ids %}
-          <li>{{ e.nome }}{% if e.ip %} ({{ e.ip }}){% endif %}</li>
-          {% else %}
-          <li>Nenhum vinculado</li>
-          {% endfor %}
-        </ul>
+
+      <div class="hg-variacoes" id="hgVariacoes">
+        <div class="hg-empty" id="hgEmpty">Nenhuma variação neste dia. Clique em <strong>+ Adicionar Variação</strong>.</div>
       </div>
+
+      <div class="hg-actions">
+        <button type="button" class="hg-btn-outline" id="btnAddVariacao">
+          <i class="fas fa-plus"></i> Adicionar Variação
+        </button>
+        <button type="button" class="hg-btn-outline hg-btn-copy" id="btnCopiarDia">
+          <i class="fas fa-arrow-right"></i> Copiar para o próximo dia
+        </button>
+      </div>
+
+      {% if equipamentos %}
+      <div class="hg-equip">
+        <div class="hg-equip-label">Equipamentos do grupo <span>(opcional)</span></div>
+        <div class="hg-equip-list">
+          {% for e in equipamentos %}
+          <label class="hg-equip-item">
+            <input type="checkbox" name="equipamento_ids" value="{{ e.id }}"> {{ e.nome }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" id="btnCancelarModal">Cancelar</button>
+      <button type="button" class="btn-acesso" id="btnSalvarHorario">
+        <i class="fas fa-check"></i> <span id="hgSalvarLabel">Salvar Horário</span>
+      </button>
     </div>
   </div>
-  {% else %}
-  <div class="card" style="padding:1.5rem;text-align:center;color:#64748b;">Nenhum grupo cadastrado.</div>
-  {% endfor %}
+</div>
+
+{# ── Modal Ajuda ── #}
+<div class="modal-backdrop" id="modalAjuda" hidden>
+  <div class="modal-card" style="width:min(520px,100%);">
+    <div class="modal-head">
+      <div><h3>Como funciona?</h3></div>
+      <button type="button" class="modal-close" data-close-ajuda aria-label="Fechar">&times;</button>
+    </div>
+    <div class="modal-body" style="color:#475569;line-height:1.6;">
+      <ol style="margin:0;padding-left:1.2rem;">
+        <li>Em <strong>Horários</strong>, cada registro é um grupo de acesso com faixas semanais.</li>
+        <li>Use <strong>+ Criar</strong> para definir nome, dias e variações (início/fim, entradas, saídas).</li>
+        <li><strong>TODOS OS DIAS</strong> grava a faixa com dia = TODOS; dias individuais permitem regras específicas.</li>
+        <li><strong>Copiar para o próximo dia</strong> replica as variações do dia selecionado.</li>
+        <li>Na aba <strong>Grupos de Acesso</strong> você vê equipamentos e faixas vinculadas.</li>
+      </ol>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script>
-document.getElementById('btnSalvarGrupo').addEventListener('click', async () => {
-  const form = document.getElementById('formGrupo');
-  const data = Object.fromEntries(new FormData(form).entries());
-  data.equipamento_ids = Array.from(form.querySelectorAll('input[name="equipamento_ids"]:checked')).map(c => +c.value);
-  const r = await fetch("{{ url_for('acesso.api_grupos') }}", {
-    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)
-  });
-  const res = await r.json();
-  if (!res.ok) { alert(res.error || 'Erro'); return; }
-  location.reload();
-});
+<style>
+.cfg-wrap { display: flex; flex-direction: column; gap: 1rem; }
+.cfg-hero {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 1rem; flex-wrap: wrap;
+}
+.cfg-hero h1 {
+  margin: 0; font-family: var(--font-brand); color: var(--brand-navy); font-size: 1.85rem;
+}
+.cfg-hero p { margin: .35rem 0 0; color: #64748b; }
 
-document.querySelectorAll('.btn-del').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    if (!confirm('Excluir este grupo?')) return;
-    const r = await fetch(`/acesso/api/grupos/${btn.dataset.id}`, {method: 'DELETE'});
+.cfg-tabs {
+  display: flex; gap: .35rem; padding: .3rem; background: #eef3f9;
+  border-radius: 12px; width: fit-content; max-width: 100%; flex-wrap: wrap;
+}
+.cfg-tab {
+  border: none; background: transparent; color: #64748b; font-weight: 700;
+  padding: .55rem 1rem; border-radius: 10px; cursor: pointer;
+  font-family: var(--font-body); display: inline-flex; align-items: center; gap: .4rem;
+}
+.cfg-tab.active { background: #fff; color: var(--brand-blue); box-shadow: 0 1px 4px rgba(13,43,92,.1); }
+
+.cfg-panel { padding: 1.15rem 1.25rem; }
+.cfg-panel-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;
+}
+.cfg-panel-head h2 {
+  margin: 0; font-family: var(--font-brand); color: var(--brand-navy); font-size: 1.25rem;
+}
+.cfg-meta { margin: .3rem 0 0; color: #94a3b8; font-size: .88rem; }
+.cfg-toolbar { display: flex; gap: .55rem; flex-wrap: wrap; align-items: center; }
+.cfg-search {
+  position: relative; display: flex; align-items: center;
+}
+.cfg-search i {
+  position: absolute; left: .75rem; color: #94a3b8; pointer-events: none;
+}
+.cfg-search input {
+  padding: .55rem .8rem .55rem 2.1rem; border: 1px solid rgba(15,42,86,.14);
+  border-radius: 10px; font: inherit; color: var(--brand-navy); min-width: 220px; background: #fff;
+}
+.cfg-search input:focus {
+  outline: none; border-color: var(--brand-blue);
+  box-shadow: 0 0 0 3px rgba(27,79,156,.12);
+}
+
+.cfg-table-wrap { overflow: auto; border: 1px solid rgba(15,42,86,.08); border-radius: 12px; }
+.cfg-table { margin: 0; }
+.cfg-table th { font-size: .78rem; letter-spacing: .04em; }
+.cfg-table td { vertical-align: middle; color: var(--brand-navy); }
+.cfg-id { font-weight: 700; color: #64748b; }
+.cfg-dias {
+  display: flex; flex-wrap: wrap; gap: .3rem;
+}
+.cfg-dia-chip {
+  font-size: .72rem; font-weight: 700; padding: .2rem .5rem; border-radius: 999px;
+  background: rgba(27,79,156,.08); color: var(--brand-blue);
+}
+.cfg-actions { display: flex; gap: .35rem; }
+.cfg-icon-btn {
+  width: 34px; height: 34px; border: 1px solid rgba(15,42,86,.12); border-radius: 8px;
+  background: #fff; color: var(--brand-navy); cursor: pointer;
+  display: inline-grid; place-items: center;
+}
+.cfg-icon-btn:hover { border-color: var(--brand-blue); color: var(--brand-blue); }
+.cfg-icon-btn.danger:hover { border-color: #dc2626; color: #dc2626; background: rgba(220,38,38,.06); }
+
+.cfg-empty { text-align: center; padding: 1.75rem 1rem; color: #94a3b8; }
+.cfg-pager {
+  display: flex; justify-content: flex-end; align-items: center; gap: .5rem; margin-top: .85rem;
+}
+.cfg-pager span { font-weight: 700; color: var(--brand-navy); min-width: 1.5rem; text-align: center; }
+
+.cfg-grupos-list { display: grid; gap: .85rem; }
+.cfg-grupo-card {
+  display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  border: 1px solid rgba(15,42,86,.1); border-radius: 12px; padding: 1rem 1.1rem; background: #fff;
+}
+.cfg-grupo-main h3 { margin: 0; font-family: var(--font-brand); color: var(--brand-navy); }
+.cfg-grupo-main > p { margin: .3rem 0 0; color: #64748b; }
+.cfg-grupo-meta { display: flex; flex-wrap: wrap; gap: .55rem; margin-top: .55rem; font-size: .88rem; color: #64748b; }
+.cfg-grupo-cols {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: .75rem; margin-top: .75rem;
+}
+.cfg-mini-label { font-size: .72rem; font-weight: 700; color: #94a3b8; margin-bottom: .25rem; }
+.cfg-grupo-cols ul { margin: 0; padding-left: 1rem; color: var(--brand-navy); font-size: .9rem; }
+.cfg-grupo-actions { display: flex; gap: .35rem; align-items: flex-start; }
+
+/* Modal */
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(13,43,92,.45); z-index: 2000;
+  display: grid; place-items: center; padding: 1rem;
+}
+.modal-backdrop[hidden] { display: none !important; }
+.modal-card {
+  width: min(720px, 100%); background: #fff; border-radius: 16px; overflow: hidden;
+  box-shadow: 0 24px 48px rgba(13,43,92,.25); max-height: 92vh;
+  display: flex; flex-direction: column;
+}
+.modal-head, .modal-foot {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: .75rem;
+  padding: .95rem 1.2rem; border-bottom: 1px solid rgba(15,42,86,.08);
+}
+.modal-foot {
+  border-bottom: 0; border-top: 1px solid rgba(15,42,86,.08);
+  align-items: center; justify-content: flex-end;
+}
+.modal-head h3 { margin: 0; font-family: var(--font-brand); color: var(--brand-navy); font-size: 1.3rem; }
+.modal-sub { margin: .3rem 0 0; color: #64748b; font-size: .88rem; }
+.modal-close {
+  border: none; background: transparent; font-size: 1.55rem; cursor: pointer;
+  color: #64748b; line-height: 1; padding: .1rem .35rem;
+}
+.modal-body { padding: 1.15rem 1.2rem; overflow: auto; }
+
+.hg-title-row { display: flex; align-items: flex-start; gap: .75rem; }
+.hg-icon {
+  position: relative; width: 42px; height: 42px; border-radius: 12px;
+  background: rgba(27,79,156,.1); color: var(--brand-blue);
+  display: grid; place-items: center; font-size: 1.15rem; flex: 0 0 auto;
+}
+.hg-icon-plus {
+  position: absolute; right: -4px; bottom: -4px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--brand-blue); color: #fff;
+  font-size: .55rem; display: grid; place-items: center;
+  border: 2px solid #fff;
+}
+.hg-icon-plus.edit-mode { display: none; }
+
+.hg-field {
+  display: flex; flex-direction: column; gap: .35rem;
+  font-size: .82rem; font-weight: 700; color: #64748b; margin-bottom: 1rem;
+}
+.hg-field input {
+  padding: .65rem .8rem; border: 1px solid rgba(15,42,86,.14); border-radius: 10px;
+  font: inherit; color: var(--brand-navy); background: #fff;
+}
+.hg-field input:focus {
+  outline: none; border-color: var(--brand-blue);
+  box-shadow: 0 0 0 3px rgba(27,79,156,.12);
+}
+
+.hg-days { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: 1rem; }
+.hg-day {
+  border: 1px solid rgba(15,42,86,.14); background: #fff; color: var(--brand-navy);
+  border-radius: 999px; padding: .45rem .75rem; font-size: .78rem; font-weight: 700;
+  cursor: pointer; font-family: var(--font-body);
+}
+.hg-day:hover { border-color: var(--brand-blue); color: var(--brand-blue); }
+.hg-day.active { background: var(--brand-blue); color: #fff; border-color: var(--brand-blue); }
+
+.hg-variacoes {
+  min-height: 120px; border: 1px dashed rgba(15,42,86,.18); border-radius: 12px;
+  background: #f8fafc; padding: .85rem; margin-bottom: 1rem;
+}
+.hg-empty { color: #94a3b8; text-align: center; padding: 1.5rem .5rem; font-size: .9rem; line-height: 1.5; }
+
+.hg-var-row {
+  display: flex; flex-wrap: wrap; align-items: end; gap: .55rem;
+  background: #fff; border: 1px solid rgba(15,42,86,.1); border-radius: 10px;
+  padding: .7rem .75rem; margin-bottom: .55rem;
+}
+.hg-var-row:last-child { margin-bottom: 0; }
+.hg-var-row label {
+  display: flex; flex-direction: column; gap: .25rem;
+  font-size: .72rem; font-weight: 700; color: #64748b;
+}
+.hg-var-row input[type="time"],
+.hg-var-row input[type="number"] {
+  padding: .45rem .5rem; border: 1px solid rgba(15,42,86,.14); border-radius: 8px;
+  font: inherit; color: var(--brand-navy); background: #fff;
+}
+.hg-var-row input[type="time"] { width: 7.2rem; }
+.hg-var-row input[type="number"] { width: 4.2rem; }
+.hg-ate {
+  align-self: center; font-size: .8rem; font-weight: 700; color: #94a3b8;
+  padding-bottom: .15rem;
+}
+.hg-toggle {
+  display: flex; flex-direction: column; align-items: center; gap: .25rem;
+  font-size: .72rem; font-weight: 700; color: #64748b;
+}
+.hg-switch {
+  position: relative; width: 40px; height: 22px; border-radius: 999px;
+  background: #cbd5e1; border: none; cursor: pointer; padding: 0; transition: .15s;
+}
+.hg-switch::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 18px; height: 18px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: .15s;
+}
+.hg-switch.on { background: var(--brand-blue); }
+.hg-switch.on::after { left: 20px; }
+.hg-var-remove {
+  width: 36px; height: 36px; border: none; border-radius: 8px;
+  background: rgba(220,38,38,.1); color: #dc2626; cursor: pointer;
+  margin-left: auto;
+}
+.hg-var-remove:hover { background: #dc2626; color: #fff; }
+
+.hg-actions { display: flex; flex-wrap: wrap; gap: .55rem; margin-bottom: 1rem; }
+.hg-btn-outline {
+  display: inline-flex; align-items: center; gap: .4rem;
+  background: #fff; color: var(--brand-blue); border: 1.5px solid var(--brand-blue);
+  border-radius: 10px; padding: .55rem .9rem; font-weight: 700; cursor: pointer;
+  font-family: var(--font-body); font-size: .88rem;
+}
+.hg-btn-outline:hover { background: rgba(27,79,156,.06); }
+.hg-btn-copy { color: #3b82c4; border-color: #93c5e8; }
+.hg-btn-copy:hover { background: rgba(59,130,196,.06); }
+
+.hg-equip { border-top: 1px solid rgba(15,42,86,.08); padding-top: .9rem; }
+.hg-equip-label { font-size: .82rem; font-weight: 700; color: #64748b; margin-bottom: .5rem; }
+.hg-equip-label span { font-weight: 500; color: #94a3b8; }
+.hg-equip-list { display: flex; flex-wrap: wrap; gap: .55rem .85rem; }
+.hg-equip-item {
+  display: inline-flex; align-items: center; gap: .35rem;
+  font-size: .88rem; color: var(--brand-navy); cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .cfg-search input { min-width: 160px; }
+  .hg-var-row { align-items: stretch; }
+  .hg-var-remove { margin-left: 0; }
+}
+</style>
+<script>
+(function () {
+  const DIAS = ['TODOS', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB', 'DOM'];
+  const DIA_LABEL = {
+    TODOS: 'Todos os dias',
+    SEG: 'SEG', TER: 'TER', QUA: 'QUA', QUI: 'QUI',
+    SEX: 'SEX', SAB: 'SAB', DOM: 'DOM',
+  };
+  const API = {{ url_for('acesso.api_grupos')|tojson }};
+  const GRUPOS = {{ grupos|tojson }};
+  const PER_PAGE = 10;
+
+  const modal = document.getElementById('modalHorario');
+  const nomeInput = document.getElementById('hgNome');
+  const box = document.getElementById('hgVariacoes');
+  const emptyEl = document.getElementById('hgEmpty');
+  const tbody = document.getElementById('tbodyHorarios');
+  const emptyTable = document.getElementById('emptyHorarios');
+
+  let diaAtual = 'TODOS';
+  let editId = null;
+  let faixas = emptyFaixas();
+  let page = 1;
+  let query = '';
+
+  function emptyFaixas() {
+    return Object.fromEntries(DIAS.map(d => [d, []]));
+  }
+
+  function cloneVar(v) {
+    return {
+      inicio: v.inicio || '08:00',
+      fim: v.fim || '18:00',
+      entradas: v.entradas != null ? v.entradas : 1,
+      saidas: v.saidas != null ? v.saidas : 1,
+      livre: v.livre !== false,
+      por_equipamento: !!v.por_equipamento,
+    };
+  }
+
+  function defaultVar() {
+    return { inicio: '08:00', fim: '18:00', entradas: 1, saidas: 1, livre: true, por_equipamento: false };
+  }
+
+  function diasVinculados(g) {
+    const set = new Set();
+    (g.horarios || []).forEach(h => {
+      const d = (h.dia_semana || 'TODOS').toUpperCase();
+      set.add(d);
+    });
+    if (!set.size) return ['—'];
+    if (set.has('TODOS') && set.size === 1) return ['Todos os dias'];
+    return DIAS.filter(d => set.has(d)).map(d => DIA_LABEL[d] || d);
+  }
+
+  function filtered() {
+    const q = query.trim().toLowerCase();
+    let list = GRUPOS.slice().sort((a, b) => a.id - b.id);
+    if (q) list = list.filter(g => (g.nome || '').toLowerCase().includes(q));
+    return list;
+  }
+
+  function renderTable() {
+    const list = filtered();
+    const total = list.length;
+    const pages = Math.max(1, Math.ceil(total / PER_PAGE));
+    if (page > pages) page = pages;
+    const start = (page - 1) * PER_PAGE;
+    const slice = list.slice(start, start + PER_PAGE);
+
+    document.getElementById('horariosMeta').textContent =
+      'Exibindo ' + total + ' registro(s) • Página ' + page + ' de ' + pages;
+    document.getElementById('pageHorariosLabel').textContent = String(page);
+    document.getElementById('prevHorarios').disabled = page <= 1;
+    document.getElementById('nextHorarios').disabled = page >= pages;
+
+    tbody.innerHTML = '';
+    if (!slice.length) {
+      emptyTable.hidden = false;
+      return;
+    }
+    emptyTable.hidden = true;
+    slice.forEach(g => {
+      const dias = diasVinculados(g);
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td class="cfg-id">#' + g.id + '</td>' +
+        '<td><strong>' + escapeHtml(g.nome || '') + '</strong></td>' +
+        '<td><div class="cfg-dias">' +
+          dias.map(d => '<span class="cfg-dia-chip">' + escapeHtml(d) + '</span>').join('') +
+        '</div></td>' +
+        '<td><div class="cfg-actions">' +
+          '<button type="button" class="cfg-icon-btn" data-edit="' + g.id + '" title="Editar"><i class="fas fa-pen"></i></button>' +
+          '<button type="button" class="cfg-icon-btn danger" data-del="' + g.id + '" title="Excluir"><i class="fas fa-trash-alt"></i></button>' +
+        '</div></td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function setMode(isEdit) {
+    document.getElementById('hgTitulo').textContent = isEdit ? 'Editar Horário' : 'Criar Novo Horário';
+    document.getElementById('hgSubtitulo').textContent = isEdit
+      ? 'Atualize as regras deste horário'
+      : 'Configure as faixas de acesso semanal';
+    document.getElementById('hgSalvarLabel').textContent = isEdit ? 'Salvar Alterações' : 'Salvar Horário';
+    document.getElementById('hgIconPlus').classList.toggle('edit-mode', isEdit);
+    nomeInput.placeholder = isEdit ? 'Ex: Padrão' : 'Ex: Comercial, Noturno, Diretoria...';
+  }
+
+  function openCreate() {
+    editId = null;
+    diaAtual = 'TODOS';
+    faixas = emptyFaixas();
+    nomeInput.value = '';
+    document.getElementById('hgId').value = '';
+    modal.querySelectorAll('input[name="equipamento_ids"]').forEach(c => { c.checked = false; });
+    document.querySelectorAll('.hg-day').forEach(b => {
+      b.classList.toggle('active', b.dataset.dia === 'TODOS');
+    });
+    setMode(false);
+    renderVariacoes();
+    modal.hidden = false;
+    nomeInput.focus();
+  }
+
+  function loadFaixasFromGrupo(g) {
+    faixas = emptyFaixas();
+    (g.horarios || []).forEach(h => {
+      const dia = (h.dia_semana || 'TODOS').toUpperCase();
+      if (!faixas[dia]) faixas[dia] = [];
+      faixas[dia].push({
+        inicio: h.hora_inicial || '08:00',
+        fim: h.hora_final || '18:00',
+        entradas: h.entradas != null ? h.entradas : 1,
+        saidas: h.saidas != null ? h.saidas : 1,
+        livre: h.livre !== false,
+        por_equipamento: !!h.por_equipamento,
+      });
+    });
+  }
+
+  async function openEdit(id) {
+    let g = GRUPOS.find(x => x.id === id);
+    try {
+      const r = await fetch(API + '/' + id);
+      const res = await r.json();
+      if (res.ok && res.grupo) g = res.grupo;
+    } catch (e) { /* usa cache local */ }
+    if (!g) { alert('Horário não encontrado'); return; }
+
+    editId = g.id;
+    document.getElementById('hgId').value = String(g.id);
+    nomeInput.value = g.nome || '';
+    loadFaixasFromGrupo(g);
+
+    const eqSet = new Set(g.equipamento_ids || []);
+    modal.querySelectorAll('input[name="equipamento_ids"]').forEach(c => {
+      c.checked = eqSet.has(+c.value);
+    });
+
+    const primeiroComFaixa = DIAS.find(d => (faixas[d] || []).length) || 'TODOS';
+    diaAtual = primeiroComFaixa;
+    document.querySelectorAll('.hg-day').forEach(b => {
+      b.classList.toggle('active', b.dataset.dia === diaAtual);
+    });
+    setMode(true);
+    renderVariacoes();
+    modal.hidden = false;
+    nomeInput.focus();
+  }
+
+  function closeModal() { modal.hidden = true; }
+
+  function renderVariacoes() {
+    const list = faixas[diaAtual] || [];
+    box.querySelectorAll('.hg-var-row').forEach(el => el.remove());
+    if (!list.length) {
+      emptyEl.hidden = false;
+      return;
+    }
+    emptyEl.hidden = true;
+    list.forEach((v, idx) => {
+      const row = document.createElement('div');
+      row.className = 'hg-var-row';
+      row.innerHTML =
+        '<label>Início<input type="time" data-f="inicio" value="' + (v.inicio || '08:00') + '"></label>' +
+        '<span class="hg-ate">até</span>' +
+        '<label>Fim<input type="time" data-f="fim" value="' + (v.fim || '18:00') + '"></label>' +
+        '<label>Entradas<input type="number" min="0" data-f="entradas" value="' + (v.entradas != null ? v.entradas : 1) + '"></label>' +
+        '<label>Saídas<input type="number" min="0" data-f="saidas" value="' + (v.saidas != null ? v.saidas : 1) + '"></label>' +
+        '<div class="hg-toggle"><span>Livre</span><button type="button" class="hg-switch' + (v.livre !== false ? ' on' : '') + '" data-f="livre" aria-label="Livre"></button></div>' +
+        '<div class="hg-toggle"><span>Por Equip.</span><button type="button" class="hg-switch' + (v.por_equipamento ? ' on' : '') + '" data-f="por_equipamento" aria-label="Por equipamento"></button></div>' +
+        '<button type="button" class="hg-var-remove" title="Remover" aria-label="Remover"><i class="fas fa-trash-alt"></i></button>';
+
+      row.querySelectorAll('input').forEach(inp => {
+        inp.addEventListener('change', () => {
+          const f = inp.dataset.f;
+          if (f === 'entradas' || f === 'saidas') faixas[diaAtual][idx][f] = parseInt(inp.value, 10) || 0;
+          else faixas[diaAtual][idx][f] = inp.value;
+        });
+      });
+      row.querySelectorAll('.hg-switch').forEach(sw => {
+        sw.addEventListener('click', () => {
+          const f = sw.dataset.f;
+          const on = !sw.classList.contains('on');
+          sw.classList.toggle('on', on);
+          faixas[diaAtual][idx][f] = on;
+        });
+      });
+      row.querySelector('.hg-var-remove').addEventListener('click', () => {
+        faixas[diaAtual].splice(idx, 1);
+        renderVariacoes();
+      });
+      box.appendChild(row);
+    });
+  }
+
+  function addVariacao() {
+    if (!faixas[diaAtual]) faixas[diaAtual] = [];
+    faixas[diaAtual].push(defaultVar());
+    renderVariacoes();
+  }
+
+  function copiarProximoDia() {
+    const i = DIAS.indexOf(diaAtual);
+    if (i < 0) return;
+    const next = DIAS[(i + 1) % DIAS.length];
+    const src = (faixas[diaAtual] || []).map(cloneVar);
+    if (!src.length) {
+      alert('Adicione ao menos uma variação neste dia antes de copiar.');
+      return;
+    }
+    faixas[next] = src;
+    diaAtual = next;
+    document.querySelectorAll('.hg-day').forEach(b => {
+      b.classList.toggle('active', b.dataset.dia === diaAtual);
+    });
+    renderVariacoes();
+  }
+
+  function coletarHorarios() {
+    const out = [];
+    DIAS.forEach(dia => {
+      (faixas[dia] || []).forEach(v => {
+        if (!v.inicio || !v.fim) return;
+        out.push({
+          dia_semana: dia,
+          hora_inicial: v.inicio,
+          hora_final: v.fim,
+          entradas: v.entradas != null ? v.entradas : 1,
+          saidas: v.saidas != null ? v.saidas : 1,
+          livre: v.livre !== false,
+          por_equipamento: !!v.por_equipamento,
+        });
+      });
+    });
+    return out;
+  }
+
+  async function salvar() {
+    const nome = (nomeInput.value || '').trim();
+    if (!nome) { alert('Informe o nome do horário.'); nomeInput.focus(); return; }
+    const horarios = coletarHorarios();
+    if (!horarios.length) { alert('Adicione ao menos uma variação de horário.'); return; }
+    const equipamento_ids = Array.from(
+      modal.querySelectorAll('input[name="equipamento_ids"]:checked')
+    ).map(c => +c.value);
+
+    const btn = document.getElementById('btnSalvarHorario');
+    btn.disabled = true;
+    try {
+      const url = editId ? (API + '/' + editId) : API;
+      const method = editId ? 'PUT' : 'POST';
+      const r = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome, horarios, equipamento_ids }),
+      });
+      const res = await r.json();
+      if (!res.ok) { alert(res.error || 'Erro ao salvar'); return; }
+      location.reload();
+    } catch (err) {
+      alert('Falha de rede ao salvar.');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function excluir(id) {
+    if (!confirm('Excluir este horário/grupo?')) return;
+    const r = await fetch(API + '/' + id, { method: 'DELETE' });
     const res = await r.json();
     if (!res.ok) { alert(res.error || 'Erro'); return; }
     location.reload();
+  }
+
+  /* Tabs */
+  document.querySelectorAll('.cfg-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.cfg-tab').forEach(t => {
+        t.classList.toggle('active', t === tab);
+        t.setAttribute('aria-selected', t === tab ? 'true' : 'false');
+      });
+      const which = tab.dataset.tab;
+      document.getElementById('tabHorarios').hidden = which !== 'horarios';
+      document.getElementById('tabGrupos').hidden = which !== 'grupos';
+    });
   });
-});
+
+  /* Busca / pager */
+  document.getElementById('buscaHorario').addEventListener('input', (e) => {
+    query = e.target.value || '';
+    page = 1;
+    renderTable();
+  });
+  document.getElementById('prevHorarios').addEventListener('click', () => {
+    if (page > 1) { page--; renderTable(); }
+  });
+  document.getElementById('nextHorarios').addEventListener('click', () => {
+    page++; renderTable();
+  });
+
+  /* Modal / ações */
+  document.getElementById('btnCriarHorario').addEventListener('click', openCreate);
+  document.getElementById('btnCriarGrupoTab').addEventListener('click', openCreate);
+  document.getElementById('btnFecharModal').addEventListener('click', closeModal);
+  document.getElementById('btnCancelarModal').addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !modal.hidden) closeModal();
+  });
+
+  document.querySelectorAll('.hg-day').forEach(btn => {
+    btn.addEventListener('click', () => {
+      diaAtual = btn.dataset.dia;
+      document.querySelectorAll('.hg-day').forEach(b => b.classList.toggle('active', b === btn));
+      renderVariacoes();
+    });
+  });
+
+  document.getElementById('btnAddVariacao').addEventListener('click', addVariacao);
+  document.getElementById('btnCopiarDia').addEventListener('click', copiarProximoDia);
+  document.getElementById('btnSalvarHorario').addEventListener('click', salvar);
+
+  document.getElementById('tbodyHorarios').addEventListener('click', (e) => {
+    const edit = e.target.closest('[data-edit]');
+    const del = e.target.closest('[data-del]');
+    if (edit) openEdit(+edit.dataset.edit);
+    if (del) excluir(+del.dataset.del);
+  });
+  document.getElementById('listaGruposAcesso').addEventListener('click', (e) => {
+    const edit = e.target.closest('[data-edit]');
+    const del = e.target.closest('[data-del]');
+    if (edit) openEdit(+edit.dataset.edit);
+    if (del) excluir(+del.dataset.del);
+  });
+
+  /* Ajuda */
+  const modalAjuda = document.getElementById('modalAjuda');
+  document.getElementById('btnAjuda').addEventListener('click', () => { modalAjuda.hidden = false; });
+  modalAjuda.querySelector('[data-close-ajuda]').addEventListener('click', () => { modalAjuda.hidden = true; });
+  modalAjuda.addEventListener('click', (e) => { if (e.target === modalAjuda) modalAjuda.hidden = true; });
+
+  renderTable();
+})();
 </script>
 {% endblock %}

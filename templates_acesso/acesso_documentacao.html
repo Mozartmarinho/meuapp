@@ -1,0 +1,126 @@
+{% extends "base_acesso.html" %}
+{% block title %}Documentação{% endblock %}
+{% block content %}
+<style>
+  .catalogo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.1rem;
+  }
+  .catalogo-card {
+    background: #fff;
+    border: 1px solid rgba(15, 42, 86, 0.1);
+    border-radius: 14px;
+    padding: 1.15rem 1.2rem 1.25rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+  }
+  .catalogo-card-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.95rem;
+  }
+  .catalogo-icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 1.05rem;
+  }
+  .catalogo-icon.blue { background: rgba(37, 99, 235, 0.12); color: #2563eb; }
+  .catalogo-icon.green { background: rgba(22, 163, 74, 0.12); color: #16a34a; }
+  .catalogo-icon.teal { background: rgba(13, 148, 136, 0.12); color: #0d9488; }
+  .catalogo-icon.navy { background: rgba(13, 43, 92, 0.1); color: var(--brand-navy, #0D2B5C); }
+  .catalogo-card h2 {
+    margin: 0;
+    font-family: var(--font-brand);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--brand-navy, #0D2B5C);
+  }
+  .catalogo-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.55rem;
+  }
+  .catalogo-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    font-size: 0.92rem;
+    color: #334155;
+    line-height: 1.35;
+  }
+  .catalogo-list li i {
+    color: #16a34a;
+    margin-top: 0.12rem;
+    flex-shrink: 0;
+  }
+</style>
+
+<div class="page-header">
+  <h1 style="color: var(--brand-navy); font-family: var(--font-brand);">Catálogo de Funcionalidades</h1>
+  <p>Visão geral das funcionalidades disponíveis no módulo Controle de Acesso do São Geraldo Service.</p>
+</div>
+
+<div class="catalogo-grid">
+  <article class="catalogo-card">
+    <div class="catalogo-card-head">
+      <span class="catalogo-icon blue"><i class="fas fa-users"></i></span>
+      <h2>Pessoas</h2>
+    </div>
+    <ul class="catalogo-list">
+      <li><i class="fas fa-circle-check"></i> Cadastros de colaboradores e pessoas autorizadas</li>
+      <li><i class="fas fa-circle-check"></i> Gestão de visitantes e anfitriões</li>
+      <li><i class="fas fa-circle-check"></i> Documentos e dados cadastrais auxiliares</li>
+    </ul>
+  </article>
+
+  <article class="catalogo-card">
+    <div class="catalogo-card-head">
+      <span class="catalogo-icon green"><i class="fas fa-shield-halved"></i></span>
+      <h2>Controle de Acesso</h2>
+    </div>
+    <ul class="catalogo-list">
+      <li><i class="fas fa-circle-check"></i> Horários &amp; Grupos de acesso</li>
+      <li><i class="fas fa-circle-check"></i> Gestão de Ambientes</li>
+      <li><i class="fas fa-circle-check"></i> Estacionamentos</li>
+      <li><i class="fas fa-circle-check"></i> Impressoras</li>
+      <li><i class="fas fa-circle-check"></i> Equipamentos e dispositivos</li>
+    </ul>
+  </article>
+
+  <article class="catalogo-card">
+    <div class="catalogo-card-head">
+      <span class="catalogo-icon teal"><i class="fas fa-chart-pie"></i></span>
+      <h2>Relatórios</h2>
+    </div>
+    <ul class="catalogo-list">
+      <li><i class="fas fa-circle-check"></i> Dashboard operacional</li>
+      <li><i class="fas fa-circle-check"></i> Relatório de Acessos</li>
+      <li><i class="fas fa-circle-check"></i> Relatório de Veículos</li>
+      <li><i class="fas fa-circle-check"></i> Permanência</li>
+      <li><i class="fas fa-circle-check"></i> Auditoria do sistema</li>
+    </ul>
+  </article>
+
+  <article class="catalogo-card">
+    <div class="catalogo-card-head">
+      <span class="catalogo-icon navy"><i class="fas fa-gear"></i></span>
+      <h2>Administração</h2>
+    </div>
+    <ul class="catalogo-list">
+      <li><i class="fas fa-circle-check"></i> Usuários do módulo</li>
+      <li><i class="fas fa-circle-check"></i> Permissões por área</li>
+      <li><i class="fas fa-circle-check"></i> Backup do Sistema</li>
+      <li><i class="fas fa-circle-check"></i> Documentação (este catálogo)</li>
+      <li><i class="fas fa-circle-check"></i> Sollus Sync V2</li>
+    </ul>
+  </article>
+</div>
+{% endblock %}

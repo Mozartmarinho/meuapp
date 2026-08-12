@@ -75,9 +75,12 @@ class Usuario(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
+    # Login curto do Controle de Acesso (além do e-mail)
+    usuario = db.Column(db.String(80), unique=True, index=True)
     # Banco legado usa senha_hash; atributo Python permanece "senha" (código GitHub)
     senha = db.Column('senha_hash', db.String(255), nullable=False)
     tipo = db.Column(db.String(20), default='operador')
+    token = db.Column(db.String(64))
     ativo = db.Column(db.Boolean, default=True)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
 

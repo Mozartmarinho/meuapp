@@ -1,0 +1,168 @@
+{% extends "base_acesso.html" %}
+{% block title %}{{ page_title }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>{{ page_title }}</h1>
+  <p>{{ page_desc }}</p>
+</div>
+
+<div class="card" style="padding:1.1rem 1.2rem;margin-bottom:1.1rem;">
+  <h3 style="margin:0 0 0.85rem;font-family:var(--font-brand);color:var(--brand-navy);" id="formTitle">{{ form_title }}</h3>
+  <form id="formAdmin" class="form-inline-grid">
+    <input type="hidden" name="id" id="f_id" value="">
+    {% if kind == 'empresas' %}
+    <label>Nome *<input name="nome" id="f_nome" required placeholder="Ex: São Geraldo Service"></label>
+    <label>CNPJ<input name="cnpj" id="f_cnpj" placeholder="00.000.000/0000-00"></label>
+    <label>Status
+      <select name="ativo" id="f_ativo">
+        <option value="1">Ativo</option>
+        <option value="0">Inativo</option>
+      </select>
+    </label>
+    {% elif kind == 'classificacoes' %}
+    <label>Descrição *<input name="descricao" id="f_descricao" required placeholder="Ex: Colaborador"></label>
+    <label>Mostrar em Visitantes
+      <select name="mostrar_visitante" id="f_mostrar_visitante">
+        <option value="0">Não</option>
+        <option value="1">Sim</option>
+      </select>
+    </label>
+    {% elif kind == 'tipos_documento' %}
+    <label>Descrição *<input name="descricao" id="f_descricao" required placeholder="Ex: CPF"></label>
+    <label>Dígitos esperados<input type="number" name="digitos" id="f_digitos" min="0" value="0" placeholder="0 = livre"></label>
+    {% else %}
+    <label>Descrição *<input name="descricao" id="f_descricao" required placeholder="{{ placeholder or 'Descrição' }}"></label>
+    {% endif %}
+  </form>
+  <div style="display:flex;gap:0.55rem;flex-wrap:wrap;margin-top:0.35rem;">
+    <button type="button" class="btn-acesso" id="btnSalvar"><i class="fas fa-plus" id="btnIcon"></i> <span id="btnLabel">Cadastrar</span></button>
+    <button type="button" class="btn btn-secondary" id="btnCancelar" style="display:none;">Cancelar edição</button>
+  </div>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden;">
+  <div class="table-scroll">
+    <table class="data-table" id="tabelaAdmin">
+      <thead>
+        <tr>
+          {% for col in columns %}
+          <th>{{ col }}</th>
+          {% endfor %}
+          <th style="width:140px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in items %}
+        <tr data-id="{{ row.id }}">
+          {% if kind == 'empresas' %}
+          <td><strong>{{ row.nome }}</strong></td>
+          <td>{{ row.cnpj or '—' }}</td>
+          <td>
+            {% if row.ativo %}<span class="badge-status badge-liberado">Ativo</span>
+            {% else %}<span class="badge-status badge-offline">Inativo</span>{% endif %}
+          </td>
+          {% elif kind == 'classificacoes' %}
+          <td><strong>{{ row.descricao }}</strong></td>
+          <td>{{ 'Sim' if row.mostrar_visitante else 'Não' }}</td>
+          {% elif kind == 'tipos_documento' %}
+          <td><strong>{{ row.descricao }}</strong></td>
+          <td>{{ row.digitos if row.digitos else 'Livre' }}</td>
+          {% else %}
+          <td><strong>{{ row.descricao }}</strong></td>
+          {% endif %}
+          <td style="white-space:nowrap;">
+            <button type="button" class="btn btn-secondary btn-sm btn-edit"
+              data-id="{{ row.id }}"
+              data-payload='{{ row|tojson }}'>Editar</button>
+            <button type="button" class="btn btn-secondary btn-sm btn-del" data-id="{{ row.id }}">Excluir</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="{{ columns|length + 1 }}" style="text-align:center;padding:1.5rem;color:#64748b;">Nenhum registro cadastrado.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const API = {{ api_url|tojson }};
+const KIND = {{ kind|tojson }};
+
+function resetForm() {
+  document.getElementById('formAdmin').reset();
+  document.getElementById('f_id').value = '';
+  document.getElementById('formTitle').textContent = {{ form_title|tojson }};
+  document.getElementById('btnLabel').textContent = 'Cadastrar';
+  document.getElementById('btnIcon').className = 'fas fa-plus';
+  document.getElementById('btnCancelar').style.display = 'none';
+}
+
+document.getElementById('btnCancelar').addEventListener('click', resetForm);
+
+document.querySelectorAll('.btn-edit').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const row = JSON.parse(btn.dataset.payload);
+    document.getElementById('f_id').value = row.id;
+    document.getElementById('formTitle').textContent = 'Editar registro';
+    document.getElementById('btnLabel').textContent = 'Salvar alterações';
+    document.getElementById('btnIcon').className = 'fas fa-save';
+    document.getElementById('btnCancelar').style.display = '';
+
+    if (KIND === 'empresas') {
+      document.getElementById('f_nome').value = row.nome || '';
+      document.getElementById('f_cnpj').value = row.cnpj || '';
+      document.getElementById('f_ativo').value = row.ativo ? '1' : '0';
+    } else if (KIND === 'classificacoes') {
+      document.getElementById('f_descricao').value = row.descricao || '';
+      document.getElementById('f_mostrar_visitante').value = row.mostrar_visitante ? '1' : '0';
+    } else if (KIND === 'tipos_documento') {
+      document.getElementById('f_descricao').value = row.descricao || '';
+      document.getElementById('f_digitos').value = row.digitos || 0;
+    } else {
+      document.getElementById('f_descricao').value = row.descricao || '';
+    }
+    document.getElementById('formAdmin').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
+
+document.getElementById('btnSalvar').addEventListener('click', async () => {
+  const form = document.getElementById('formAdmin');
+  if (!form.reportValidity()) return;
+  const raw = Object.fromEntries(new FormData(form).entries());
+  const id = raw.id;
+  delete raw.id;
+
+  if (KIND === 'empresas') {
+    raw.ativo = raw.ativo === '1';
+  } else if (KIND === 'classificacoes') {
+    raw.mostrar_visitante = raw.mostrar_visitante === '1';
+  } else if (KIND === 'tipos_documento') {
+    raw.digitos = Number(raw.digitos || 0);
+  }
+
+  const url = id ? `${API}/${id}` : API;
+  const method = id ? 'PUT' : 'POST';
+  const r = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(raw),
+  });
+  const res = await r.json();
+  if (!res.ok) { alert(res.error || 'Erro ao salvar'); return; }
+  location.reload();
+});
+
+document.querySelectorAll('.btn-del').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (!confirm('Excluir este registro?')) return;
+    const r = await fetch(`${API}/${btn.dataset.id}`, { method: 'DELETE' });
+    const res = await r.json();
+    if (!res.ok) { alert(res.error || 'Erro ao excluir'); return; }
+    location.reload();
+  });
+});
+</script>
+{% endblock %}

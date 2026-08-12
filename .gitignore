@@ -52,6 +52,12 @@ static/uploads/**
 !static/uploads/.gitkeep
 static/acesso_fotos/**
 !static/acesso_fotos/.gitkeep
+static/acesso_backups/**
+!static/acesso_backups/.gitkeep
+static/acesso_documentos/**
+!static/acesso_documentos/.gitkeep
+static/acesso_empresas/**
+!static/acesso_empresas/.gitkeep
 
 # --- Configurações locais ---
 .env

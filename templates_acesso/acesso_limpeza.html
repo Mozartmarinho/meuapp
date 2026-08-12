@@ -1,0 +1,622 @@
+{% extends "base_acesso.html" %}
+{% block title %}Limpeza de Dados{% endblock %}
+{% block content %}
+<div class="ld-wrap">
+  <header class="ld-header">
+    <div class="ld-header-left">
+      <div class="ld-p-icon"><i class="fas fa-broom"></i></div>
+      <div>
+        <h1>Limpeza de Dados</h1>
+        <p>Identifique e remova usuários/visitantes sem acesso recente nos equipamentos.</p>
+      </div>
+    </div>
+  </header>
+
+  <div class="ld-grid">
+    <!-- 1. FILTROS -->
+    <section class="ld-card" id="secFiltros">
+      <div class="ld-card-head">
+        <span class="ld-num">1</span>
+        <h2>FILTROS</h2>
+      </div>
+      <form id="formFiltros" class="ld-filters" autocomplete="off">
+        <label>Status
+          <select id="f_status" name="status">
+            <option value="ativos" selected>Apenas Ativos</option>
+            <option value="inativos">Inativos</option>
+            <option value="todos">Todos</option>
+          </select>
+        </label>
+        <label>Dias sem acesso
+          <input type="number" id="f_dias" name="dias" min="1" max="3650" value="30">
+        </label>
+        <button type="button" class="ld-link-adv" id="btnAvancado" aria-expanded="false">
+          <i class="fas fa-sliders"></i> Avançado
+          <i class="fas fa-chevron-down ld-adv-chev"></i>
+        </button>
+        <div class="ld-avancado" id="painelAvancado" hidden>
+          <label>Nome / matrícula
+            <input type="search" id="f_nome" name="nome" placeholder="Opcional…">
+          </label>
+          <label>Empresa
+            <select id="f_empresa" name="empresa_id">
+              <option value="">Todas</option>
+              {% for e in empresas %}
+              <option value="{{ e.id }}">{{ e.nome }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="ld-check-inline">
+            <input type="checkbox" id="f_remover_vinculos" checked>
+            <span>Remover vínculos (grupo/equipamentos)</span>
+          </label>
+        </div>
+        <button type="submit" class="btn-acesso ld-btn-analisar" id="btnAnalisar">
+          <i class="fas fa-magnifying-glass"></i> Analisar
+        </button>
+      </form>
+    </section>
+
+    <!-- 2. EQUIPAMENTOS -->
+    <section class="ld-card" id="secEquip">
+      <div class="ld-card-head">
+        <span class="ld-num">2</span>
+        <h2>EQUIPAMENTOS</h2>
+      </div>
+      <div class="ld-equip-tools">
+        <button type="button" class="ld-mini-btn" id="btnEqTodos">Todos</button>
+        <button type="button" class="ld-mini-btn" id="btnEqNenhum">Nenhum</button>
+      </div>
+      <ul class="ld-equip-list" id="listaEquip">
+        {% for eq in equipamentos %}
+        <li>
+          <label class="ld-eq-item">
+            <input type="checkbox" class="eq-check" value="{{ eq.id }}" checked>
+            <span class="ld-eq-meta">
+              <strong>{{ eq.nome }}</strong>
+              <small>{{ eq.ip or 'Sem IP' }}</small>
+            </span>
+          </label>
+        </li>
+        {% else %}
+        <li class="ld-eq-empty">Nenhum equipamento ativo.</li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <!-- 3. RESULTADOS -->
+    <section class="ld-card ld-results" id="secResultados">
+      <div class="ld-card-head ld-results-head">
+        <div class="ld-card-head-left">
+          <span class="ld-num">3</span>
+          <h2>Resultados da Análise</h2>
+        </div>
+        <label class="ld-switch" title="Ao executar, marca status Inativo no banco">
+          <input type="checkbox" id="togDesativar" checked>
+          <span class="ld-switch-ui"></span>
+          <span class="ld-switch-label">DESATIVAR NO BANCO</span>
+        </label>
+      </div>
+
+      <div class="ld-tabs" role="tablist">
+        <button type="button" class="ld-tab active" data-tab="usuarios" role="tab" aria-selected="true">
+          Usuários <span class="ld-tab-count" id="cntUsuarios">0</span>
+        </button>
+        <button type="button" class="ld-tab" data-tab="visitantes" role="tab" aria-selected="false">
+          Visitantes <span class="ld-tab-count" id="cntVisitantes">0</span>
+        </button>
+      </div>
+
+      <div class="ld-panel" id="panelUsuarios" role="tabpanel">
+        <div class="ld-empty" id="emptyUsuarios">
+          <i class="fas fa-hourglass-half"></i>
+          <strong>Busca Pendente</strong>
+          <p>Clique em Analisar para listar usuários sem acesso.</p>
+        </div>
+        <div class="table-scroll" id="wrapUsuarios" hidden>
+          <table class="ld-table">
+            <thead>
+              <tr>
+                <th style="width:2.2rem"><input type="checkbox" id="chkAllUsuarios" title="Selecionar todos"></th>
+                <th>Nome</th>
+                <th>Matrícula</th>
+                <th>Status</th>
+                <th>Último acesso</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyUsuarios"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="ld-panel" id="panelVisitantes" role="tabpanel" hidden>
+        <div class="ld-empty" id="emptyVisitantes">
+          <i class="fas fa-hourglass-half"></i>
+          <strong>Busca Pendente</strong>
+          <p>Clique em Analisar para listar visitantes sem acesso.</p>
+        </div>
+        <div class="table-scroll" id="wrapVisitantes" hidden>
+          <table class="ld-table">
+            <thead>
+              <tr>
+                <th style="width:2.2rem"><input type="checkbox" id="chkAllVisitantes" title="Selecionar todos"></th>
+                <th>Nome</th>
+                <th>ID / Doc.</th>
+                <th>Status</th>
+                <th>Último acesso</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyVisitantes"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="ld-actions">
+        <button type="button" class="ld-btn ld-btn-outline-danger" id="btnLimpezaTotal">
+          <i class="fas fa-trash-can"></i> Limpeza Total
+        </button>
+        <button type="button" class="ld-btn ld-btn-outline" id="btnRemoverFiltro" disabled>
+          Remover Tudo (Filtro)
+        </button>
+        <button type="button" class="ld-btn ld-btn-danger" id="btnRemoverSel" disabled>
+          <i class="fas fa-user-minus"></i> Remover Selecionados
+        </button>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.ld-wrap { max-width: 1280px; }
+.ld-header {
+  display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: center;
+  background: linear-gradient(135deg, var(--brand-navy) 0%, var(--brand-blue) 100%);
+  color: #fff; border-radius: 16px; padding: 1.15rem 1.35rem; margin-bottom: 1rem;
+  box-shadow: 0 8px 24px rgba(13, 43, 92, 0.22);
+}
+.ld-header-left { display: flex; align-items: center; gap: 0.9rem; }
+.ld-p-icon {
+  width: 48px; height: 48px; border-radius: 50%; background: #fff; color: var(--brand-blue);
+  display: grid; place-items: center; font-size: 1.2rem; flex-shrink: 0;
+}
+.ld-header h1 {
+  margin: 0; font-family: var(--font-brand); font-size: 1.45rem; font-weight: 700;
+}
+.ld-header p { margin: 0.3rem 0 0; opacity: 0.9; font-size: 0.88rem; }
+
+.ld-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) minmax(340px, 1.6fr);
+  gap: 0.9rem; align-items: start;
+}
+@media (max-width: 1100px) {
+  .ld-grid { grid-template-columns: 1fr 1fr; }
+  .ld-results { grid-column: 1 / -1; }
+}
+@media (max-width: 720px) {
+  .ld-grid { grid-template-columns: 1fr; }
+}
+
+.ld-card {
+  background: #fff; border: 1px solid rgba(15,42,86,0.1); border-radius: 14px;
+  padding: 1.05rem 1.15rem; box-shadow: 0 4px 12px rgba(0,0,0,.04); min-height: 280px;
+  display: flex; flex-direction: column;
+}
+.ld-card-head {
+  display: flex; align-items: center; gap: 0.65rem; margin-bottom: 0.95rem;
+}
+.ld-card-head h2 {
+  margin: 0; font-family: var(--font-brand); font-size: 1rem; letter-spacing: 0.04em;
+  color: var(--brand-navy); font-weight: 800;
+}
+.ld-num {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--brand-blue); color: #fff;
+  display: grid; place-items: center;
+  font-family: var(--font-brand); font-weight: 800; font-size: 0.95rem; flex-shrink: 0;
+}
+.ld-results-head { justify-content: space-between; flex-wrap: wrap; gap: 0.6rem; }
+.ld-card-head-left { display: flex; align-items: center; gap: 0.65rem; }
+
+.ld-filters { display: flex; flex-direction: column; gap: 0.75rem; flex: 1; }
+.ld-filters label {
+  display: flex; flex-direction: column; gap: 0.3rem;
+  font-size: 0.78rem; font-weight: 700; color: #64748b; letter-spacing: 0.02em;
+}
+.ld-filters input, .ld-filters select,
+.ld-avancado input, .ld-avancado select {
+  padding: 0.55rem 0.7rem; border: 1px solid rgba(15,42,86,.12); border-radius: 10px;
+  font: inherit; color: var(--brand-navy); background: #fff;
+}
+.ld-link-adv {
+  align-self: flex-start; border: 0; background: transparent; cursor: pointer;
+  color: var(--brand-blue); font-weight: 700; font-size: 0.86rem;
+  display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.2rem 0;
+  font-family: var(--font-body);
+}
+.ld-link-adv:hover { color: var(--brand-navy); }
+.ld-adv-chev { font-size: 0.7rem; transition: transform .2s ease; }
+.ld-link-adv[aria-expanded="true"] .ld-adv-chev { transform: rotate(180deg); }
+.ld-avancado {
+  display: flex; flex-direction: column; gap: 0.7rem;
+  padding: 0.75rem; border-radius: 10px; background: #f8fafc;
+  border: 1px dashed rgba(15,42,86,.14);
+}
+.ld-avancado[hidden] { display: none !important; }
+.ld-check-inline {
+  flex-direction: row !important; align-items: center; gap: 0.5rem !important;
+  font-size: 0.82rem !important; color: var(--brand-navy) !important; font-weight: 600 !important;
+  cursor: pointer;
+}
+.ld-btn-analisar { width: 100%; justify-content: center; margin-top: auto; }
+
+.ld-equip-tools { display: flex; gap: 0.4rem; margin-bottom: 0.65rem; }
+.ld-mini-btn {
+  padding: 0.28rem 0.65rem; border-radius: 8px; border: 1px solid rgba(15,42,86,.14);
+  background: #fff; color: var(--brand-navy); font-weight: 700; font-size: 0.78rem;
+  cursor: pointer; font-family: var(--font-body);
+}
+.ld-mini-btn:hover { background: #f1f5f9; }
+.ld-equip-list {
+  list-style: none; margin: 0; padding: 0; overflow: auto; max-height: 360px;
+  display: flex; flex-direction: column; gap: 0.35rem; flex: 1;
+}
+.ld-eq-item {
+  display: flex; align-items: flex-start; gap: 0.55rem;
+  padding: 0.55rem 0.65rem; border-radius: 10px; border: 1px solid rgba(15,42,86,.08);
+  background: #f8fafc; cursor: pointer;
+}
+.ld-eq-item:hover { border-color: rgba(27,79,156,.35); }
+.ld-eq-item input { margin-top: 0.2rem; }
+.ld-eq-meta { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.ld-eq-meta strong {
+  font-size: 0.88rem; color: var(--brand-navy); font-family: var(--font-brand);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ld-eq-meta small { color: #64748b; font-size: 0.78rem; }
+.ld-eq-empty { text-align: center; color: #94a3b8; font-weight: 600; padding: 1.5rem 0.5rem; }
+
+.ld-switch {
+  display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer;
+  user-select: none; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.04em;
+  color: var(--brand-navy);
+}
+.ld-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.ld-switch-ui {
+  width: 42px; height: 24px; border-radius: 999px; background: #cbd5e1;
+  position: relative; transition: background .2s ease; flex-shrink: 0;
+}
+.ld-switch-ui::after {
+  content: ''; position: absolute; top: 3px; left: 3px;
+  width: 18px; height: 18px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: transform .2s ease;
+}
+.ld-switch input:checked + .ld-switch-ui { background: var(--brand-blue); }
+.ld-switch input:checked + .ld-switch-ui::after { transform: translateX(18px); }
+
+.ld-tabs {
+  display: flex; gap: 0; border-bottom: 1px solid rgba(15,42,86,.1); margin-bottom: 0.75rem;
+}
+.ld-tab {
+  border: 0; background: transparent; padding: 0.55rem 0.95rem; cursor: pointer;
+  font-weight: 700; font-size: 0.88rem; color: #64748b; font-family: var(--font-body);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  display: inline-flex; align-items: center; gap: 0.4rem;
+}
+.ld-tab:hover { color: var(--brand-navy); }
+.ld-tab.active { color: var(--brand-blue); border-bottom-color: var(--brand-blue); }
+.ld-tab-count {
+  min-width: 1.4rem; padding: 0.1rem 0.4rem; border-radius: 999px;
+  background: #e2e8f0; color: #475569; font-size: 0.72rem; font-weight: 800;
+  text-align: center;
+}
+.ld-tab.active .ld-tab-count { background: rgba(27,79,156,.12); color: var(--brand-blue); }
+
+.ld-panel { flex: 1; min-height: 180px; }
+.ld-empty {
+  text-align: center; padding: 2.4rem 1rem; color: #94a3b8;
+  display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
+}
+.ld-empty i { font-size: 1.6rem; opacity: .7; margin-bottom: 0.25rem; }
+.ld-empty strong {
+  font-family: var(--font-brand); font-size: 1.15rem; color: var(--brand-navy); font-weight: 700;
+}
+.ld-empty p { margin: 0; font-size: 0.86rem; font-weight: 600; }
+
+.ld-table { width: 100%; border-collapse: collapse; }
+.ld-table th {
+  text-align: left; padding: 0.55rem 0.65rem; font-size: 0.72rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.03em; color: #64748b;
+  background: var(--brand-mist, #eef2f7); border-bottom: 1px solid rgba(15,42,86,.08);
+}
+.ld-table td {
+  padding: 0.6rem 0.65rem; border-bottom: 1px solid rgba(15,42,86,.06);
+  color: var(--brand-ink, #1e293b); font-size: 0.86rem;
+}
+.ld-table tbody tr:hover { background: rgba(27,79,156,.04); }
+.ld-table .nome-cell { font-weight: 700; color: var(--brand-navy); }
+
+.ld-actions {
+  display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.95rem;
+  padding-top: 0.85rem; border-top: 1px solid rgba(15,42,86,.08);
+}
+.ld-btn {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.55rem 0.9rem; border-radius: 10px; font-weight: 700; font-size: 0.84rem;
+  cursor: pointer; font-family: var(--font-body); border: 1px solid transparent;
+}
+.ld-btn:disabled { opacity: .45; cursor: not-allowed; }
+.ld-btn-outline-danger {
+  background: #fff; color: #b91c1c; border-color: #fca5a5;
+}
+.ld-btn-outline-danger:hover:not(:disabled) { background: rgba(220,38,38,.06); }
+.ld-btn-outline {
+  background: #fff; color: var(--brand-navy); border-color: rgba(15,42,86,.18);
+}
+.ld-btn-outline:hover:not(:disabled) { background: #f1f5f9; }
+.ld-btn-danger {
+  background: #dc2626; color: #fff; border-color: #dc2626; margin-left: auto;
+}
+.ld-btn-danger:hover:not(:disabled) { background: #b91c1c; }
+</style>
+<script>
+(function () {
+  const API_ANALISAR = {{ url_for('acesso.api_limpeza_analisar')|tojson }};
+  const API_EXECUTAR = {{ url_for('acesso.api_limpeza_executar')|tojson }};
+
+  let state = {
+    analisado: false,
+    usuarios: [],
+    visitantes: [],
+    tab: 'usuarios',
+  };
+
+  const el = {
+    form: document.getElementById('formFiltros'),
+    status: document.getElementById('f_status'),
+    dias: document.getElementById('f_dias'),
+    nome: document.getElementById('f_nome'),
+    empresa: document.getElementById('f_empresa'),
+    removerVinculos: document.getElementById('f_remover_vinculos'),
+    btnAvancado: document.getElementById('btnAvancado'),
+    painelAvancado: document.getElementById('painelAvancado'),
+    togDesativar: document.getElementById('togDesativar'),
+    cntUsuarios: document.getElementById('cntUsuarios'),
+    cntVisitantes: document.getElementById('cntVisitantes'),
+    emptyUsuarios: document.getElementById('emptyUsuarios'),
+    emptyVisitantes: document.getElementById('emptyVisitantes'),
+    wrapUsuarios: document.getElementById('wrapUsuarios'),
+    wrapVisitantes: document.getElementById('wrapVisitantes'),
+    tbodyUsuarios: document.getElementById('tbodyUsuarios'),
+    tbodyVisitantes: document.getElementById('tbodyVisitantes'),
+    chkAllUsuarios: document.getElementById('chkAllUsuarios'),
+    chkAllVisitantes: document.getElementById('chkAllVisitantes'),
+    btnLimpezaTotal: document.getElementById('btnLimpezaTotal'),
+    btnRemoverFiltro: document.getElementById('btnRemoverFiltro'),
+    btnRemoverSel: document.getElementById('btnRemoverSel'),
+    btnAnalisar: document.getElementById('btnAnalisar'),
+  };
+
+  function eqIds() {
+    return Array.from(document.querySelectorAll('.eq-check:checked')).map((c) => Number(c.value));
+  }
+
+  function payloadBase() {
+    return {
+      status: el.status.value,
+      dias: Number(el.dias.value) || 30,
+      nome: (el.nome.value || '').trim(),
+      empresa_id: el.empresa.value || '',
+      equipamento_ids: eqIds(),
+      desativar_banco: !!el.togDesativar.checked,
+      remover_vinculos: !!el.removerVinculos.checked,
+    };
+  }
+
+  function setAnalisando(busy) {
+    el.btnAnalisar.disabled = busy;
+    el.btnAnalisar.innerHTML = busy
+      ? '<i class="fas fa-spinner fa-spin"></i> Analisando…'
+      : '<i class="fas fa-magnifying-glass"></i> Analisar';
+  }
+
+  function updateActionButtons() {
+    const hasResults = state.analisado && (state.usuarios.length + state.visitantes.length) > 0;
+    el.btnRemoverFiltro.disabled = !hasResults;
+    const selU = document.querySelectorAll('.chk-user:checked').length;
+    const selV = document.querySelectorAll('.chk-vis:checked').length;
+    el.btnRemoverSel.disabled = !(selU + selV);
+  }
+
+  function renderEmpty(kind, analyzed) {
+    const empty = kind === 'usuarios' ? el.emptyUsuarios : el.emptyVisitantes;
+    const wrap = kind === 'usuarios' ? el.wrapUsuarios : el.wrapVisitantes;
+    const list = kind === 'usuarios' ? state.usuarios : state.visitantes;
+    if (!analyzed) {
+      empty.hidden = false;
+      wrap.hidden = true;
+      empty.querySelector('strong').textContent = 'Busca Pendente';
+      empty.querySelector('p').textContent =
+        kind === 'usuarios'
+          ? 'Clique em Analisar para listar usuários sem acesso.'
+          : 'Clique em Analisar para listar visitantes sem acesso.';
+      return;
+    }
+    if (!list.length) {
+      empty.hidden = false;
+      wrap.hidden = true;
+      empty.querySelector('strong').textContent = 'Nenhum registro';
+      empty.querySelector('p').textContent = 'Ninguém corresponde aos filtros informados.';
+      return;
+    }
+    empty.hidden = true;
+    wrap.hidden = false;
+  }
+
+  function renderTables() {
+    el.cntUsuarios.textContent = String(state.usuarios.length);
+    el.cntVisitantes.textContent = String(state.visitantes.length);
+
+    el.tbodyUsuarios.innerHTML = '';
+    state.usuarios.forEach((u) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><input type="checkbox" class="chk-user" value="' + u.id + '"></td>' +
+        '<td class="nome-cell"></td>' +
+        '<td></td><td></td><td></td>';
+      tr.children[1].textContent = u.nome || '—';
+      tr.children[2].textContent = u.matricula || u.ref || '—';
+      tr.children[3].textContent = u.status || '—';
+      tr.children[4].textContent = u.ultimo_acesso || 'Nunca';
+      el.tbodyUsuarios.appendChild(tr);
+    });
+
+    el.tbodyVisitantes.innerHTML = '';
+    state.visitantes.forEach((v) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><input type="checkbox" class="chk-vis" value="' + v.id + '"></td>' +
+        '<td class="nome-cell"></td>' +
+        '<td></td><td></td><td></td>';
+      tr.children[1].textContent = v.nome || '—';
+      tr.children[2].textContent = v.visitor_id || v.documento || v.ref || '—';
+      tr.children[3].textContent = v.status || '—';
+      tr.children[4].textContent = v.ultimo_acesso || 'Nunca';
+      el.tbodyVisitantes.appendChild(tr);
+    });
+
+    renderEmpty('usuarios', state.analisado);
+    renderEmpty('visitantes', state.analisado);
+    el.chkAllUsuarios.checked = false;
+    el.chkAllVisitantes.checked = false;
+    updateActionButtons();
+  }
+
+  function setTab(tab) {
+    state.tab = tab;
+    document.querySelectorAll('.ld-tab').forEach((btn) => {
+      const on = btn.getAttribute('data-tab') === tab;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    document.getElementById('panelUsuarios').hidden = tab !== 'usuarios';
+    document.getElementById('panelVisitantes').hidden = tab !== 'visitantes';
+  }
+
+  el.btnAvancado.addEventListener('click', () => {
+    const open = el.painelAvancado.hidden;
+    el.painelAvancado.hidden = !open;
+    el.btnAvancado.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+
+  document.getElementById('btnEqTodos').addEventListener('click', () => {
+    document.querySelectorAll('.eq-check').forEach((c) => { c.checked = true; });
+  });
+  document.getElementById('btnEqNenhum').addEventListener('click', () => {
+    document.querySelectorAll('.eq-check').forEach((c) => { c.checked = false; });
+  });
+
+  document.querySelectorAll('.ld-tab').forEach((btn) => {
+    btn.addEventListener('click', () => setTab(btn.getAttribute('data-tab')));
+  });
+
+  el.chkAllUsuarios.addEventListener('change', () => {
+    document.querySelectorAll('.chk-user').forEach((c) => { c.checked = el.chkAllUsuarios.checked; });
+    updateActionButtons();
+  });
+  el.chkAllVisitantes.addEventListener('change', () => {
+    document.querySelectorAll('.chk-vis').forEach((c) => { c.checked = el.chkAllVisitantes.checked; });
+    updateActionButtons();
+  });
+  el.tbodyUsuarios.addEventListener('change', updateActionButtons);
+  el.tbodyVisitantes.addEventListener('change', updateActionButtons);
+
+  async function analisar() {
+    setAnalisando(true);
+    try {
+      const res = await fetch(API_ANALISAR, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(payloadBase()),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Falha na análise');
+      state.analisado = true;
+      state.usuarios = data.usuarios || [];
+      state.visitantes = data.visitantes || [];
+      renderTables();
+      if (state.usuarios.length === 0 && state.visitantes.length > 0) setTab('visitantes');
+      else setTab('usuarios');
+    } catch (err) {
+      alert(err.message || 'Erro ao analisar');
+    } finally {
+      setAnalisando(false);
+    }
+  }
+
+  el.form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    analisar();
+  });
+
+  async function executar(modo) {
+    const base = payloadBase();
+    if (!base.equipamento_ids.length && modo !== 'remover_selecionados') {
+      if (!confirm('Nenhum equipamento selecionado. Continuar mesmo assim?')) return;
+    }
+
+    const body = Object.assign({}, base, { modo: modo });
+    if (modo === 'remover_selecionados') {
+      body.usuario_ids = Array.from(document.querySelectorAll('.chk-user:checked')).map((c) => Number(c.value));
+      body.visitante_ids = Array.from(document.querySelectorAll('.chk-vis:checked')).map((c) => Number(c.value));
+      if (!body.usuario_ids.length && !body.visitante_ids.length) {
+        alert('Selecione ao menos um registro.');
+        return;
+      }
+    }
+
+    const nU = modo === 'remover_selecionados'
+      ? body.usuario_ids.length
+      : state.usuarios.length;
+    const nV = modo === 'remover_selecionados'
+      ? body.visitante_ids.length
+      : state.visitantes.length;
+
+    const labels = {
+      limpeza_total: 'Limpeza Total',
+      remover_filtro: 'Remover Tudo (Filtro)',
+      remover_selecionados: 'Remover Selecionados',
+    };
+    const bancoTxt = base.desativar_banco
+      ? 'Os registros serão marcados como Inativo no banco.'
+      : 'O banco NÃO será alterado (apenas remoção nos equipamentos — stub).';
+    if (!confirm(
+      labels[modo] + ': ' + nU + ' usuário(s) + ' + nV + ' visitante(s).\n\n' +
+      bancoTxt + '\n\nConfirma a execução?'
+    )) return;
+
+    try {
+      const res = await fetch(API_EXECUTAR, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Falha na execução');
+      alert(data.message || 'Limpeza executada.');
+      await analisar();
+    } catch (err) {
+      alert(err.message || 'Erro ao executar limpeza');
+    }
+  }
+
+  el.btnLimpezaTotal.addEventListener('click', () => executar('limpeza_total'));
+  el.btnRemoverFiltro.addEventListener('click', () => executar('remover_filtro'));
+  el.btnRemoverSel.addEventListener('click', () => executar('remover_selecionados'));
+
+  renderTables();
+})();
+</script>
+{% endblock %}
