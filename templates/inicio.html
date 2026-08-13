@@ -43,18 +43,226 @@
         .user-meta { color: var(--muted); font-size: 0.95rem; }
         .user-meta strong { color: var(--brand-navy); }
 
-        .btn-logout {
+        .top-actions {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 0.35rem;
+            width: max-content;
+        }
+
+        .btn-logout,
+        .btn-opcao {
             display: inline-flex;
             align-items: center;
-            gap: 0.45rem;
-            padding: 0.65rem 1rem;
+            justify-content: flex-start;
+            gap: 0.3rem;
+            width: max-content;
+            padding: 0.32rem 0.5rem;
             border-radius: 999px;
             border: 1px solid rgba(27, 79, 156, 0.15);
             background: rgba(255, 255, 255, 0.8);
             color: var(--brand-navy);
             text-decoration: none;
             font-weight: 700;
+            font-size: 0.8rem;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+
+        .btn-logout i,
+        .btn-opcao i {
+            font-size: 0.72rem;
+        }
+
+        .opcoes-bloco {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            width: max-content;
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(27, 79, 156, 0.12);
+            border-radius: 10px;
+            overflow: hidden;
+            text-align: left;
+        }
+
+        .opcoes-titulo {
+            padding: 0.32rem 0.5rem 0.1rem;
+            font-size: 0.68rem;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+
+        .btn-opcao {
+            width: auto;
+            border: 0;
+            border-radius: 0;
+            padding: 0.38rem 0.5rem;
+            font-weight: 600;
+        }
+
+        button.btn-opcao {
+            cursor: pointer;
+            font-family: inherit;
+            appearance: none;
+            -webkit-appearance: none;
+        }
+
+        .btn-opcao:hover { background: #eef4ff; }
+
+        .portal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 80;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            background: rgba(13, 43, 92, 0.55);
+        }
+
+        .portal-overlay.is-open { display: flex; }
+
+        .portal-card {
+            position: relative;
+            width: min(1080px, 100%);
+            max-height: 90vh;
+            overflow: auto;
+            background: #fff;
+            border-radius: 18px;
+            padding: 1.4rem 1.4rem 1.2rem;
+            box-shadow: 0 24px 60px rgba(13, 43, 92, 0.28);
+            animation: rise 0.25s ease;
+        }
+
+        .portal-card.narrow { width: min(720px, 100%); }
+
+        .portal-close {
+            position: sticky;
+            top: 0;
+            float: right;
+            width: 36px;
+            height: 36px;
+            margin: -0.2rem -0.2rem 0.4rem 0.6rem;
+            border: 0;
+            border-radius: 999px;
+            background: #eef4ff;
+            color: var(--brand-navy);
+            font-size: 1.25rem;
+            font-weight: 800;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .portal-close:hover { background: #dce8fb; }
+
+        .portal-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            margin: 0 0 1rem;
+            flex-wrap: wrap;
+        }
+
+        .portal-head h2 {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.7rem;
+            color: var(--brand-navy);
+            line-height: 1.15;
+        }
+
+        .portal-head p { color: var(--muted); margin-top: 4px; font-size: 0.92rem; }
+
+        .portal-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            padding: 0.65rem 1rem;
+            border-radius: 999px;
+            text-decoration: none;
+            font-weight: 700;
+            font-family: inherit;
             font-size: 0.9rem;
+            border: 0;
+            cursor: pointer;
+        }
+
+        .portal-btn.pri { background: var(--brand-blue); color: #fff; }
+        .portal-btn.sec { background: #6b7c90; color: #fff; }
+
+        .portal-alert { margin: 0 0 1rem; padding: 12px 14px; border-radius: 10px; font-size: 0.92rem; }
+        .portal-alert.success { background: #d1fae5; color: #065f46; }
+        .portal-alert.error { background: #fee2e2; color: #991b1b; }
+        .portal-alert[hidden] { display: none !important; }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 800;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+        .status.on { background: #dcfce7; color: #166534; }
+        .status.off { background: #fee2e2; color: #991b1b; }
+
+        .acessos-table-wrap {
+            background: #fff;
+            border: 1px solid #e8eef6;
+            border-radius: 14px;
+            overflow: auto;
+        }
+
+        .acessos-table { width: 100%; border-collapse: collapse; }
+        .acessos-table th, .acessos-table td {
+            padding: 12px 14px;
+            text-align: left;
+            border-bottom: 1px solid #e8eef6;
+            font-size: 0.9rem;
+        }
+        .acessos-table th { background: #f6f9fd; color: #35506f; font-size: 13px; }
+        .badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+        .badge.on { background: #dcfce7; color: #166534; }
+        .badge.off { background: #fee2e2; color: #991b1b; }
+
+        .portal-form .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .portal-form .form-group { margin-bottom: 4px; }
+        .portal-form .form-group.full { grid-column: 1 / -1; }
+        .portal-form label { display: block; margin-bottom: 6px; font-weight: 700; color: #35506f; font-size: 0.9rem; }
+        .portal-form input[type=text],
+        .portal-form input[type=email],
+        .portal-form input[type=password],
+        .portal-form input[type=number] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #d5e0ee;
+            border-radius: 10px;
+            font-size: 15px;
+            font-family: inherit;
+        }
+        .portal-form input:focus {
+            outline: none;
+            border-color: var(--brand-blue);
+            box-shadow: 0 0 0 3px rgba(27, 79, 156, 0.14);
+        }
+        .check { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+        .sistema { border: 1px solid #d7e3f3; border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+        .menus { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; padding-left: 8px; margin-top: 8px; }
+        .portal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+        .hint { color: var(--muted); font-size: 0.85rem; margin-top: 6px; line-height: 1.45; }
+
+        body.modal-open { overflow: hidden; }
+
+        @media (max-width: 720px) {
+            .portal-form .grid { grid-template-columns: 1fr; }
         }
 
         .hero {
@@ -219,9 +427,25 @@
 <body>
     <header class="topbar">
         <div class="user-meta">Olá, <strong>{{ user_name }}</strong></div>
-        <a class="btn-logout" href="{{ url_for('main.logout') }}">
-            <i class="fas fa-sign-out-alt"></i> Sair
-        </a>
+        <div class="top-actions">
+            <a class="btn-logout" href="{{ url_for('main.logout') }}">
+                <i class="fas fa-sign-out-alt"></i> Sair
+            </a>
+            <div class="opcoes-bloco">
+                <div class="opcoes-titulo">Opções</div>
+                <a class="btn-opcao" href="{{ url_for('main.alterar_senha') }}">
+                    <i class="fas fa-key"></i> Alterar senha
+                </a>
+                {% if usuario and usuario.pode_gerenciar_acessos() %}
+                <button type="button" class="btn-opcao" data-open-modal="modal-acessos">
+                    <i class="fas fa-user-shield"></i> Acessos
+                </button>
+                <button type="button" class="btn-opcao" data-open-modal="modal-config">
+                    <i class="fas fa-cog"></i> Configurações
+                </button>
+                {% endif %}
+            </div>
+        </div>
     </header>
 
     <section class="hero">
@@ -231,36 +455,467 @@
         <p class="brand-choice">Escolha o sistema para continuar</p>
 
         <div class="systems">
+            {% if 'chamados' in sistemas_liberados %}
             <a class="system-link chamados" href="{{ url_for('main.dashboard') }}">
                 <div class="icon-wrap"><i class="fas fa-clipboard-list"></i></div>
                 <h2>Sistema de Gestão de Chamados</h2>
                 <p>Ordens de serviço, clientes, equipamentos e acompanhamento de manutenção.</p>
                 <span class="go">Acessar <i class="fas fa-arrow-right"></i></span>
             </a>
+            {% endif %}
 
+            {% if 'nutricao' in sistemas_liberados %}
             <a class="system-link nutricao" href="{{ url_for('nutricao.dashboard') }}">
                 <div class="icon-wrap"><i class="fas fa-apple-whole"></i></div>
                 <h2>Sistema Nutrição Hospitalar</h2>
                 <p>Pacientes, dietas, mapa de refeições, estoque e gestão nutricional.</p>
                 <span class="go">Acessar <i class="fas fa-arrow-right"></i></span>
             </a>
+            {% endif %}
 
+            {% if 'pesagem' in sistemas_liberados %}
             <a class="system-link pesagem" href="{{ url_for('pesagem.dashboard') }}">
                 <div class="icon-wrap"><i class="fas fa-weight-scale"></i></div>
                 <h2>Sistema de Controle de Pesagem</h2>
                 <p>Captura de pesos das balanças (USB/serial) e registro no banco de dados.</p>
                 <span class="go">Acessar <i class="fas fa-arrow-right"></i></span>
             </a>
+            {% endif %}
 
+            {% if 'acesso' in sistemas_liberados %}
             <a class="system-link acesso" href="{{ url_for('acesso.dashboard') }}">
                 <div class="icon-wrap"><i class="fas fa-id-card-clip"></i></div>
                 <h2>Sistema de Controle de Acesso</h2>
                 <p>Pessoas, equipamentos, grupos, horários, visitantes e eventos de entrada/saída.</p>
                 <span class="go">Acessar <i class="fas fa-arrow-right"></i></span>
             </a>
+            {% endif %}
         </div>
     </section>
 
     <footer class="footer-note">© São Geraldo Service</footer>
+
+    {% if usuario and usuario.pode_gerenciar_acessos() %}
+    <div class="portal-overlay" id="modal-acessos" role="presentation">
+        <div class="portal-card" role="dialog" aria-modal="true" aria-labelledby="acessos-title">
+            <button type="button" class="portal-close" data-close-modal aria-label="Fechar">&times;</button>
+
+            <div id="acessos-lista">
+                <div class="portal-head">
+                    <div>
+                        <h2 id="acessos-title">Acessos</h2>
+                        <p>Cadastre e-mail e senha e libere os sistemas e as abas de cada um.</p>
+                    </div>
+                    <button type="button" class="portal-btn pri" id="btn-novo-acesso">
+                        <i class="fas fa-plus"></i> Novo acesso
+                    </button>
+                </div>
+                <div class="portal-alert" id="acessos-lista-msg" hidden></div>
+                <div class="acessos-table-wrap">
+                    <table class="acessos-table">
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th>E-mail</th>
+                                <th>Chamados</th>
+                                <th>Nutrição</th>
+                                <th>Pesagem</th>
+                                <th>Acesso</th>
+                                <th>Ativo</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="acessos-tbody">
+                            {% for item in acessos %}
+                            <tr data-id="{{ item.id }}">
+                                <td>
+                                    <strong>{{ item.nome }}</strong>
+                                    {% if item.is_master %}<div style="font-size:12px;color:#1d4e89">Master</div>{% endif %}
+                                </td>
+                                <td>{{ item.email }}</td>
+                                <td><span class="badge {{ 'on' if item.tem_sistema('chamados') else 'off' }}">{{ 'Sim' if item.tem_sistema('chamados') else 'Não' }}</span></td>
+                                <td><span class="badge {{ 'on' if item.tem_sistema('nutricao') else 'off' }}">{{ 'Sim' if item.tem_sistema('nutricao') else 'Não' }}</span></td>
+                                <td><span class="badge {{ 'on' if item.tem_sistema('pesagem') else 'off' }}">{{ 'Sim' if item.tem_sistema('pesagem') else 'Não' }}</span></td>
+                                <td><span class="badge {{ 'on' if item.tem_sistema('acesso') else 'off' }}">{{ 'Sim' if item.tem_sistema('acesso') else 'Não' }}</span></td>
+                                <td><span class="badge {{ 'on' if item.ativo else 'off' }}">{{ 'Sim' if item.ativo else 'Não' }}</span></td>
+                                <td><button type="button" class="portal-btn pri" data-editar-acesso="{{ item.id }}">Editar</button></td>
+                            </tr>
+                            {% else %}
+                            <tr class="acessos-empty"><td colspan="8">Nenhum acesso cadastrado.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="acessos-form-wrap" hidden>
+                <div class="portal-head">
+                    <div>
+                        <h2 id="acesso-form-title">Novo acesso</h2>
+                        <p>Permissões por sistema e pelas abas de cada um.</p>
+                    </div>
+                </div>
+                <div class="portal-alert" id="acessos-form-msg" hidden></div>
+                <form class="portal-form" id="form-acesso" autocomplete="off">
+                    <input type="hidden" name="acesso_id" id="acesso-id" value="">
+                    <div class="grid">
+                        <div class="form-group">
+                            <label for="acesso-nome">Nome *</label>
+                            <input type="text" id="acesso-nome" name="nome" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="acesso-email">E-mail *</label>
+                            <input type="email" id="acesso-email" name="email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="acesso-senha">Senha</label>
+                            <input type="password" id="acesso-senha" name="senha" autocomplete="new-password">
+                        </div>
+                        <div class="form-group" style="display:flex;align-items:flex-end">
+                            <label class="check">
+                                <input type="checkbox" name="ativo" id="acesso-ativo" checked>
+                                Acesso ativo
+                            </label>
+                        </div>
+                    </div>
+                    <div class="portal-alert success" id="acesso-master-note" hidden>Conta master com acesso total a todos os sistemas e abas.</div>
+                    <h3 style="margin:12px 0;color:#0D2B5C;font-size:20px;font-family:Rajdhani,sans-serif">Permissão por sistema</h3>
+                    {% for chave, meta in sistemas.items() %}
+                    <div class="sistema">
+                        <label class="check">
+                            <input type="checkbox" class="sistema-check" name="sistema_{{ chave }}" data-sistema="{{ chave }}">
+                            {{ meta.nome }}
+                        </label>
+                        <div class="menus" data-menus="{{ chave }}" style="opacity:.45">
+                            {% for menu_key, menu_nome in meta.menus %}
+                            <label class="check">
+                                <input type="checkbox" class="menu-check" name="menu_{{ chave }}_{{ menu_key }}" data-parent="{{ chave }}" disabled>
+                                {{ menu_nome }}
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                    <div class="portal-actions">
+                        <button type="button" class="portal-btn sec" id="btn-cancelar-acesso">Cancelar</button>
+                        <button type="submit" class="portal-btn pri"><i class="fas fa-save"></i> Salvar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="portal-overlay" id="modal-config" role="presentation">
+        <div class="portal-card narrow" role="dialog" aria-modal="true" aria-labelledby="config-title">
+            <button type="button" class="portal-close" data-close-modal aria-label="Fechar">&times;</button>
+            <div class="portal-head">
+                <div>
+                    <h2 id="config-title">
+                        Configurações
+                        <span class="status {{ 'on' if smtp_ok else 'off' }}" id="smtp-status">{{ 'E-mail pronto' if smtp_ok else 'E-mail pendente' }}</span>
+                    </h2>
+                    <p>Saída de e-mail (SMTP) usada no envio do link de redefinição de senha.</p>
+                </div>
+            </div>
+            <div class="portal-alert" id="config-msg" hidden></div>
+            <form class="portal-form" id="form-config" autocomplete="off">
+                <div class="grid">
+                    <div class="form-group">
+                        <label for="servidor">Servidor SMTP *</label>
+                        <input type="text" id="servidor" name="servidor" value="{{ smtp_cfg.servidor }}" placeholder="smtp.seudominio.com.br" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="porta">Porta *</label>
+                        <input type="number" id="porta" name="porta" value="{{ smtp_cfg.porta or 587 }}" min="1" max="65535" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="usuario-smtp">Usuário</label>
+                        <input type="text" id="usuario-smtp" name="usuario" value="{{ smtp_cfg.usuario }}" placeholder="conta@saogeraldoservice.com.br" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="senha-smtp">Senha <span id="senha-smtp-hint">{{ '(deixe em branco para manter)' if senha_salva else '' }}</span></label>
+                        <input type="password" id="senha-smtp" name="senha" value="" placeholder="{{ 'Senha já salva' if senha_salva else 'Senha SMTP' }}" autocomplete="new-password">
+                    </div>
+                    <div class="form-group full">
+                        <label for="remetente">Remetente (From) *</label>
+                        <input type="email" id="remetente" name="remetente" value="{{ smtp_cfg.remetente }}" placeholder="nao-responda@saogeraldoservice.com.br" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="check" style="padding-top:8px">
+                            <input type="checkbox" name="usar_tls" {{ 'checked' if smtp_cfg.usar_tls else '' }}>
+                            Usar TLS
+                        </label>
+                    </div>
+                </div>
+                <p class="hint">Assunto do e-mail de redefinição: <strong>redefinição senha sistema são geraldo</strong>. Porta comum: 587 com TLS.</p>
+                <div class="portal-actions">
+                    <button type="button" class="portal-btn sec" data-close-modal>Cancelar</button>
+                    <button type="submit" class="portal-btn pri"><i class="fas fa-save"></i> Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        var ACESSOS = {{ acessos_js | tojson }};
+        var URL_NOVO = {{ url_for('main.novo_acesso') | tojson }};
+        var URL_EDITAR_TPL = {{ url_for('main.editar_acesso', id=0) | tojson }};
+        var URL_CONFIG = {{ url_for('main.configuracoes') | tojson }};
+
+        function urlEditar(id) {
+            return URL_EDITAR_TPL.replace('/0/', '/' + id + '/');
+        }
+
+        function openModal(id) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            el.classList.add('is-open');
+            document.body.classList.add('modal-open');
+            if (id === 'modal-acessos') {
+                showAcessoLista();
+                showMsg(document.getElementById('acessos-lista-msg'), true, '');
+            }
+            if (id === 'modal-config') {
+                showMsg(document.getElementById('config-msg'), true, '');
+            }
+        }
+
+        function closeModal(el) {
+            var overlay = el && el.classList.contains('portal-overlay') ? el : el && el.closest('.portal-overlay');
+            if (!overlay) return;
+            overlay.classList.remove('is-open');
+            if (!document.querySelector('.portal-overlay.is-open')) {
+                document.body.classList.remove('modal-open');
+            }
+        }
+
+        function showMsg(node, ok, text) {
+            if (!node) return;
+            node.hidden = !text;
+            node.className = 'portal-alert ' + (ok ? 'success' : 'error');
+            node.textContent = text || '';
+        }
+
+        async function postForm(url, form) {
+            var res = await fetch(url, {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                body: new FormData(form)
+            });
+            var ct = res.headers.get('content-type') || '';
+            if (ct.indexOf('application/json') !== -1) {
+                return res.json();
+            }
+            return { ok: res.ok, message: res.ok ? 'Salvo com sucesso.' : 'Não foi possível salvar.' };
+        }
+
+        function badge(on) {
+            return '<span class="badge ' + (on ? 'on' : 'off') + '">' + (on ? 'Sim' : 'Não') + '</span>';
+        }
+
+        function rowHtml(item) {
+            var s = item.sistemas || {};
+            return '<tr data-id="' + item.id + '">' +
+                '<td><strong>' + escapeHtml(item.nome) + '</strong>' +
+                (item.is_master ? '<div style="font-size:12px;color:#1d4e89">Master</div>' : '') + '</td>' +
+                '<td>' + escapeHtml(item.email) + '</td>' +
+                '<td>' + badge(s.chamados) + '</td>' +
+                '<td>' + badge(s.nutricao) + '</td>' +
+                '<td>' + badge(s.pesagem) + '</td>' +
+                '<td>' + badge(s.acesso) + '</td>' +
+                '<td>' + badge(item.ativo) + '</td>' +
+                '<td><button type="button" class="portal-btn pri" data-editar-acesso="' + item.id + '">Editar</button></td>' +
+                '</tr>';
+        }
+
+        function escapeHtml(str) {
+            return String(str || '').replace(/[&<>"']/g, function (ch) {
+                return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+            });
+        }
+
+        function upsertAcesso(item) {
+            var idx = ACESSOS.findIndex(function (a) { return a.id === item.id; });
+            if (idx >= 0) ACESSOS[idx] = item;
+            else ACESSOS.unshift(item);
+            var tbody = document.getElementById('acessos-tbody');
+            var existing = tbody.querySelector('tr[data-id="' + item.id + '"]');
+            var empty = tbody.querySelector('.acessos-empty');
+            if (empty) empty.remove();
+            if (existing) {
+                existing.outerHTML = rowHtml(item);
+            } else {
+                tbody.insertAdjacentHTML('afterbegin', rowHtml(item));
+            }
+        }
+
+        function showAcessoLista() {
+            document.getElementById('acessos-lista').hidden = false;
+            document.getElementById('acessos-form-wrap').hidden = true;
+        }
+
+        function setSistemaState(check) {
+            var sistema = check.getAttribute('data-sistema');
+            var menus = document.querySelectorAll('#form-acesso .menu-check[data-parent="' + sistema + '"]');
+            var box = document.querySelector('#form-acesso [data-menus="' + sistema + '"]');
+            menus.forEach(function (menu) {
+                menu.disabled = !check.checked || check.disabled;
+                if (check.checked && !check.dataset.skipAuto) menu.checked = true;
+            });
+            if (box) box.style.opacity = check.checked ? '1' : '.45';
+        }
+
+        function resetAcessoForm() {
+            var form = document.getElementById('form-acesso');
+            form.reset();
+            document.getElementById('acesso-id').value = '';
+            document.getElementById('acesso-email').readOnly = false;
+            document.getElementById('acesso-ativo').disabled = false;
+            document.getElementById('acesso-ativo').checked = true;
+            document.getElementById('acesso-senha').required = true;
+            document.getElementById('acesso-senha').placeholder = '';
+            document.querySelector('label[for="acesso-senha"]').innerHTML = 'Senha *';
+            document.getElementById('acesso-master-note').hidden = true;
+            document.querySelectorAll('#form-acesso .sistema-check').forEach(function (check) {
+                check.disabled = false;
+                check.checked = false;
+                delete check.dataset.skipAuto;
+                setSistemaState(check);
+            });
+        }
+
+        function fillAcessoForm(item) {
+            resetAcessoForm();
+            if (!item) {
+                document.getElementById('acesso-form-title').textContent = 'Novo acesso';
+                return;
+            }
+            document.getElementById('acesso-form-title').textContent = 'Editar acesso';
+            document.getElementById('acesso-id').value = item.id;
+            document.getElementById('acesso-nome').value = item.nome || '';
+            document.getElementById('acesso-email').value = item.email || '';
+            document.getElementById('acesso-email').readOnly = !!item.is_master;
+            document.getElementById('acesso-ativo').checked = !!item.ativo;
+            document.getElementById('acesso-ativo').disabled = !!item.is_master;
+            document.getElementById('acesso-senha').required = false;
+            document.querySelector('label[for="acesso-senha"]').innerHTML = 'Senha (deixe em branco para manter)';
+            document.getElementById('acesso-master-note').hidden = !item.is_master;
+            document.querySelectorAll('#form-acesso .sistema-check').forEach(function (check) {
+                var chave = check.getAttribute('data-sistema');
+                check.disabled = !!item.is_master;
+                check.dataset.skipAuto = '1';
+                check.checked = !!(item.is_master || (item.sistemas && item.sistemas[chave]));
+                var menus = document.querySelectorAll('#form-acesso .menu-check[data-parent="' + chave + '"]');
+                var box = document.querySelector('#form-acesso [data-menus="' + chave + '"]');
+                menus.forEach(function (menu) {
+                    var key = menu.name.replace('menu_' + chave + '_', '');
+                    var perms = (item.permissoes && item.permissoes[chave]) || {};
+                    menu.checked = !!(item.is_master || perms[key] || (check.checked && perms[key] !== false));
+                    menu.disabled = !!item.is_master || !check.checked;
+                });
+                if (box) box.style.opacity = check.checked ? '1' : '.45';
+                delete check.dataset.skipAuto;
+            });
+        }
+
+        function showAcessoForm(item) {
+            showMsg(document.getElementById('acessos-form-msg'), true, '');
+            fillAcessoForm(item || null);
+            document.getElementById('acessos-lista').hidden = true;
+            document.getElementById('acessos-form-wrap').hidden = false;
+        }
+
+        document.querySelectorAll('[data-open-modal]').forEach(function (btn) {
+            btn.addEventListener('click', function () { openModal(btn.getAttribute('data-open-modal')); });
+        });
+        document.querySelectorAll('[data-close-modal]').forEach(function (btn) {
+            btn.addEventListener('click', function () { closeModal(btn); });
+        });
+        document.querySelectorAll('.portal-overlay').forEach(function (overlay) {
+            overlay.addEventListener('click', function (ev) {
+                if (ev.target === overlay) closeModal(overlay);
+            });
+        });
+        document.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Escape') {
+                var open = document.querySelector('.portal-overlay.is-open');
+                if (open) closeModal(open);
+            }
+        });
+
+        document.getElementById('btn-novo-acesso').addEventListener('click', function () {
+            showAcessoForm(null);
+        });
+        document.getElementById('btn-cancelar-acesso').addEventListener('click', function () {
+            showAcessoLista();
+        });
+        document.getElementById('acessos-tbody').addEventListener('click', function (ev) {
+            var btn = ev.target.closest('[data-editar-acesso]');
+            if (!btn) return;
+            var id = parseInt(btn.getAttribute('data-editar-acesso'), 10);
+            var item = ACESSOS.find(function (a) { return a.id === id; });
+            showAcessoForm(item || { id: id });
+        });
+
+        document.querySelectorAll('#form-acesso .sistema-check').forEach(function (check) {
+            check.addEventListener('change', function () { setSistemaState(check); });
+        });
+
+        document.getElementById('form-acesso').addEventListener('submit', async function (ev) {
+            ev.preventDefault();
+            var form = ev.currentTarget;
+            var id = document.getElementById('acesso-id').value;
+            var msg = document.getElementById('acessos-form-msg');
+            var btn = form.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            try {
+                var data = await postForm(id ? urlEditar(id) : URL_NOVO, form);
+                showMsg(msg, !!data.ok, data.message || (data.ok ? 'Salvo.' : 'Não foi possível salvar.'));
+                if (data.ok && data.acesso) {
+                    upsertAcesso(data.acesso);
+                    showAcessoLista();
+                    showMsg(document.getElementById('acessos-lista-msg'), true, data.message);
+                } else if (data.ok) {
+                    showAcessoLista();
+                    showMsg(document.getElementById('acessos-lista-msg'), true, data.message || 'Salvo com sucesso.');
+                }
+            } catch (err) {
+                showMsg(msg, false, 'Não foi possível salvar. Tente de novo.');
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        document.getElementById('form-config').addEventListener('submit', async function (ev) {
+            ev.preventDefault();
+            var form = ev.currentTarget;
+            var msg = document.getElementById('config-msg');
+            var btn = form.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            try {
+                var data = await postForm(URL_CONFIG, form);
+                showMsg(msg, !!data.ok, data.message || (data.ok ? 'Configurações de e-mail salvas.' : 'Não foi possível salvar.'));
+                if (data.ok) {
+                    var status = document.getElementById('smtp-status');
+                    var ok = data.smtp_ok !== false;
+                    status.className = 'status ' + (ok ? 'on' : 'off');
+                    status.textContent = ok ? 'E-mail pronto' : 'E-mail pendente';
+                    var senha = document.getElementById('senha-smtp');
+                    senha.value = '';
+                    if (data.senha_salva) {
+                        document.getElementById('senha-smtp-hint').textContent = '(deixe em branco para manter)';
+                        senha.placeholder = 'Senha já salva';
+                    }
+                }
+            } catch (err) {
+                showMsg(msg, false, 'Não foi possível salvar. Tente de novo.');
+            } finally {
+                btn.disabled = false;
+            }
+        });
+    })();
+    </script>
+    {% endif %}
 </body>
 </html>

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nova senha - São Geraldo Service</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    {% include '_auth_styles.html' %}
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <div class="login-header">
+                <img class="login-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service">
+                <p class="tagline">TRANSFORMANDO VIDAS</p>
+                <p class="subtitle">Crie uma nova senha</p>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form method="POST" action="{{ url_for('main.redefinir_senha', token=token) }}">
+                <div class="form-group">
+                    <label for="senha">Nova senha</label>
+                    <input type="password" id="senha" name="senha" required minlength="6" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label for="confirma_senha">Confirmar nova senha</label>
+                    <input type="password" id="confirma_senha" name="confirma_senha" required minlength="6" autocomplete="new-password">
+                </div>
+                <button type="submit" class="btn">
+                    <i class="fas fa-key"></i> Salvar nova senha
+                </button>
+            </form>
+
+            <div class="login-footer">
+                <a href="{{ url_for('main.login') }}">Voltar ao login</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

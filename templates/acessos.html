@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acessos - São Geraldo Service</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root { --brand-blue:#1B4F9C; --brand-navy:#0D2B5C; --muted:#5a6b85; --ink:#0F2A56; }
+        * { box-sizing:border-box; margin:0; padding:0; }
+        body {
+            min-height:100vh; font-family:'Manrope',sans-serif; color:var(--ink);
+            background: linear-gradient(160deg,#f7fafc 0%,#e8eef6 45%,#dce7f5 100%);
+        }
+        .topbar { display:flex; justify-content:space-between; align-items:center; padding:1rem 1.25rem; }
+        .user-meta { color:var(--muted); }
+        .user-meta strong { color:var(--brand-navy); }
+        .wrap { max-width:1100px; margin:0 auto; padding:0 1.25rem 2.5rem; }
+        .head { display:flex; justify-content:space-between; align-items:center; gap:1rem; margin:1rem 0 1.25rem; flex-wrap:wrap; }
+        h1 { font-family:'Rajdhani',sans-serif; color:var(--brand-navy); }
+        .btn { display:inline-flex; align-items:center; gap:.45rem; padding:.7rem 1rem; border-radius:999px; text-decoration:none; font-weight:700; border:1px solid rgba(27,79,156,.15); background:#fff; color:var(--brand-navy); }
+        .btn-primary { background:var(--brand-blue); color:#fff; border-color:var(--brand-blue); }
+        .card { background:#fff; border-radius:18px; box-shadow:0 10px 30px rgba(13,43,92,.08); overflow:auto; }
+        table { width:100%; border-collapse:collapse; }
+        th,td { padding:14px 16px; text-align:left; border-bottom:1px solid #e8eef6; }
+        th { background:#f6f9fd; color:#35506f; font-size:13px; }
+        .badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700; }
+        .on { background:#dcfce7; color:#166534; }
+        .off { background:#fee2e2; color:#991b1b; }
+        .alert { margin:0 0 1rem; padding:12px 14px; border-radius:10px; }
+        .alert-success { background:#d1fae5; color:#065f46; }
+        .alert-error { background:#fee2e2; color:#991b1b; }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <div class="user-meta">Olá, <strong>{{ user_name }}</strong></div>
+        <a class="btn" href="{{ url_for('main.inicio') }}"><i class="fas fa-th-large"></i> Sistemas</a>
+    </header>
+    <main class="wrap">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        <div class="head">
+            <div>
+                <h1>Acessos</h1>
+                <p style="color:var(--muted);margin-top:4px">Cadastre e-mail e senha e libere os sistemas e as abas de cada um.</p>
+            </div>
+            <a class="btn btn-primary" href="{{ url_for('main.novo_acesso') }}"><i class="fas fa-plus"></i> Novo acesso</a>
+        </div>
+        <div class="card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>E-mail</th>
+                        <th>Chamados</th>
+                        <th>Nutrição</th>
+                        <th>Pesagem</th>
+                        <th>Acesso</th>
+                        <th>Ativo</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in acessos %}
+                    <tr>
+                        <td>
+                            <strong>{{ item.nome }}</strong>
+                            {% if item.is_master %}<div style="font-size:12px;color:#1d4e89">Master</div>{% endif %}
+                        </td>
+                        <td>{{ item.email }}</td>
+                        <td><span class="badge {{ 'on' if item.tem_sistema('chamados') else 'off' }}">{{ 'Sim' if item.tem_sistema('chamados') else 'Não' }}</span></td>
+                        <td><span class="badge {{ 'on' if item.tem_sistema('nutricao') else 'off' }}">{{ 'Sim' if item.tem_sistema('nutricao') else 'Não' }}</span></td>
+                        <td><span class="badge {{ 'on' if item.tem_sistema('pesagem') else 'off' }}">{{ 'Sim' if item.tem_sistema('pesagem') else 'Não' }}</span></td>
+                        <td><span class="badge {{ 'on' if item.tem_sistema('acesso') else 'off' }}">{{ 'Sim' if item.tem_sistema('acesso') else 'Não' }}</span></td>
+                        <td><span class="badge {{ 'on' if item.ativo else 'off' }}">{{ 'Sim' if item.ativo else 'Não' }}</span></td>
+                        <td><a class="btn btn-primary" href="{{ url_for('main.editar_acesso', id=item.id) }}">Editar</a></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8">Nenhum acesso cadastrado.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </main>
+</body>
+</html>

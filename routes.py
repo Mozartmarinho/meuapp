@@ -11,12 +11,14 @@ from flask import (
 )
 from functools import wraps
 from password_utils import generate_password_hash, check_password_hash
-from models import db, Chamado, Usuario, Cliente, Equipamento
+from models import db, Chamado, Usuario, Cliente, Equipamento, ConfiguracaoEmail
+from permissions_sistemas import SISTEMAS, aplicar_permissoes_formulario, conceder_acesso_total
 from sqlalchemy.orm import joinedload
 from sqlalchemy import func
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import random
+import secrets
 import string
 
 main = Blueprint('main', __name__)
@@ -25,7 +27,7 @@ main = Blueprint('main', __name__)
 def _http_cert_download_url() -> str:
     """URL HTTP (sem TLS) para baixar o .cer — evita aviso SSL no instalador."""
     host = (request.host or '127.0.0.1').split(':')[0]
-    http_port = str(os.environ.get('PORT', '80')).strip() or '80'
+    http_port = '80'
     if http_port == '80':
         return f'http://{host}/certificado.cer'
     return f'http://{host}:{http_port}/certificado.cer'
@@ -251,12 +253,375 @@ def logout():
     flash('Você foi deslogado com sucesso.', 'success')
     return redirect(url_for('main.login'))
 
+
+RESET_VALIDADE_HORAS = 2
+MSG_RESET_ENVIADO = (
+    'Se o e-mail estiver cadastrado, enviamos um link para redefinir a senha.'
+)
+
+
+def _gerar_link_redefinicao(usuario):
+    token = secrets.token_urlsafe(32)
+    usuario.reset_token = token
+    usuario.reset_token_expira = datetime.utcnow() + timedelta(hours=RESET_VALIDADE_HORAS)
+    db.session.commit()
+    return url_for('main.redefinir_senha', token=token, _external=True)
+
+
+def _enviar_link_redefinicao(usuario):
+    from email_service import enviar_redefinicao_senha
+
+    link = _gerar_link_redefinicao(usuario)
+    enviar_redefinicao_senha(usuario.email, usuario.nome or 'usuário', link)
+
+
+def _usuario_por_token_reset(token):
+    if not token:
+        return None
+    usuario = Usuario.query.filter_by(reset_token=token, ativo=True).first()
+    if not usuario or not usuario.reset_token_expira:
+        return None
+    if usuario.reset_token_expira < datetime.utcnow():
+        return None
+    return usuario
+
+
+@main.route('/esqueci-senha', methods=['GET', 'POST'])
+def esqueci_senha():
+    if request.method == 'POST':
+        from email_service import smtp_configurado
+
+        if not smtp_configurado():
+            flash(
+                'O envio de e-mail ainda não está configurado no servidor. Fale com a informática.',
+                'error',
+            )
+            return render_template('esqueci_senha.html')
+        email = (request.form.get('email') or '').strip().lower()
+        usuario = Usuario.query.filter_by(email=email, ativo=True).first() if email else None
+        if usuario:
+            try:
+                _enviar_link_redefinicao(usuario)
+            except Exception as exc:
+                print(f'Falha ao enviar e-mail de redefinição: {exc}')
+                flash(
+                    'Não foi possível enviar o e-mail agora. Tente novamente ou fale com a informática.',
+                    'error',
+                )
+                return render_template('esqueci_senha.html')
+        flash(MSG_RESET_ENVIADO, 'success')
+        return redirect(url_for('main.login'))
+    return render_template('esqueci_senha.html')
+
+
+@main.route('/redefinir-senha/<token>', methods=['GET', 'POST'])
+def redefinir_senha(token):
+    usuario = _usuario_por_token_reset(token)
+    if not usuario:
+        flash('Este link de redefinição é inválido ou já expirou. Solicite um novo.', 'error')
+        return redirect(url_for('main.esqueci_senha'))
+
+    if request.method == 'POST':
+        nova = request.form.get('senha') or ''
+        confirma = request.form.get('confirma_senha') or ''
+        if len(nova) < 6:
+            flash('A nova senha deve ter pelo menos 6 caracteres.', 'error')
+            return render_template('redefinir_senha.html', token=token)
+        if nova != confirma:
+            flash('A confirmação não confere com a nova senha.', 'error')
+            return render_template('redefinir_senha.html', token=token)
+        usuario.senha = generate_password_hash(nova)
+        usuario.reset_token = None
+        usuario.reset_token_expira = None
+        db.session.commit()
+        flash('Senha redefinida. Faça login com a nova senha.', 'success')
+        return redirect(url_for('main.login'))
+
+    return render_template('redefinir_senha.html', token=token)
+
+
+@main.route('/alterar-senha', methods=['GET', 'POST'])
+@login_required
+def alterar_senha():
+    usuario = Usuario.query.get(session['user_id'])
+    if not usuario:
+        flash('Usuário não encontrado.', 'error')
+        return redirect(url_for('main.login'))
+
+    if request.method == 'POST':
+        acao = request.form.get('acao') or 'alterar'
+        if acao == 'enviar_email':
+            try:
+                _enviar_link_redefinicao(usuario)
+                flash(f'Enviamos o link de redefinição para {usuario.email}.', 'success')
+            except Exception as exc:
+                print(f'Falha ao enviar e-mail de redefinição: {exc}')
+                flash(
+                    'Não foi possível enviar o e-mail agora. Confira a configuração SMTP ou tente de novo.',
+                    'error',
+                )
+            return redirect(url_for('main.alterar_senha'))
+
+        atual = request.form.get('senha_atual') or ''
+        nova = request.form.get('senha') or ''
+        confirma = request.form.get('confirma_senha') or ''
+        if not check_password_hash(usuario.senha, atual):
+            flash('A senha atual está incorreta.', 'error')
+            return render_template('alterar_senha.html', usuario=usuario)
+        if len(nova) < 6:
+            flash('A nova senha deve ter pelo menos 6 caracteres.', 'error')
+            return render_template('alterar_senha.html', usuario=usuario)
+        if nova != confirma:
+            flash('A confirmação não confere com a nova senha.', 'error')
+            return render_template('alterar_senha.html', usuario=usuario)
+        usuario.senha = generate_password_hash(nova)
+        usuario.reset_token = None
+        usuario.reset_token_expira = None
+        db.session.commit()
+        flash('Senha alterada com sucesso.', 'success')
+        return redirect(url_for('main.inicio'))
+
+    return render_template('alterar_senha.html', usuario=usuario)
+
+
+def _wants_json():
+    accept = request.headers.get('Accept') or ''
+    return (
+        request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        or 'application/json' in accept
+    )
+
+
+def _acesso_payload(usuario):
+    return {
+        'id': usuario.id,
+        'nome': usuario.nome,
+        'email': usuario.email,
+        'ativo': bool(usuario.ativo),
+        'is_master': bool(usuario.is_master),
+        'sistemas': {chave: usuario.tem_sistema(chave) for chave in SISTEMAS},
+        'permissoes': {sistema: usuario.menus_liberados(sistema) for sistema in SISTEMAS},
+    }
+
+
 @main.route('/')
 @login_required
 def inicio():
     """Tela inicial de escolha entre os sistemas"""
     user = Usuario.query.get(session['user_id'])
-    return render_template('inicio.html', user_name=user.nome if user else session.get('user_name', 'Usuário'))
+    sistemas_liberados = []
+    if user:
+        for chave, meta in SISTEMAS.items():
+            if user.tem_sistema(chave):
+                sistemas_liberados.append(chave)
+
+    acessos = []
+    acessos_js = []
+    smtp_cfg = {'servidor': '', 'porta': 587, 'usar_tls': True, 'usuario': '', 'remetente': ''}
+    senha_salva = False
+    smtp_ok = False
+    if user and user.pode_gerenciar_acessos():
+        from email_service import obter_config_smtp, smtp_configurado
+        acessos = Usuario.query.order_by(Usuario.data_criacao.desc()).all()
+        acessos_js = [_acesso_payload(a) for a in acessos]
+        raw_cfg = obter_config_smtp()
+        smtp_cfg = {k: v for k, v in raw_cfg.items() if k != 'senha'}
+        row = ConfiguracaoEmail.query.get(1)
+        senha_salva = bool(row and row.senha) or bool(raw_cfg.get('senha'))
+        smtp_ok = smtp_configurado()
+
+    return render_template(
+        'inicio.html',
+        user_name=user.nome if user else session.get('user_name', 'Usuário'),
+        usuario=user,
+        sistemas_liberados=sistemas_liberados,
+        acessos=acessos,
+        acessos_js=acessos_js,
+        sistemas=SISTEMAS,
+        smtp_cfg=smtp_cfg,
+        senha_salva=senha_salva,
+        smtp_ok=smtp_ok,
+    )
+
+
+@main.route('/acessos')
+@login_required
+def listar_acessos():
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.pode_gerenciar_acessos():
+        flash('Você não tem permissão para gerenciar acessos.', 'error')
+        return redirect(url_for('main.inicio'))
+    acessos = Usuario.query.order_by(Usuario.data_criacao.desc()).all()
+    return render_template('acessos.html', acessos=acessos, user_name=user.nome)
+
+
+def _exigir_gestao_acessos():
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.pode_gerenciar_acessos():
+        flash('Você não tem permissão para acessar as configurações.', 'error')
+        return None
+    return user
+
+
+@main.route('/configuracoes', methods=['GET', 'POST'])
+@login_required
+def configuracoes():
+    user = _exigir_gestao_acessos()
+    if not user:
+        return redirect(url_for('main.inicio'))
+
+    from email_service import obter_config_smtp, smtp_configurado
+
+    if request.method == 'POST':
+        servidor = (request.form.get('servidor') or '').strip()
+        usuario_smtp = (request.form.get('usuario') or '').strip()
+        remetente = (request.form.get('remetente') or '').strip()
+        senha_nova = request.form.get('senha') or ''
+        try:
+            porta = int(request.form.get('porta') or 587)
+        except ValueError:
+            if _wants_json():
+                return jsonify({'ok': False, 'message': 'A porta SMTP precisa ser um número.'}), 400
+            flash('A porta SMTP precisa ser um número.', 'error')
+            return redirect(url_for('main.configuracoes'))
+        if porta < 1 or porta > 65535:
+            if _wants_json():
+                return jsonify({'ok': False, 'message': 'A porta SMTP é inválida.'}), 400
+            flash('A porta SMTP é inválida.', 'error')
+            return redirect(url_for('main.configuracoes'))
+        if not servidor or not remetente:
+            if _wants_json():
+                return jsonify({'ok': False, 'message': 'Servidor SMTP e remetente (From) são obrigatórios.'}), 400
+            flash('Servidor SMTP e remetente (From) são obrigatórios.', 'error')
+            return redirect(url_for('main.configuracoes'))
+
+        row = ConfiguracaoEmail.query.get(1)
+        if not row:
+            row = ConfiguracaoEmail(id=1)
+            db.session.add(row)
+        row.servidor = servidor
+        row.porta = porta
+        row.usar_tls = request.form.get('usar_tls') == 'on'
+        row.usuario = usuario_smtp
+        row.remetente = remetente
+        if senha_nova:
+            row.senha = senha_nova
+        db.session.commit()
+        if _wants_json():
+            cfg_atual = obter_config_smtp()
+            return jsonify({
+                'ok': True,
+                'message': 'Configurações de e-mail salvas.',
+                'smtp_ok': smtp_configurado(),
+                'senha_salva': bool(row.senha) or bool(cfg_atual.get('senha')),
+            })
+        flash('Configurações de e-mail salvas.', 'success')
+        return redirect(url_for('main.configuracoes'))
+
+    cfg = obter_config_smtp()
+    row = ConfiguracaoEmail.query.get(1)
+    senha_salva = bool(row and row.senha) or bool(cfg.get('senha'))
+    return render_template(
+        'configuracoes.html',
+        user_name=user.nome,
+        cfg=cfg,
+        senha_salva=senha_salva,
+        smtp_ok=smtp_configurado(),
+    )
+
+
+def _salvar_acesso_geral(usuario, form, novo=False):
+    email = (form.get('email') or '').strip().lower()
+    nome = (form.get('nome') or '').strip()
+    senha = form.get('senha') or ''
+    if not nome or not email:
+        raise ValueError('Nome e e-mail são obrigatórios.')
+    outro = Usuario.query.filter(Usuario.email == email, Usuario.id != usuario.id).first()
+    if outro:
+        raise ValueError('Já existe um acesso com este e-mail.')
+    usuario.nome = nome
+    usuario.email = email
+    if senha:
+        usuario.senha = generate_password_hash(senha)
+    elif novo:
+        raise ValueError('A senha é obrigatória para um novo acesso.')
+    if not usuario.is_master:
+        usuario.ativo = form.get('ativo') == 'on'
+        usuario.tipo = form.get('tipo', 'operador')
+    db.session.add(usuario)
+    db.session.flush()
+    if usuario.is_master:
+        conceder_acesso_total(usuario)
+    else:
+        aplicar_permissoes_formulario(usuario, form)
+    db.session.commit()
+
+
+@main.route('/acessos/novo', methods=['GET', 'POST'])
+@login_required
+def novo_acesso():
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.pode_gerenciar_acessos():
+        flash('Você não tem permissão para gerenciar acessos.', 'error')
+        return redirect(url_for('main.inicio'))
+    if request.method == 'POST':
+        try:
+            acesso = Usuario(ativo=True, tipo='operador')
+            _salvar_acesso_geral(acesso, request.form, novo=True)
+            if _wants_json():
+                return jsonify({
+                    'ok': True,
+                    'message': 'Acesso cadastrado com sucesso!',
+                    'acesso': _acesso_payload(acesso),
+                })
+            flash('Acesso cadastrado com sucesso!', 'success')
+            return redirect(url_for('main.listar_acessos'))
+        except Exception as e:
+            db.session.rollback()
+            if _wants_json():
+                return jsonify({'ok': False, 'message': str(e)}), 400
+            flash(str(e), 'error')
+    return render_template(
+        'acesso_form.html',
+        acesso=None,
+        sistemas=SISTEMAS,
+        permissoes={},
+        user_name=user.nome,
+    )
+
+
+@main.route('/acessos/<int:id>/editar', methods=['GET', 'POST'])
+@login_required
+def editar_acesso(id):
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.pode_gerenciar_acessos():
+        flash('Você não tem permissão para gerenciar acessos.', 'error')
+        return redirect(url_for('main.inicio'))
+    acesso = Usuario.query.get_or_404(id)
+    if request.method == 'POST':
+        try:
+            _salvar_acesso_geral(acesso, request.form, novo=False)
+            if _wants_json():
+                return jsonify({
+                    'ok': True,
+                    'message': 'Acesso atualizado com sucesso!',
+                    'acesso': _acesso_payload(acesso),
+                })
+            flash('Acesso atualizado com sucesso!', 'success')
+            return redirect(url_for('main.listar_acessos'))
+        except Exception as e:
+            db.session.rollback()
+            if _wants_json():
+                return jsonify({'ok': False, 'message': str(e)}), 400
+            flash(str(e), 'error')
+    permissoes = {sistema: acesso.menus_liberados(sistema) for sistema in SISTEMAS}
+    return render_template(
+        'acesso_form.html',
+        acesso=acesso,
+        sistemas=SISTEMAS,
+        permissoes=permissoes,
+        user_name=user.nome,
+    )
 
 @main.route('/dashboard')
 @login_required
@@ -434,6 +799,23 @@ def atualizar_status(id):
         }), 400
 
 
+def _aplicar_menus_chamados(usuario, form):
+    from models import PermissaoMenu
+    usuario.perm_chamados = True
+    for menu_key, _label in SISTEMAS['chamados']['menus']:
+        permitido = usuario.is_master or form.get(f'menu_chamados_{menu_key}') == 'on'
+        perm = usuario.menus.filter_by(sistema='chamados', menu_key=menu_key).first()
+        if not perm:
+            db.session.add(PermissaoMenu(
+                usuario_id=usuario.id,
+                sistema='chamados',
+                menu_key=menu_key,
+                permitido=permitido,
+            ))
+        else:
+            perm.permitido = permitido
+
+
 @main.route('/usuarios')
 @login_required
 def listar_usuarios():
@@ -456,14 +838,17 @@ def novo_usuario():
                 tipo=request.form.get('tipo', 'operador'),
                 ativo=True
             )
+            usuario.perm_chamados = True
             db.session.add(usuario)
+            db.session.flush()
+            _aplicar_menus_chamados(usuario, request.form)
             db.session.commit()
             flash('Usuário criado com sucesso!', 'success')
             return redirect(url_for('main.listar_usuarios'))
         except Exception as e:
             flash(f'Erro ao criar usuário: {str(e)}', 'error')
             db.session.rollback()
-    return render_template('novo_usuario.html')
+    return render_template('novo_usuario.html', menus_chamados=SISTEMAS['chamados']['menus'])
 
 
 @main.route('/usuarios/<int:id>/editar', methods=['GET', 'POST'])
@@ -479,13 +864,20 @@ def editar_usuario(id):
                 usuario.senha = generate_password_hash(request.form['senha'])
             usuario.tipo = request.form.get('tipo', 'operador')
             usuario.ativo = request.form.get('ativo', True) == 'on'
+            usuario.perm_chamados = True
+            _aplicar_menus_chamados(usuario, request.form)
             db.session.commit()
             flash('Usuário atualizado com sucesso!', 'success')
             return redirect(url_for('main.listar_usuarios'))
         except Exception as e:
             flash(f'Erro ao atualizar usuário: {str(e)}', 'error')
             db.session.rollback()
-    return render_template('editar_usuario.html', usuario=usuario)
+    return render_template(
+        'editar_usuario.html',
+        usuario=usuario,
+        menus_chamados=SISTEMAS['chamados']['menus'],
+        permissoes=usuario.menus_liberados('chamados'),
+    )
 
 
 @main.route('/equipamentos')
@@ -562,12 +954,6 @@ def editar_equipamento(id):
             flash(f'Erro ao atualizar equipamento: {str(e)}', 'error')
             db.session.rollback()
     return render_template('editar_equipamento.html', equipamento=equipamento, clientes=clientes)
-
-@main.route('/configuracoes')
-@login_required
-def configuracoes():
-    """Página placeholder de configurações do módulo de chamados"""
-    return render_template('configuracoes.html')
 
 
 @main.route('/chamados/auditoria')

@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v=menu30" rel="stylesheet">
     <style>
         .badge-status {
             display: inline-flex;
@@ -78,7 +78,7 @@
             background: transparent;
             color: rgba(255, 255, 255, 0.92);
             font-family: var(--font-body);
-            font-size: 0.95rem;
+            font-size: 0.66rem;
             font-weight: 700;
             cursor: pointer;
             text-align: left;
@@ -92,7 +92,7 @@
             gap: 0.75rem;
         }
         .sidebar-menu .menu-group-title .chev {
-            font-size: 0.75rem;
+            font-size: 0.55rem;
             opacity: 0.85;
             transition: transform 0.2s ease;
         }
@@ -108,14 +108,15 @@
         .sidebar-menu .menu-sub.open { display: block; }
         .sidebar-menu .menu-sub a {
             padding: 0.55rem 0.85rem 0.55rem 2.1rem;
-            font-size: 0.9rem;
+            font-size: 0.63rem;
             font-weight: 500;
             color: rgba(255, 255, 255, 0.88);
         }
         .sidebar-menu .menu-sub a i {
-            width: 1.1rem;
-            margin-right: 0.55rem;
+            width: 0.9rem;
+            margin-right: 0.45rem;
             opacity: 0.9;
+            font-size: 0.78rem;
         }
         .sidebar-menu .menu-sub a.active {
             background-color: var(--accent-color);
@@ -156,9 +157,10 @@
         .placeholder-page p { color: #64748b; margin: 0; }
 
         .sidebar-menu .menu-group-title .left i {
-            width: 1.15rem;
+            width: 0.95rem;
             text-align: center;
             flex-shrink: 0;
+            font-size: 0.8rem;
         }
     </style>
 </head>

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redefinir senha - São Geraldo Service</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    {% include '_auth_styles.html' %}
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <div class="login-header">
+                <img class="login-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service">
+                <p class="tagline">TRANSFORMANDO VIDAS</p>
+                <p class="subtitle">Redefinição de senha</p>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <p class="hint">Informe o e-mail cadastrado na sua conta. Enviaremos um link para criar uma nova senha.</p>
+
+            <form method="POST" action="{{ url_for('main.esqueci_senha') }}">
+                <div class="form-group">
+                    <label for="email">E-mail da conta</label>
+                    <input type="email" id="email" name="email" required autocomplete="username">
+                </div>
+                <button type="submit" class="btn">
+                    <i class="fas fa-envelope"></i> Enviar link por e-mail
+                </button>
+            </form>
+
+            <div class="login-footer">
+                <a href="{{ url_for('main.login') }}">Voltar ao login</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

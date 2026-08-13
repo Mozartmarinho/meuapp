@@ -1,31 +1,115 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurações - São Geraldo Service</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root { --brand-blue:#1B4F9C; --brand-navy:#0D2B5C; --brand-lime:#A8C53A; --muted:#5a6b85; --ink:#0F2A56; }
+        * { box-sizing:border-box; margin:0; padding:0; }
+        body {
+            min-height:100vh; font-family:'Manrope',sans-serif; color:var(--ink);
+            background: linear-gradient(160deg,#f7fafc 0%,#e8eef6 45%,#dce7f5 100%);
+        }
+        .topbar { display:flex; justify-content:space-between; align-items:center; padding:1rem 1.25rem; }
+        .user-meta { color:var(--muted); }
+        .user-meta strong { color:var(--brand-navy); }
+        .wrap { max-width:720px; margin:0 auto; padding:0 1.25rem 2.5rem; }
+        h1 { font-family:'Rajdhani',sans-serif; color:var(--brand-navy); }
+        .subtitle { color:var(--muted); margin-top:4px; margin-bottom:1.25rem; }
+        .btn {
+            display:inline-flex; align-items:center; gap:.45rem; padding:.7rem 1rem;
+            border-radius:999px; text-decoration:none; font-weight:700; border:0; cursor:pointer; font-family:inherit;
+        }
+        .btn-sec { background:#fff; color:var(--brand-navy); border:1px solid rgba(27,79,156,.15); }
+        .btn-pri { background:var(--brand-blue); color:#fff; }
+        .card { background:#fff; border-radius:18px; padding:24px; box-shadow:0 10px 30px rgba(13,43,92,.08); }
+        .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+        .form-group { margin-bottom:4px; }
+        .form-group.full { grid-column:1/-1; }
+        label { display:block; margin-bottom:6px; font-weight:700; color:#35506f; font-size:.9rem; }
+        input[type=text], input[type=email], input[type=password], input[type=number] {
+            width:100%; padding:12px; border:1px solid #d5e0ee; border-radius:10px; font-size:15px; font-family:inherit;
+        }
+        input:focus { outline:none; border-color:var(--brand-blue); box-shadow:0 0 0 3px rgba(27,79,156,.14); }
+        .check { display:flex; align-items:center; gap:8px; font-weight:600; height:100%; padding-top:22px; }
+        .actions { display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
+        .alert { margin:0 0 1rem; padding:12px 14px; border-radius:10px; }
+        .alert-success { background:#d1fae5; color:#065f46; }
+        .alert-error { background:#fee2e2; color:#991b1b; }
+        .status {
+            display:inline-flex; align-items:center; gap:.4rem; padding:4px 10px; border-radius:999px;
+            font-size:12px; font-weight:800; margin-left:8px; vertical-align:middle;
+        }
+        .status.on { background:#dcfce7; color:#166534; }
+        .status.off { background:#fee2e2; color:#991b1b; }
+        .hint { color:var(--muted); font-size:.85rem; margin-top:6px; line-height:1.45; }
+        @media (max-width:720px) { .grid { grid-template-columns:1fr; } .check { padding-top:0; } }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <div class="user-meta">Olá, <strong>{{ user_name }}</strong></div>
+        <a class="btn btn-sec" href="{{ url_for('main.inicio') }}"><i class="fas fa-th-large"></i> Sistemas</a>
+    </header>
+    <main class="wrap">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
 
-{% block title %}Configurações - São Geraldo Service{% endblock %}
+        <h1>
+            Configurações
+            {% if smtp_ok %}
+            <span class="status on">E-mail pronto</span>
+            {% else %}
+            <span class="status off">E-mail pendente</span>
+            {% endif %}
+        </h1>
+        <p class="subtitle">Saída de e-mail (SMTP) usada no envio do link de redefinição de senha.</p>
 
-{% block content %}
-<div class="container">
-    <div class="header">
-        <h1>Configurações</h1>
-    </div>
-
-    <div class="card">
-        <div class="card-header">
-            <h3>Preferências do sistema</h3>
-        </div>
-        <p style="margin: 0; color: var(--gray-600, #666);">
-            Esta área está em preparação. Em breve você poderá ajustar preferências gerais
-            do módulo de Gestão de Chamados por aqui.
-        </p>
-        <p style="margin: 1rem 0 0; color: var(--gray-500, #888); font-size: 0.95rem;">
-            Enquanto isso, use o menu lateral para acessar Dashboard, Chamados, Clientes,
-            Usuários, Equipamentos e Relatórios.
-        </p>
-    </div>
-</div>
-
-<style>
-.container { padding: 20px 0; }
-.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-.header h1 { margin: 0; }
-</style>
-{% endblock %}
+        <form method="POST" class="card" autocomplete="off">
+            <div class="grid">
+                <div class="form-group">
+                    <label for="servidor">Servidor SMTP *</label>
+                    <input type="text" id="servidor" name="servidor" value="{{ cfg.servidor }}" placeholder="smtp.seudominio.com.br" required>
+                </div>
+                <div class="form-group">
+                    <label for="porta">Porta *</label>
+                    <input type="number" id="porta" name="porta" value="{{ cfg.porta or 587 }}" min="1" max="65535" required>
+                </div>
+                <div class="form-group">
+                    <label for="usuario">Usuário</label>
+                    <input type="text" id="usuario" name="usuario" value="{{ cfg.usuario }}" placeholder="conta@saogeraldoservice.com.br" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label for="senha">Senha {{ '(deixe em branco para manter)' if senha_salva else '' }}</label>
+                    <input type="password" id="senha" name="senha" value="" placeholder="{{ 'Senha já salva' if senha_salva else 'Senha SMTP' }}" autocomplete="new-password">
+                </div>
+                <div class="form-group full">
+                    <label for="remetente">Remetente (From) *</label>
+                    <input type="email" id="remetente" name="remetente" value="{{ cfg.remetente }}" placeholder="nao-responda@saogeraldoservice.com.br" required>
+                </div>
+                <div class="form-group">
+                    <label class="check">
+                        <input type="checkbox" name="usar_tls" {{ 'checked' if cfg.usar_tls else '' }}>
+                        Usar TLS
+                    </label>
+                </div>
+            </div>
+            <p class="hint">Assunto do e-mail de redefinição: <strong>redefinição senha sistema são geraldo</strong>. Porta comum: 587 com TLS.</p>
+            <div class="actions">
+                <a class="btn btn-sec" href="{{ url_for('main.inicio') }}">Cancelar</a>
+                <button type="submit" class="btn btn-pri"><i class="fas fa-save"></i> Salvar</button>
+            </div>
+        </form>
+    </main>
+</body>
+</html>

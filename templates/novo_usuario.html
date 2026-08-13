@@ -35,6 +35,17 @@
             </select>
         </div>
 
+        <div class="form-group">
+            <label>Abas liberadas no sistema de chamados</label>
+            <p style="margin:0 0 10px;color:#666;font-size:13px">Vinculado ao e-mail principal cadastrado em Opções &gt; Acessos.</p>
+            {% for menu_key, menu_nome in menus_chamados %}
+            <label class="checkbox-label" style="display:flex;align-items:center;margin-bottom:8px;gap:8px">
+                <input type="checkbox" name="menu_chamados_{{ menu_key }}" checked>
+                {{ menu_nome }}
+            </label>
+            {% endfor %}
+        </div>
+
         <div class="form-actions">
             <button type="submit" class="btn btn-success">
                 <i class="fas fa-save"></i> Criar Usuário

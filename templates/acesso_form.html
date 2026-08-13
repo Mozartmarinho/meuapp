@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ 'Editar acesso' if acesso else 'Novo acesso' }} - São Geraldo Service</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root { --brand-blue:#1B4F9C; --brand-navy:#0D2B5C; --muted:#5a6b85; --ink:#0F2A56; }
+        * { box-sizing:border-box; margin:0; padding:0; }
+        body { min-height:100vh; font-family:'Manrope',sans-serif; color:var(--ink); background:linear-gradient(160deg,#f7fafc 0%,#e8eef6 45%,#dce7f5 100%); }
+        .wrap { max-width:860px; margin:0 auto; padding:1.25rem 1.25rem 2.5rem; }
+        h1 { font-family:'Rajdhani',sans-serif; color:var(--brand-navy); margin:1rem 0; }
+        .card { background:#fff; border-radius:18px; padding:24px; box-shadow:0 10px 30px rgba(13,43,92,.08); }
+        .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+        .form-group { margin-bottom:14px; }
+        .form-group.full { grid-column:1/-1; }
+        label { display:block; margin-bottom:6px; font-weight:700; color:#35506f; }
+        input[type=text], input[type=email], input[type=password], select { width:100%; padding:12px; border:1px solid #d5e0ee; border-radius:10px; font-size:15px; }
+        .sistema { border:1px solid #d7e3f3; border-radius:12px; padding:14px; margin-bottom:12px; }
+        .check { display:flex; align-items:center; gap:8px; font-weight:600; }
+        .menus { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px; padding-left:8px; margin-top:8px; }
+        .actions { display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
+        .btn { display:inline-flex; align-items:center; gap:.45rem; padding:.7rem 1rem; border-radius:999px; text-decoration:none; font-weight:700; border:0; cursor:pointer; }
+        .btn-sec { background:#6b7c90; color:#fff; }
+        .btn-pri { background:var(--brand-blue); color:#fff; }
+        .alert { margin:0 0 1rem; padding:12px 14px; border-radius:10px; }
+        .alert-success { background:#d1fae5; color:#065f46; }
+        .alert-error { background:#fee2e2; color:#991b1b; }
+        @media (max-width:720px) { .grid { grid-template-columns:1fr; } }
+    </style>
+</head>
+<body>
+    <main class="wrap">
+        <a class="btn btn-sec" href="{{ url_for('main.listar_acessos') }}"><i class="fas fa-arrow-left"></i> Voltar</a>
+        <h1>{{ 'Editar acesso' if acesso else 'Novo acesso' }}</h1>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        <form method="POST" class="card">
+            <div class="grid">
+                <div class="form-group">
+                    <label for="nome">Nome *</label>
+                    <input type="text" id="nome" name="nome" value="{{ acesso.nome if acesso else '' }}" required>
+                </div>
+                <div class="form-group">
+                    <label for="email">E-mail *</label>
+                    <input type="email" id="email" name="email" value="{{ acesso.email if acesso else '' }}" required {{ 'readonly' if acesso and acesso.is_master else '' }}>
+                </div>
+                <div class="form-group">
+                    <label for="senha">Senha {{ '' if not acesso else '(deixe em branco para manter)' }}</label>
+                    <input type="password" id="senha" name="senha" {{ 'required' if not acesso else '' }}>
+                </div>
+                <div class="form-group" style="display:flex;align-items:flex-end">
+                    <label class="check">
+                        <input type="checkbox" name="ativo" {{ 'checked' if not acesso or acesso.ativo else '' }} {{ 'disabled' if acesso and acesso.is_master else '' }}>
+                        Acesso ativo
+                    </label>
+                </div>
+            </div>
+            {% if acesso and acesso.is_master %}
+            <div class="alert alert-success">Conta master com acesso total a todos os sistemas e abas.</div>
+            {% endif %}
+            <h2 style="margin:8px 0 12px;color:#0D2B5C;font-size:20px;font-family:Rajdhani,sans-serif">Permissão por sistema</h2>
+            {% for chave, meta in sistemas.items() %}
+            {% set sistema_on = acesso.tem_sistema(chave) if acesso else false %}
+            <div class="sistema">
+                <label class="check">
+                    <input type="checkbox" class="sistema-check" name="sistema_{{ chave }}" data-sistema="{{ chave }}" {{ 'checked' if sistema_on else '' }} {{ 'disabled' if acesso and acesso.is_master else '' }}>
+                    {{ meta.nome }}
+                </label>
+                <div class="menus" data-menus="{{ chave }}" style="{{ '' if sistema_on or (acesso and acesso.is_master) else 'opacity:.45' }}">
+                    {% for menu_key, menu_nome in meta.menus %}
+                    {% set menu_on = permissoes.get(chave, {}).get(menu_key, sistema_on) %}
+                    <label class="check">
+                        <input type="checkbox" class="menu-check" name="menu_{{ chave }}_{{ menu_key }}" data-parent="{{ chave }}" {{ 'checked' if menu_on else '' }} {{ 'disabled' if (acesso and acesso.is_master) or not sistema_on else '' }}>
+                        {{ menu_nome }}
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+            <div class="actions">
+                <a class="btn btn-sec" href="{{ url_for('main.listar_acessos') }}">Cancelar</a>
+                <button type="submit" class="btn btn-pri"><i class="fas fa-save"></i> Salvar</button>
+            </div>
+        </form>
+    </main>
+    <script>
+    document.querySelectorAll('.sistema-check').forEach(function(check) {
+        check.addEventListener('change', function() {
+            var sistema = this.getAttribute('data-sistema');
+            var menus = document.querySelectorAll('.menu-check[data-parent="' + sistema + '"]');
+            var box = document.querySelector('[data-menus="' + sistema + '"]');
+            menus.forEach(function(menu) {
+                menu.disabled = !check.checked;
+                if (check.checked) menu.checked = true;
+            });
+            if (box) box.style.opacity = check.checked ? '1' : '.45';
+        });
+    });
+    </script>
+</body>
+</html>

@@ -167,11 +167,17 @@ h1, h2, h3, h4, .brand-title {
     border-radius: 0.5rem;
     transition: all 0.2s ease;
     font-weight: 500;
-    font-size: 0.95rem;
+    font-size: 0.66rem;
 }
 
 .sidebar-menu a:hover {
     background-color: rgba(255, 255, 255, 0.12);
+}
+
+.sidebar-menu .menu-footer {
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .sidebar-menu a.active {
@@ -427,11 +433,11 @@ textarea:focus {
 
 .sidebar-menu .sidebar-submenu a {
     padding: 0.55rem 0.85rem;
-    font-size: 0.9rem;
+    font-size: 0.63rem;
 }
 
 .sidebar-menu .chevron {
-    font-size: 0.7rem;
+    font-size: 0.55rem;
     transition: transform 0.2s ease;
     margin-left: auto;
 }
@@ -439,10 +445,11 @@ textarea:focus {
 .sidebar-menu .chevron.open { transform: rotate(90deg); }
 
 .sidebar-menu a .menu-icon {
-    width: 1.15rem;
+    width: 0.95rem;
     text-align: center;
-    margin-right: 0.75rem;
+    margin-right: 0.55rem;
     flex-shrink: 0;
+    font-size: 0.8rem;
 }
 
 /* Desktop: topbar + colapso do menu (módulos com data-sidebar-collapse) */

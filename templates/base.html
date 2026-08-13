@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v=menu30" rel="stylesheet">
 </head>
 <body data-sidebar-collapse="sg-chamados-sidebar-collapsed">
     <script>
@@ -88,6 +88,12 @@
                 <a href="{{ url_for('main.configuracoes') }}" class="{% if request.endpoint == 'main.configuracoes' %}active{% endif %}" title="Configurações">
                     <i class="fas fa-cog menu-icon"></i>
                     <span class="menu-label">Configurações</span>
+                </a>
+            </li>
+            <li class="menu-footer">
+                <a href="{{ url_for('main.logout') }}" title="Sair">
+                    <i class="fas fa-sign-out-alt menu-icon"></i>
+                    <span class="menu-label">Sair</span>
                 </a>
             </li>
         </ul>

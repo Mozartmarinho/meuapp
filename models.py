@@ -81,11 +81,67 @@ class Usuario(db.Model):
     senha = db.Column('senha_hash', db.String(255), nullable=False)
     tipo = db.Column(db.String(20), default='operador')
     token = db.Column(db.String(64))
+    reset_token = db.Column(db.String(80))
+    reset_token_expira = db.Column(db.DateTime)
     ativo = db.Column(db.Boolean, default=True)
+    is_master = db.Column(db.Boolean, default=False)
+    perm_chamados = db.Column(db.Boolean, default=False)
+    perm_nutricao = db.Column(db.Boolean, default=False)
+    perm_pesagem = db.Column(db.Boolean, default=False)
+    perm_acesso = db.Column(db.Boolean, default=False)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    menus = db.relationship('PermissaoMenu', backref='usuario', cascade='all, delete-orphan', lazy='dynamic')
 
     def __repr__(self):
         return f'<Usuario {self.email}>'
+
+    def tem_sistema(self, sistema):
+        if self.is_master or self.tipo == 'admin':
+            return True
+        return bool(getattr(self, f'perm_{sistema}', False))
+
+    def tem_menu(self, sistema, menu_key):
+        if self.is_master or self.tipo == 'admin':
+            return True
+        if not self.tem_sistema(sistema):
+            return False
+        perm = self.menus.filter_by(sistema=sistema, menu_key=menu_key).first()
+        if perm is None:
+            return True
+        return bool(perm.permitido)
+
+    def menus_liberados(self, sistema):
+        return {p.menu_key: p.permitido for p in self.menus.filter_by(sistema=sistema).all()}
+
+    def pode_gerenciar_acessos(self):
+        return bool(self.is_master or self.tipo == 'admin' or self.perm_acesso)
+
+
+class PermissaoMenu(db.Model):
+    __tablename__ = 'permissoes_menu'
+
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
+    sistema = db.Column(db.String(30), nullable=False)
+    menu_key = db.Column(db.String(50), nullable=False)
+    permitido = db.Column(db.Boolean, default=True)
+
+    __table_args__ = (
+        db.UniqueConstraint('usuario_id', 'sistema', 'menu_key', name='uq_usuario_sistema_menu'),
+    )
+
+
+class ConfiguracaoEmail(db.Model):
+    __tablename__ = 'configuracao_email'
+
+    id = db.Column(db.Integer, primary_key=True)
+    servidor = db.Column(db.String(200), default='')
+    porta = db.Column(db.Integer, default=587)
+    usar_tls = db.Column(db.Boolean, default=True)
+    usuario = db.Column(db.String(200), default='')
+    senha = db.Column(db.String(255), default='')
+    remetente = db.Column(db.String(200), default='')
+    atualizado_em = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class Equipamento(db.Model):

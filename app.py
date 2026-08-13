@@ -23,6 +23,7 @@ def create_app():
     # Dual HTTP/HTTPS: cookies must work on both (do not force Secure-only).
     app.config['SESSION_COOKIE_SECURE'] = False
     app.config['REMEMBER_COOKIE_SECURE'] = False
+    app.config['TEMPLATES_AUTO_RELOAD'] = True
 
     db.init_app(app)
     app.register_blueprint(main)
@@ -33,6 +34,14 @@ def create_app():
 
     from audit_service import register_audit_hooks
     register_audit_hooks(app)
+
+    @app.context_processor
+    def inject_acesso():
+        from flask import session
+        user = None
+        if session.get('user_id'):
+            user = Usuario.query.get(session['user_id'])
+        return {'usuario_atual': user}
 
     return app
 
@@ -124,6 +133,17 @@ def ensure_usuarios_schema():
         if 'token' not in cols:
             db.session.execute(text('ALTER TABLE usuarios ADD COLUMN token VARCHAR(64) NULL'))
             db.session.commit()
+        if 'reset_token' not in cols:
+            db.session.execute(text('ALTER TABLE usuarios ADD COLUMN reset_token VARCHAR(80) NULL'))
+            db.session.commit()
+        if 'reset_token_expira' not in cols:
+            db.session.execute(text('ALTER TABLE usuarios ADD COLUMN reset_token_expira DATETIME NULL'))
+            db.session.commit()
+        for col in ('is_master', 'perm_chamados', 'perm_nutricao', 'perm_pesagem', 'perm_acesso'):
+            if col not in cols:
+                db.session.execute(text(f'ALTER TABLE usuarios ADD COLUMN {col} TINYINT(1) NOT NULL DEFAULT 0'))
+                db.session.commit()
+                cols.add(col)
         # Índice único em usuario (ignora se já existir)
         try:
             db.session.execute(text('CREATE UNIQUE INDEX uq_usuarios_usuario ON usuarios (usuario)'))
@@ -212,6 +232,11 @@ if __name__ == '__main__':
         seed_pesagem()
         seed_acesso()
         ensure_audit_table()
+        try:
+            from permissions_sistemas import garantir_acesso_master
+            garantir_acesso_master()
+        except Exception as exc:
+            print(f"Aviso ao criar acesso master: {exc}")
         if not Usuario.query.first():
             admin = Usuario(
                 nome='Admin',
@@ -224,7 +249,7 @@ if __name__ == '__main__':
             print("Default admin user created: email=admin@example.com, password=admin")
 
     host = os.environ.get('HOST', '0.0.0.0')
-    port = int(os.environ.get('PORT', '80'))
+    port = 80
     https_port = int(os.environ.get('HTTPS_PORT', '443'))
     enable_https = os.environ.get('ENABLE_HTTPS', '1').strip().lower() not in ('0', 'false', 'no')
 

@@ -42,6 +42,16 @@
             </label>
         </div>
 
+        <div class="form-group">
+            <label>Abas liberadas no sistema de chamados</label>
+            {% for menu_key, menu_nome in menus_chamados %}
+            <label class="checkbox-label" style="display:flex;align-items:center;margin-bottom:8px;gap:8px">
+                <input type="checkbox" name="menu_chamados_{{ menu_key }}" {% if permissoes.get(menu_key, true) %}checked{% endif %}>
+                {{ menu_nome }}
+            </label>
+            {% endfor %}
+        </div>
+
         <div class="form-actions">
             <button type="submit" class="btn btn-success">
                 <i class="fas fa-save"></i> Atualizar Usuário
