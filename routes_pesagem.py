@@ -35,6 +35,7 @@ _PESAGEM_ENDPOINT_MENUS = {
     'pesagem.auditoria': 'auditoria',
     'pesagem.api_listar_leituras': 'dashboard',
     'pesagem.api_balancas': 'balancas',
+    'pesagem.api_balanca': 'balancas',
 }
 
 
@@ -296,3 +297,38 @@ def api_balancas():
         'ok': True,
         'balancas': [b.to_dict() for b in PesagemBalanca.query.order_by(PesagemBalanca.codigo).all()],
     })
+
+
+@pesagem.route('/api/pesagem/balancas/<int:bid>', methods=['PUT', 'DELETE'])
+@login_required
+def api_balanca(bid):
+    b = PesagemBalanca.query.get(bid)
+    if not b:
+        return jsonify({'ok': False, 'error': 'Balança não encontrada'}), 404
+
+    if request.method == 'DELETE':
+        PesagemLeitura.query.filter_by(balanca_id=b.id).update(
+            {PesagemLeitura.balanca_id: None}, synchronize_session=False
+        )
+        db.session.delete(b)
+        db.session.commit()
+        return jsonify({'ok': True})
+
+    d = request.get_json(force=True) or {}
+    codigo = (d.get('codigo') or '').strip().upper()
+    nome = (d.get('nome') or '').strip()
+    if not codigo or not nome:
+        return jsonify({'ok': False, 'error': 'codigo e nome são obrigatórios'}), 400
+    outro = PesagemBalanca.query.filter(
+        PesagemBalanca.codigo == codigo, PesagemBalanca.id != b.id
+    ).first()
+    if outro:
+        return jsonify({'ok': False, 'error': 'Código já existe'}), 409
+    b.codigo = codigo
+    b.nome = nome
+    b.local = (d.get('local') or '').strip() or None
+    b.porta_com = (d.get('porta_com') or '').strip() or None
+    if 'ativo' in d:
+        b.ativo = bool(d.get('ativo'))
+    db.session.commit()
+    return jsonify({'ok': True, 'balanca': b.to_dict()})

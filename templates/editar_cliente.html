@@ -3,11 +3,11 @@
 {% block title %}Editar Cliente - São Geraldo Service{% endblock %}
 
 {% block content %}
-<div class="container">
+<div class="cli-cadastro-page">
     <div class="header">
         <h1>Editar Cliente - {{ cliente.nome }}</h1>
         <a href="{{ url_for('main.listar_clientes') }}" class="btn btn-secondary">
-            <i class="fas fa-arrow-left"></i> Voltar
+            <i class="fas fa-times"></i> Fechar
         </a>
     </div>
 
@@ -40,10 +40,10 @@
 
             <div class="form-actions">
                 <a href="{{ url_for('main.listar_clientes') }}" class="btn btn-secondary">
-                    <i class="fas fa-times"></i> Cancelar
+                    <i class="fas fa-times"></i> Fechar
                 </a>
                 <button type="submit" class="btn btn-success">
-                    <i class="fas fa-save"></i> Salvar Alterações
+                    <i class="fas fa-save"></i> Gravar
                 </button>
             </div>
         </form>
@@ -51,9 +51,41 @@
 </div>
 
 <style>
-.container { padding: 20px 0; max-width: 700px; }
-.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 1rem; flex-wrap: wrap; }
-.header h1 { margin: 0; }
-.form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.cli-cadastro-page { font-size: 0.8rem; }
+.cli-cadastro-page .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+}
+.cli-cadastro-page .header h1 { margin: 0; font-size: 1.28rem; }
+.cli-cadastro-page .form-container {
+    padding: 0.96rem;
+    max-width: 560px;
+    border-radius: 0.4rem;
+}
+.cli-cadastro-page .form-group { margin-bottom: 0.56rem; }
+.cli-cadastro-page label { font-size: 0.72rem; margin-bottom: 0.16rem; }
+.cli-cadastro-page input[type="text"],
+.cli-cadastro-page input[type="tel"] {
+    padding: 0.48rem 0.6rem;
+    font-size: 0.8rem;
+    border-radius: 0.3rem;
+    line-height: 1.35;
+}
+.cli-cadastro-page .btn {
+    gap: 0.32rem;
+    padding: 0.45rem 0.8rem;
+    font-size: 0.76rem;
+    border-radius: 0.3rem;
+}
+.cli-cadastro-page .form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.48rem;
+    margin-top: 1rem;
+}
 </style>
 {% endblock %}

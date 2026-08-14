@@ -1,5 +1,6 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
+<div class="fat-page">
 <div class="page-header">
   <h1>Relatórios do Faturamento</h1>
   <p>Espelho e totais de refeições por clínica e período</p>
@@ -52,23 +53,41 @@
     </button>
   </div>
 </div>
+</div>
 
 <style>
-.fat-panel { padding: 1.1rem 1.25rem 1.4rem; max-width: 640px; }
+.fat-page .page-header { margin-bottom: 1rem; }
+.fat-page .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.fat-page .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.fat-page .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.fat-page .btn-ghost { padding: 0.28rem 0.4rem; }
+.fat-page .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+.fat-page .form-control {
+  padding: 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+.fat-page .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+.fat-page input[type="radio"],
+.fat-page input[type="checkbox"] { width: 0.72rem; height: 0.72rem; margin: 0; flex-shrink: 0; }
+.fat-panel { padding: 0.88rem 1rem 1.12rem; max-width: 512px; }
 .fat-box {
-  border:1px solid #dbe3ee; border-radius:8px; padding:0.85rem 1rem 1rem;
-  margin:0 0 0.9rem; background:#f8fafc;
+  border:1px solid #dbe3ee; border-radius:6px; padding:0.68rem 0.8rem 0.8rem;
+  margin:0 0 0.72rem; background:#f8fafc;
 }
-.fat-box legend { font-size:0.85rem; font-weight:700; color:#334155; padding:0 0.4rem; }
-.fat-periodo { display:flex; flex-wrap:wrap; gap:0.85rem; }
-.fat-periodo .form-control { min-width:160px; }
-.fat-tipos { display:flex; flex-direction:column; gap:0.45rem; }
+.fat-box legend { font-size:0.68rem; font-weight:700; color:#334155; padding:0 0.32rem; }
+.fat-periodo { display:flex; flex-wrap:wrap; gap:0.68rem; }
+.fat-periodo .form-control { min-width:128px; }
+.fat-tipos { display:flex; flex-direction:column; gap:0.36rem; }
 .fat-tipos label, .fat-ops label {
-  display:flex; align-items:center; gap:0.45rem;
-  font-size:0.92rem; color:#334155; margin:0;
+  display:flex; align-items:center; gap:0.36rem;
+  font-size:0.74rem; color:#334155; margin:0;
 }
-.fat-ops { display:flex; flex-direction:column; gap:0.45rem; }
-.fat-actions { display:flex; flex-wrap:wrap; gap:0.55rem; margin-top:0.35rem; }
+.fat-ops { display:flex; flex-direction:column; gap:0.36rem; }
+.fat-actions { display:flex; flex-wrap:wrap; gap:0.44rem; margin-top:0.28rem; }
 </style>
 
 <script>

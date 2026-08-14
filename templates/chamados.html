@@ -3,99 +3,305 @@
 {% block title %}Chamados - São Geraldo Service{% endblock %}
 
 {% block content %}
-<div class="container">
+<div class="chamados-page">
     <div class="header">
-        <h1>Lista de Chamados</h1>
-        <a href="{{ url_for('main.novo_chamado') }}" class="btn btn-primary">
-            <i class="fas fa-plus"></i> Novo Chamado
-        </a>
-        <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">Dashboard</a>
+        <div>
+            <h1>Lista de Chamados</h1>
+            <p class="chamados-sub">Chamados que você abriu — todos os status</p>
+        </div>
+        <div class="header-actions">
+            <button type="button" class="btn btn-primary" id="btnNovoChamado">
+                <i class="fas fa-plus"></i> Novo Chamado
+            </button>
+            <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">Dashboard</a>
+        </div>
     </div>
 
-    {% if chamados %}
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Nº Chamado</th>
-                <th>Cliente</th>
-                <th>Tipo Serviço</th>
-                <th>Equipamento</th>
-                <th>Status</th>
-                <th>Prioridade</th>
-                <th>Data Criação</th>
-                <th>Valor</th>
-                <th>Ações</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for chamado in chamados %}
-            <tr>
-                <td>{{ chamado.numero_chamado }}</td>
-                <td>{{ chamado.cliente }}</td>
-                <td>{{ chamado.tipo_servico }}</td>
-                <td>{{ chamado.equipamento or '' }}</td>
-                <td>
-                    <span class="status-{{ chamado.status|lower }}">{{ chamado.status }}</span>
-                </td>
-                <td>
-                    <span class="priority-{{ chamado.prioridade|lower }}">{{ chamado.prioridade }}</span>
-                </td>
-                <td>{{ chamado.data_criacao.strftime('%d/%m/%Y %H:%M') if chamado.data_criacao else '' }}</td>
-                <td>R$ {{ "%.2f"|format(chamado.valor) if chamado.valor else '0.00' }}</td>
-                <td>
-                    <a href="{{ url_for('main.editar_chamado', id=chamado.id) }}" class="btn btn-primary btn-sm">Editar</a>
-                    {% if chamado.status != 'Concluído' %}
-                    <button onclick="updateStatus({{ chamado.id }}, 'Concluído')" class="btn btn-success btn-sm">Concluir</button>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% else %}
-    <p>Nenhum chamado encontrado.</p>
-    {% endif %}
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Nº Chamado</th>
+                    <th>Cliente</th>
+                    <th>Status</th>
+                    <th>Prioridade</th>
+                    <th>Data</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for chamado in chamados %}
+                <tr>
+                    <td>{{ chamado.numero_chamado }}</td>
+                    <td>{{ chamado.cliente.nome if chamado.cliente else 'N/A' }}</td>
+                    <td>
+                        <span class="status-{{ chamado.status|lower|replace(' ', '-')|replace('í', 'i') }}">{{ chamado.status }}</span>
+                    </td>
+                    <td>
+                        <span class="priority-{{ chamado.prioridade|lower|replace('é', 'e') }}">{{ chamado.prioridade }}</span>
+                    </td>
+                    <td>{{ chamado.data_criacao.strftime('%d/%m/%Y %H:%M') if chamado.data_criacao else '' }}</td>
+                    <td>
+                        <a href="{{ url_for('main.editar_chamado', id=chamado.id) }}" class="btn btn-primary btn-sm">
+                            <i class="fas fa-edit"></i> Editar
+                        </a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="empty-row">Nenhum chamado encontrado.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 
-<script>
-function updateStatus(id, status) {
-    fetch('/api/chamados/' + id + '/status', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({status: status})
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            location.reload();
-        } else {
-            alert('Erro ao atualizar status');
-        }
-    });
-}
-</script>
+<div id="modalNovoChamado" class="modal-overlay nc-modal" hidden>
+    <div class="modal-dialog nc-dialog" role="dialog" aria-modal="true" aria-labelledby="ncModalTitle">
+        <div class="modal-header">
+            <h2 id="ncModalTitle">Novo Chamado</h2>
+            <button type="button" class="modal-close" id="btnFecharNcX" aria-label="Fechar">&times;</button>
+        </div>
+        <form id="formNovoChamado" method="POST" action="{{ url_for('main.novo_chamado') }}">
+            <div class="modal-body">
+                <input type="hidden" name="status" value="Pendente">
+                <div class="form-group">
+                    <label for="nc_cliente_id">Cliente *</label>
+                    <select id="nc_cliente_id" name="cliente_id" required>
+                        <option value="">Selecione um cliente...</option>
+                        {% for cliente in clientes %}
+                        <option value="{{ cliente.id }}" data-nome="{{ cliente.nome }}">{{ cliente.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="nc_patrimonio">Patrimônio</label>
+                    <select id="nc_patrimonio" name="patrimonio">
+                        <option value="">Selecione um patrimônio...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="nc_equipamento">Equipamento</label>
+                    <input type="text" id="nc_equipamento" name="equipamento" readonly>
+                </div>
+                <div class="form-group">
+                    <label for="nc_tipo_servico">Tipo de Serviço *</label>
+                    <select id="nc_tipo_servico" name="tipo_servico" required>
+                        <option value="">Selecione...</option>
+                        <option value="Manutenção">Manutenção</option>
+                        <option value="Instalação">Instalação</option>
+                        <option value="Reparo">Reparo</option>
+                        <option value="Configuração">Configuração</option>
+                        <option value="Outro">Outro</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="nc_descricao">Descrição *</label>
+                    <textarea id="nc_descricao" name="descricao" rows="3" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="nc_prioridade">Prioridade</label>
+                    <select id="nc_prioridade" name="prioridade">
+                        <option value="Normal">Normal</option>
+                        <option value="Média">Média</option>
+                        <option value="Alta">Alta</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="nc_observacoes">Observações</label>
+                    <textarea id="nc_observacoes" name="observacoes" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="nc-footer">
+                <button type="reset" class="btn nc-btn-muted">
+                    <i class="fas fa-undo"></i> Limpar
+                </button>
+                <div class="nc-footer-right">
+                    <button type="button" class="btn nc-btn-muted" id="btnFecharNc">
+                        <i class="fas fa-times"></i> Fechar
+                    </button>
+                    <button type="submit" class="btn btn-success" id="btnGravarNc">
+                        <i class="fas fa-save"></i> Gravar
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
 
 <style>
-.container { padding: 20px; }
-.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-.table { width: 100%; border-collapse: collapse; background: white; border-radius: 5px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-.table th, .table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-.table th { background: #f2f2f2; }
-.table tr:hover { background: #f1f1f1; }
-.status-pendente { color: #ffc107; font-weight: bold; }
-.status-em-andamento { color: #17a2b8; font-weight: bold; }
-.status-concluido { color: #28a745; font-weight: bold; }
-.priority-alta { color: #dc3545; font-weight: bold; }
-.priority-normal { color: #6c757d; }
+.chamados-page { padding: 4px 0; }
+.chamados-page .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+}
+.chamados-page h1 { margin: 0; font-size: 1.6rem; }
+.chamados-sub { margin: 0.2rem 0 0; color: var(--gray-600); font-size: 0.8rem; }
+.header-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.table-wrap {
+    background: white;
+    border-radius: 0.4rem;
+    overflow: auto;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+}
+.chamados-page .table { width: 100%; border-collapse: collapse; background: white; }
+.chamados-page .table th, .chamados-page .table td {
+    padding: 0.6rem 0.7rem;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+    font-size: 0.85rem;
+}
+.chamados-page .table th { background: #f2f2f2; }
+.chamados-page .table tr:hover { background: #f1f1f1; }
+.empty-row { text-align: center; color: var(--gray-600); padding: 1.4rem !important; }
+.status-pendente { color: #d39e00; font-weight: 700; }
+.status-em-andamento { color: #17a2b8; font-weight: 700; }
+.status-concluido { color: #28a745; font-weight: 700; }
+.priority-alta { color: #dc3545; font-weight: 700; }
+.priority-normal, .priority-media { color: #6c757d; }
 .priority-baixa { color: #28a745; }
-.btn { padding: 8px 12px; border: none; border-radius: 4px; text-decoration: none; cursor: pointer; margin-right: 5px; }
-.btn-primary { background: #007bff; color: white; }
-.btn-primary:hover { background: #0056b3; }
-.btn-success { background: #28a745; color: white; }
-.btn-success:hover { background: #218838; }
-.btn-secondary { background: #6c757d; color: white; }
-.btn-secondary:hover { background: #545b62; }
-.btn-sm { padding: 4px 8px; font-size: 12px; }
+
+.nc-modal { padding: 0.8rem; align-items: center; justify-content: center; }
+.nc-modal:not([hidden]) { display: flex; }
+.nc-dialog {
+    max-width: 512px;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    font-size: 0.8rem;
+}
+.nc-dialog .modal-header { padding: 0.92rem 1rem 0; gap: 0.6rem; }
+.nc-dialog .modal-header h2 { font-size: 0.96rem; margin: 0; }
+.nc-dialog .modal-close { font-size: 1.2rem; }
+.nc-dialog .modal-body { padding: 0.72rem 1rem 0.4rem; overflow-y: auto; }
+.nc-dialog .form-group { margin-bottom: 0.56rem; }
+.nc-dialog label { font-size: 0.72rem; margin-bottom: 0.16rem; }
+.nc-dialog input[type="text"],
+.nc-dialog select,
+.nc-dialog textarea {
+    padding: 0.48rem 0.6rem;
+    font-size: 0.8rem;
+    border-radius: 0.3rem;
+    line-height: 1.35;
+}
+.nc-dialog textarea { min-height: 0; resize: vertical; }
+.nc-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.64rem 1rem 0.8rem;
+    flex-wrap: wrap;
+    border-top: 1px solid var(--gray-200);
+}
+.nc-footer-right { display: flex; gap: 0.4rem; }
+.nc-dialog .btn {
+    gap: 0.32rem;
+    padding: 0.45rem 0.8rem;
+    font-size: 0.76rem;
+    border-radius: 0.3rem;
+}
+.nc-btn-muted { background-color: var(--gray-300); color: var(--gray-800); }
+body.modal-open { overflow: hidden; }
 </style>
 
+<script>
+(function () {
+    const overlay = document.getElementById('modalNovoChamado');
+    const form = document.getElementById('formNovoChamado');
+    const clienteSelect = document.getElementById('nc_cliente_id');
+    const patrimonioSelect = document.getElementById('nc_patrimonio');
+    const equipamentoInput = document.getElementById('nc_equipamento');
+    const btnGravar = document.getElementById('btnGravarNc');
+
+    function abrirModal() {
+        overlay.hidden = false;
+        document.body.classList.add('modal-open');
+        clienteSelect.focus();
+    }
+    function fecharModal() {
+        overlay.hidden = true;
+        document.body.classList.remove('modal-open');
+    }
+
+    document.getElementById('btnNovoChamado').addEventListener('click', abrirModal);
+    document.getElementById('btnFecharNc').addEventListener('click', fecharModal);
+    document.getElementById('btnFecharNcX').addEventListener('click', fecharModal);
+    overlay.addEventListener('click', function (ev) {
+        if (ev.target === overlay) fecharModal();
+    });
+    document.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Escape' && !overlay.hidden) fecharModal();
+    });
+
+    clienteSelect.addEventListener('change', function () {
+        const opt = this.options[this.selectedIndex];
+        const clienteNome = opt && opt.getAttribute('data-nome');
+        patrimonioSelect.innerHTML = '<option value="">Carregando...</option>';
+        equipamentoInput.value = '';
+        if (clienteNome) {
+            fetch('/api/equipamentos_por_cliente/' + encodeURIComponent(clienteNome))
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    patrimonioSelect.innerHTML = '<option value="">Selecione um patrimônio...</option>';
+                    data.forEach(function (equip) {
+                        const option = document.createElement('option');
+                        option.value = equip.patrimonio;
+                        option.textContent = (equip.patrimonio || '') + ' - ' + (equip.nome_equipamento || '');
+                        patrimonioSelect.appendChild(option);
+                    });
+                })
+                .catch(function () {
+                    patrimonioSelect.innerHTML = '<option value="">Erro ao carregar patrimônios</option>';
+                });
+        } else {
+            patrimonioSelect.innerHTML = '<option value="">Selecione um cliente primeiro</option>';
+        }
+    });
+
+    patrimonioSelect.addEventListener('change', function () {
+        const selectedOption = this.options[this.selectedIndex];
+        if (selectedOption && selectedOption.value) {
+            const text = selectedOption.textContent;
+            const idx = text.indexOf('-');
+            equipamentoInput.value = idx >= 0 ? text.substring(idx + 2) : text;
+        } else {
+            equipamentoInput.value = '';
+        }
+    });
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        btnGravar.disabled = true;
+        fetch(form.action, {
+            method: 'POST',
+            body: new FormData(form),
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            }
+        })
+        .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+        .then(function (res) {
+            if (res.ok && (res.data.ok || res.data.success)) {
+                fecharModal();
+                location.reload();
+            } else {
+                alert((res.data && res.data.message) || 'Erro ao gravar chamado');
+                btnGravar.disabled = false;
+            }
+        })
+        .catch(function () {
+            alert('Erro ao gravar chamado');
+            btnGravar.disabled = false;
+        });
+    });
+})();
+</script>
 {% endblock %}

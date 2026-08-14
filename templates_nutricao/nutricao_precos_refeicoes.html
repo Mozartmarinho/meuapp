@@ -1,5 +1,6 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
+<div class="prec-cadastro">
 <div class="page-header">
   <h1>Cadastro de Preços das Refeições</h1>
   <p>Valores por Dieta × Tipo de Refeição (Funcionário, Paciente e Acompanhante)</p>
@@ -97,8 +98,29 @@
 </div>
 
 <style>
+.prec-cadastro .page-header { margin-bottom: 1rem; }
+.prec-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.prec-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.prec-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.prec-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
+.prec-cadastro .btn-ghost { padding: 0.28rem 0.4rem; }
+.prec-cadastro .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+.prec-cadastro .form-control {
+  padding: 0.48rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+.prec-cadastro .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+.prec-cadastro .data-table { font-size: 0.8rem; }
+.prec-cadastro .data-table th,
+.prec-cadastro .data-table td { padding: 0.4rem 0.45rem; font-size: 0.76rem; }
+.prec-cadastro .data-table th { font-size: 0.76rem; }
+.prec-cadastro .data-table .form-control { padding: 0.24rem 0.32rem; font-size: 0.76rem; }
 .prec-panel {
-  padding: 1rem 1.15rem 1.25rem;
+  padding: 0.8rem 0.92rem 1rem;
   max-width: 1100px;
 }
 .prec-toolbar {
@@ -106,13 +128,13 @@
   flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
-  padding-bottom: 0.55rem;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.44rem;
   border-bottom: 1px solid #e2e8f0;
 }
 .prec-section-title {
-  font-size: 0.95rem;
+  font-size: 0.76rem;
   font-weight: 800;
   color: #0f2a5c;
 }
@@ -120,39 +142,39 @@
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: 0.75rem;
+  gap: 0.6rem;
 }
 .prec-label {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.78rem;
+  gap: 0.2rem;
+  font-size: 0.62rem;
   font-weight: 600;
   color: #334155;
 }
 .prec-label .form-control {
-  min-width: 140px;
-  padding: 0.35rem 0.5rem;
+  min-width: 112px;
+  padding: 0.28rem 0.4rem;
 }
 .prec-check {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  font-size: 0.82rem;
+  gap: 0.32rem;
+  font-size: 0.66rem;
   color: #334155;
-  margin-bottom: 0.2rem;
+  margin-bottom: 0.16rem;
 }
 .prec-filter {
-  min-width: 180px;
-  max-width: 220px;
-  padding: 0.35rem 0.5rem;
+  min-width: 144px;
+  max-width: 176px;
+  padding: 0.28rem 0.4rem;
 }
 .prec-table-wrap {
   box-shadow: none;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: 6px;
   overflow: auto;
-  max-height: calc(100vh - 280px);
+  max-height: calc(100vh - 224px);
 }
 #tabelaPrecos thead th {
   background: #0f2a5c;
@@ -166,14 +188,14 @@
 }
 .prec-dieta-col {
   text-align: left !important;
-  min-width: 180px;
+  min-width: 144px;
 }
 .prec-tipo-col {
-  min-width: 78px;
+  min-width: 62px;
 }
 .prec-acoes-col {
-  width: 72px;
-  min-width: 72px;
+  width: 58px;
+  min-width: 58px;
 }
 .prec-nome {
   font-weight: 700;
@@ -187,9 +209,9 @@
   background: #1e4d8c;
   color: #fff;
   font-weight: 800;
-  font-size: 0.78rem;
+  font-size: 0.62rem;
   letter-spacing: 0.03em;
-  padding: 0.4rem 0.65rem;
+  padding: 0.32rem 0.52rem;
   text-align: left;
 }
 #tabelaPrecos tbody tr:nth-child(even) .prec-nome {
@@ -201,9 +223,9 @@
 .prec-valor {
   text-align: right;
   font-variant-numeric: tabular-nums;
-  max-width: 88px;
+  max-width: 70px;
   margin: 0 auto;
-  padding: 0.3rem 0.4rem;
+  padding: 0.24rem 0.32rem;
 }
 .prec-acoes {
   text-align: center;
@@ -212,7 +234,7 @@
 .prec-actions {
   display: flex;
   justify-content: center;
-  margin-top: 1rem;
+  margin-top: 0.8rem;
 }
 #tabelaPrecos tbody tr:nth-child(even) {
   background: #f8fafc;
@@ -226,29 +248,29 @@
 .prec-add-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.75rem 1rem;
+  gap: 0.6rem 0.8rem;
 }
 .prec-add-grid .full { grid-column: 1 / -1; }
 .prec-tipos-box {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.45rem;
-  margin-top: 0.35rem;
+  gap: 0.36rem;
+  margin-top: 0.28rem;
 }
 .prec-tipo-item {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.16rem;
   border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  padding: 0.4rem 0.45rem;
+  border-radius: 5px;
+  padding: 0.32rem 0.36rem;
   background: #f8fafc;
 }
 .prec-tipo-item label {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  font-size: 0.8rem;
+  gap: 0.28rem;
+  font-size: 0.64rem;
   font-weight: 700;
   color: #0f2a5c;
   margin: 0;
@@ -257,14 +279,31 @@
   text-align: right;
 }
 .prec-hint {
-  font-size: 0.78rem;
+  font-size: 0.62rem;
   color: #64748b;
-  margin: 0.15rem 0 0;
+  margin: 0.12rem 0 0;
 }
 @media (max-width: 720px) {
   .prec-add-grid { grid-template-columns: 1fr; }
   .prec-tipos-box { grid-template-columns: 1fr 1fr; }
 }
+#modalOverlay .modal-header { padding: 0.92rem 1rem 0; gap: 0.6rem; }
+#modalOverlay .modal-header h2 { font-size: 0.96rem; }
+#modalOverlay .modal-close { font-size: 1.2rem; }
+#modalOverlay .modal-body { padding: 0.8rem 1rem 0.92rem; }
+#modalOverlay .modal-footer { gap: 0.4rem; padding: 0.8rem 1rem; }
+#modalOverlay .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+#modalOverlay .form-control {
+  padding: 0.48rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+#modalOverlay .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+#modalOverlay .form-group { margin-bottom: 0.8rem; }
+#modalOverlay .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
 </style>
 
 <script>
@@ -498,7 +537,7 @@ function abrirAdicionarValor(){
       </div>
       <div class="form-group">
         <label class="form-label">&nbsp;</label>
-        <label class="prec-check" style="margin:0.55rem 0 0">
+        <label class="prec-check" style="margin:0.44rem 0 0">
           <input type="checkbox" id="add-replicar" ${repl ? 'checked' : ''}>
           Replicar nas 3 colunas
         </label>
@@ -616,4 +655,5 @@ async function salvarAdicionarValor(){
 aplicarVisaoPayer();
 filtrarLinhas();
 </script>
+</div>
 {% endblock %}

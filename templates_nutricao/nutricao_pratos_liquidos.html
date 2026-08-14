@@ -1,5 +1,6 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
+<div class="pl-cadastro">
 <div class="page-header">
   <h1>Cadastro de Pratos — Dietas Líquidas</h1>
   <p>Pratos usados nos cardápios de dietas líquidas</p>
@@ -40,42 +41,63 @@
   </fieldset>
 
   <div class="pl-footer-fields">
-    <div class="form-group" style="margin:0;max-width:180px;">
+    <div class="form-group pl-fator">
       <label class="form-label" for="fFator">Fator de Conv. Tot.:</label>
       <input class="form-control" type="number" step="any" id="fFator" data-field value="1">
     </div>
     <label class="pl-ativo"><input type="checkbox" id="fAtivo" data-field checked> Prato ativo</label>
   </div>
 </div>
+</div>
 
 <style>
-.pl-panel { padding: 1rem 1.15rem 1.35rem; max-width: 720px; }
-.pl-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:0.3rem; margin-bottom:1rem; }
-.pl-sep { width:1px; height:22px; background:#cbd5e1; margin:0 0.35rem; }
-.pl-pos { margin-left:auto; font-size:0.85rem; color:#64748b; font-weight:600; }
+.pl-cadastro .page-header { margin-bottom: 1rem; }
+.pl-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.pl-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.pl-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.pl-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
+.pl-cadastro .btn-ghost { padding: 0.28rem 0.4rem; }
+.pl-cadastro .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+.pl-cadastro .form-control {
+  padding: 0.48rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+.pl-cadastro .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+.pl-cadastro .form-group { margin-bottom: 0.8rem; }
+.pl-cadastro input[type="checkbox"] { width: 0.72rem; height: 0.72rem; margin: 0; }
+.pl-cadastro .pl-toolbar .btn-sm { padding: 0.24rem 0.36rem; }
+.pl-cadastro .pl-toolbar .btn-sm i { font-size: 0.72rem; }
+.pl-panel { padding: 0.8rem 0.92rem 1.08rem; max-width: 576px; }
+.pl-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:0.24rem; margin-bottom:0.8rem; }
+.pl-sep { width:1px; height:18px; background:#cbd5e1; margin:0 0.28rem; }
+.pl-pos { margin-left:auto; font-size:0.68rem; color:#64748b; font-weight:600; }
 .pl-grupos {
   border:1px solid #dbe3ee;
-  border-radius:8px;
-  padding:0.75rem 1rem 1rem;
-  margin:1rem 0;
+  border-radius:6px;
+  padding:0.6rem 0.8rem 0.8rem;
+  margin:0.8rem 0;
   background:#f8fafc;
 }
 .pl-grupos legend {
-  font-size:0.85rem;
+  font-size:0.68rem;
   font-weight:700;
   color:#334155;
-  padding:0 0.4rem;
+  padding:0 0.32rem;
 }
 .pl-checks {
   display:grid;
-  grid-template-columns:repeat(3, minmax(120px, 1fr));
-  gap:0.55rem 1rem;
+  grid-template-columns:repeat(3, minmax(96px, 1fr));
+  gap:0.44rem 0.8rem;
 }
 .pl-checks label {
   display:flex;
   align-items:center;
-  gap:0.45rem;
-  font-size:0.9rem;
+  gap:0.36rem;
+  font-size:0.72rem;
   color:#334155;
   margin:0;
 }
@@ -83,15 +105,16 @@
   display:flex;
   flex-wrap:wrap;
   align-items:flex-end;
-  gap:1.25rem;
+  gap:1rem;
 }
+.pl-fator { margin:0; max-width:144px; }
 .pl-ativo {
   display:flex;
   align-items:center;
-  gap:0.45rem;
-  font-size:0.9rem;
+  gap:0.36rem;
+  font-size:0.72rem;
   color:#334155;
-  margin-bottom:0.35rem;
+  margin-bottom:0.28rem;
 }
 .pl-panel:not(.editing) [data-field] {
   pointer-events:none;
@@ -103,6 +126,24 @@
 @media (max-width:640px) {
   .pl-checks { grid-template-columns:1fr 1fr; }
 }
+#modalOverlay .modal-dialog { max-width: 512px; }
+#modalOverlay .modal-header { padding: 0.92rem 1rem 0; gap: 0.6rem; }
+#modalOverlay .modal-header h2 { font-size: 0.96rem; }
+#modalOverlay .modal-close { font-size: 1.2rem; }
+#modalOverlay .modal-body { padding: 0.8rem 1rem 0.92rem; }
+#modalOverlay .modal-footer { gap: 0.4rem; padding: 0.8rem 1rem; }
+#modalOverlay .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+#modalOverlay .form-control {
+  padding: 0.48rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+#modalOverlay .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+#modalOverlay .form-group { margin-bottom: 1rem; }
+#modalOverlay .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
 </style>
 
 <script>

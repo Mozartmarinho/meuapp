@@ -1,5 +1,6 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
+<div class="eti-impressao">
 <div class="page-header">
   <h1>Impressão de Etiquetas</h1>
   <p>Gera etiquetas de dieta a partir do mapa de refeições</p>
@@ -20,24 +21,24 @@
 
   <fieldset class="eti-box">
     <legend>Opções</legend>
-    <div class="form-group" style="max-width:220px;margin-bottom:0.85rem">
+    <div class="form-group eti-campo-data">
       <label class="form-label" for="fData">Data:</label>
       <input class="form-control" type="date" id="fData" value="{{ data_padrao }}">
     </div>
 
-    <div class="eti-modo" style="margin-bottom:0.85rem">
+    <div class="eti-modo">
       <span class="eti-inline-label">Modo:</span>
       <label><input type="radio" name="modo" value="mapa" checked> Mapa de Refeições</label>
       <label class="disabled" title="Em breve"><input type="radio" name="modo" value="totalizacao_direta" disabled> Totalização Direta</label>
     </div>
 
-    <div class="eti-inline-label" style="margin-bottom:0.35rem">Imprimir por:</div>
-    <div class="eti-radios" style="margin-bottom:0.65rem">
+    <div class="eti-inline-label eti-lbl-por">Imprimir por:</div>
+    <div class="eti-radios eti-radios-por">
       <label><input type="radio" name="imprimirPor" value="grupo_clinica" checked onchange="atualizarFiltro()"> Grupo de Clínica</label>
       <label><input type="radio" name="imprimirPor" value="clinica" onchange="atualizarFiltro()"> Clínica</label>
       <label><input type="radio" name="imprimirPor" value="enfermaria" onchange="atualizarFiltro()"> Enfermaria</label>
     </div>
-    <div class="form-group" style="margin:0;max-width:420px">
+    <div class="form-group eti-campo-filtro">
       <label class="form-label" id="lblFiltro" for="fFiltro">Grupo de Clínica:</label>
       <select class="form-control" id="fFiltro"></select>
     </div>
@@ -94,7 +95,7 @@
       <h2 id="modalModeloTitulo">Seleção do modelo de etiqueta</h2>
       <button type="button" class="eti-modal-x" onclick="fecharModelo()" aria-label="Fechar">&times;</button>
     </div>
-    <fieldset class="eti-box" style="margin-top:0">
+    <fieldset class="eti-box eti-box-first">
       <legend>Modelos pré-configurados</legend>
       <div class="eti-pre">
         {% for m in modelos.preconfigurados %}
@@ -128,70 +129,98 @@
     </div>
   </div>
 </div>
+</div>
 
 <style>
-.eti-panel { padding:1.1rem 1.25rem 1.4rem; max-width:720px; }
-.eti-box {
-  border:1px solid #dbe3ee; border-radius:8px; padding:0.75rem 0.9rem 0.95rem;
-  margin:0.75rem 0; background:#f8fafc;
+.eti-impressao .page-header { margin-bottom: 1rem; }
+.eti-impressao .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.eti-impressao .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.eti-impressao .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.eti-impressao .btn-ghost { padding: 0.28rem 0.4rem; }
+.eti-impressao .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+.eti-impressao .form-control {
+  padding: 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
 }
-.eti-box legend { font-size:0.82rem; font-weight:700; color:#334155; padding:0 0.35rem; }
-.eti-box.eti-muted { opacity:0.85; }
-.eti-horas {
-  display:grid; grid-template-columns:repeat(3, 1fr); gap:0.35rem 1rem;
+.eti-impressao .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+.eti-impressao input[type="radio"],
+.eti-impressao input[type="checkbox"] { width: 0.72rem; height: 0.72rem; margin: 0; flex-shrink: 0; }
+.eti-impressao .eti-panel { padding: 0.88rem 1rem 1.12rem; max-width: 576px; }
+.eti-impressao .eti-box {
+  border:1px solid #dbe3ee; border-radius:6px; padding:0.6rem 0.72rem 0.76rem;
+  margin:0.6rem 0; background:#f8fafc;
 }
-.eti-horas label, .eti-radios label, .eti-modo label, .eti-ordenar label, .eti-checks label, .eti-pre label {
-  display:flex; align-items:center; gap:0.4rem;
-  font-size:0.9rem; color:#334155; margin:0.22rem 0;
+.eti-impressao .eti-box legend { font-size:0.66rem; font-weight:700; color:#334155; padding:0 0.28rem; }
+.eti-impressao .eti-box.eti-muted { opacity:0.85; }
+.eti-impressao .eti-horas {
+  display:grid; grid-template-columns:repeat(3, 1fr); gap:0.28rem 0.8rem;
 }
-.eti-radios { display:flex; flex-wrap:wrap; gap:0.45rem 1.25rem; }
-.eti-modo { display:flex; flex-wrap:wrap; align-items:center; gap:0.45rem 1rem; }
-.eti-inline-label { font-size:0.85rem; font-weight:600; color:#475569; }
-.eti-ordenar { display:flex; flex-direction:column; gap:0.15rem; }
-.eti-checks { display:flex; flex-direction:column; gap:0.45rem; margin:0.5rem 0 0.85rem; }
-.eti-alt-hora { display:flex; align-items:center; gap:0.55rem; margin:0.15rem 0 0.35rem 1.5rem; max-width:280px; }
-.eti-alt-hora .form-label { margin:0; white-space:nowrap; }
-label.disabled { color:#94a3b8; }
-.eti-actions { display:flex; gap:0.55rem; flex-wrap:wrap; margin-top:0.35rem; }
+.eti-impressao .eti-horas label,
+.eti-impressao .eti-radios label,
+.eti-impressao .eti-modo label,
+.eti-impressao .eti-ordenar label,
+.eti-impressao .eti-checks label,
+.eti-impressao .eti-pre label {
+  display:flex; align-items:center; gap:0.32rem;
+  font-size:0.72rem; color:#334155; margin:0.18rem 0;
+}
+.eti-impressao .eti-radios { display:flex; flex-wrap:wrap; gap:0.36rem 1rem; }
+.eti-impressao .eti-modo { display:flex; flex-wrap:wrap; align-items:center; gap:0.36rem 0.8rem; margin-bottom:0.68rem; }
+.eti-impressao .eti-inline-label { font-size:0.68rem; font-weight:600; color:#475569; }
+.eti-impressao .eti-lbl-por { margin-bottom:0.28rem; }
+.eti-impressao .eti-radios-por { margin-bottom:0.52rem; }
+.eti-impressao .eti-campo-data { max-width:176px; margin-bottom:0.68rem; }
+.eti-impressao .eti-campo-filtro { margin:0; max-width:336px; }
+.eti-impressao .eti-ordenar { display:flex; flex-direction:column; gap:0.12rem; }
+.eti-impressao .eti-checks { display:flex; flex-direction:column; gap:0.36rem; margin:0.4rem 0 0.68rem; }
+.eti-impressao .eti-alt-hora { display:flex; align-items:center; gap:0.44rem; margin:0.12rem 0 0.28rem 1.2rem; max-width:224px; }
+.eti-impressao .eti-alt-hora .form-label { margin:0; white-space:nowrap; }
+.eti-impressao label.disabled { color:#94a3b8; }
+.eti-impressao .eti-actions { display:flex; gap:0.44rem; flex-wrap:wrap; margin-top:0.28rem; }
 
-.eti-modal-backdrop {
+.eti-impressao .eti-modal-backdrop {
   position:fixed; inset:0; background:rgba(15,23,42,.45);
   display:flex; align-items:center; justify-content:center;
-  z-index:1200; padding:1rem;
+  z-index:1200; padding:0.8rem;
 }
-.eti-modal-backdrop[hidden] { display:none !important; }
-.eti-modal {
-  background:#fff; border-radius:10px; width:min(560px,100%);
-  box-shadow:0 18px 50px rgba(15,23,42,.25); padding:1rem 1.15rem 1.15rem;
+.eti-impressao .eti-modal-backdrop[hidden] { display:none !important; }
+.eti-impressao .eti-modal {
+  background:#fff; border-radius:8px; width:min(448px,100%);
+  box-shadow:0 14px 40px rgba(15,23,42,.25); padding:0.8rem 0.92rem 0.92rem;
   max-height:90vh; overflow:auto;
 }
-.eti-modal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:0.65rem; }
-.eti-modal-head h2 { margin:0; font-size:1.05rem; color:#0f2a5c; }
-.eti-modal-x {
-  border:0; background:transparent; font-size:1.5rem; line-height:1;
-  cursor:pointer; color:#64748b; padding:0 0.25rem;
+.eti-impressao .eti-modal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:0.52rem; }
+.eti-impressao .eti-modal-head h2 { margin:0; font-size:0.84rem; color:#0f2a5c; }
+.eti-impressao .eti-modal-x {
+  border:0; background:transparent; font-size:1.2rem; line-height:1;
+  cursor:pointer; color:#64748b; padding:0 0.2rem;
 }
-.eti-pre { display:grid; grid-template-columns:1fr 1fr; gap:0.25rem 1rem; }
-.eti-custom-list {
-  border:1px solid #cbd5e1; border-radius:6px; background:#fff;
-  max-height:180px; overflow:auto;
+.eti-impressao .eti-box-first { margin-top:0; }
+.eti-impressao .eti-pre { display:grid; grid-template-columns:1fr 1fr; gap:0.2rem 0.8rem; }
+.eti-impressao .eti-custom-list {
+  border:1px solid #cbd5e1; border-radius:5px; background:#fff;
+  max-height:144px; overflow:auto;
 }
-.eti-custom-head {
-  font-size:0.78rem; font-weight:700; color:#64748b; padding:0.35rem 0.6rem;
+.eti-impressao .eti-custom-head {
+  font-size:0.62rem; font-weight:700; color:#64748b; padding:0.28rem 0.48rem;
   border-bottom:1px solid #e2e8f0; background:#f1f5f9;
 }
-.eti-custom-item {
-  display:flex; align-items:center; gap:0.45rem;
-  padding:0.4rem 0.6rem; margin:0; cursor:pointer;
-  border-bottom:1px solid #f1f5f9; font-size:0.88rem;
+.eti-impressao .eti-custom-item {
+  display:flex; align-items:center; gap:0.36rem;
+  padding:0.32rem 0.48rem; margin:0; cursor:pointer;
+  border-bottom:1px solid #f1f5f9; font-size:0.7rem;
 }
-.eti-custom-item input { display:none; }
-.eti-custom-item.selected { background:#2563eb; color:#fff; }
-.eti-hint { font-size:0.78rem; color:#64748b; margin:0.45rem 0 0; }
-.eti-modal-actions { display:flex; gap:0.5rem; margin-top:0.85rem; justify-content:flex-end; }
+.eti-impressao .eti-custom-item input { display:none; }
+.eti-impressao .eti-custom-item.selected { background:#2563eb; color:#fff; }
+.eti-impressao .eti-hint { font-size:0.62rem; color:#64748b; margin:0.36rem 0 0; }
+.eti-impressao .eti-modal-actions { display:flex; gap:0.4rem; margin-top:0.68rem; justify-content:flex-end; }
 
 @media (max-width:700px){
-  .eti-horas, .eti-pre { grid-template-columns:1fr 1fr; }
+  .eti-impressao .eti-horas, .eti-impressao .eti-pre { grid-template-columns:1fr 1fr; }
 }
 </style>
 

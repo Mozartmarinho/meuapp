@@ -1,5 +1,6 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
+<div class="paciente-cadastro">
 <div class="page-header">
   <h1>Cadastro de Pacientes</h1>
   <p>Lista de pacientes cadastrados no sistema de nutrição</p>
@@ -29,7 +30,7 @@
           <th>Leito</th>
           <th>Dieta</th>
           <th>Diagnóstico</th>
-          <th style="width:100px">Ações</th>
+          <th style="width:72px">Ações</th>
         </tr>
       </thead>
       <tbody id="tabelaPacientesBody">
@@ -54,7 +55,7 @@
           <td>{{ p.leito or '-' }}</td>
           <td><span class="status status-info">{{ p.dieta or '-' }}</span></td>
           <td>{{ p.diagnostico or '-' }}</td>
-          <td>
+          <td class="paciente-acoes">
             <button class="btn btn-ghost btn-sm" type="button" onclick="editarPacienteLinha(this)" title="Editar">
               <i class="fas fa-edit"></i>
             </button>
@@ -72,6 +73,78 @@
     </table>
   </div>
 </div>
+</div>
+
+<style>
+.paciente-cadastro .page-header { margin-bottom: 1rem; }
+.paciente-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.paciente-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.paciente-cadastro .toolbar { gap: 0.6rem; margin-bottom: 0.8rem; }
+.paciente-cadastro .toolbar-search {
+  gap: 0.4rem;
+  padding: 0.44rem 0.68rem;
+  max-width: 336px;
+  flex-basis: 176px;
+}
+.paciente-cadastro .toolbar-search i { font-size: 0.72rem; }
+.paciente-cadastro .toolbar-search input {
+  font-size: 0.72rem;
+  padding: 0;
+  width: auto;
+  border: none;
+  box-shadow: none;
+}
+.paciente-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.paciente-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
+.paciente-cadastro .btn-ghost { padding: 0.16rem 0.32rem; }
+.paciente-cadastro .card { padding: 1rem; margin-bottom: 0.8rem; }
+.paciente-cadastro .data-table { font-size: 0.8rem; }
+.paciente-cadastro .data-table th,
+.paciente-cadastro .data-table td {
+  padding: 0.22rem 0.64rem;
+  font-size: 0.76rem;
+  line-height: 1.2;
+  vertical-align: middle;
+}
+.paciente-cadastro .data-table th { font-size: 0.76rem; padding-top: 0.28rem; padding-bottom: 0.28rem; }
+.paciente-cadastro .status {
+  padding: 0.12rem 0.4rem;
+  font-size: 0.64rem;
+  line-height: 1.15;
+}
+.paciente-cadastro .paciente-acoes {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.08rem;
+  white-space: nowrap;
+}
+.paciente-cadastro .paciente-acoes .btn {
+  flex-shrink: 0;
+  padding: 0.12rem 0.28rem;
+  line-height: 1.15;
+}
+#modalOverlay .modal-dialog { max-width: 512px; }
+#modalOverlay .modal-header { padding: 0.92rem 1rem 0; gap: 0.6rem; }
+#modalOverlay .modal-header h2 { font-size: 0.96rem; }
+#modalOverlay .modal-close { font-size: 1.2rem; }
+#modalOverlay .modal-body { padding: 0.8rem 1rem 0.92rem; }
+#modalOverlay .modal-footer { gap: 0.4rem; padding: 0.8rem 1rem; }
+#modalOverlay .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+#modalOverlay .form-control {
+  padding: 0.48rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+#modalOverlay .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+#modalOverlay .form-group { margin-bottom: 0.8rem; }
+#modalOverlay .form-row { gap: 0.6rem; }
+#modalOverlay .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+</style>
 
 <script>
 const clinicasOptions = {{ clinicas | tojson }};

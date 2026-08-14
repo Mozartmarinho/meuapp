@@ -1,12 +1,13 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
+<div class="uma-cadastro">
 <div class="page-header">
   <h1>Impressão do mapa de totalização da U.M.A.</h1>
   <p>Parâmetros para impressão por clínica/enfermaria, categoria e horários</p>
 </div>
 
 <div class="card uma-panel">
-  <div class="form-group" style="max-width:220px">
+  <div class="form-group uma-data">
     <label class="form-label" for="fData">Data:</label>
     <input class="form-control" type="date" id="fData" value="{{ data_padrao }}">
   </div>
@@ -18,7 +19,7 @@
       <label><input type="radio" name="imprimirPor" value="clinica" onchange="atualizarFiltro()"> Clínica</label>
       <label><input type="radio" name="imprimirPor" value="enfermaria" onchange="atualizarFiltro()"> Enfermaria</label>
     </div>
-    <div class="form-group" style="margin:0.75rem 0 0;max-width:420px">
+    <div class="form-group uma-filtro">
       <label class="form-label" id="lblFiltro" for="fFiltro">Grupo de clínica:</label>
       <select class="form-control" id="fFiltro"></select>
     </div>
@@ -45,7 +46,7 @@
 
   <div class="uma-amostra">
     <label><input type="checkbox" id="fAmostra" onchange="toggleAmostra()"> Imprimir amostra</label>
-    <input class="form-control" type="number" step="0.01" id="fAmostraVal" value="50.00" disabled style="max-width:120px">
+    <input class="form-control" type="number" step="0.01" id="fAmostraVal" value="50.00" disabled>
   </div>
 
   <div class="uma-actions">
@@ -57,33 +58,60 @@
     </button>
   </div>
 </div>
+</div>
 
 <style>
-.uma-panel { padding: 1.1rem 1.25rem 1.4rem; max-width: 720px; }
-.uma-box {
-  border:1px solid #dbe3ee; border-radius:8px; padding:0.85rem 1rem 1rem;
-  margin:0.9rem 0; background:#f8fafc;
+.uma-cadastro .page-header { margin-bottom: 1rem; }
+.uma-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.uma-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.uma-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.uma-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
+.uma-cadastro .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+.uma-cadastro .form-control {
+  padding: 0.48rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
 }
-.uma-box legend { font-size:0.85rem; font-weight:700; color:#334155; padding:0 0.4rem; }
-.uma-radios { display:flex; flex-wrap:wrap; gap:0.65rem 1.25rem; }
-.uma-radios label { display:flex; align-items:center; gap:0.4rem; font-size:0.92rem; color:#334155; margin:0; }
-.uma-cats { gap:0.75rem 1.5rem; }
+.uma-cadastro .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+.uma-cadastro .form-group { margin-bottom: 0.8rem; }
+.uma-cadastro input[type="radio"],
+.uma-cadastro input[type="checkbox"] {
+  width: 0.72rem;
+  height: 0.72rem;
+  margin: 0;
+  flex-shrink: 0;
+}
+.uma-data { max-width: 176px; }
+.uma-filtro { margin: 0.6rem 0 0; max-width: 336px; }
+.uma-panel { padding: 0.88rem 1rem 1.12rem; max-width: 576px; }
+.uma-box {
+  border: 1px solid #dbe3ee; border-radius: 6px; padding: 0.68rem 0.8rem 0.8rem;
+  margin: 0.72rem 0; background: #f8fafc;
+}
+.uma-box legend { font-size: 0.68rem; font-weight: 700; color: #334155; padding: 0 0.32rem; }
+.uma-radios { display: flex; flex-wrap: wrap; gap: 0.52rem 1rem; }
+.uma-radios label { display: flex; align-items: center; gap: 0.32rem; font-size: 0.74rem; color: #334155; margin: 0; }
+.uma-cats { gap: 0.6rem 1.2rem; }
 .uma-horas {
-  display:grid; grid-template-columns:repeat(12, minmax(36px, 1fr)); gap:0.35rem;
+  display: grid; grid-template-columns: repeat(12, minmax(29px, 1fr)); gap: 0.28rem;
 }
 .uma-horas label {
-  display:flex; align-items:center; justify-content:center; gap:0.25rem;
-  font-size:0.82rem; border:1px solid #dbe3ee; border-radius:6px;
-  padding:0.3rem 0.15rem; background:#fff; margin:0;
+  display: flex; align-items: center; justify-content: center; gap: 0.2rem;
+  font-size: 0.66rem; border: 1px solid #dbe3ee; border-radius: 5px;
+  padding: 0.24rem 0.12rem; background: #fff; margin: 0;
 }
-.uma-hora-actions { margin-top:0.55rem; display:flex; gap:0.4rem; }
+.uma-hora-actions { margin-top: 0.44rem; display: flex; gap: 0.32rem; }
 .uma-amostra {
-  display:flex; align-items:center; gap:0.75rem; margin:0.85rem 0 1.1rem;
-  font-size:0.92rem; color:#334155;
+  display: flex; align-items: center; gap: 0.6rem; margin: 0.68rem 0 0.88rem;
+  font-size: 0.74rem; color: #334155;
 }
-.uma-actions { display:flex; gap:0.6rem; flex-wrap:wrap; }
+.uma-amostra .form-control { max-width: 96px; }
+.uma-actions { display: flex; gap: 0.48rem; flex-wrap: wrap; }
 @media (max-width:700px){
-  .uma-horas { grid-template-columns:repeat(6, 1fr); }
+  .uma-horas { grid-template-columns: repeat(6, 1fr); }
 }
 </style>
 

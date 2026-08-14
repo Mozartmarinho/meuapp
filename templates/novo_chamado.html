@@ -3,21 +3,23 @@
 {% block title %}Novo Chamado - São Geraldo Service{% endblock %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-    <h1 style="color: var(--gray-800);">Novo Chamado</h1>
-    <a href="{{ url_for('main.listar_chamados') }}" class="btn" style="background-color: var(--gray-300); color: var(--gray-800);">
-        <i class="fas fa-arrow-left"></i> Voltar
+<div class="novo-chamado-page">
+<div class="nc-header">
+    <h1>Novo Chamado</h1>
+    <a href="{{ url_for('main.listar_chamados') }}" class="btn nc-btn-muted">
+        <i class="fas fa-times"></i> Fechar
     </a>
 </div>
 
 <div class="form-container">
     <form method="POST" action="{{ url_for('main.novo_chamado') }}">
+        <input type="hidden" name="status" value="Pendente">
         <div class="form-group">
             <label for="cliente_id">Cliente *</label>
             <select id="cliente_id" name="cliente_id" required>
                 <option value="">Selecione um cliente...</option>
                 {% for cliente in clientes %}
-                <option value="{{ cliente.nome }}">{{ cliente.nome }}</option>
+                <option value="{{ cliente.id }}" data-nome="{{ cliente.nome }}">{{ cliente.nome }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -48,7 +50,7 @@
 
         <div class="form-group">
             <label for="descricao">Descrição *</label>
-            <textarea id="descricao" name="descricao" rows="4" required></textarea>
+            <textarea id="descricao" name="descricao" rows="3" required></textarea>
         </div>
 
         <div class="form-group">
@@ -62,19 +64,75 @@
 
         <div class="form-group">
             <label for="observacoes">Observações</label>
-            <textarea id="observacoes" name="observacoes" rows="3"></textarea>
+            <textarea id="observacoes" name="observacoes" rows="2"></textarea>
         </div>
 
-        <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem;">
-            <button type="reset" class="btn" style="background-color: var(--gray-300); color: var(--gray-800);">
+        <div class="nc-actions">
+            <button type="reset" class="btn nc-btn-muted">
                 <i class="fas fa-undo"></i> Limpar
             </button>
+            <a href="{{ url_for('main.listar_chamados') }}" class="btn nc-btn-muted">
+                <i class="fas fa-times"></i> Fechar
+            </a>
             <button type="submit" class="btn btn-success">
-                <i class="fas fa-save"></i> Salvar Chamado
+                <i class="fas fa-save"></i> Gravar
             </button>
         </div>
     </form>
 </div>
+</div>
+
+<style>
+.novo-chamado-page { font-size: 0.8rem; }
+.novo-chamado-page .nc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+.novo-chamado-page .nc-header h1 {
+    color: var(--gray-800);
+    font-size: 1.28rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+.novo-chamado-page .form-container {
+    padding: 0.96rem;
+    max-width: 512px;
+    border-radius: 0.4rem;
+}
+.novo-chamado-page .form-group { margin-bottom: 0.56rem; }
+.novo-chamado-page label {
+    font-size: 0.72rem;
+    margin-bottom: 0.16rem;
+}
+.novo-chamado-page input[type="text"],
+.novo-chamado-page select,
+.novo-chamado-page textarea {
+    padding: 0.48rem 0.6rem;
+    font-size: 0.8rem;
+    border-radius: 0.3rem;
+    line-height: 1.35;
+}
+.novo-chamado-page textarea { min-height: 0; }
+.novo-chamado-page .btn {
+    gap: 0.32rem;
+    padding: 0.45rem 0.8rem;
+    font-size: 0.76rem;
+    border-radius: 0.3rem;
+}
+.novo-chamado-page .nc-btn-muted {
+    background-color: var(--gray-300);
+    color: var(--gray-800);
+}
+.novo-chamado-page .nc-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.48rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+}
+</style>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -83,19 +141,20 @@ document.addEventListener('DOMContentLoaded', function() {
     const equipamentoInput = document.getElementById('equipamento');
 
     clienteSelect.addEventListener('change', function() {
-        const clienteNome = this.value;
+        const opt = this.options[this.selectedIndex];
+        const clienteNome = opt && opt.getAttribute('data-nome');
         patrimonioSelect.innerHTML = '<option value="">Carregando...</option>';
         equipamentoInput.value = '';
 
         if (clienteNome) {
-            fetch(`/api/equipamentos_por_cliente/${encodeURIComponent(clienteNome)}`)
+            fetch('/api/equipamentos_por_cliente/' + encodeURIComponent(clienteNome))
                 .then(response => response.json())
                 .then(data => {
                     patrimonioSelect.innerHTML = '<option value="">Selecione um patrimônio...</option>';
                     data.forEach(equip => {
                         const option = document.createElement('option');
                         option.value = equip.patrimonio;
-                        option.textContent = `${equip.patrimonio} - ${equip.nome_equipamento}`;
+                        option.textContent = (equip.patrimonio || '') + ' - ' + (equip.nome_equipamento || '');
                         patrimonioSelect.appendChild(option);
                     });
                 })
@@ -112,8 +171,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const selectedOption = this.options[this.selectedIndex];
         if (selectedOption && selectedOption.value) {
             const text = selectedOption.textContent;
-            const nomeEquip = text.substring(text.indexOf('-') + 2);
-            equipamentoInput.value = nomeEquip;
+            const idx = text.indexOf('-');
+            equipamentoInput.value = idx >= 0 ? text.substring(idx + 2) : text;
         } else {
             equipamentoInput.value = '';
         }

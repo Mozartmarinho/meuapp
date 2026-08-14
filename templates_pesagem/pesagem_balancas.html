@@ -1,13 +1,20 @@
 {% extends "base_pesagem.html" %}
 {% block title %}Balanças{% endblock %}
 {% block content %}
+<div class="balanca-cadastro">
 <div class="page-header">
   <h1>Balanças cadastradas</h1>
   <p>Identificação das balanças que enviam peso pelo agente local</p>
 </div>
 
+<div class="toolbar">
+  <button class="btn btn-primary btn-sm" type="button" onclick="abrirBalanca()">
+    <i class="fas fa-plus"></i> Nova balança
+  </button>
+</div>
+
 <div class="card" style="padding:0;overflow:hidden;">
-  <table class="data-table">
+  <table class="data-table" id="tabelaBalancas">
     <thead>
       <tr>
         <th>Código</th>
@@ -15,56 +22,174 @@
         <th>Local</th>
         <th>Porta COM</th>
         <th>Status</th>
+        <th style="width:88px">Ações</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody id="tabelaBalancasBody">
       {% for b in balancas %}
-      <tr>
+      <tr data-id="{{ b.id }}"
+          data-codigo="{{ b.codigo }}"
+          data-nome="{{ b.nome }}"
+          data-local="{{ b.local or '' }}"
+          data-porta="{{ b.porta_com or '' }}"
+          data-ativo="{{ '1' if b.ativo else '0' }}">
         <td><strong>{{ b.codigo }}</strong></td>
         <td>{{ b.nome }}</td>
         <td>{{ b.local or '-' }}</td>
         <td>{{ b.porta_com or '-' }}</td>
         <td>{{ 'Ativa' if b.ativo else 'Inativa' }}</td>
+        <td class="balanca-acoes">
+          <button class="btn btn-ghost btn-sm" type="button" title="Editar" onclick="abrirBalanca(this.closest('tr'))">
+            <i class="fas fa-edit"></i>
+          </button>
+          <button class="btn btn-ghost btn-sm" type="button" title="Excluir" onclick="excluirBalanca({{ b.id }})">
+            <i class="fas fa-trash"></i>
+          </button>
+        </td>
       </tr>
       {% else %}
-      <tr><td colspan="5" style="text-align:center;padding:1.25rem;">Nenhuma balança cadastrada.</td></tr>
+      <tr id="linhaVazia">
+        <td colspan="6" style="text-align:center;padding:1rem;">Nenhuma balança cadastrada.</td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
-
-<div class="card" style="margin-top:1rem;padding:1rem 1.15rem;">
-  <h3 style="margin:0 0 0.65rem;font-family:var(--font-brand);color:var(--brand-navy);">Nova balança</h3>
-  <div class="form-row">
-    <div class="form-group"><label class="form-label">Código</label><input class="form-control" id="b-codigo" placeholder="BAL-02"></div>
-    <div class="form-group"><label class="form-label">Nome</label><input class="form-control" id="b-nome" placeholder="Balança Expedição"></div>
-  </div>
-  <div class="form-row">
-    <div class="form-group"><label class="form-label">Local</label><input class="form-control" id="b-local" placeholder="Galpão 1"></div>
-    <div class="form-group"><label class="form-label">Porta COM</label><input class="form-control" id="b-com" placeholder="COM3"></div>
-  </div>
-  <button class="btn btn-primary" type="button" onclick="salvarBalanca()">Salvar</button>
 </div>
+
+<style>
+.balanca-cadastro .page-header { margin-bottom: 1rem; }
+.balanca-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.balanca-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.balanca-cadastro .toolbar { gap: 0.6rem; margin-bottom: 0.8rem; }
+.balanca-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.balanca-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
+.balanca-cadastro .btn-ghost { padding: 0.16rem 0.32rem; }
+.balanca-cadastro .card { padding: 1rem; margin-bottom: 0.8rem; }
+.balanca-cadastro .data-table { font-size: 0.8rem; }
+.balanca-cadastro .data-table th,
+.balanca-cadastro .data-table td {
+  padding: 0.22rem 0.64rem;
+  font-size: 0.76rem;
+  line-height: 1.2;
+  vertical-align: middle;
+}
+.balanca-cadastro .data-table th { font-size: 0.76rem; padding-top: 0.28rem; padding-bottom: 0.28rem; }
+.balanca-cadastro .balanca-acoes {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.08rem;
+  white-space: nowrap;
+}
+.balanca-cadastro .balanca-acoes .btn {
+  flex-shrink: 0;
+  padding: 0.12rem 0.28rem;
+  line-height: 1.15;
+}
+#modalOverlay .modal-dialog { max-width: 512px; }
+#modalOverlay .modal-header { padding: 0.92rem 1rem 0; gap: 0.6rem; }
+#modalOverlay .modal-header h2 { font-size: 0.96rem; }
+#modalOverlay .modal-close { font-size: 1.2rem; }
+#modalOverlay .modal-body { padding: 0.8rem 1rem 0.92rem; }
+#modalOverlay .modal-footer { gap: 0.4rem; padding: 0.8rem 1rem; }
+#modalOverlay .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+#modalOverlay .form-control {
+  padding: 0.48rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+#modalOverlay .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+#modalOverlay .form-group { margin-bottom: 0.8rem; }
+#modalOverlay .form-row { gap: 0.6rem; }
+#modalOverlay .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+</style>
 {% endblock %}
 
 {% block scripts %}
 <script>
+function escAttr(v){
+  return String(v == null ? '' : v)
+    .replace(/&/g,'&amp;').replace(/"/g,'&quot;')
+    .replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function abrirBalanca(tr){
+  const isEdit = !!(tr && tr.dataset && tr.dataset.id);
+  const d = isEdit ? tr.dataset : {};
+  window._editBalancaId = isEdit ? d.id : null;
+  const html = `
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Código</label>
+        <input class="form-control" id="b-codigo" value="${escAttr(d.codigo || '')}" placeholder="BAL-02">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nome</label>
+        <input class="form-control" id="b-nome" value="${escAttr(d.nome || '')}" placeholder="Balança Expedição">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Local</label>
+        <input class="form-control" id="b-local" value="${escAttr(d.local || '')}" placeholder="Galpão 1">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Porta COM</label>
+        <input class="form-control" id="b-com" value="${escAttr(d.porta || '')}" placeholder="COM3">
+      </div>
+    </div>
+  `;
+  abrirModal(isEdit ? 'Editar balança' : 'Nova balança', html, 'Gravar', salvarBalanca);
+}
+
 async function salvarBalanca(){
   const body = {
-    codigo: document.getElementById('b-codigo').value,
-    nome: document.getElementById('b-nome').value,
-    local: document.getElementById('b-local').value,
-    porta_com: document.getElementById('b-com').value
+    codigo: (document.getElementById('b-codigo').value || '').trim(),
+    nome: (document.getElementById('b-nome').value || '').trim(),
+    local: (document.getElementById('b-local').value || '').trim(),
+    porta_com: (document.getElementById('b-com').value || '').trim()
   };
-  const r = await fetch('/api/pesagem/balancas', {
-    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
-  });
-  const j = await r.json();
-  if (!r.ok || j.ok === false){
-    alert(j.error || 'Falha ao salvar');
+  if (!body.codigo || !body.nome){
+    showToast('Código e nome são obrigatórios', 'error');
     return;
   }
-  location.reload();
+  const id = window._editBalancaId;
+  const url = id ? `/api/pesagem/balancas/${id}` : '/api/pesagem/balancas';
+  const method = id ? 'PUT' : 'POST';
+  try {
+    const r = await fetch(url, {
+      method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    const j = await r.json();
+    if (!r.ok || j.ok === false){
+      showToast(j.error || 'Falha ao gravar', 'error');
+      return;
+    }
+    fecharModal();
+    location.reload();
+  } catch (e) {
+    showToast('Erro ao gravar', 'error');
+  }
+}
+
+async function excluirBalanca(id){
+  if (!confirm('Excluir esta balança? As leituras já registradas são mantidas.')) return;
+  try {
+    const r = await fetch(`/api/pesagem/balancas/${id}`, { method: 'DELETE' });
+    const j = await r.json();
+    if (!r.ok || j.ok === false){
+      showToast(j.error || 'Falha ao excluir', 'error');
+      return;
+    }
+    location.reload();
+  } catch (e) {
+    showToast('Erro ao excluir', 'error');
+  }
 }
 </script>
 {% endblock %}

@@ -1,5 +1,6 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
+<div class="custos-analise">
 <div class="page-header">
   <h1>Análise de Custos</h1>
   <p>Relatórios de custos, totalização de dietas e faturamento</p>
@@ -32,18 +33,21 @@
         <label class="radio-item"><input type="radio" name="centroCusto" value="faturamento"> Faturamento Mapa x Realizado</label>
         <label class="radio-item"><input type="radio" name="centroCusto" value="riscos"> Análise de Riscos</label>
       </div>
+    </div>
     <div class="form-group">
       <label class="form-label">Ordenar por</label>
       <div class="radio-group">
         <label class="radio-item"><input type="radio" name="ordenarPor" value="nome" checked> Nome do Centro de Custo</label>
         <label class="radio-item"><input type="radio" name="ordenarPor" value="valor"> Valor</label>
       </div>
+    </div>
   </div>
-  <div style="margin-top:12px;display:flex;gap:8px">
+  <div class="custos-actions">
     <button class="btn btn-primary" onclick="gerarRelatorio()">📊 Visualizar</button>
     <button class="btn btn-secondary" onclick="exportarRelatorio()">📥 Exportar</button>
     <button class="btn btn-secondary" onclick="fecharRelatorio()">✕ Fechar</button>
   </div>
+</div>
 
 <div id="painelResultados" style="display:none">
   <div class="card">
@@ -52,6 +56,7 @@
       <span class="subtitle" id="subtituloRelatorio">Período: 01/01/2025 a 31/01/2025</span>
     </div>
     <div id="conteudoRelatorio" style="overflow-x:auto"></div>
+  </div>
 </div>
 
 <div id="painelCustos">
@@ -59,15 +64,19 @@
     <div class="stat-card">
       <div class="stat-icon green">📈</div>
       <div class="stat-info"><h4>R$ 142.500</h4><p>Créditos (Receitas)</p></div>
+    </div>
     <div class="stat-card">
       <div class="stat-icon red">📉</div>
       <div class="stat-info"><h4>R$ 98.300</h4><p>Débitos (Custos)</p></div>
+    </div>
     <div class="stat-card">
       <div class="stat-icon blue">💹</div>
       <div class="stat-info"><h4>R$ 44.200</h4><p>Saldo do Período</p></div>
+    </div>
     <div class="stat-card">
       <div class="stat-icon yellow">📊</div>
       <div class="stat-info"><h4>31,0%</h4><p>Margem Líquida</p></div>
+    </div>
   </div>
   <div class="card">
     <div class="card-header"><h3>Totalização de Dietas por Clínica</h3></div>
@@ -88,23 +97,159 @@
         </tbody>
       </table>
     </div>
+  </div>
   <div class="card">
     <div class="card-header"><h3>📊 Gráfico - Distribuição de Refeições</h3></div>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;justify-content:center;padding:20px">
-      <div style="width:200px;height:200px;border-radius:50%;background:conic-gradient(var(--accent) 0deg 120deg, #34d399 120deg 200deg, #fbbf24 200deg 260deg, #f87171 260deg 300deg, #60a5fa 300deg 340deg, #a78bfa 340deg 360deg); position:relative">
-        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg-card);border-radius:50%;width:100px;height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center">
-          <strong style="font-size:18px">189</strong>
-          <small style="font-size:10px;color:var(--text-muted)">Total</small>
+    <div class="custos-chart">
+      <div class="custos-pie">
+        <div class="custos-pie-hole">
+          <strong>189</strong>
+          <small>Total</small>
         </div>
-      <div>
-        <div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:12px;height:12px;border-radius:3px;background:var(--accent);display:inline-block"></span> Desjejum: 16</div>
-        <div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:12px;height:12px;border-radius:3px;background:#34d399;display:inline-block"></span> Colação: 11</div>
-        <div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:12px;height:12px;border-radius:3px;background:#fbbf24;display:inline-block"></span> Almoço: 20</div>
-        <div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:12px;height:12px;border-radius:3px;background:#f87171;display:inline-block"></span> Merenda: 11</div>
-        <div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:12px;height:12px;border-radius:3px;background:#60a5fa;display:inline-block"></span> Jantar: 17</div>
-        <div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:12px;height:12px;border-radius:3px;background:#a78bfa;display:inline-block"></span> Ceia: 7</div>
+      </div>
+      <div class="custos-legend">
+        <div class="custos-legend-item"><span style="background:var(--accent)"></span> Desjejum: 16</div>
+        <div class="custos-legend-item"><span style="background:#34d399"></span> Colação: 11</div>
+        <div class="custos-legend-item"><span style="background:#fbbf24"></span> Almoço: 20</div>
+        <div class="custos-legend-item"><span style="background:#f87171"></span> Merenda: 11</div>
+        <div class="custos-legend-item"><span style="background:#60a5fa"></span> Jantar: 17</div>
+        <div class="custos-legend-item"><span style="background:#a78bfa"></span> Ceia: 7</div>
+      </div>
     </div>
+  </div>
 </div>
+</div>
+
+<style>
+.custos-analise .page-header { margin-bottom: 1rem; }
+.custos-analise .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.custos-analise .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+
+.custos-analise .tabs { gap: 0.4rem; margin-bottom: 1rem; padding-bottom: 0.2rem; }
+.custos-analise .tab {
+  padding: 0.52rem 0.8rem;
+  font-size: 0.74rem;
+  border-radius: 0.4rem;
+}
+
+.custos-analise .filter-panel { padding: 1rem; margin-bottom: 1rem; }
+.custos-analise .filter-grid {
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 0.6rem;
+}
+.custos-analise .form-group { margin-bottom: 0.8rem; }
+.custos-analise .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+.custos-analise .form-control,
+.custos-analise input[type="date"] {
+  padding: 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+.custos-analise .form-control:focus,
+.custos-analise input[type="date"]:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+
+.custos-analise .radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+.custos-analise .radio-item {
+  display: flex;
+  align-items: center;
+  gap: 0.36rem;
+  font-size: 0.74rem;
+  font-weight: 500;
+  margin: 0;
+  line-height: 1.25;
+}
+.custos-analise input[type="radio"] {
+  width: 0.72rem;
+  height: 0.72rem;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.custos-actions { margin-top: 0.6rem; display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.custos-analise .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+
+.custos-analise .card { padding: 1rem; margin-bottom: 0.8rem; }
+.custos-analise .card-header { margin-bottom: 0.8rem; gap: 0.6rem; }
+.custos-analise .card-header h3 { font-size: 0.84rem; }
+.custos-analise .subtitle { font-size: 0.72rem; color: var(--gray-600); }
+
+.custos-analise .stats-grid {
+  grid-template-columns: repeat(auto-fit, minmax(176px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.2rem;
+}
+.custos-analise .stat-card {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 1rem;
+}
+.custos-analise .stat-icon { font-size: 1.44rem; line-height: 1; }
+.custos-analise .stat-info h4 { font-size: 1.12rem; margin: 0; line-height: 1.2; }
+.custos-analise .stat-info p { font-size: 0.72rem; margin: 0.12rem 0 0; color: var(--gray-600); }
+
+.custos-analise table { font-size: 0.8rem; }
+.custos-analise th,
+.custos-analise td {
+  padding: 0.68rem 0.8rem;
+  font-size: 0.76rem;
+}
+.custos-analise th { font-size: 0.76rem; padding-top: 0.68rem; padding-bottom: 0.68rem; }
+.custos-analise .status { padding: 0.2rem 0.52rem; font-size: 0.64rem; }
+
+.custos-chart {
+  display: flex;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.custos-pie {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: conic-gradient(var(--accent) 0deg 120deg, #34d399 120deg 200deg, #fbbf24 200deg 260deg, #f87171 260deg 300deg, #60a5fa 300deg 340deg, #a78bfa 340deg 360deg);
+  position: relative;
+}
+.custos-pie-hole {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--bg-card);
+  border-radius: 50%;
+  width: 80px;
+  height: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.custos-pie-hole strong { font-size: 14px; }
+.custos-pie-hole small { font-size: 8px; color: var(--text-muted); }
+.custos-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.2rem 0;
+  font-size: 0.74rem;
+}
+.custos-legend-item span {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+  flex-shrink: 0;
+}
+</style>
 
 <script>
 var abaRelAtual = 'custos';

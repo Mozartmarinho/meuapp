@@ -1,5 +1,6 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
+<div class="cardapio-cadastro">
 <div class="page-header">
   <h1>Cadastro de Cardápio</h1>
   <p>Cardápios por dieta e horário (Desjejum…Ceia). Clique na maçã para cadastrar ou editar.</p>
@@ -226,21 +227,79 @@
     </div>
   </div>
 </div>
+</div>
 
 <style>
+.cardapio-cadastro .page-header { margin-bottom: 1rem; }
+.cardapio-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.cardapio-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.cardapio-cadastro .toolbar { gap: 0.6rem; margin-bottom: 0.8rem; }
+.cardapio-cadastro .toolbar-search {
+  gap: 0.4rem;
+  padding: 0.44rem 0.68rem;
+  max-width: 336px;
+  flex-basis: 176px;
+}
+.cardapio-cadastro .toolbar-search i { font-size: 0.72rem; }
+.cardapio-cadastro .toolbar-search input {
+  font-size: 0.72rem;
+  padding: 0;
+  width: auto;
+  border: none;
+  box-shadow: none;
+}
+.cardapio-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.cardapio-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
+.cardapio-cadastro .btn-ghost { padding: 0.18rem 0.32rem; }
+.cardapio-cadastro .card { padding: 1rem; margin-bottom: 0.8rem; }
+.cardapio-cadastro .data-table { font-size: 0.8rem; }
+.cardapio-cadastro .data-table th,
+.cardapio-cadastro .data-table td {
+  padding: 0.22rem 0.7rem;
+  font-size: 0.76rem;
+  line-height: 1.2;
+  vertical-align: middle;
+}
+.cardapio-cadastro .data-table th { font-size: 0.76rem; padding-top: 0.28rem; padding-bottom: 0.28rem; }
+.cardapio-cadastro .data-table input[type="checkbox"] {
+  width: 0.85rem;
+  height: 0.85rem;
+  margin: 0;
+  vertical-align: middle;
+}
+.cardapio-cadastro .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+.cardapio-cadastro .form-control {
+  padding: 0.48rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+.cardapio-cadastro .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+.cardapio-cadastro .form-group { margin-bottom: 0.8rem; }
+.cardapio-cadastro .tabs { gap: 0.4rem; margin-bottom: 1rem; }
+.cardapio-cadastro .tab {
+  padding: 0.52rem 0.8rem;
+  font-size: 0.74rem;
+  border-radius: 0.4rem;
+}
+.cardapio-cadastro .modal-close { font-size: 1.2rem; }
+
 .dieta-acoes {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem;
+  gap: 0.12rem;
   white-space: nowrap;
+  align-items: center;
 }
 .btn-cardapio-apple {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.1rem;
-  height: 2.1rem;
-  border-radius: 0.4rem;
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 0.32rem;
   color: #c0392b;
   background: #fef2f2;
   border: 1px solid #fecaca;
@@ -252,7 +311,7 @@
   color: #991b1b;
   border-color: #f87171;
 }
-.btn-cardapio-apple i { font-size: 1.15rem; }
+.btn-cardapio-apple i { font-size: 0.88rem; }
 
 .cardapio-modal-overlay {
   display: none;
@@ -262,7 +321,7 @@
   background: rgba(13, 43, 92, 0.55);
   align-items: flex-start;
   justify-content: center;
-  padding: 1rem;
+  padding: 0.8rem;
   overflow-y: auto;
 }
 .cardapio-modal-overlay.open { display: flex; }
@@ -271,47 +330,47 @@
   border-radius: var(--radius);
   width: 100%;
   max-width: 980px;
-  margin: 1rem auto 2rem;
+  margin: 0.8rem auto 1.6rem;
   box-shadow: 0 12px 36px rgba(13, 43, 92, 0.25);
 }
 .cardapio-modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1.1rem 1.25rem 0.35rem;
-  gap: 0.75rem;
+  padding: 0.88rem 1rem 0.28rem;
+  gap: 0.6rem;
 }
 .cardapio-modal-header h2 {
   margin: 0;
-  font-size: 1.2rem;
+  font-size: 0.96rem;
   font-weight: 700;
   color: #0f2a5c;
 }
-.cardapio-modal-body { padding: 0.5rem 1.15rem 1.15rem; }
+.cardapio-modal-body { padding: 0.4rem 0.92rem 0.92rem; }
 
 .cardapio-box { padding: 0; }
-.cardapio-toolbar { display:flex; align-items:center; gap:0.35rem; margin-bottom:0.85rem; flex-wrap:wrap; }
-.cardapio-toolbar .sep { width:1px; height:22px; background:#cbd5e1; margin:0 0.25rem; }
-.cardapio-toolbar .btn-modo { font-size:0.78rem; padding:0.35rem 0.55rem; white-space:nowrap; }
-.cardapio-top .form-full { margin-bottom:0.65rem; }
-.cardapio-meta { display:flex; gap:0.75rem; flex-wrap:wrap; align-items:flex-end; }
+.cardapio-toolbar { display:flex; align-items:center; gap:0.28rem; margin-bottom:0.68rem; flex-wrap:wrap; }
+.cardapio-toolbar .sep { width:1px; height:18px; background:#cbd5e1; margin:0 0.2rem; }
+.cardapio-toolbar .btn-modo { font-size:0.62rem; padding:0.28rem 0.44rem; white-space:nowrap; }
+.cardapio-top .form-full { margin-bottom:0.52rem; }
+.cardapio-meta { display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end; }
 .horarios-box {
-  display:flex; flex-wrap:wrap; gap:0.75rem 1.1rem; align-items:center;
-  margin:0.35rem 0 1rem; padding:0.7rem 0.85rem;
-  background:#f1f5f9; border:1px solid #cbd5e1; border-radius:0.375rem;
+  display:flex; flex-wrap:wrap; gap:0.6rem 0.88rem; align-items:center;
+  margin:0.28rem 0 0.8rem; padding:0.56rem 0.68rem;
+  background:#f1f5f9; border:1px solid #cbd5e1; border-radius:0.3rem;
 }
-.horarios-box strong { color:#0f2a5c; margin-right:0.25rem; }
-.horarios-box label { margin:0; font-size:0.9rem; display:flex; gap:0.35rem; align-items:center; font-weight:500; }
-.radio-block { display:flex; gap:1.25rem; flex-wrap:wrap; margin-bottom:0.75rem; }
-.radio-row { display:flex; gap:0.85rem; flex-wrap:wrap; }
-.radio-row label { margin:0; font-weight:500; display:flex; gap:0.3rem; align-items:center; }
-.radio-row.wrap { gap:0.55rem 0.9rem; }
-.form-row.two-cols { display:grid; grid-template-columns:1fr 1fr; gap:1rem 1.25rem; }
-.campos-prato .form-group { margin-bottom:0.55rem; }
-.conv-box { border:1px solid #e2e8f0; border-radius:0.375rem; padding:0.75rem; margin-bottom:0.75rem; background:#fff; }
-.conv-box h4 { margin:0 0 0.5rem; font-size:0.92rem; color:#1f2d4d; }
-.cardapio-footer { margin-top:1rem; border-top:1px solid #e5e7eb; padding-top:0.85rem; }
-.cardapio-hook-note { margin:0.65rem 0 0; font-size:0.75rem; color:#64748b; }
+.horarios-box strong { color:#0f2a5c; margin-right:0.2rem; }
+.horarios-box label { margin:0; font-size:0.72rem; display:flex; gap:0.28rem; align-items:center; font-weight:500; }
+.radio-block { display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:0.6rem; }
+.radio-row { display:flex; gap:0.68rem; flex-wrap:wrap; }
+.radio-row label { margin:0; font-weight:500; display:flex; gap:0.24rem; align-items:center; }
+.radio-row.wrap { gap:0.44rem 0.72rem; }
+.form-row.two-cols { display:grid; grid-template-columns:1fr 1fr; gap:0.8rem 1rem; }
+.campos-prato .form-group { margin-bottom:0.44rem; }
+.conv-box { border:1px solid #e2e8f0; border-radius:0.3rem; padding:0.6rem; margin-bottom:0.6rem; background:#fff; }
+.conv-box h4 { margin:0 0 0.4rem; font-size:0.74rem; color:#1f2d4d; }
+.cardapio-footer { margin-top:0.8rem; border-top:1px solid #e5e7eb; padding-top:0.68rem; }
+.cardapio-hook-note { margin:0.52rem 0 0; font-size:0.6rem; color:#64748b; }
 
 /* Dieta vinculada à linha — evidência em verde São Geraldo (--brand-lime) */
 #f-dieta-nome.dieta-locked,

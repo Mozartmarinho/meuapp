@@ -1,5 +1,6 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
+<div class="eti-cadastro">
 <div class="page-header">
   <h1>Configuração de etiquetas</h1>
   <p>Layout da folha e campos impressos (dieta / fórmula)</p>
@@ -66,19 +67,19 @@
     </fieldset>
   </div>
 
-  <div class="eti-section-title" style="margin-top:1.1rem">Configuração dos campos</div>
+  <div class="eti-section-title eti-section-campos">Configuração dos campos</div>
   <div class="eti-toolbar">
     <button class="btn btn-primary btn-sm" type="button" id="btnAddCampo" onclick="addCampo()" disabled title="Novo campo"><i class="fas fa-plus"></i></button>
     <button class="btn btn-ghost btn-sm" type="button" id="btnDelCampo" onclick="delCampo()" disabled title="Remover campo"><i class="fas fa-minus"></i></button>
     <button class="btn btn-ghost btn-sm" type="button" onclick="ajustarCampo()" title="Ajustar"><i class="fas fa-tools"></i> Ajustar</button>
   </div>
 
-  <div class="table-container" style="box-shadow:none;border:1px solid #e2e8f0;border-radius:8px;max-height:280px;overflow:auto;">
+  <div class="table-container eti-campos-wrap">
     <table class="data-table" id="gridCampos">
       <thead>
         <tr>
-          <th style="width:70px">Tipo</th>
-          <th style="width:180px">Nome</th>
+          <th class="eti-col-tipo">Tipo</th>
+          <th class="eti-col-nome">Nome</th>
           <th>Texto</th>
         </tr>
       </thead>
@@ -87,37 +88,72 @@
   </div>
   <p class="eti-legend"><strong>D</strong> = Dieta &nbsp;&nbsp; <strong>F</strong> = Fórmula</p>
 </div>
+</div>
 
 <style>
-.eti-panel { padding: 1rem 1.15rem 1.25rem; max-width: 980px; }
+.eti-cadastro .page-header { margin-bottom: 1rem; }
+.eti-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.eti-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.eti-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.eti-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
+.eti-cadastro .btn-ghost { padding: 0.28rem 0.4rem; }
+.eti-cadastro .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+.eti-cadastro .form-control {
+  padding: 0.48rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+.eti-cadastro .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+.eti-cadastro .data-table { font-size: 0.8rem; }
+.eti-cadastro .data-table th,
+.eti-cadastro .data-table td { padding: 0.4rem 0.45rem; font-size: 0.76rem; }
+.eti-cadastro .data-table th { font-size: 0.76rem; }
+.eti-cadastro .data-table .form-control { padding: 0.24rem 0.32rem; font-size: 0.76rem; }
+.eti-cadastro input[type="radio"],
+.eti-cadastro input[type="checkbox"] {
+  width: 0.72rem;
+  height: 0.72rem;
+  margin: 0;
+  flex-shrink: 0;
+}
+.eti-panel { padding: 0.8rem 0.92rem 1rem; max-width: 784px; }
 .eti-section-title {
-  font-size: 0.95rem; font-weight: 800; color: #0f2a5c;
-  margin-bottom: 0.65rem; padding-bottom: 0.35rem;
+  font-size: 0.76rem; font-weight: 800; color: #0f2a5c;
+  margin-bottom: 0.52rem; padding-bottom: 0.28rem;
   border-bottom: 1px solid #e2e8f0;
 }
-.eti-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:0.3rem; margin-bottom:0.85rem; }
-.eti-sep { width:1px; height:22px; background:#cbd5e1; margin:0 0.35rem; }
-.eti-pos { margin-left:auto; font-size:0.85rem; color:#64748b; font-weight:600; }
-.eti-nome-row { display:flex; gap:1rem; align-items:flex-end; margin-bottom:0.9rem; }
-.eti-ativa { display:flex; align-items:center; gap:0.4rem; margin-bottom:0.35rem; white-space:nowrap; }
+.eti-section-campos { margin-top: 0.88rem; }
+.eti-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:0.24rem; margin-bottom:0.68rem; }
+.eti-sep { width:1px; height:18px; background:#cbd5e1; margin:0 0.28rem; }
+.eti-pos { margin-left:auto; font-size:0.68rem; color:#64748b; font-weight:600; }
+.eti-nome-row { display:flex; gap:0.8rem; align-items:flex-end; margin-bottom:0.72rem; }
+.eti-ativa { display:flex; align-items:center; gap:0.32rem; margin-bottom:0.28rem; white-space:nowrap; font-size:0.7rem; color:#334155; }
 .eti-grid-cfg {
-  display:grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap:0.75rem;
+  display:grid; grid-template-columns: repeat(2, minmax(176px, 1fr)); gap:0.6rem;
 }
 .eti-box {
-  border:1px solid #dbe3ee; border-radius:8px; padding:0.7rem 0.85rem 0.9rem;
+  border:1px solid #dbe3ee; border-radius:6px; padding:0.56rem 0.68rem 0.72rem;
   margin:0; background:#f8fafc;
 }
-.eti-box legend { font-size:0.78rem; font-weight:700; color:#334155; padding:0 0.35rem; }
+.eti-box legend { font-size:0.62rem; font-weight:700; color:#334155; padding:0 0.28rem; }
 .eti-box > label {
-  display:flex; align-items:center; gap:0.4rem; font-size:0.88rem; color:#334155; margin:0.3rem 0;
+  display:flex; align-items:center; gap:0.32rem; font-size:0.7rem; color:#334155; margin:0.24rem 0;
 }
 .eti-box label:has(input.form-control) {
-  flex-direction:column; align-items:stretch; gap:0.2rem; font-size:0.78rem; color:#475569;
+  flex-direction:column; align-items:stretch; gap:0.16rem; font-size:0.62rem; color:#475569;
 }
-.eti-outros { display:none; gap:0.5rem; margin-top:0.4rem; }
+.eti-outros { display:none; gap:0.4rem; margin-top:0.32rem; }
 .eti-outros.open { display:grid; grid-template-columns:1fr 1fr; }
-.eti-margens { display:grid; grid-template-columns:1fr 1fr; gap:0.45rem; }
-.eti-legend { margin:0.55rem 0 0; font-size:0.82rem; color:#64748b; }
+.eti-margens { display:grid; grid-template-columns:1fr 1fr; gap:0.36rem; }
+.eti-legend { margin:0.44rem 0 0; font-size:0.66rem; color:#64748b; }
+.eti-campos-wrap {
+  box-shadow:none; border:1px solid #e2e8f0; border-radius:6px; max-height:224px; overflow:auto;
+}
+.eti-col-tipo { width:56px; }
+.eti-col-nome { width:144px; }
 #gridCamposBody tr.selected { background:#e8f0ff; }
 #gridCamposBody tr { cursor:pointer; }
 .eti-panel:not(.editing) [data-field] { pointer-events:none; background:#f1f5f9; }

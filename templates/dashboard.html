@@ -71,100 +71,114 @@
 
 <style>
     .dashboard-container {
-        padding: 20px;
+        padding: 16px;
     }
 
     .dashboard-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 20px;
+        margin-bottom: 16px;
     }
 
     .dashboard-header h1 {
         color: #333;
+        font-size: 1.6rem;
+        line-height: 1.2;
     }
 
-    .btn {
-        padding: 10px 15px;
+    .dashboard-container > h2 {
+        font-size: 1.2rem;
+        margin: 0;
+    }
+
+    .dashboard-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+
+    .dashboard-container .btn {
+        padding: 8px 12px;
         border: none;
-        border-radius: 5px;
-        font-size: 16px;
+        border-radius: 4px;
+        font-size: 0.8rem;
         cursor: pointer;
         text-decoration: none;
         transition: background-color 0.3s;
     }
 
-    .btn-danger {
+    .dashboard-container .btn-danger {
         background-color: #dc3545;
         color: white;
     }
 
-    .btn-danger:hover {
+    .dashboard-container .btn-danger:hover {
         background-color: #c82333;
     }
 
-    .btn-primary {
+    .dashboard-container .btn-primary {
         background-color: #007bff;
         color: white;
     }
 
-    .btn-primary:hover {
+    .dashboard-container .btn-primary:hover {
         background-color: #0056b3;
     }
 
     .dashboard-stats {
         display: flex;
         justify-content: space-between;
-        margin-bottom: 20px;
+        gap: 8px;
+        margin-bottom: 16px;
     }
 
-    .stat {
+    .dashboard-container .stat {
         background-color: white;
-        padding: 20px;
-        border-radius: 5px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        padding: 16px;
+        border-radius: 4px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         flex: 1;
-        margin-right: 10px;
-    }
-
-    .stat:last-child {
         margin-right: 0;
     }
 
-    .stat h2 {
+    .dashboard-container .stat h2 {
         margin: 0;
-        font-size: 18px;
+        font-size: 0.9rem;
         color: #666;
     }
 
-    .stat p {
-        font-size: 24px;
+    .dashboard-container .stat p {
+        font-size: 1.2rem;
         color: #333;
-        margin: 5px 0 0;
+        margin: 4px 0 0;
     }
 
-    table {
+    .dashboard-container table {
         width: 100%;
         border-collapse: collapse;
-        margin-top: 20px;
+        margin-top: 16px;
         background-color: white;
-        border-radius: 5px;
+        border-radius: 4px;
         overflow: hidden;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        font-size: 0.8rem;
+        line-height: 1.2;
     }
 
-    th, td {
-        padding: 10px;
+    .dashboard-container th,
+    .dashboard-container td {
+        padding: 8px;
         text-align: left;
         border-bottom: 1px solid #ddd;
     }
 
-    th {
+    .dashboard-container th {
         background-color: #f2f2f2;
     }
 
-    tr:hover {
+    .dashboard-container tr:hover {
         background-color: #f1f1f1;
     }
 </style>

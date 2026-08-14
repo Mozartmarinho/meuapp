@@ -659,39 +659,69 @@ def dashboard():
 @main.route('/chamados')
 @login_required
 def listar_chamados():
-    """Lista todos os chamados"""
-    chamados = Chamado.query.order_by(Chamado.data_criacao.desc()).all()
-    return render_template('chamados.html', chamados=chamados)
+    """Lista os chamados criados pelo usuário logado (todos os status)."""
+    user_id = session['user_id']
+    chamados = (
+        Chamado.query.options(joinedload(Chamado.cliente))
+        .filter_by(tecnico_id=user_id)
+        .order_by(Chamado.data_criacao.desc())
+        .all()
+    )
+    clientes = Cliente.query.order_by(Cliente.nome.asc()).all()
+    return render_template('chamados.html', chamados=chamados, clientes=clientes)
 
 @main.route('/novo_chamado', methods=['GET', 'POST'])
 @login_required
 def novo_chamado():
     """Criar novo chamado"""
-    clientes = Cliente.query.all()
+    clientes = Cliente.query.order_by(Cliente.nome.asc()).all()
     if request.method == 'POST':
         try:
+            raw_cliente = (request.form.get('cliente_id') or '').strip()
+            if raw_cliente.isdigit():
+                cliente_id = int(raw_cliente)
+            else:
+                cli = Cliente.query.filter_by(nome=raw_cliente).first()
+                cliente_id = cli.id if cli else None
+            if not cliente_id:
+                raise ValueError('Selecione um cliente válido.')
+
             numero_chamado = gerar_numero_chamado()
             chamado = Chamado(
                 numero_chamado=numero_chamado,
-                cliente_id=int(request.form['cliente_id']),
+                cliente_id=cliente_id,
                 equipamento=request.form.get('equipamento'),
                 tipo_servico=request.form['tipo_servico'],
                 descricao=request.form['descricao'],
-                status=request.form['status'],
-                prioridade=request.form['prioridade'],
-                observacoes=request.form['observacoes'],
+                status=request.form.get('status') or 'Pendente',
+                prioridade=request.form.get('prioridade') or 'Normal',
+                observacoes=request.form.get('observacoes'),
                 tecnico_id=session['user_id']
             )
 
             db.session.add(chamado)
             db.session.commit()
 
+            if _wants_json():
+                return jsonify({
+                    'ok': True,
+                    'success': True,
+                    'message': 'Chamado criado com sucesso!',
+                    'chamado': chamado.to_dict(),
+                })
+
             flash('Chamado criado com sucesso!', 'success')
             return redirect(url_for('main.listar_chamados'))
 
         except Exception as e:
-            flash(f'Erro ao criar chamado: {str(e)}', 'error')
             db.session.rollback()
+            if _wants_json():
+                return jsonify({
+                    'ok': False,
+                    'success': False,
+                    'message': f'Erro ao criar chamado: {str(e)}',
+                }), 400
+            flash(f'Erro ao criar chamado: {str(e)}', 'error')
 
     return render_template('novo_chamado.html', clientes=clientes)
 

@@ -1,5 +1,6 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
+<div class="nut-cadastro">
 <div class="page-header">
   <h1>Cadastro de tabela de nutrientes</h1>
   <p>Tabelas, alimentos e composição nutricional (por 100g / 100ml)</p>
@@ -7,7 +8,7 @@
 
 <div class="card nut-panel">
   <div class="nut-top">
-    <div class="form-group" style="margin:0;flex:1;min-width:220px;">
+    <div class="form-group" style="margin:0;flex:1;min-width:176px;">
       <label class="form-label" for="selTabela">Nome da tabela:</label>
       <select id="selTabela" class="form-control" onchange="trocarTabela()">
         {% for t in tabelas %}
@@ -29,6 +30,18 @@
         <i class="fas fa-folder-open"></i> Importa Tabela
       </button>
       <input type="file" id="fileImportFdc" accept=".zip,.json,application/zip,application/json" hidden>
+    </div>
+  </div>
+
+  <div class="nut-busca-wrap">
+    <div class="form-group" style="margin:0;flex:1;min-width:176px;">
+      <label class="form-label" for="buscaAlimento">Busca por nome do alimento</label>
+      <input class="form-control" id="buscaAlimento" type="text" autocomplete="off"
+             placeholder="Digite para filtrar os alimentos cadastrados..."
+             oninput="agendarBuscaAlimento()"
+             onkeydown="onBuscaAlimentoKey(event)"
+             onfocus="mostrarListaBuscaAlimento()">
+      <div id="listaBuscaAlimento" class="nut-busca-lista" hidden></div>
     </div>
   </div>
 
@@ -54,7 +67,7 @@
 
   <div class="nut-macros">
     <div class="nut-macros-left">
-      <div class="form-group" style="margin:0 0 0.75rem;">
+      <div class="form-group" style="margin:0 0 0.6rem;">
         <label class="form-label">Última alteração</label>
         <input class="form-control" id="ultimaAlteracao" readonly>
       </div>
@@ -85,66 +98,119 @@
     </div>
   </div>
 
-  <div class="table-container" style="box-shadow:none;border:1px solid #e2e8f0;border-radius:8px;max-height:360px;overflow:auto;">
+  <div class="table-container" style="box-shadow:none;border:1px solid #e2e8f0;border-radius:6px;max-height:288px;overflow:auto;">
     <table class="data-table" id="gridNutrientes">
       <thead>
         <tr>
           <th>Nutrientes (Valores referentes a 100g ou 100ml)</th>
-          <th style="width:110px">Quant.</th>
-          <th style="width:80px">Un.</th>
-          <th style="width:90px">Fator</th>
-          <th style="width:70px"></th>
+          <th style="width:88px">Quant.</th>
+          <th style="width:64px">Un.</th>
+          <th style="width:72px">Fator</th>
+          <th style="width:56px"></th>
         </tr>
       </thead>
       <tbody id="gridNutrientesBody"></tbody>
     </table>
   </div>
-  <div style="margin-top:0.6rem;">
+  <div style="margin-top:0.48rem;">
     <button class="btn btn-ghost btn-sm" type="button" id="btnAddNut" onclick="addNutrienteRow()" disabled>
       <i class="fas fa-plus"></i> Nutriente
     </button>
   </div>
 </div>
+</div>
 
 <style>
-.nut-panel { padding: 1rem 1.1rem 1.25rem; }
-.nut-top { display:flex; flex-wrap:wrap; gap:0.75rem 1rem; align-items:flex-end; margin-bottom:1rem; }
-.nut-top-actions { display:flex; flex-wrap:wrap; gap:0.4rem; }
-.nut-alimento-bar { display:flex; flex-wrap:wrap; gap:0.75rem; align-items:flex-end; margin-bottom:1rem; }
-.nut-nav { display:flex; flex-wrap:wrap; align-items:center; gap:0.25rem; }
-.nut-sep { width:1px; height:22px; background:#cbd5e1; margin:0 0.35rem; }
-.nut-macro-cols { display:grid; grid-template-columns:repeat(3, minmax(160px, 1fr)); gap:0.75rem; }
+.nut-cadastro .page-header { margin-bottom: 1rem; }
+.nut-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.nut-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.nut-cadastro .card.nut-panel { padding: 0.8rem 0.88rem 1rem; margin-bottom: 0.8rem; }
+.nut-cadastro .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+.nut-cadastro .form-control {
+  padding: 0.48rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+.nut-cadastro .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+.nut-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.nut-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
+.nut-cadastro .btn-ghost { padding: 0.28rem 0.4rem; }
+.nut-cadastro .data-table { font-size: 0.8rem; }
+.nut-cadastro .data-table th,
+.nut-cadastro .data-table td { padding: 0.4rem 0.55rem; font-size: 0.76rem; }
+.nut-cadastro .data-table th { font-size: 0.76rem; }
+.nut-cadastro .data-table .form-control { padding: 0.28rem 0.4rem; font-size: 0.76rem; }
+.nut-top { display:flex; flex-wrap:wrap; gap:0.6rem 0.8rem; align-items:flex-end; margin-bottom:0.8rem; }
+.nut-top-actions { display:flex; flex-wrap:wrap; gap:0.32rem; }
+.nut-busca-wrap { position:relative; margin-bottom:0.8rem; z-index:4; }
+.nut-busca-lista {
+  position:absolute;
+  left:0; right:0;
+  top:100%;
+  max-height:192px;
+  overflow:auto;
+  border:1px solid #d1d5db;
+  border-radius:6px;
+  margin-top:2px;
+  background:#fff;
+  box-shadow:0 6px 16px rgba(15,23,42,.12);
+  z-index:20;
+}
+.nut-busca-item {
+  display:block;
+  width:100%;
+  text-align:left;
+  border:none;
+  border-bottom:1px solid #e5e7eb;
+  background:#fff;
+  padding:0.4rem 0.6rem;
+  cursor:pointer;
+  font:inherit;
+  font-size:0.8rem;
+  color:#1e293b;
+}
+.nut-busca-item:last-child { border-bottom:none; }
+.nut-busca-item:hover, .nut-busca-item.active { background:#eff6ff; }
+.nut-busca-vazio { padding:0.56rem 0.6rem; color:#64748b; font-size:0.7rem; }
+.nut-alimento-bar { display:flex; flex-wrap:wrap; gap:0.6rem; align-items:flex-end; margin-bottom:0.8rem; }
+.nut-nav { display:flex; flex-wrap:wrap; align-items:center; gap:0.2rem; }
+.nut-sep { width:1px; height:18px; background:#cbd5e1; margin:0 0.28rem; }
+.nut-macros { margin-bottom:0.6rem; }
+.nut-macro-cols { display:grid; grid-template-columns:repeat(3, minmax(128px, 1fr)); gap:0.6rem; }
 .nut-box {
   border:1px solid #dbe3ee;
-  border-radius:8px;
-  padding:0.65rem 0.75rem 0.85rem;
+  border-radius:6px;
+  padding:0.52rem 0.6rem 0.68rem;
   margin:0;
   background:#f8fafc;
 }
 .nut-box legend {
-  font-size:0.78rem;
+  font-size:0.62rem;
   font-weight:700;
   color:#334155;
-  padding:0 0.35rem;
+  padding:0 0.28rem;
 }
 .nut-box label {
   display:flex;
   flex-direction:column;
-  gap:0.2rem;
-  font-size:0.78rem;
+  gap:0.16rem;
+  font-size:0.62rem;
   color:#475569;
-  margin-bottom:0.45rem;
+  margin-bottom:0.36rem;
 }
 .nut-checks {
   display:flex;
   flex-direction:column;
-  gap:0.35rem;
-  margin-top:0.35rem;
+  gap:0.28rem;
+  margin-top:0.28rem;
 }
 .nut-checks label {
   flex-direction:row;
   align-items:center;
-  gap:0.4rem;
+  gap:0.32rem;
   margin:0;
 }
 .nut-panel input[readonly] { background:#eef2f7; }
@@ -162,6 +228,8 @@ const TABELA_ID = {{ tabela_id or 'null' }};
 let idx = 0;
 let editing = false;
 let draft = null;
+let buscaAlimentoTimer = null;
+let buscaAlimentoHighlight = -1;
 
 function current(){
   if (!ALIMENTOS.length) return null;
@@ -344,6 +412,94 @@ function buscarPorNome(){
     renderForm(current());
   }
 }
+
+function agendarBuscaAlimento(){
+  clearTimeout(buscaAlimentoTimer);
+  buscaAlimentoTimer = setTimeout(filtrarBuscaAlimento, 180);
+}
+
+function alimentosFiltradosBusca(){
+  const q = (document.getElementById('buscaAlimento').value||'').trim().toUpperCase();
+  if (!q) return [];
+  return ALIMENTOS
+    .map((a, i) => ({ a, i }))
+    .filter(({ a }) => (a.nome||'').toUpperCase().includes(q))
+    .slice(0, 40);
+}
+
+function filtrarBuscaAlimento(){
+  buscaAlimentoHighlight = -1;
+  mostrarListaBuscaAlimento();
+}
+
+function mostrarListaBuscaAlimento(){
+  const box = document.getElementById('listaBuscaAlimento');
+  const q = (document.getElementById('buscaAlimento').value||'').trim();
+  if (!q){
+    box.hidden = true;
+    box.innerHTML = '';
+    return;
+  }
+  const hits = alimentosFiltradosBusca();
+  if (!hits.length){
+    box.innerHTML = '<div class="nut-busca-vazio">Nenhum alimento encontrado nesta tabela.</div>';
+    box.hidden = false;
+    return;
+  }
+  box.innerHTML = hits.map(({ a, i }, n) =>
+    `<button type="button" class="nut-busca-item" data-idx="${i}" data-n="${n}" onclick="selecionarAlimentoBusca(${i})">${esc(a.nome)}</button>`
+  ).join('');
+  box.hidden = false;
+}
+
+function selecionarAlimentoBusca(i){
+  if (editing){ showToast('Salve ou cancele a edição','error'); return; }
+  if (i < 0 || i >= ALIMENTOS.length) return;
+  idx = i;
+  const a = current();
+  document.getElementById('buscaAlimento').value = a ? (a.nome || '') : '';
+  esconderListaBuscaAlimento();
+  renderForm(a);
+}
+
+function esconderListaBuscaAlimento(){
+  const box = document.getElementById('listaBuscaAlimento');
+  box.hidden = true;
+  buscaAlimentoHighlight = -1;
+}
+
+function onBuscaAlimentoKey(ev){
+  const box = document.getElementById('listaBuscaAlimento');
+  const items = box.querySelectorAll('.nut-busca-item');
+  if (ev.key === 'Escape'){
+    esconderListaBuscaAlimento();
+    return;
+  }
+  if (ev.key === 'Enter'){
+    ev.preventDefault();
+    if (buscaAlimentoHighlight >= 0 && items[buscaAlimentoHighlight]){
+      items[buscaAlimentoHighlight].click();
+    } else if (items.length === 1){
+      items[0].click();
+    }
+    return;
+  }
+  if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
+  if (box.hidden || !items.length) return;
+  ev.preventDefault();
+  if (ev.key === 'ArrowDown'){
+    buscaAlimentoHighlight = Math.min(items.length - 1, buscaAlimentoHighlight + 1);
+  } else {
+    buscaAlimentoHighlight = Math.max(0, buscaAlimentoHighlight <= 0 ? 0 : buscaAlimentoHighlight - 1);
+  }
+  items.forEach((el, n) => el.classList.toggle('active', n === buscaAlimentoHighlight));
+  items[buscaAlimentoHighlight].scrollIntoView({ block: 'nearest' });
+}
+
+document.addEventListener('click', (ev) => {
+  const wrap = document.querySelector('.nut-busca-wrap');
+  if (wrap && !wrap.contains(ev.target)) esconderListaBuscaAlimento();
+});
 
 function collectForm(base){
   const a = Object.assign({}, base || blankAlimento());

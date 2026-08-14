@@ -86,7 +86,55 @@
         {% block content %}{% endblock %}
     </main>
 
+    <div id="modalOverlay" class="modal-overlay" onclick="if(event.target===this)fecharModal()">
+        <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+            <div class="modal-header">
+                <h2 id="modalTitle">Modal</h2>
+                <button type="button" class="modal-close" onclick="fecharModal()" aria-label="Fechar">&times;</button>
+            </div>
+            <div id="modalBody" class="modal-body"></div>
+            <div id="modalFooter" class="modal-footer">
+                <button class="btn btn-secondary" type="button" onclick="fecharModal()">Fechar</button>
+                <button class="btn btn-primary" type="button" id="modalConfirmBtn" onclick="confirmarModal()">Gravar</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"><span id="toastIcon">✓</span><span id="toastMessage"></span></div>
+
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+    function showToast(msg, type) {
+        type = type || 'success';
+        var t = document.getElementById('toast');
+        document.getElementById('toastMessage').textContent = msg;
+        t.className = 'toast show ' + type;
+        clearTimeout(t._t);
+        t._t = setTimeout(function () { t.classList.remove('show'); }, 3000);
+    }
+    function abrirModal(t, c, b, cb) {
+        document.getElementById('modalTitle').textContent = t;
+        document.getElementById('modalBody').innerHTML = c;
+        document.getElementById('modalConfirmBtn').textContent = b || 'Gravar';
+        document.getElementById('modalFooter').style.display = 'flex';
+        document.getElementById('modalOverlay').style.display = 'flex';
+        window._cb = cb;
+        var first = document.querySelector('#modalBody input, #modalBody select, #modalBody textarea');
+        if (first) setTimeout(function () { first.focus(); }, 30);
+    }
+    function fecharModal() {
+        document.getElementById('modalOverlay').style.display = 'none';
+        window._cb = null;
+    }
+    function confirmarModal() {
+        if (window._cb) { window._cb(); } else { fecharModal(); }
+    }
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && document.getElementById('modalOverlay').style.display === 'flex') {
+            fecharModal();
+        }
+    });
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

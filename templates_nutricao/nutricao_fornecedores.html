@@ -1,181 +1,289 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
+<div class="forn-cadastro">
 <div class="page-header">
   <h1>Cadastro de Fornecedor</h1>
   <p>Dados cadastrais e condições de faturamento</p>
 </div>
 
 <div class="card forn-panel">
-  <div class="forn-toolbar">
-    <button class="btn btn-ghost btn-sm" type="button" onclick="nav('first')" title="Primeiro"><i class="fas fa-step-backward"></i></button>
-    <button class="btn btn-ghost btn-sm" type="button" onclick="nav('prev')" title="Anterior"><i class="fas fa-caret-left"></i></button>
-    <button class="btn btn-ghost btn-sm" type="button" onclick="nav('next')" title="Próximo"><i class="fas fa-caret-right"></i></button>
-    <button class="btn btn-ghost btn-sm" type="button" onclick="nav('last')" title="Último"><i class="fas fa-step-forward"></i></button>
-    <span class="forn-sep"></span>
-    <button class="btn btn-primary btn-sm" type="button" onclick="novo()" title="Novo"><i class="fas fa-plus"></i></button>
-    <button class="btn btn-ghost btn-sm" type="button" onclick="excluir()" title="Excluir"><i class="fas fa-minus"></i></button>
-    <button class="btn btn-ghost btn-sm" type="button" onclick="setEdit(true)" title="Editar"><i class="fas fa-pencil-alt"></i></button>
-    <button class="btn btn-primary btn-sm" type="button" id="btnSalvar" onclick="salvar()" title="Gravar" disabled><i class="fas fa-save"></i></button>
-    <button class="btn btn-ghost btn-sm" type="button" id="btnCancelar" onclick="cancelar()" title="Cancelar" disabled><i class="fas fa-times"></i></button>
-    <span class="forn-sep"></span>
-    <button class="btn btn-ghost btn-sm" type="button" onclick="location.reload()" title="Atualizar"><i class="fas fa-sync-alt"></i></button>
-    <button class="btn btn-ghost btn-sm" type="button" onclick="abrirBusca()" title="Buscar"><i class="fas fa-search"></i></button>
-    <span class="forn-pos" id="posLabel">0 / 0</span>
-  </div>
-
-  <div class="form-group">
-    <label class="form-label" for="fNome">Nome</label>
-    <input class="form-control" id="fNome" data-field>
-  </div>
-  <div class="form-group">
-    <label class="form-label" for="fEndereco">Endereço</label>
-    <input class="form-control" id="fEndereco" data-field>
-  </div>
-
-  <div class="forn-row">
-    <div class="form-group" style="flex:1.2">
-      <label class="form-label" for="fBairro">Bairro</label>
-      <input class="form-control" id="fBairro" data-field>
-    </div>
-    <div class="form-group" style="flex:1.2">
-      <label class="form-label" for="fMunicipio">Município</label>
-      <input class="form-control" id="fMunicipio" data-field>
-    </div>
-    <div class="form-group forn-cep">
-      <label class="form-label" for="fCep">CEP</label>
-      <input class="form-control" id="fCep" data-field>
-    </div>
-  </div>
-
-  <div class="forn-row">
-    <div class="form-group forn-uf">
-      <label class="form-label" for="fEstado">Estado</label>
-      <select class="form-control" id="fEstado" data-field>
-        <option value="">—</option>
-        {% for uf in estados %}
-        <option value="{{ uf }}">{{ uf }}</option>
+  <div class="table-container forn-table-wrap">
+    <table class="data-table" id="tabelaFornecedores">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>E-mail</th>
+          <th>Telefone</th>
+          <th style="width:112px">Faturamento</th>
+          <th>Observação</th>
+          <th style="width:148px">Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tabelaFornecedoresBody">
+        {% for f in fornecedores if f.ativo %}
+        <tr data-id="{{ f.id }}">
+          <td>{{ f.nome }}</td>
+          <td>{{ f.email or '—' }}</td>
+          <td>{{ f.telefone or '—' }}</td>
+          <td>{% if f.faturamento_dias %}{{ f.faturamento_dias }} dias{% else %}—{% endif %}</td>
+          <td class="forn-obs" title="{{ f.observacao or '' }}">{{ f.observacao or '—' }}</td>
+          <td class="forn-acoes">
+            <button class="btn btn-ghost btn-sm" type="button" onclick="abrirFornecedor({{ f.id }})" title="Editar">
+              <i class="fas fa-edit"></i> Editar
+            </button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="excluirFornecedor({{ f.id }})" title="Excluir">
+              <i class="fas fa-trash"></i> Excluir
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr id="linhaVazia">
+          <td colspan="6" style="text-align:center;color:#6B7280;">Nenhum fornecedor cadastrado.</td>
+        </tr>
         {% endfor %}
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label" for="fCnpj">CNPJ</label>
-      <input class="form-control" id="fCnpj" data-field>
-    </div>
-    <div class="form-group">
-      <label class="form-label" for="fIe">Ins. Estadual</label>
-      <input class="form-control" id="fIe" data-field>
-    </div>
-    <div class="form-group">
-      <label class="form-label" for="fTelefone">Telefone</label>
-      <input class="form-control" id="fTelefone" data-field>
-    </div>
+      </tbody>
+    </table>
   </div>
 
-  <div class="forn-row forn-row-email-fat">
-    <div class="form-group" style="flex:1">
-      <label class="form-label" for="fEmail">E-mail</label>
-      <input class="form-control" id="fEmail" type="email" data-field>
+  <div class="forn-add">
+    <button class="btn btn-primary" type="button" onclick="abrirFornecedor()">
+      <i class="fas fa-plus"></i> Adicionar novo fornecedor
+    </button>
+  </div>
+</div>
+</div>
+
+<div id="fornModalOverlay" class="forn-modal-overlay" onclick="if(event.target===this)fecharFornecedor()" hidden>
+  <div class="forn-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="fornModalTitle">
+    <div class="forn-modal-header">
+      <h2 id="fornModalTitle">Cadastro de Fornecedor</h2>
+      <button type="button" class="forn-modal-close" onclick="fecharFornecedor()" aria-label="Fechar">&times;</button>
     </div>
-    <fieldset class="forn-fat-box">
-      <legend>Faturamento</legend>
-      <div class="forn-fat-wrap">
-        <input class="form-control" type="number" min="0" step="1" id="fFat" data-field>
-        <span>Dias</span>
+    <div class="forn-modal-body">
+      <div class="form-group">
+        <label class="form-label" for="fNome">Nome</label>
+        <input class="form-control" id="fNome">
       </div>
-    </fieldset>
-  </div>
-
-  <div class="form-group">
-    <label class="form-label" for="fSite">Site</label>
-    <input class="form-control" id="fSite" data-field>
-  </div>
-  <div class="form-group">
-    <label class="form-label" for="fObs">Observação</label>
-    <input class="form-control" id="fObs" data-field>
-  </div>
-
-  <div class="forn-footer">
-    <button class="btn btn-primary" type="button" id="btnGravarFooter" onclick="salvar()" disabled>
-      <i class="fas fa-save"></i> Gravar
-    </button>
-    <button class="btn btn-secondary" type="button" onclick="window.history.length>1 ? history.back() : location.href='{{ url_for('nutricao.estoque') }}'">
-      <i class="fas fa-door-open"></i> Fechar
-    </button>
+      <div class="form-group">
+        <label class="form-label" for="fEndereco">Endereço</label>
+        <input class="form-control" id="fEndereco">
+      </div>
+      <div class="forn-row">
+        <div class="form-group" style="flex:1.2">
+          <label class="form-label" for="fBairro">Bairro</label>
+          <input class="form-control" id="fBairro">
+        </div>
+        <div class="form-group" style="flex:1.2">
+          <label class="form-label" for="fMunicipio">Município</label>
+          <input class="form-control" id="fMunicipio">
+        </div>
+        <div class="form-group forn-cep">
+          <label class="form-label" for="fCep">CEP</label>
+          <input class="form-control" id="fCep">
+        </div>
+      </div>
+      <div class="forn-row">
+        <div class="form-group forn-uf">
+          <label class="form-label" for="fEstado">Estado</label>
+          <select class="form-control" id="fEstado">
+            <option value="">—</option>
+            {% for uf in estados %}
+            <option value="{{ uf }}">{{ uf }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="fCnpj">CNPJ</label>
+          <input class="form-control" id="fCnpj">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="fIe">Ins. Estadual</label>
+          <input class="form-control" id="fIe">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="fTelefone">Telefone</label>
+          <input class="form-control" id="fTelefone">
+        </div>
+      </div>
+      <div class="forn-row forn-row-email-fat">
+        <div class="form-group" style="flex:1">
+          <label class="form-label" for="fEmail">E-mail</label>
+          <input class="form-control" id="fEmail" type="email">
+        </div>
+        <fieldset class="forn-fat-box">
+          <legend>Faturamento</legend>
+          <div class="forn-fat-wrap">
+            <input class="form-control" type="number" min="0" step="1" id="fFat">
+            <span>Dias</span>
+          </div>
+        </fieldset>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="fSite">Site</label>
+        <input class="form-control" id="fSite">
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label" for="fObs">Observação</label>
+        <input class="form-control" id="fObs">
+      </div>
+    </div>
+    <div class="forn-modal-footer">
+      <button class="btn btn-primary" type="button" onclick="salvarFornecedor()">
+        <i class="fas fa-save"></i> Gravar
+      </button>
+      <button class="btn btn-secondary" type="button" onclick="fecharFornecedor()">
+        <i class="fas fa-door-open"></i> Fechar
+      </button>
+    </div>
   </div>
 </div>
 
 <style>
-.forn-panel { padding: 1rem 1.15rem 1.35rem; max-width: 900px; }
-.forn-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:0.3rem; margin-bottom:1rem; }
-.forn-sep { width:1px; height:22px; background:#cbd5e1; margin:0 0.35rem; }
-.forn-pos { margin-left:auto; font-size:0.85rem; color:#64748b; font-weight:600; }
-.forn-row { display:flex; flex-wrap:wrap; gap:0.75rem; }
-.forn-row .form-group { flex:1; min-width:120px; }
-.forn-cep { flex:0 0 140px !important; min-width:120px !important; }
-.forn-uf { flex:0 0 90px !important; min-width:80px !important; }
-.forn-row-email-fat { align-items:flex-end; }
+.forn-cadastro .page-header { margin-bottom: 1rem; }
+.forn-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.forn-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.forn-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.forn-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
+.forn-cadastro .btn-ghost { padding: 0.16rem 0.32rem; }
+.forn-panel { padding: 0; overflow: hidden; }
+.forn-table-wrap { box-shadow: none; border-radius: 0; }
+.forn-cadastro .data-table { font-size: 0.8rem; }
+.forn-cadastro .data-table th,
+.forn-cadastro .data-table td {
+  padding: 0.22rem 0.64rem;
+  font-size: 0.76rem;
+  line-height: 1.2;
+  vertical-align: middle;
+}
+.forn-cadastro .data-table th { font-size: 0.76rem; padding-top: 0.28rem; padding-bottom: 0.28rem; }
+.forn-obs {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.forn-acoes {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.08rem;
+  white-space: nowrap;
+}
+.forn-acoes .btn {
+  flex-shrink: 0;
+  padding: 0.12rem 0.28rem;
+  line-height: 1.15;
+}
+.forn-add {
+  display: flex;
+  justify-content: flex-start;
+  padding: 0.72rem 0.8rem 0.84rem;
+  border-top: 1px solid #e2e8f0;
+}
+.forn-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(13, 43, 92, 0.55);
+}
+.forn-modal-overlay[hidden] { display: none !important; }
+.forn-modal-dialog {
+  background: #fff;
+  border-radius: 0.4rem;
+  width: 100%;
+  max-width: 720px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 12px 36px rgba(13, 43, 92, 0.25);
+  font-family: inherit;
+}
+.forn-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.92rem 1rem 0;
+  gap: 0.6rem;
+}
+.forn-modal-header h2 {
+  margin: 0;
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: #0f2a5c;
+}
+.forn-modal-close {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 1.4rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 0.12rem;
+}
+.forn-modal-close:hover { color: #0f2a5c; }
+.forn-modal-body { padding: 0.72rem 1rem 0.84rem; }
+.forn-modal-footer {
+  display: flex;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.72rem 1rem 0.92rem;
+  border-top: 1px solid #e2e8f0;
+}
+.forn-modal-body .form-label { font-size: 0.72rem; margin-bottom: 0.16rem; }
+.forn-modal-body .form-control {
+  padding: 0.36rem 0.52rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+.forn-modal-body .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+.forn-modal-body .form-group { margin-bottom: 0.44rem; }
+.forn-row { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.forn-row .form-group { flex: 1; min-width: 96px; margin-bottom: 0.44rem; }
+.forn-cep { flex: 0 0 112px !important; min-width: 96px !important; }
+.forn-uf { flex: 0 0 72px !important; min-width: 64px !important; }
+.forn-row-email-fat { align-items: flex-end; }
 .forn-fat-box {
-  flex:0 0 170px;
-  margin:0;
-  padding:0.35rem 0.55rem 0.55rem;
-  border:1px solid #94a3b8;
-  border-radius:4px;
-  min-width:150px;
+  flex: 0 0 136px;
+  margin: 0 0 0.44rem;
+  padding: 0.24rem 0.4rem 0.36rem;
+  border: 1px solid #94a3b8;
+  border-radius: 3px;
+  min-width: 120px;
 }
 .forn-fat-box legend {
-  font-size:0.8rem;
-  font-weight:600;
-  color:#334155;
-  padding:0 0.35rem;
-  margin-left:0.25rem;
-  width:auto;
+  font-size: 0.64rem;
+  font-weight: 600;
+  color: #334155;
+  padding: 0 0.28rem;
+  margin-left: 0.2rem;
+  width: auto;
 }
-.forn-fat-wrap { display:flex; align-items:center; gap:0.45rem; }
-.forn-fat-wrap .form-control { width:70px; }
-.forn-fat-wrap span { font-size:0.9rem; color:#334155; white-space:nowrap; font-weight:600; }
-.forn-footer {
-  display:flex; justify-content:center; gap:0.75rem;
-  margin-top:1.25rem; padding-top:1rem; border-top:1px solid #e2e8f0;
-}
-.forn-panel:not(.editing) [data-field] {
-  pointer-events:none;
-  background:#f1f5f9;
-}
+.forn-fat-wrap { display: flex; align-items: center; gap: 0.36rem; }
+.forn-fat-wrap .form-control { width: 56px; }
+.forn-fat-wrap span { font-size: 0.72rem; color: #334155; white-space: nowrap; font-weight: 600; }
+.forn-modal-footer .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
 </style>
 
 <script>
 const FORNECEDORES = {{ fornecedores|tojson }};
-let idx = 0;
-let editing = false;
-let isNew = false;
-
-function current(){
-  if (!FORNECEDORES.length || isNew) return null;
-  return FORNECEDORES[Math.max(0, Math.min(idx, FORNECEDORES.length - 1))];
-}
+let editId = null;
 
 function blank(){
   return {
-    id:null, nome:'', endereco:'', bairro:'', municipio:'', cep:'', estado:'',
-    cnpj:'', inscricao_estadual:'', telefone:'', email:'', faturamento_dias:0,
-    site:'', observacao:'', ativo:true
+    id: null, nome: '', endereco: '', bairro: '', municipio: '', cep: '', estado: '',
+    cnpj: '', inscricao_estadual: '', telefone: '', email: '', faturamento_dias: 0,
+    site: '', observacao: '', ativo: true
   };
 }
 
-function setEdit(on){
-  editing = !!on;
-  document.querySelector('.forn-panel').classList.toggle('editing', editing);
-  document.getElementById('btnSalvar').disabled = !editing;
-  document.getElementById('btnCancelar').disabled = !editing;
-  document.getElementById('btnGravarFooter').disabled = !editing;
-}
-
-function updatePos(){
-  const total = FORNECEDORES.length;
-  document.getElementById('posLabel').textContent = isNew ? `Novo / ${total}` : `${total ? idx+1 : 0} / ${total}`;
-}
-
-function render(f){
+function fillForm(f){
   f = f || blank();
   document.getElementById('fNome').value = f.nome || '';
   document.getElementById('fEndereco').value = f.endereco || '';
@@ -190,101 +298,81 @@ function render(f){
   document.getElementById('fFat').value = f.faturamento_dias ?? 0;
   document.getElementById('fSite').value = f.site || '';
   document.getElementById('fObs').value = f.observacao || '';
-  updatePos();
 }
 
 function collect(){
   return {
-    nome: (document.getElementById('fNome').value||'').trim(),
-    endereco: document.getElementById('fEndereco').value||'',
-    bairro: document.getElementById('fBairro').value||'',
-    municipio: document.getElementById('fMunicipio').value||'',
-    cep: document.getElementById('fCep').value||'',
-    estado: document.getElementById('fEstado').value||'',
-    cnpj: document.getElementById('fCnpj').value||'',
-    inscricao_estadual: document.getElementById('fIe').value||'',
-    telefone: document.getElementById('fTelefone').value||'',
-    email: document.getElementById('fEmail').value||'',
-    faturamento_dias: parseInt(document.getElementById('fFat').value||0,10)||0,
-    site: document.getElementById('fSite').value||'',
-    observacao: document.getElementById('fObs').value||'',
+    nome: (document.getElementById('fNome').value || '').trim(),
+    endereco: document.getElementById('fEndereco').value || '',
+    bairro: document.getElementById('fBairro').value || '',
+    municipio: document.getElementById('fMunicipio').value || '',
+    cep: document.getElementById('fCep').value || '',
+    estado: document.getElementById('fEstado').value || '',
+    cnpj: document.getElementById('fCnpj').value || '',
+    inscricao_estadual: document.getElementById('fIe').value || '',
+    telefone: document.getElementById('fTelefone').value || '',
+    email: document.getElementById('fEmail').value || '',
+    faturamento_dias: parseInt(document.getElementById('fFat').value || 0, 10) || 0,
+    site: document.getElementById('fSite').value || '',
+    observacao: document.getElementById('fObs').value || '',
     ativo: true
   };
 }
 
-function nav(dir){
-  if (editing){ showToast('Salve ou cancele a edição','error'); return; }
-  if (!FORNECEDORES.length) return;
-  if (dir === 'first') idx = 0;
-  if (dir === 'prev') idx = Math.max(0, idx-1);
-  if (dir === 'next') idx = Math.min(FORNECEDORES.length-1, idx+1);
-  if (dir === 'last') idx = FORNECEDORES.length-1;
-  isNew = false;
-  render(current());
+function abrirFornecedor(id){
+  const f = id ? (FORNECEDORES || []).find(x => x.id === id) : null;
+  editId = f ? f.id : null;
+  document.getElementById('fornModalTitle').textContent = editId
+    ? 'Editar Fornecedor'
+    : 'Cadastro de Fornecedor';
+  fillForm(f || blank());
+  const ov = document.getElementById('fornModalOverlay');
+  ov.hidden = false;
+  setTimeout(() => document.getElementById('fNome').focus(), 40);
 }
 
-function novo(){
-  isNew = true;
-  setEdit(true);
-  render(blank());
-  document.getElementById('fNome').focus();
+function fecharFornecedor(){
+  document.getElementById('fornModalOverlay').hidden = true;
+  editId = null;
 }
 
-function cancelar(){
-  isNew = false;
-  setEdit(false);
-  render(current() || blank());
-}
-
-async function salvar(){
+async function salvarFornecedor(){
   const body = collect();
-  if (!body.nome){ showToast('Informe o nome','error'); return; }
-  const cur = current();
-  const id = (!isNew && cur) ? cur.id : null;
-  const url = id ? `/nutricao/api/fornecedores/${id}` : '/nutricao/api/fornecedores';
-  const method = id ? 'PUT' : 'POST';
-  const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-  const j = await r.json();
-  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao salvar','error'); return; }
-  showToast(id ? 'Fornecedor atualizado' : 'Fornecedor cadastrado','success');
-  setTimeout(() => location.reload(), 400);
-}
-
-async function excluir(){
-  const cur = current();
-  if (!cur || !cur.id){ showToast('Nenhum fornecedor selecionado','error'); return; }
-  if (!confirm('Desativar este fornecedor?')) return;
-  const r = await fetch(`/nutricao/api/fornecedores/${cur.id}`, { method:'DELETE' });
-  const j = await r.json();
-  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha','error'); return; }
-  showToast('Fornecedor desativado','success');
-  setTimeout(() => location.reload(), 400);
-}
-
-function abrirBusca(){
-  const html = `
-    <div class="form-group">
-      <label class="form-label">Buscar fornecedor</label>
-      <input class="form-control" id="f-busca" placeholder="Nome, CNPJ ou município..." autofocus>
-    </div>
-  `;
-  abrirModal('Buscar fornecedor', html, 'Localizar', () => {
-    const q = (document.getElementById('f-busca')?.value || '').trim().toUpperCase();
-    if (!q){ showToast('Digite um termo','error'); return; }
-    const i = FORNECEDORES.findIndex(f =>
-      (f.nome||'').toUpperCase().includes(q) ||
-      (f.cnpj||'').toUpperCase().includes(q) ||
-      (f.municipio||'').toUpperCase().includes(q)
-    );
-    if (i < 0){ showToast('Não encontrado','error'); return; }
-    if (editing){ showToast('Salve ou cancele a edição','error'); return; }
-    idx = i; isNew = false; render(current()); fecharModal();
+  if (!body.nome){ showToast('Informe o nome', 'error'); return; }
+  const url = editId ? `/nutricao/api/fornecedores/${editId}` : '/nutricao/api/fornecedores';
+  const method = editId ? 'PUT' : 'POST';
+  const r = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
   });
-  setTimeout(() => document.getElementById('f-busca')?.focus(), 50);
+  const j = await r.json();
+  if (!r.ok || j.ok === false){
+    showToast((j && j.error) || 'Falha ao salvar', 'error');
+    return;
+  }
+  showToast(editId ? 'Fornecedor atualizado' : 'Fornecedor cadastrado', 'success');
+  fecharFornecedor();
+  setTimeout(() => location.reload(), 400);
 }
 
-if (FORNECEDORES.length){ idx = 0; render(current()); }
-else { render(blank()); }
-setEdit(false);
+async function excluirFornecedor(id){
+  if (!id){ showToast('Nenhum fornecedor selecionado', 'error'); return; }
+  if (!confirm('Excluir este fornecedor?')) return;
+  const r = await fetch(`/nutricao/api/fornecedores/${id}`, { method: 'DELETE' });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){
+    showToast((j && j.error) || 'Falha ao excluir', 'error');
+    return;
+  }
+  showToast('Fornecedor excluído', 'success');
+  setTimeout(() => location.reload(), 400);
+}
+
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape' && !document.getElementById('fornModalOverlay').hidden){
+    fecharFornecedor();
+  }
+});
 </script>
 {% endblock %}

@@ -1,5 +1,6 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
+<div class="prod-cadastro">
 <div class="page-header">
   <h1>Cadastro de produtos</h1>
   <p>Unidades, grupos e produtos por estoque</p>
@@ -9,10 +10,6 @@
   <div class="prod-toolbar">
     <div class="prod-actions" id="prodCrudBar">
       <button class="btn btn-primary btn-sm" type="button" onclick="novoItem()" title="Novo"><i class="fas fa-plus"></i></button>
-      <button class="btn btn-ghost btn-sm" type="button" onclick="excluirItem()" title="Excluir"><i class="fas fa-minus"></i></button>
-      <button class="btn btn-ghost btn-sm" type="button" onclick="editarItem()" title="Editar"><i class="fas fa-pencil-alt"></i></button>
-      <button class="btn btn-primary btn-sm" type="button" id="btnSalvar" onclick="salvarItem()" title="Salvar" disabled><i class="fas fa-check"></i></button>
-      <button class="btn btn-ghost btn-sm" type="button" id="btnCancelar" onclick="cancelarEdit()" title="Cancelar" disabled><i class="fas fa-times"></i></button>
     </div>
 
     <div class="prod-filters" id="filtrosProdutos">
@@ -32,7 +29,7 @@
     </div>
 
     <div class="prod-modos">
-      <button type="button" class="modo-btn {% if true %}{% endif %}" id="btnModoUnidades" onclick="setModo('unidades')">
+      <button type="button" class="modo-btn" id="btnModoUnidades" onclick="setModo('unidades')">
         <i class="fas fa-balance-scale"></i>
         <span>Unidades</span>
       </button>
@@ -47,44 +44,92 @@
     </div>
   </div>
 
-  <div class="table-container" style="box-shadow:none;border:1px solid #e2e8f0;border-radius:8px;max-height:560px;overflow:auto;">
+  <div class="table-container" style="box-shadow:none;border:1px solid #e2e8f0;border-radius:6px;max-height:560px;overflow:auto;">
     <table class="data-table" id="gridPrincipal">
       <thead id="gridHead"></thead>
       <tbody id="gridBody"></tbody>
     </table>
   </div>
 </div>
+</div>
 
 <style>
-.prod-panel { padding: 0.9rem 1rem 1.2rem; }
+.prod-cadastro .page-header { margin-bottom: 1rem; }
+.prod-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.prod-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.prod-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.prod-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
+.prod-cadastro .btn-ghost { padding: 0.28rem 0.4rem; }
+.prod-cadastro .form-label { font-size: 0.72rem; margin-bottom: 0; }
+.prod-cadastro .form-control {
+  padding: 0.48rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+.prod-cadastro .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+.prod-cadastro .data-table { font-size: 0.72rem; }
+.prod-cadastro .data-table th,
+.prod-cadastro .data-table td { padding: 0.28rem 0.4rem; font-size: 0.72rem; line-height: 1.2; }
+.prod-cadastro .data-table th { font-size: 0.68rem; }
+.prod-cadastro .prod-actions .btn-sm { padding: 0.24rem 0.36rem; }
+.prod-cadastro .prod-actions .btn-sm i { font-size: 0.72rem; }
+.prod-cadastro input[type="checkbox"] { width: 0.72rem; height: 0.72rem; margin: 0; }
+.prod-panel { padding: 0.72rem 0.8rem 0.96rem; }
 .prod-toolbar {
-  display:flex; flex-wrap:wrap; gap:0.75rem 1rem; align-items:flex-end;
-  margin-bottom:0.9rem;
+  display:flex; flex-wrap:wrap; gap:0.6rem 0.8rem; align-items:flex-end;
+  margin-bottom:0.72rem;
 }
-.prod-actions { display:flex; gap:0.3rem; align-items:center; }
+.prod-actions { display:flex; gap:0.24rem; align-items:center; }
 .prod-filters {
-  display:flex; flex-wrap:wrap; gap:0.4rem 0.6rem; align-items:center;
+  display:flex; flex-wrap:wrap; gap:0.32rem 0.48rem; align-items:center;
 }
-.prod-filters .form-control { width:auto; min-width:140px; }
-.prod-modos { display:flex; gap:0.45rem; margin-left:auto; }
+.prod-filters .form-control { width:auto; min-width:112px; padding: 0.32rem 0.48rem; font-size: 0.76rem; }
+.prod-modos { display:flex; gap:0.36rem; margin-left:auto; }
 .modo-btn {
   display:flex; flex-direction:column; align-items:center; justify-content:center;
-  gap:0.25rem; min-width:78px; padding:0.55rem 0.65rem;
-  border:1px solid #cbd5e1; border-radius:8px; background:#fff;
-  color:#334155; font-size:0.75rem; font-weight:700; cursor:pointer;
+  gap:0.2rem; min-width:62px; padding:0.44rem 0.52rem;
+  border:1px solid #cbd5e1; border-radius:6px; background:#fff;
+  color:#334155; font-size:0.6rem; font-weight:700; cursor:pointer;
 }
-.modo-btn i { font-size:1.15rem; color:#64748b; }
+.modo-btn i { font-size:0.92rem; color:#64748b; }
 .modo-btn.active {
   border-color:#0f2a5c; background:#0f2a5c; color:#fff;
 }
 .modo-btn.active i { color:#c5e078; }
 #gridBody tr.selected { background:#e8f0ff; }
 #gridBody tr { cursor:pointer; }
-#gridBody input.form-control, #gridBody select.form-control {
-  padding:0.25rem 0.4rem; font-size:0.85rem; min-width:70px;
-}
 .col-num { text-align:right; font-variant-numeric:tabular-nums; }
 .col-check { text-align:center; }
+.col-acoes {
+  width:72px; white-space:nowrap; text-align:center;
+}
+.col-acoes .btn { padding: 0.12rem 0.28rem; }
+#modalOverlay .modal-dialog { max-width: 560px; }
+#modalOverlay .modal-header { padding: 0.92rem 1rem 0; gap: 0.6rem; }
+#modalOverlay .modal-header h2 { font-size: 0.96rem; }
+#modalOverlay .modal-close { font-size: 1.2rem; }
+#modalOverlay .modal-body { padding: 0.8rem 1rem 0.92rem; }
+#modalOverlay .modal-footer { gap: 0.4rem; padding: 0.8rem 1rem; }
+#modalOverlay .form-label { font-size: 0.72rem; margin-bottom: 0.16rem; }
+#modalOverlay .form-control {
+  padding: 0.48rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+#modalOverlay .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+#modalOverlay .form-group { margin-bottom: 0.56rem; }
+#modalOverlay .form-row { gap: 0.6rem; }
+#modalOverlay .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+#modalOverlay .prod-check {
+  display:flex; align-items:center; gap:0.4rem; margin:0.2rem 0 0;
+  font-size:0.72rem; font-weight:600; color:#334155;
+}
 </style>
 
 <script>
@@ -97,18 +142,18 @@ const GRUPO_ID = {{ grupo_id or 'null' }};
 
 let modo = 'produtos';
 let selectedId = null;
-let editing = false;
-let isNew = false;
-let draft = null;
+let cadastroId = null;
 
 function fmt(n){
   const v = Number(vOr0(n));
   return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function vOr0(n){ return (n===null||n===undefined||n==='') ? 0 : n; }
+function esc(s){
+  return String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
 
 function setModo(m){
-  if (editing){ showToast('Salve ou cancele a edição','error'); return; }
   modo = m;
   document.getElementById('btnModoUnidades').classList.toggle('active', m==='unidades');
   document.getElementById('btnModoGrupos').classList.toggle('active', m==='grupos');
@@ -132,15 +177,22 @@ function currentList(){
   return PRODUTOS;
 }
 
+function acoesHtml(id){
+  return `<td class="col-acoes" onclick="event.stopPropagation()">
+    <button class="btn btn-ghost btn-sm" type="button" title="Editar" onclick="editarLinha(${id})"><i class="fas fa-edit"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" title="Excluir" onclick="excluirLinha(${id})"><i class="fas fa-trash"></i></button>
+  </td>`;
+}
+
 function renderGrid(){
   const head = document.getElementById('gridHead');
   const body = document.getElementById('gridBody');
   if (modo === 'unidades'){
-    head.innerHTML = '<tr><th>Código</th><th>Descrição</th><th style="width:80px;text-align:center">Ativo</th></tr>';
-    body.innerHTML = UNIDADES.map(u => rowUnidade(u)).join('') || emptyRow(3);
+    head.innerHTML = '<tr><th>Código</th><th>Descrição</th><th style="width:64px;text-align:center">Ativo</th><th class="col-acoes">Ações</th></tr>';
+    body.innerHTML = UNIDADES.map(u => rowUnidade(u)).join('') || emptyRow(4);
   } else if (modo === 'grupos'){
-    head.innerHTML = '<tr><th>Grupo</th><th style="width:110px;text-align:center">Qtd. produtos</th><th style="width:80px;text-align:center">Ativo</th></tr>';
-    body.innerHTML = GRUPOS.map(g => rowGrupo(g)).join('') || emptyRow(3);
+    head.innerHTML = '<tr><th>Grupo</th><th style="width:88px;text-align:center">Qtd. produtos</th><th style="width:64px;text-align:center">Ativo</th><th class="col-acoes">Ações</th></tr>';
+    body.innerHTML = GRUPOS.map(g => rowGrupo(g)).join('') || emptyRow(4);
   } else {
     head.innerHTML = `<tr>
       <th>Grupo</th><th>Código</th><th>Descrição</th>
@@ -149,8 +201,9 @@ function renderGrid(){
       <th class="col-num">Quant. mín.</th><th class="col-num">Quant. máx.</th>
       <th class="col-num">Quant. líq.</th><th>Un. Liq.</th>
       <th class="col-check">FC</th>
+      <th class="col-acoes">Ações</th>
     </tr>`;
-    body.innerHTML = PRODUTOS.map(p => rowProduto(p)).join('') || emptyRow(12);
+    body.innerHTML = PRODUTOS.map(p => rowProduto(p)).join('') || emptyRow(13);
   }
   if (selectedId){
     const tr = body.querySelector(`tr[data-id="${selectedId}"]`);
@@ -159,37 +212,25 @@ function renderGrid(){
 }
 
 function emptyRow(cols){
-  return `<tr><td colspan="${cols}" style="text-align:center;color:#64748b;padding:1.2rem;">Nenhum registro.</td></tr>`;
+  return `<tr><td colspan="${cols}" style="text-align:center;color:#64748b;padding:0.96rem;">Nenhum registro.</td></tr>`;
 }
 
 function rowUnidade(u){
   const sel = selectedId === u.id ? 'selected' : '';
-  if (editing && draft && draft.id === u.id){
-    return `<tr class="selected" data-id="${u.id}">
-      <td><input class="form-control" id="e-codigo" value="${esc(draft.codigo)}"></td>
-      <td><input class="form-control" id="e-descricao" value="${esc(draft.descricao)}"></td>
-      <td class="col-check"><input type="checkbox" id="e-ativo" ${draft.ativo?'checked':''}></td>
-    </tr>`;
-  }
   return `<tr class="${sel}" data-id="${u.id}" onclick="selecionar(${u.id})">
     <td>${esc(u.codigo)}</td><td>${esc(u.descricao)}</td>
     <td class="col-check">${u.ativo?'✓':''}</td>
+    ${acoesHtml(u.id)}
   </tr>`;
 }
 
 function rowGrupo(g){
   const sel = selectedId === g.id ? 'selected' : '';
-  if (editing && draft && draft.id === g.id){
-    return `<tr class="selected" data-id="${g.id}">
-      <td><input class="form-control" id="e-nome" value="${esc(draft.nome)}"></td>
-      <td class="col-num">${g.qtd_produtos||0}</td>
-      <td class="col-check"><input type="checkbox" id="e-ativo" ${draft.ativo?'checked':''}></td>
-    </tr>`;
-  }
   return `<tr class="${sel}" data-id="${g.id}" onclick="selecionar(${g.id})">
     <td>${esc(g.nome)}</td>
     <td class="col-num" style="text-align:center">${g.qtd_produtos||0}</td>
     <td class="col-check">${g.ativo?'✓':''}</td>
+    ${acoesHtml(g.id)}
   </tr>`;
 }
 
@@ -206,23 +247,6 @@ function grupoOpts(sel){
 
 function rowProduto(p){
   const sel = selectedId === p.id ? 'selected' : '';
-  if (editing && draft && ((draft.id && draft.id === p.id) || (isNew && p._temp))){
-    const d = draft;
-    return `<tr class="selected" data-id="${d.id||'new'}">
-      <td><select class="form-control" id="e-grupo">${grupoOpts(d.grupo_id)}</select></td>
-      <td><input class="form-control" id="e-codigo" value="${esc(d.codigo)}"></td>
-      <td><input class="form-control" id="e-descricao" value="${esc(d.descricao)}"></td>
-      <td><input class="form-control col-num" type="number" step="any" id="e-qtd" value="${vOr0(d.quantidade)}"></td>
-      <td><select class="form-control" id="e-unidade">${unOpts(d.unidade)}</select></td>
-      <td><input class="form-control col-num" type="number" step="any" id="e-preco" value="${vOr0(d.preco_medio)}"></td>
-      <td><input class="form-control col-num" type="number" step="any" id="e-ult" value="${vOr0(d.ult_preco)}"></td>
-      <td><input class="form-control col-num" type="number" step="any" id="e-min" value="${vOr0(d.quant_min)}"></td>
-      <td><input class="form-control col-num" type="number" step="any" id="e-max" value="${vOr0(d.quant_max)}"></td>
-      <td><input class="form-control col-num" type="number" step="any" id="e-liq" value="${vOr0(d.quant_liq)}"></td>
-      <td><select class="form-control" id="e-unliq">${unOpts(d.un_liq||'NC')}</select></td>
-      <td class="col-check"><input type="checkbox" id="e-fc" ${d.fc?'checked':''}></td>
-    </tr>`;
-  }
   return `<tr class="${sel}" data-id="${p.id}" onclick="selecionar(${p.id})">
     <td>${esc(p.grupo)}</td>
     <td>${esc(p.codigo)}</td>
@@ -236,144 +260,216 @@ function rowProduto(p){
     <td class="col-num">${p.quant_liq ? fmt(p.quant_liq) : ''}</td>
     <td>${esc(p.un_liq||'')}</td>
     <td class="col-check">${p.fc?'X':''}</td>
+    ${acoesHtml(p.id)}
   </tr>`;
 }
 
-function esc(s){
-  return String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
-}
-
 function selecionar(id){
-  if (editing) return;
   selectedId = id;
   renderGrid();
 }
 
-function setEditButtons(on){
-  editing = !!on;
-  document.getElementById('btnSalvar').disabled = !on;
-  document.getElementById('btnCancelar').disabled = !on;
+function prepararFooterModal(){
+  document.getElementById('modalConfirmBtn').innerHTML = '<i class="fas fa-save"></i> Gravar';
+  const sec = document.querySelector('#modalFooter .btn-secondary');
+  if (sec) sec.innerHTML = '<i class="fas fa-door-open"></i> Fechar';
+}
+
+function htmlUnidade(item){
+  const u = item || {};
+  return `
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Código *</label>
+        <input class="form-control" id="f-un-codigo" maxlength="20" value="${esc(u.codigo||'')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Descrição</label>
+        <input class="form-control" id="f-un-desc" value="${esc(u.descricao||'')}">
+      </div>
+    </div>
+    <label class="prod-check"><input type="checkbox" id="f-un-ativo" ${u.ativo!==false?'checked':''}> Ativo</label>`;
+}
+
+function htmlGrupo(item){
+  const g = item || {};
+  return `
+    <div class="form-group">
+      <label class="form-label">Grupo *</label>
+      <input class="form-control" id="f-gr-nome" value="${esc(g.nome||'')}">
+    </div>
+    <label class="prod-check"><input type="checkbox" id="f-gr-ativo" ${g.ativo!==false?'checked':''}> Ativo</label>`;
+}
+
+function htmlProduto(item){
+  const p = item || {};
+  const g = p.grupo_id || GRUPO_ID || (GRUPOS.find(x=>x.ativo!==false)||{}).id;
+  return `
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Grupo *</label>
+        <select class="form-control" id="f-prod-grupo">${grupoOpts(g)}</select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Código *</label>
+        <input class="form-control" id="f-prod-codigo" value="${esc(p.codigo||'')}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Descrição *</label>
+      <input class="form-control" id="f-prod-desc" value="${esc(p.descricao||'')}">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Quantidade</label>
+        <input class="form-control" type="number" step="any" id="f-prod-qtd" value="${vOr0(p.quantidade)}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Unidade</label>
+        <select class="form-control" id="f-prod-un">${unOpts(p.unidade||'UN')}</select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Preço médio</label>
+        <input class="form-control" type="number" step="any" id="f-prod-preco" value="${item ? vOr0(p.preco_medio) : 0.01}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Ult. preço</label>
+        <input class="form-control" type="number" step="any" id="f-prod-ult" value="${item ? vOr0(p.ult_preco) : 0.01}">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Quant. mín.</label>
+        <input class="form-control" type="number" step="any" id="f-prod-min" value="${vOr0(p.quant_min)}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Quant. máx.</label>
+        <input class="form-control" type="number" step="any" id="f-prod-max" value="${vOr0(p.quant_max)}">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Quant. líq.</label>
+        <input class="form-control" type="number" step="any" id="f-prod-liq" value="${vOr0(p.quant_liq)}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Un. Liq.</label>
+        <select class="form-control" id="f-prod-unliq">${unOpts(p.un_liq||'NC')}</select>
+      </div>
+    </div>
+    <label class="prod-check"><input type="checkbox" id="f-prod-fc" ${p.fc?'checked':''}> FC</label>`;
+}
+
+function abrirCadastro(item){
+  cadastroId = item && item.id ? item.id : null;
+  const isEdit = !!cadastroId;
+  let titulo, html;
+  if (modo === 'unidades'){
+    titulo = isEdit ? 'Editar unidade' : 'Nova unidade';
+    html = htmlUnidade(item);
+  } else if (modo === 'grupos'){
+    titulo = isEdit ? 'Editar grupo' : 'Novo grupo';
+    html = htmlGrupo(item);
+  } else {
+    if (!ESTOQUE_ID){ showToast('Selecione um estoque','error'); return; }
+    titulo = isEdit ? 'Editar produto' : 'Novo produto';
+    html = htmlProduto(item);
+  }
+  abrirModal(titulo, html, 'Gravar', gravarCadastro);
+  prepararFooterModal();
 }
 
 function novoItem(){
-  isNew = true;
-  selectedId = null;
-  if (modo === 'unidades') draft = {id:null, codigo:'', descricao:'', ativo:true, _temp:true};
-  else if (modo === 'grupos') draft = {id:null, nome:'', ativo:true, qtd_produtos:0, _temp:true};
-  else {
-    if (!ESTOQUE_ID){ showToast('Selecione um estoque','error'); return; }
-    const g = GRUPO_ID || (GRUPOS.find(x=>x.ativo!==false)||{}).id;
-    draft = {
-      id:null, _temp:true, estoque_id: ESTOQUE_ID, grupo_id: g,
-      codigo:'', descricao:'', quantidade:0, unidade:'UN',
-      preco_medio:0.01, ult_preco:0.01, quant_min:0, quant_max:0,
-      quant_liq:0, un_liq:'NC', fc:false, ativo:true
-    };
-  }
-  setEditButtons(true);
-  // inject temp row into list rendering
-  if (modo === 'produtos'){
-    PRODUTOS.unshift({...draft, grupo: (GRUPOS.find(g=>g.id===draft.grupo_id)||{}).nome || ''});
-  } else if (modo === 'unidades'){
-    UNIDADES.unshift({...draft});
-  } else {
-    GRUPOS.unshift({...draft});
-  }
-  renderGrid();
+  abrirCadastro(null);
 }
 
-function editarItem(){
-  if (!selectedId){ showToast('Selecione um registro','error'); return; }
-  const list = currentList();
-  const item = list.find(x => x.id === selectedId);
-  if (!item) return;
-  isNew = false;
-  draft = JSON.parse(JSON.stringify(item));
-  setEditButtons(true);
+function editarLinha(id){
+  const item = currentList().find(x => x.id === id);
+  if (!item){ showToast('Registro não encontrado','error'); return; }
+  selectedId = id;
   renderGrid();
+  abrirCadastro(item);
 }
 
-function cancelarEdit(){
-  if (isNew){
-    if (modo === 'produtos') PRODUTOS.shift();
-    else if (modo === 'unidades') UNIDADES.shift();
-    else GRUPOS.shift();
-  }
-  isNew = false;
-  draft = null;
-  setEditButtons(false);
-  renderGrid();
+function collectUnidade(){
+  return {
+    codigo: (document.getElementById('f-un-codigo')?.value||'').trim().toUpperCase(),
+    descricao: (document.getElementById('f-un-desc')?.value||'').trim().toUpperCase(),
+    ativo: !!document.getElementById('f-un-ativo')?.checked
+  };
 }
-
-function collectEdit(){
-  if (modo === 'unidades'){
-    return {
-      codigo: (document.getElementById('e-codigo')?.value||'').trim().toUpperCase(),
-      descricao: (document.getElementById('e-descricao')?.value||'').trim(),
-      ativo: !!document.getElementById('e-ativo')?.checked
-    };
-  }
-  if (modo === 'grupos'){
-    return {
-      nome: (document.getElementById('e-nome')?.value||'').trim().toUpperCase(),
-      ativo: !!document.getElementById('e-ativo')?.checked
-    };
-  }
+function collectGrupo(){
+  return {
+    nome: (document.getElementById('f-gr-nome')?.value||'').trim().toUpperCase(),
+    ativo: !!document.getElementById('f-gr-ativo')?.checked
+  };
+}
+function collectProduto(){
   return {
     estoque_id: ESTOQUE_ID,
-    grupo_id: parseInt(document.getElementById('e-grupo')?.value||0,10),
-    codigo: (document.getElementById('e-codigo')?.value||'').trim().toUpperCase(),
-    descricao: (document.getElementById('e-descricao')?.value||'').trim().toUpperCase(),
-    quantidade: parseFloat(document.getElementById('e-qtd')?.value)||0,
-    unidade: document.getElementById('e-unidade')?.value || 'UN',
-    preco_medio: parseFloat(document.getElementById('e-preco')?.value)||0,
-    ult_preco: parseFloat(document.getElementById('e-ult')?.value)||0,
-    quant_min: parseFloat(document.getElementById('e-min')?.value)||0,
-    quant_max: parseFloat(document.getElementById('e-max')?.value)||0,
-    quant_liq: parseFloat(document.getElementById('e-liq')?.value)||0,
-    un_liq: document.getElementById('e-unliq')?.value || 'NC',
-    fc: !!document.getElementById('e-fc')?.checked,
+    grupo_id: parseInt(document.getElementById('f-prod-grupo')?.value||0,10),
+    codigo: (document.getElementById('f-prod-codigo')?.value||'').trim().toUpperCase(),
+    descricao: (document.getElementById('f-prod-desc')?.value||'').trim().toUpperCase(),
+    quantidade: parseFloat(document.getElementById('f-prod-qtd')?.value)||0,
+    unidade: document.getElementById('f-prod-un')?.value || 'UN',
+    preco_medio: parseFloat(document.getElementById('f-prod-preco')?.value)||0,
+    ult_preco: parseFloat(document.getElementById('f-prod-ult')?.value)||0,
+    quant_min: parseFloat(document.getElementById('f-prod-min')?.value)||0,
+    quant_max: parseFloat(document.getElementById('f-prod-max')?.value)||0,
+    quant_liq: parseFloat(document.getElementById('f-prod-liq')?.value)||0,
+    un_liq: document.getElementById('f-prod-unliq')?.value || 'NC',
+    fc: !!document.getElementById('f-prod-fc')?.checked,
     ativo: true
   };
 }
 
-async function salvarItem(){
-  const body = collectEdit();
-  let url, method;
+async function gravarCadastro(){
+  let body, url, method;
   if (modo === 'unidades'){
+    body = collectUnidade();
     if (!body.codigo){ showToast('Informe o código','error'); return; }
-    url = (draft && draft.id) ? `/nutricao/api/unidades/${draft.id}` : '/nutricao/api/unidades';
-    method = (draft && draft.id) ? 'PUT' : 'POST';
+    url = cadastroId ? `/nutricao/api/unidades/${cadastroId}` : '/nutricao/api/unidades';
+    method = cadastroId ? 'PUT' : 'POST';
   } else if (modo === 'grupos'){
+    body = collectGrupo();
     if (!body.nome){ showToast('Informe o grupo','error'); return; }
-    url = (draft && draft.id) ? `/nutricao/api/grupos-produto/${draft.id}` : '/nutricao/api/grupos-produto';
-    method = (draft && draft.id) ? 'PUT' : 'POST';
+    url = cadastroId ? `/nutricao/api/grupos-produto/${cadastroId}` : '/nutricao/api/grupos-produto';
+    method = cadastroId ? 'PUT' : 'POST';
   } else {
+    body = collectProduto();
     if (!body.codigo || !body.descricao){ showToast('Código e descrição são obrigatórios','error'); return; }
     if (!body.grupo_id){ showToast('Selecione o grupo','error'); return; }
-    url = (draft && draft.id) ? `/nutricao/api/produtos/${draft.id}` : '/nutricao/api/produtos';
-    method = (draft && draft.id) ? 'PUT' : 'POST';
+    url = cadastroId ? `/nutricao/api/produtos/${cadastroId}` : '/nutricao/api/produtos';
+    method = cadastroId ? 'PUT' : 'POST';
   }
   const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
   const j = await r.json();
-  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao salvar','error'); return; }
-  showToast('Salvo','success');
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao gravar','error'); return; }
+  showToast('Gravado','success');
+  fecharModal();
   setTimeout(() => location.reload(), 350);
 }
 
-async function excluirItem(){
-  if (!selectedId){ showToast('Selecione um registro','error'); return; }
+async function excluirLinha(id){
   if (!confirm('Desativar este registro?')) return;
   let url;
-  if (modo === 'unidades') url = `/nutricao/api/unidades/${selectedId}`;
-  else if (modo === 'grupos') url = `/nutricao/api/grupos-produto/${selectedId}`;
-  else url = `/nutricao/api/produtos/${selectedId}`;
+  if (modo === 'unidades') url = `/nutricao/api/unidades/${id}`;
+  else if (modo === 'grupos') url = `/nutricao/api/grupos-produto/${id}`;
+  else url = `/nutricao/api/produtos/${id}`;
   const r = await fetch(url, { method:'DELETE' });
   const j = await r.json();
   if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha','error'); return; }
   showToast('Desativado','success');
   setTimeout(() => location.reload(), 350);
 }
+
+document.addEventListener('keydown', function(e){
+  if (e.key !== 'Escape') return;
+  const ov = document.getElementById('modalOverlay');
+  if (ov && ov.style.display === 'flex') fecharModal();
+});
 
 setModo('produtos');
 </script>

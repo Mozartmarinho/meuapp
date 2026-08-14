@@ -1,21 +1,22 @@
 {% extends "base.html" %}
 {% block title %}Auditoria - São Geraldo Service{% endblock %}
 {% block content %}
+<div class="auditoria-consulta">
 <div class="page-header">
   <h1>Auditoria</h1>
   <p>Consulta de logs de ações do sistema</p>
 </div>
 
-<form class="toolbar" method="get" action="{{ url_for('main.auditoria') }}" style="flex-wrap:wrap;gap:0.65rem;align-items:flex-end;">
-  <div class="form-group" style="margin:0;min-width:140px">
+<form class="toolbar" method="get" action="{{ url_for('main.auditoria') }}">
+  <div class="form-group fg fg-date">
     <label class="form-label">De</label>
     <input class="form-control" type="date" name="data_de" value="{{ filtros.data_de }}">
   </div>
-  <div class="form-group" style="margin:0;min-width:140px">
+  <div class="form-group fg fg-date">
     <label class="form-label">Até</label>
     <input class="form-control" type="date" name="data_ate" value="{{ filtros.data_ate }}">
   </div>
-  <div class="form-group" style="margin:0;min-width:150px">
+  <div class="form-group fg fg-mod">
     <label class="form-label">Módulo</label>
     <select class="form-control" name="modulo">
       <option value="">Todos</option>
@@ -24,7 +25,7 @@
       {% endfor %}
     </select>
   </div>
-  <div class="form-group" style="margin:0;min-width:140px">
+  <div class="form-group fg">
     <label class="form-label">Ação</label>
     <select class="form-control" name="acao">
       <option value="">Todas</option>
@@ -33,19 +34,19 @@
       {% endfor %}
     </select>
   </div>
-  <div class="form-group" style="margin:0;min-width:160px">
+  <div class="form-group fg fg-user">
     <label class="form-label">Usuário</label>
     <input class="form-control" name="usuario" value="{{ filtros.usuario }}" placeholder="Nome">
   </div>
-  <div class="form-group" style="margin:0;flex:1;min-width:180px">
+  <div class="form-group fg fg-q">
     <label class="form-label">Busca</label>
     <input class="form-control" name="q" value="{{ filtros.q }}" placeholder="Caminho, entidade, detalhe...">
   </div>
   <button class="btn btn-primary btn-sm" type="submit"><i class="fas fa-search"></i> Filtrar</button>
 </form>
 
-<div class="card" style="padding:0;overflow:hidden;margin-top:0.85rem">
-  <div style="padding:0.65rem 1rem;border-bottom:1px solid #e5e7eb;color:#64748b;font-size:0.9rem">
+<div class="card">
+  <div class="audit-count">
     {{ total }} registro(s) encontrado(s) — exibindo até {{ filtros.limit }}
   </div>
   <div class="table-scroll">
@@ -67,24 +68,22 @@
       <tbody>
         {% for l in logs %}
         <tr>
-          <td style="white-space:nowrap">{{ l.data_hora }}</td>
-          <td>{{ l.usuario_nome }}</td>
+          <td class="col-now">{{ l.data_hora }}</td>
+          <td class="col-user" title="{{ l.usuario_nome }}">{{ l.usuario_nome }}</td>
           <td><span class="badge-mod">{{ l.modulo }}</span></td>
           <td>{{ l.acao }}</td>
           <td>{{ l.entidade }}{% if l.entidade_id %} #{{ l.entidade_id }}{% endif %}</td>
           <td>{{ l.metodo }}</td>
-          <td title="{{ l.caminho }}" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.caminho }}</td>
+          <td class="col-path" title="{{ l.caminho }}">{{ l.caminho }}</td>
           <td>
             <span class="{% if l.sucesso %}ok{% else %}fail{% endif %}">{{ l.status_http or '-' }}</span>
           </td>
-          <td>{{ l.ip or '-' }}</td>
-          <td title="{{ l.detalhe }}" style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.85rem;color:#475569">
-            {{ l.detalhe or '-' }}
-          </td>
+          <td class="col-now">{{ l.ip or '-' }}</td>
+          <td class="col-detalhe" title="{{ l.detalhe }}">{{ l.detalhe or '-' }}</td>
         </tr>
         {% else %}
         <tr>
-          <td colspan="10" style="text-align:center;padding:1.5rem;color:#64748b">
+          <td colspan="10" class="empty-row">
             Nenhum log no período. Ações de criar/editar/excluir em qualquer sistema passam a ser registradas automaticamente.
           </td>
         </tr>
@@ -93,24 +92,102 @@
     </table>
   </div>
 </div>
+</div>
 
 <style>
-.badge-mod {
+.auditoria-consulta .page-header { margin-bottom: 1rem; }
+.auditoria-consulta .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.auditoria-consulta .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.auditoria-consulta .toolbar {
+  flex-wrap: wrap;
+  gap: 0.52rem;
+  align-items: flex-end;
+  margin-bottom: 0.8rem;
+}
+.auditoria-consulta .fg { margin: 0; min-width: 112px; }
+.auditoria-consulta .fg-date { min-width: 126px; }
+.auditoria-consulta .fg-mod { min-width: 120px; }
+.auditoria-consulta .fg-user { min-width: 128px; }
+.auditoria-consulta .fg-q { flex: 1; min-width: 144px; }
+.auditoria-consulta .form-label { font-size: 0.72rem; margin-bottom: 0.16rem; }
+.auditoria-consulta .form-control {
+  padding: 0.48rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+.auditoria-consulta .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+.auditoria-consulta .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.auditoria-consulta .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
+.auditoria-consulta .card { padding: 0; overflow: hidden; margin-top: 0.68rem; margin-bottom: 0.8rem; }
+.auditoria-consulta .audit-count {
+  padding: 0.52rem 0.8rem;
+  border-bottom: 1px solid #e5e7eb;
+  color: #64748b;
+  font-size: 0.72rem;
+}
+.auditoria-consulta .badge-mod {
   display: inline-block;
-  padding: 0.15rem 0.45rem;
+  padding: 0.12rem 0.36rem;
   border-radius: 999px;
   background: #e0e7ff;
   color: #3730a3;
-  font-size: 0.78rem;
+  font-size: 0.62rem;
   font-weight: 700;
   text-transform: uppercase;
+  white-space: nowrap;
 }
-.ok { color: #15803d; font-weight: 700; }
-.fail { color: #b91c1c; font-weight: 700; }
-.data-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-.data-table th, .data-table td { padding: 0.55rem 0.7rem; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: top; }
-.data-table th { background: #1f2d4d; color: #fff; position: sticky; top: 0; }
-.data-table tbody tr:nth-child(even) { background: #f8fafc; }
-.table-scroll { max-height: 70vh; overflow: auto; }
+.auditoria-consulta .ok { color: #15803d; font-weight: 700; }
+.auditoria-consulta .fail { color: #b91c1c; font-weight: 700; }
+.auditoria-consulta .data-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; }
+.auditoria-consulta .data-table th,
+.auditoria-consulta .data-table td {
+  padding: 0.22rem 0.52rem;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+  vertical-align: middle;
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+.auditoria-consulta .data-table th {
+  background: #1f2d4d;
+  color: #fff;
+  position: sticky;
+  top: 0;
+  font-size: 0.68rem;
+  padding-top: 0.28rem;
+  padding-bottom: 0.28rem;
+}
+.auditoria-consulta .data-table tbody tr:nth-child(even) { background: #f8fafc; }
+.auditoria-consulta .col-now { white-space: nowrap; }
+.auditoria-consulta .col-user {
+  white-space: nowrap;
+  font-size: 0.68rem;
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.auditoria-consulta .col-path {
+  max-width: 144px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.auditoria-consulta .col-detalhe {
+  max-width: 192px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.68rem;
+  color: #475569;
+}
+.auditoria-consulta .empty-row {
+  text-align: center;
+  padding: 1.2rem;
+  color: #64748b;
+}
+.auditoria-consulta .table-scroll { max-height: 70vh; overflow: auto; }
 </style>
 {% endblock %}

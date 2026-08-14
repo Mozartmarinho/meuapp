@@ -1,12 +1,13 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
+<div class="tot-cadastro">
 <div class="page-header">
   <h1>Totalização de Dietas</h1>
   <p>Resumo de dietas por clínica/enfermaria e horários de refeição</p>
 </div>
 
 <div class="card tot-panel">
-  <div class="form-group" style="max-width:220px">
+  <div class="form-group tot-data">
     <label class="form-label" for="fData">Data</label>
     <input class="form-control" type="date" id="fData" value="{{ data_padrao }}">
   </div>
@@ -28,8 +29,8 @@
 
   <div class="form-group">
     <label class="form-label" id="lblFiltro" for="fFiltro">Grupo de Clínica:</label>
-    <select class="form-control" id="fFiltro" multiple size="10"></select>
-    <small style="color:#64748b">Segure Ctrl para selecionar vários. Inclui opção TODOS.</small>
+    <select class="form-control" id="fFiltro" multiple size="8"></select>
+    <small class="tot-hint">Segure Ctrl para selecionar vários. Inclui opção TODOS.</small>
   </div>
 
   <fieldset class="tot-box">
@@ -54,7 +55,7 @@
   <div class="tot-footer-opts">
     <label><input type="checkbox" id="fTotalGeral" checked> Imprimir total geral</label>
     <label class="disabled"><input type="checkbox" id="fApenasTot" disabled> Apenas dietas totalizáveis</label>
-    <div class="form-group" style="margin:0;min-width:140px">
+    <div class="form-group tot-config">
       <label class="form-label" for="fConfig">Config.:</label>
       <select class="form-control" id="fConfig" disabled>
         <option value="">—</option>
@@ -71,30 +72,56 @@
     </button>
   </div>
 </div>
+</div>
 
 <style>
-.tot-panel { padding:1.1rem 1.25rem 1.4rem; max-width:720px; }
-.tot-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin:0.85rem 0; }
+.tot-cadastro .page-header { margin-bottom: 1rem; }
+.tot-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.tot-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.tot-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.tot-cadastro .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+.tot-cadastro .form-control {
+  padding: 0.48rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+.tot-cadastro .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+.tot-cadastro .form-group { margin-bottom: 0.8rem; }
+.tot-cadastro input[type="radio"],
+.tot-cadastro input[type="checkbox"] {
+  width: 0.72rem;
+  height: 0.72rem;
+  margin: 0;
+  flex-shrink: 0;
+}
+.tot-data { max-width: 176px; }
+.tot-config { margin: 0; min-width: 112px; }
+.tot-hint { color: #64748b; font-size: 0.68rem; }
+.tot-panel { padding: 0.88rem 1rem 1.12rem; max-width: 576px; }
+.tot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin: 0.68rem 0; }
 .tot-box {
-  border:1px solid #dbe3ee; border-radius:8px; padding:0.75rem 0.9rem 0.95rem;
-  margin:0.75rem 0; background:#f8fafc;
+  border: 1px solid #dbe3ee; border-radius: 6px; padding: 0.6rem 0.72rem 0.76rem;
+  margin: 0.6rem 0; background: #f8fafc;
 }
-.tot-box legend { font-size:0.82rem; font-weight:700; color:#334155; padding:0 0.35rem; }
+.tot-box legend { font-size: 0.66rem; font-weight: 700; color: #334155; padding: 0 0.28rem; }
 .tot-box label {
-  display:flex; align-items:center; gap:0.4rem;
-  font-size:0.9rem; color:#334155; margin:0.28rem 0;
+  display: flex; align-items: center; gap: 0.32rem;
+  font-size: 0.72rem; color: #334155; margin: 0.22rem 0;
 }
-.tot-box label.disabled, .tot-footer-opts label.disabled { color:#94a3b8; }
-.tot-horas { display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.25rem 0.75rem; }
+.tot-box label.disabled, .tot-footer-opts label.disabled { color: #94a3b8; }
+.tot-horas { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.2rem 0.6rem; }
 .tot-footer-opts {
-  display:flex; flex-wrap:wrap; align-items:flex-end; gap:0.85rem 1.25rem;
-  margin:0.85rem 0 1.1rem;
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.68rem 1rem;
+  margin: 0.68rem 0 0.88rem;
 }
-.tot-footer-opts label { display:flex; align-items:center; gap:0.4rem; font-size:0.9rem; margin:0; }
-.tot-actions { display:flex; gap:0.55rem; flex-wrap:wrap; }
-#fFiltro { min-height:180px; }
+.tot-footer-opts label { display: flex; align-items: center; gap: 0.32rem; font-size: 0.72rem; margin: 0; }
+.tot-actions { display: flex; gap: 0.44rem; flex-wrap: wrap; }
+#fFiltro { min-height: 144px; }
 @media (max-width:700px){
-  .tot-grid, .tot-horas { grid-template-columns:1fr; }
+  .tot-grid, .tot-horas { grid-template-columns: 1fr; }
 }
 </style>
 
