@@ -29,6 +29,36 @@ def login_required(f):
     return decorated
 
 
+_PESAGEM_ENDPOINT_MENUS = {
+    'pesagem.dashboard': 'dashboard',
+    'pesagem.balancas_page': 'balancas',
+    'pesagem.auditoria': 'auditoria',
+    'pesagem.api_listar_leituras': 'dashboard',
+    'pesagem.api_balancas': 'balancas',
+}
+
+
+@pesagem.before_request
+def _checar_permissao_menu_pesagem():
+    if request.endpoint in ('pesagem.api_health', 'pesagem.api_receber_leitura'):
+        return None
+    if 'user_id' not in session:
+        return None
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_sistema('pesagem'):
+        flash('Você não tem permissão para o Sistema de Controle de Pesagem.', 'error')
+        return redirect(url_for('main.inicio'))
+    menu_key = _PESAGEM_ENDPOINT_MENUS.get(request.endpoint)
+    if not menu_key:
+        return None
+    if user.tem_menu('pesagem', menu_key):
+        return None
+    if (request.path or '').startswith('/api/pesagem/'):
+        return jsonify({'ok': False, 'error': 'Você não tem permissão para acessar esta aba.'}), 403
+    flash('Você não tem permissão para acessar esta aba.', 'error')
+    return redirect(url_for('main.inicio'))
+
+
 def _check_api_key():
     key = (
         request.headers.get('X-API-Key')

@@ -255,9 +255,66 @@
         }
         .check { display: flex; align-items: center; gap: 8px; font-weight: 600; }
         .sistema { border: 1px solid #d7e3f3; border-radius: 12px; padding: 14px; margin-bottom: 12px; }
-        .menus { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; padding-left: 8px; margin-top: 8px; }
+        .menus { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; padding-left: 8px; margin-top: 8px; }
         .portal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
         .hint { color: var(--muted); font-size: 0.85rem; margin-top: 6px; line-height: 1.45; }
+        .perm-title { margin: 12px 0; color: #0D2B5C; font-size: 20px; font-family: Rajdhani, sans-serif; }
+
+        /* Modal Acessos (lista + Novo/Editar): ~30% menor. Não afeta Configurações / Alterar senha. */
+        #modal-acessos { padding: 0.7rem; }
+        #modal-acessos .portal-card {
+            padding: 0.98rem 0.98rem 0.84rem;
+            border-radius: 13px;
+            box-shadow: 0 17px 42px rgba(13, 43, 92, 0.28);
+        }
+        #modal-acessos .portal-close {
+            width: 25px;
+            height: 25px;
+            margin: -0.14rem -0.14rem 0.28rem 0.42rem;
+            font-size: 0.88rem;
+        }
+        #modal-acessos .portal-head { gap: 0.7rem; margin: 0 0 0.7rem; }
+        #modal-acessos .portal-head h2 { font-size: 1.19rem; }
+        #modal-acessos .portal-head p { font-size: 0.64rem; margin-top: 3px; }
+        #modal-acessos .portal-btn {
+            gap: 0.32rem;
+            padding: 0.45rem 0.7rem;
+            font-size: 0.63rem;
+        }
+        #modal-acessos .portal-btn i { font-size: 0.63rem; }
+        #modal-acessos .portal-alert { margin: 0 0 0.7rem; padding: 8px 10px; border-radius: 7px; font-size: 0.64rem; }
+        #modal-acessos .acessos-table-wrap { border-radius: 10px; }
+        #modal-acessos .acessos-table th,
+        #modal-acessos .acessos-table td { padding: 8px 10px; font-size: 0.63rem; }
+        #modal-acessos .acessos-table th { font-size: 9px; }
+        #modal-acessos .badge { padding: 3px 7px; font-size: 8px; }
+        #modal-acessos .portal-form .grid { gap: 10px; }
+        #modal-acessos .portal-form label { margin-bottom: 4px; font-size: 0.63rem; }
+        #modal-acessos .portal-form input[type=text],
+        #modal-acessos .portal-form input[type=email],
+        #modal-acessos .portal-form input[type=password],
+        #modal-acessos .portal-form input[type=number] {
+            padding: 8px;
+            border-radius: 7px;
+            font-size: 11px;
+        }
+        #modal-acessos .portal-form input:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.14); }
+        #modal-acessos .check { gap: 6px; font-size: 0.7rem; font-weight: 600; }
+        #modal-acessos input[type=checkbox] {
+            width: 11px;
+            height: 11px;
+            accent-color: var(--brand-blue);
+            flex-shrink: 0;
+        }
+        #modal-acessos .sistema { border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+        #modal-acessos .menus {
+            grid-template-columns: repeat(auto-fill, minmax(154px, 1fr));
+            gap: 6px;
+            padding-left: 6px;
+            margin-top: 6px;
+        }
+        #modal-acessos .portal-actions { gap: 7px; margin-top: 13px; }
+        #modal-acessos .perm-title { margin: 8px 0; font-size: 14px; }
 
         body.modal-open { overflow: hidden; }
 
@@ -433,9 +490,9 @@
             </a>
             <div class="opcoes-bloco">
                 <div class="opcoes-titulo">Opções</div>
-                <a class="btn-opcao" href="{{ url_for('main.alterar_senha') }}">
+                <button type="button" class="btn-opcao" data-open-modal="modal-senha">
                     <i class="fas fa-key"></i> Alterar senha
-                </a>
+                </button>
                 {% if usuario and usuario.pode_gerenciar_acessos() %}
                 <button type="button" class="btn-opcao" data-open-modal="modal-acessos">
                     <i class="fas fa-user-shield"></i> Acessos
@@ -579,7 +636,7 @@
                         </div>
                     </div>
                     <div class="portal-alert success" id="acesso-master-note" hidden>Conta master com acesso total a todos os sistemas e abas.</div>
-                    <h3 style="margin:12px 0;color:#0D2B5C;font-size:20px;font-family:Rajdhani,sans-serif">Permissão por sistema</h3>
+                    <h3 class="perm-title">Permissão por sistema</h3>
                     {% for chave, meta in sistemas.items() %}
                     <div class="sistema">
                         <label class="check">
@@ -587,10 +644,10 @@
                             {{ meta.nome }}
                         </label>
                         <div class="menus" data-menus="{{ chave }}" style="opacity:.45">
-                            {% for menu_key, menu_nome in meta.menus %}
+                            {% for menu in meta.menus %}
                             <label class="check">
-                                <input type="checkbox" class="menu-check" name="menu_{{ chave }}_{{ menu_key }}" data-parent="{{ chave }}" disabled>
-                                {{ menu_nome }}
+                                <input type="checkbox" class="menu-check" name="menu_{{ chave }}_{{ menu[0] }}" data-parent="{{ chave }}" disabled>
+                                {{ menu[1] }}
                             </label>
                             {% endfor %}
                         </div>
@@ -655,17 +712,52 @@
             </form>
         </div>
     </div>
+    {% endif %}
+
+    <div class="portal-overlay" id="modal-senha" role="presentation">
+        <div class="portal-card narrow" role="dialog" aria-modal="true" aria-labelledby="senha-title">
+            <button type="button" class="portal-close" data-close-modal aria-label="Fechar">&times;</button>
+            <div class="portal-head">
+                <div>
+                    <h2 id="senha-title">Alterar senha</h2>
+                    <p>Defina uma nova senha ou envie o link de redefinição por e-mail.</p>
+                </div>
+            </div>
+            <div class="portal-alert" id="senha-msg" hidden></div>
+            <form class="portal-form" id="form-senha" autocomplete="off">
+                <input type="hidden" name="acao" value="alterar">
+                <div class="grid" style="grid-template-columns:1fr">
+                    <div class="form-group">
+                        <label for="senha-atual">Senha atual</label>
+                        <input type="password" id="senha-atual" name="senha_atual" required autocomplete="current-password">
+                    </div>
+                    <div class="form-group">
+                        <label for="senha-nova">Nova senha</label>
+                        <input type="password" id="senha-nova" name="senha" required minlength="6" autocomplete="new-password">
+                    </div>
+                    <div class="form-group">
+                        <label for="senha-confirma">Confirmar nova senha</label>
+                        <input type="password" id="senha-confirma" name="confirma_senha" required minlength="6" autocomplete="new-password">
+                    </div>
+                </div>
+                <div class="portal-actions">
+                    <button type="button" class="portal-btn sec" data-close-modal>Cancelar</button>
+                    <button type="submit" class="portal-btn pri"><i class="fas fa-save"></i> Salvar nova senha</button>
+                </div>
+            </form>
+            <p class="hint">Ou envie um link de redefinição para <strong>{{ usuario.email if usuario else '' }}</strong>.</p>
+            <form class="portal-form" id="form-senha-email">
+                <input type="hidden" name="acao" value="enviar_email">
+                <div class="portal-actions" style="justify-content:flex-start;margin-top:8px">
+                    <button type="submit" class="portal-btn sec"><i class="fas fa-envelope"></i> Enviar link por e-mail</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <script>
     (function () {
-        var ACESSOS = {{ acessos_js | tojson }};
-        var URL_NOVO = {{ url_for('main.novo_acesso') | tojson }};
-        var URL_EDITAR_TPL = {{ url_for('main.editar_acesso', id=0) | tojson }};
-        var URL_CONFIG = {{ url_for('main.configuracoes') | tojson }};
-
-        function urlEditar(id) {
-            return URL_EDITAR_TPL.replace('/0/', '/' + id + '/');
-        }
+        var URL_SENHA = {{ url_for('main.alterar_senha') | tojson }};
 
         function openModal(id) {
             var el = document.getElementById(id);
@@ -673,11 +765,19 @@
             el.classList.add('is-open');
             document.body.classList.add('modal-open');
             if (id === 'modal-acessos') {
-                showAcessoLista();
+                var lista = document.getElementById('acessos-lista');
+                var formWrap = document.getElementById('acessos-form-wrap');
+                if (lista) lista.hidden = false;
+                if (formWrap) formWrap.hidden = true;
                 showMsg(document.getElementById('acessos-lista-msg'), true, '');
             }
             if (id === 'modal-config') {
                 showMsg(document.getElementById('config-msg'), true, '');
+            }
+            if (id === 'modal-senha') {
+                showMsg(document.getElementById('senha-msg'), true, '');
+                var formSenha = document.getElementById('form-senha');
+                if (formSenha) formSenha.reset();
             }
         }
 
@@ -710,6 +810,68 @@
             return { ok: res.ok, message: res.ok ? 'Salvo com sucesso.' : 'Não foi possível salvar.' };
         }
 
+        document.querySelectorAll('[data-open-modal]').forEach(function (btn) {
+            btn.addEventListener('click', function () { openModal(btn.getAttribute('data-open-modal')); });
+        });
+        document.querySelectorAll('[data-close-modal]').forEach(function (btn) {
+            btn.addEventListener('click', function () { closeModal(btn); });
+        });
+        document.querySelectorAll('.portal-overlay').forEach(function (overlay) {
+            overlay.addEventListener('click', function (ev) {
+                if (ev.target === overlay) closeModal(overlay);
+            });
+        });
+        document.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Escape') {
+                var open = document.querySelector('.portal-overlay.is-open');
+                if (open) closeModal(open);
+            }
+        });
+
+        document.getElementById('form-senha').addEventListener('submit', async function (ev) {
+            ev.preventDefault();
+            var form = ev.currentTarget;
+            var msg = document.getElementById('senha-msg');
+            var btn = form.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            try {
+                var data = await postForm(URL_SENHA, form);
+                showMsg(msg, !!data.ok, data.message || (data.ok ? 'Senha alterada com sucesso.' : 'Não foi possível alterar a senha.'));
+                if (data.ok) form.reset();
+            } catch (err) {
+                showMsg(msg, false, 'Não foi possível alterar a senha. Tente de novo.');
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        document.getElementById('form-senha-email').addEventListener('submit', async function (ev) {
+            ev.preventDefault();
+            var form = ev.currentTarget;
+            var msg = document.getElementById('senha-msg');
+            var btn = form.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            try {
+                var data = await postForm(URL_SENHA, form);
+                showMsg(msg, !!data.ok, data.message || (data.ok ? 'Link enviado.' : 'Não foi possível enviar o e-mail.'));
+            } catch (err) {
+                showMsg(msg, false, 'Não foi possível enviar o e-mail. Tente de novo.');
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        {% if usuario and usuario.pode_gerenciar_acessos() %}
+        var ACESSOS = {{ acessos_js | tojson }};
+        var SISTEMAS_MENUS = {{ sistemas | tojson }};
+        var URL_NOVO = {{ url_for('main.novo_acesso') | tojson }};
+        var URL_EDITAR_TPL = {{ url_for('main.editar_acesso', id=0) | tojson }};
+        var URL_CONFIG = {{ url_for('main.configuracoes') | tojson }};
+
+        function urlEditar(id) {
+            return URL_EDITAR_TPL.replace('/0/', '/' + id + '/');
+        }
+
         function badge(on) {
             return '<span class="badge ' + (on ? 'on' : 'off') + '">' + (on ? 'Sim' : 'Não') + '</span>';
         }
@@ -734,6 +896,24 @@
                 return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
             });
         }
+
+        function ensureCatalogMenus() {
+            Object.keys(SISTEMAS_MENUS || {}).forEach(function (chave) {
+                var meta = SISTEMAS_MENUS[chave] || {};
+                var menus = meta.menus || [];
+                var box = document.querySelector('#form-acesso [data-menus="' + chave + '"]');
+                if (!box) return;
+                box.innerHTML = menus.map(function (item) {
+                    var key = item[0];
+                    var nome = item[1];
+                    return '<label class="check">' +
+                        '<input type="checkbox" class="menu-check" name="menu_' + chave + '_' + key + '" data-parent="' + chave + '" disabled> ' +
+                        escapeHtml(nome) +
+                        '</label>';
+                }).join('');
+            });
+        }
+        ensureCatalogMenus();
 
         function upsertAcesso(item) {
             var idx = ACESSOS.findIndex(function (a) { return a.id === item.id; });
@@ -826,24 +1006,6 @@
             document.getElementById('acessos-form-wrap').hidden = false;
         }
 
-        document.querySelectorAll('[data-open-modal]').forEach(function (btn) {
-            btn.addEventListener('click', function () { openModal(btn.getAttribute('data-open-modal')); });
-        });
-        document.querySelectorAll('[data-close-modal]').forEach(function (btn) {
-            btn.addEventListener('click', function () { closeModal(btn); });
-        });
-        document.querySelectorAll('.portal-overlay').forEach(function (overlay) {
-            overlay.addEventListener('click', function (ev) {
-                if (ev.target === overlay) closeModal(overlay);
-            });
-        });
-        document.addEventListener('keydown', function (ev) {
-            if (ev.key === 'Escape') {
-                var open = document.querySelector('.portal-overlay.is-open');
-                if (open) closeModal(open);
-            }
-        });
-
         document.getElementById('btn-novo-acesso').addEventListener('click', function () {
             showAcessoForm(null);
         });
@@ -914,8 +1076,8 @@
                 btn.disabled = false;
             }
         });
+        {% endif %}
     })();
     </script>
-    {% endif %}
 </body>
 </html>

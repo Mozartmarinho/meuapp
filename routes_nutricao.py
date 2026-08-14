@@ -2785,49 +2785,18 @@ def auditoria():
     )
 
 
-# ---- ADMIN ----
+# ---- ADMIN (usuários centralizados em Acessos na home) ----
 @nutricao.route('/nutricao/admin')
 def admin():
-    return render_template('nutricao_admin.html', usuarios=UTILIZADORES, **active('admin'))
+    flash('Cadastro de usuários e permissões fica em Acessos, na tela principal do portal.', 'info')
+    return redirect(url_for('nutricao.dashboard'))
 
 @nutricao.route('/nutricao/api/usuarios', methods=['POST'])
 def api_usuarios_create():
-    d = request.get_json(force=True) or {}
-
-    nome = (d.get('nome') or '').strip()
-    usuario = (d.get('usuario') or '').strip()
-    setor = (d.get('setor') or '').strip()
-    cargo = (d.get('cargo') or '').strip()
-    senha = d.get('senha') or ''
-    confirmar_senha = d.get('confirmar_senha') or ''
-    ativo = bool(d.get('ativo', True))
-    permissoes = d.get('permissoes') or []
-
-    if not nome or not usuario or not setor or not cargo:
-        return jsonify({'ok': False, 'error': 'Campos obrigatórios: nome, usuário, setor e cargo.'}), 400
-
-    if not senha:
-        return jsonify({'ok': False, 'error': 'Senha é obrigatória.'}), 400
-
-    if senha != confirmar_senha:
-        return jsonify({'ok': False, 'error': 'Senha e confirmação não conferem.'}), 400
-
-    if any((u.get('usuario', '').lower() == usuario.lower()) for u in UTILIZADORES):
-        return jsonify({'ok': False, 'error': 'Nome de usuário já existe.'}), 409
-
-    novo = {
-        'id': max([u['id'] for u in UTILIZADORES], default=0) + 1,
-        'nome': nome,
-        'usuario': usuario,
-        'email': d.get('email', ''),
-        'setor': setor,
-        'cargo': cargo,
-        'tipo': d.get('tipo', 'operador'),
-        'ativo': ativo,
-        'permissoes': permissoes
-    }
-    UTILIZADORES.append(novo)
-    return jsonify({'ok': True, 'id': novo['id']})
+    return jsonify({
+        'ok': False,
+        'error': 'Cadastro de usuários da Nutrição fica em Acessos, na tela principal do portal.',
+    }), 404
 
 # ---- UTILITÁRIOS ----
 @nutricao.route('/nutricao/utilitarios')

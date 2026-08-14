@@ -114,7 +114,8 @@ class Usuario(db.Model):
         return {p.menu_key: p.permitido for p in self.menus.filter_by(sistema=sistema).all()}
 
     def pode_gerenciar_acessos(self):
-        return bool(self.is_master or self.tipo == 'admin' or self.perm_acesso)
+        """Acessos/Configurações na home: checkbox do sistema 'acesso' (perm_acesso) ou master."""
+        return bool(self.is_master or self.perm_acesso)
 
 
 class PermissaoMenu(db.Model):

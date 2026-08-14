@@ -221,6 +221,79 @@ def login_required(f):
     return decorated
 
 
+# Páginas (e exports) → aba do catálogo SISTEMAS['acesso']['menus'].
+# APIs de equipamento físico (/acesso/controlid/...) ficam de fora.
+_ACESSO_ENDPOINT_MENUS = {
+    'acesso.dashboard': 'dashboard',
+    'acesso.api_dashboard': 'dashboard',
+    'acesso.pessoas_page': 'pessoas',
+    'acesso.pessoas_export_csv': 'pessoas',
+    'acesso.equipamentos_page': 'equipamentos',
+    'acesso.operacoes_page': 'operacoes',
+    'acesso.limpeza_page': 'limpeza',
+    'acesso.sync_offline_page': 'sync_offline',
+    'acesso.grupos_page': 'grupos',
+    'acesso.visitantes_page': 'visitantes',
+    'acesso.escalas_page': 'escalas',
+    'acesso.pessoas_veiculos_page': 'pessoas_veiculos',
+    'acesso.eventos_page': 'eventos',
+    'acesso.eventos_export_csv': 'eventos',
+    'acesso.ambientes_page': 'ambientes',
+    'acesso.estacionamentos_page': 'estacionamentos',
+    'acesso.impressoras_page': 'impressoras',
+    'acesso.controle_adicional_page': 'controle_adicional',
+    'acesso.parametros_refeicoes_page': 'param_refeicoes',
+    'acesso.parametros_documentos_page': 'param_documentos',
+    'acesso.veiculos_page': 'veiculos',
+    'acesso.veiculos_export_csv': 'veiculos',
+    'acesso.permanencia_page': 'permanencia',
+    'acesso.permanencia_export_csv': 'permanencia',
+    'acesso.auditoria_page': 'auditoria',
+    'acesso.refeicoes_page': 'refeicoes',
+    'acesso.refeicoes_export': 'refeicoes',
+    'acesso.refeicoes_imprimir': 'refeicoes',
+    'acesso.sobre_page': 'sobre',
+    'acesso.usuarios_page': 'usuarios',
+    'acesso.permissoes_page': 'permissoes',
+    'acesso.backup_page': 'backup',
+    'acesso.backup_download': 'backup',
+    'acesso.documentacao_page': 'documentacao',
+    'acesso.empresas_page': 'empresas',
+    'acesso.classificacoes_page': 'classificacoes',
+    'acesso.cadastros_diversos_page': 'cadastros_diversos',
+    'acesso.departamentos_page': 'cadastros_diversos',
+    'acesso.setores_page': 'cadastros_diversos',
+    'acesso.centros_custo_page': 'cadastros_diversos',
+    'acesso.tipos_documento_page': 'cadastros_diversos',
+}
+
+
+def _negar_menu_acesso(mensagem):
+    path = request.path or ''
+    if path.startswith('/acesso/api/'):
+        return jsonify({'ok': False, 'error': mensagem}), 403
+    flash(mensagem, 'error')
+    return redirect(url_for('main.inicio'))
+
+
+@acesso.before_request
+def _checar_permissao_menu_acesso():
+    path = request.path or ''
+    if path.startswith('/acesso/controlid/'):
+        return None
+    if 'user_id' not in session:
+        return None
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_sistema('acesso'):
+        return _negar_menu_acesso('Você não tem permissão para o Sistema de Controle de Acesso.')
+    menu_key = _ACESSO_ENDPOINT_MENUS.get(request.endpoint)
+    if not menu_key:
+        return None
+    if user.tem_menu('acesso', menu_key):
+        return None
+    return _negar_menu_acesso('Você não tem permissão para acessar esta aba.')
+
+
 def _parse_date(value):
     if not value:
         return None

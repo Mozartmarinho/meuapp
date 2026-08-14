@@ -42,24 +42,30 @@
                     <span class="menu-label">Sistemas</span>
                 </a>
             </li>
+            {% if usuario_atual and usuario_atual.tem_menu('pesagem', 'dashboard') %}
             <li>
                 <a href="{{ url_for('pesagem.dashboard') }}" class="{% if active_page == 'dashboard' %}active{% endif %}" title="Leituras">
                     <i class="fas fa-weight-scale menu-icon"></i>
                     <span class="menu-label">Leituras</span>
                 </a>
             </li>
+            {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('pesagem', 'balancas') %}
             <li>
                 <a href="{{ url_for('pesagem.balancas_page') }}" class="{% if active_page == 'balancas' %}active{% endif %}" title="Balanças">
                     <i class="fas fa-scale-balanced menu-icon"></i>
                     <span class="menu-label">Balanças</span>
                 </a>
             </li>
+            {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('pesagem', 'auditoria') %}
             <li>
                 <a href="{{ url_for('pesagem.auditoria') }}" class="{% if active_page == 'auditoria' %}active{% endif %}" title="Auditoria">
                     <i class="fas fa-clipboard-check menu-icon"></i>
                     <span class="menu-label">Auditoria</span>
                 </a>
             </li>
+            {% endif %}
             <li>
                 <a href="{{ url_for('main.logout') }}" title="Sair">
                     <i class="fas fa-sign-out-alt menu-icon"></i>

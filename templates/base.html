@@ -67,12 +67,6 @@
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('main.listar_usuarios') }}" class="{% if request.endpoint == 'main.listar_usuarios' %}active{% endif %}" title="Usuários">
-                    <i class="fas fa-user-tie menu-icon"></i>
-                    <span class="menu-label">Usuários</span>
-                </a>
-            </li>
-            <li>
                 <a href="{{ url_for('main.relatorios') }}" class="{% if request.endpoint == 'main.relatorios' %}active{% endif %}" title="Relatórios">
                     <i class="fas fa-chart-bar menu-icon"></i>
                     <span class="menu-label">Relatórios</span>
@@ -82,12 +76,6 @@
                 <a href="{{ url_for('main.auditoria') }}" class="{% if request.endpoint == 'main.auditoria' %}active{% endif %}" title="Auditoria">
                     <i class="fas fa-clipboard-check menu-icon"></i>
                     <span class="menu-label">Auditoria</span>
-                </a>
-            </li>
-            <li>
-                <a href="{{ url_for('main.configuracoes') }}" class="{% if request.endpoint == 'main.configuracoes' %}active{% endif %}" title="Configurações">
-                    <i class="fas fa-cog menu-icon"></i>
-                    <span class="menu-label">Configurações</span>
                 </a>
             </li>
             <li class="menu-footer">

@@ -353,31 +353,41 @@ def alterar_senha():
         if acao == 'enviar_email':
             try:
                 _enviar_link_redefinicao(usuario)
-                flash(f'Enviamos o link de redefinição para {usuario.email}.', 'success')
+                msg = f'Enviamos o link de redefinição para {usuario.email}.'
+                if _wants_json():
+                    return jsonify({'ok': True, 'message': msg})
+                flash(msg, 'success')
             except Exception as exc:
                 print(f'Falha ao enviar e-mail de redefinição: {exc}')
-                flash(
-                    'Não foi possível enviar o e-mail agora. Confira a configuração SMTP ou tente de novo.',
-                    'error',
+                msg = (
+                    'Não foi possível enviar o e-mail agora. Confira a configuração SMTP ou tente de novo.'
                 )
+                if _wants_json():
+                    return jsonify({'ok': False, 'message': msg}), 400
+                flash(msg, 'error')
             return redirect(url_for('main.alterar_senha'))
 
         atual = request.form.get('senha_atual') or ''
         nova = request.form.get('senha') or ''
         confirma = request.form.get('confirma_senha') or ''
+        erro = None
         if not check_password_hash(usuario.senha, atual):
-            flash('A senha atual está incorreta.', 'error')
-            return render_template('alterar_senha.html', usuario=usuario)
-        if len(nova) < 6:
-            flash('A nova senha deve ter pelo menos 6 caracteres.', 'error')
-            return render_template('alterar_senha.html', usuario=usuario)
-        if nova != confirma:
-            flash('A confirmação não confere com a nova senha.', 'error')
+            erro = 'A senha atual está incorreta.'
+        elif len(nova) < 6:
+            erro = 'A nova senha deve ter pelo menos 6 caracteres.'
+        elif nova != confirma:
+            erro = 'A confirmação não confere com a nova senha.'
+        if erro:
+            if _wants_json():
+                return jsonify({'ok': False, 'message': erro}), 400
+            flash(erro, 'error')
             return render_template('alterar_senha.html', usuario=usuario)
         usuario.senha = generate_password_hash(nova)
         usuario.reset_token = None
         usuario.reset_token_expira = None
         db.session.commit()
+        if _wants_json():
+            return jsonify({'ok': True, 'message': 'Senha alterada com sucesso.'})
         flash('Senha alterada com sucesso.', 'success')
         return redirect(url_for('main.inicio'))
 
@@ -799,85 +809,30 @@ def atualizar_status(id):
         }), 400
 
 
-def _aplicar_menus_chamados(usuario, form):
-    from models import PermissaoMenu
-    usuario.perm_chamados = True
-    for menu_key, _label in SISTEMAS['chamados']['menus']:
-        permitido = usuario.is_master or form.get(f'menu_chamados_{menu_key}') == 'on'
-        perm = usuario.menus.filter_by(sistema='chamados', menu_key=menu_key).first()
-        if not perm:
-            db.session.add(PermissaoMenu(
-                usuario_id=usuario.id,
-                sistema='chamados',
-                menu_key=menu_key,
-                permitido=permitido,
-            ))
-        else:
-            perm.permitido = permitido
+def _redir_usuarios_portal():
+    flash('Cadastro de usuários e permissões fica em Acessos, na tela principal do portal.', 'info')
+    return redirect(url_for('main.inicio'))
 
 
 @main.route('/usuarios')
 @login_required
 def listar_usuarios():
-    """Lista todos os usuários"""
-    usuarios = Usuario.query.order_by(Usuario.data_criacao.desc()).all()
-    return render_template('usuarios.html', usuarios=usuarios)
+    """Usuários do módulo Chamados: centralizado em Acessos na home."""
+    return _redir_usuarios_portal()
 
 
 @main.route('/novo_usuario', methods=['GET', 'POST'])
 @login_required
 def novo_usuario():
-    """Criar novo usuário"""
-    if request.method == 'POST':
-        try:
-            hashed_senha = generate_password_hash(request.form['senha'])
-            usuario = Usuario(
-                nome=request.form['nome'],
-                email=request.form['email'],
-                senha=hashed_senha,
-                tipo=request.form.get('tipo', 'operador'),
-                ativo=True
-            )
-            usuario.perm_chamados = True
-            db.session.add(usuario)
-            db.session.flush()
-            _aplicar_menus_chamados(usuario, request.form)
-            db.session.commit()
-            flash('Usuário criado com sucesso!', 'success')
-            return redirect(url_for('main.listar_usuarios'))
-        except Exception as e:
-            flash(f'Erro ao criar usuário: {str(e)}', 'error')
-            db.session.rollback()
-    return render_template('novo_usuario.html', menus_chamados=SISTEMAS['chamados']['menus'])
+    """Usuários do módulo Chamados: centralizado em Acessos na home."""
+    return _redir_usuarios_portal()
 
 
 @main.route('/usuarios/<int:id>/editar', methods=['GET', 'POST'])
 @login_required
 def editar_usuario(id):
-    """Editar usuário existente"""
-    usuario = Usuario.query.get_or_404(id)
-    if request.method == 'POST':
-        try:
-            usuario.nome = request.form['nome']
-            usuario.email = request.form['email']
-            if request.form['senha']:  # Atualiza senha apenas se fornecida
-                usuario.senha = generate_password_hash(request.form['senha'])
-            usuario.tipo = request.form.get('tipo', 'operador')
-            usuario.ativo = request.form.get('ativo', True) == 'on'
-            usuario.perm_chamados = True
-            _aplicar_menus_chamados(usuario, request.form)
-            db.session.commit()
-            flash('Usuário atualizado com sucesso!', 'success')
-            return redirect(url_for('main.listar_usuarios'))
-        except Exception as e:
-            flash(f'Erro ao atualizar usuário: {str(e)}', 'error')
-            db.session.rollback()
-    return render_template(
-        'editar_usuario.html',
-        usuario=usuario,
-        menus_chamados=SISTEMAS['chamados']['menus'],
-        permissoes=usuario.menus_liberados('chamados'),
-    )
+    """Usuários do módulo Chamados: centralizado em Acessos na home."""
+    return _redir_usuarios_portal()
 
 
 @main.route('/equipamentos')
