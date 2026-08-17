@@ -83,64 +83,65 @@
 
 {% block scripts %}
 <style>
+
 .cd-wrap { max-width: 960px; }
 .cd-header {
-  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  display: flex; align-items: center; gap: .8rem; flex-wrap: wrap;
   background: linear-gradient(135deg, var(--brand-navy) 0%, var(--brand-blue) 100%);
-  color: #fff; border-radius: 16px; padding: 1.15rem 1.35rem; margin-bottom: 1rem;
-  box-shadow: 0 8px 24px rgba(13, 43, 92, 0.22);
+  color: #fff; border-radius: 12.8px; padding: .92rem 1.08rem; margin-bottom: .8rem;
+  box-shadow: 0 6.4px 19.2px rgba(13, 43, 92, 0.22);
 }
-.cd-header-left { display: flex; align-items: center; gap: 0.9rem; }
+.cd-header-left { display: flex; align-items: center; gap: .72rem; }
 .cd-icon {
-  width: 48px; height: 48px; border-radius: 14px; background: #fff; color: var(--brand-blue);
-  display: flex; align-items: center; justify-content: center; font-size: 1.25rem; flex-shrink: 0;
+  width: 38.4px; height: 38.4px; border-radius: 11.2px; background: #fff; color: var(--brand-blue);
+  display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;
 }
 .cd-header h1 {
-  margin: 0; font-family: var(--font-brand); font-size: 1.45rem; font-weight: 700;
+  margin: 0; font-family: var(--font-brand); font-size: 1.16rem; font-weight: 700;
 }
-.cd-header p { margin: 0.3rem 0 0; opacity: 0.9; font-size: 0.88rem; max-width: 42rem; }
+.cd-header p { margin: .24rem 0 0; opacity: 0.9; font-size: .704rem; max-width: 33.6rem; }
 
 .cd-tabs {
-  display: flex; flex-wrap: wrap; gap: 0; border-bottom: 1px solid rgba(15, 42, 86, 0.12); margin-bottom: 1rem;
+  display: flex; flex-wrap: wrap; gap: 0; border-bottom: 1px solid rgba(15, 42, 86, 0.12); margin-bottom: .8rem;
 }
 .cd-tab {
-  border: 0; background: transparent; padding: 0.7rem 1rem; cursor: pointer;
+  border: 0; background: transparent; padding: .56rem .8rem; cursor: pointer;
   font: inherit; font-weight: 700; color: #64748b; border-bottom: 2px solid transparent;
-  display: inline-flex; align-items: center; gap: 0.45rem;
+  display: inline-flex; align-items: center; gap: .36rem;
 }
 .cd-tab:hover { color: var(--brand-navy); }
 .cd-tab.active { color: var(--brand-blue); border-bottom-color: var(--brand-blue); }
 .cd-tab-count {
   background: rgba(27, 79, 156, 0.1); color: var(--brand-blue);
-  font-weight: 700; font-size: 0.75rem; padding: 0.12rem 0.45rem; border-radius: 999px; min-width: 1.4rem; text-align: center;
+  font-weight: 700; font-size: .6rem; padding: .096rem .36rem; border-radius: 999px; min-width: 1.12rem; text-align: center;
 }
 .cd-tab.active .cd-tab-count { background: rgba(27, 79, 156, 0.18); }
 
-.cd-panel { padding: 1.15rem 1.25rem; }
-.cd-block { margin-bottom: 1rem; }
+.cd-panel { padding: .92rem 1rem; }
+.cd-block { margin-bottom: .8rem; }
 .cd-block-label {
-  font-size: 0.72rem; font-weight: 800; letter-spacing: 0.06em; color: #64748b; margin-bottom: 0.45rem;
+  font-size: .576rem; font-weight: 800; letter-spacing: 0.06em; color: #64748b; margin-bottom: .36rem;
 }
 .cd-add-row {
-  display: flex; flex-wrap: wrap; gap: 0.55rem; align-items: center;
+  display: flex; flex-wrap: wrap; gap: .44rem; align-items: center;
 }
 .cd-add-row .cd-input-desc {
   flex: 1 1 220px; min-width: 180px;
-  padding: 0.6rem 0.75rem; border: 1px solid rgba(15, 42, 86, 0.12); border-radius: 10px;
+  padding: .48rem .6rem; border: 1px solid rgba(15, 42, 86, 0.12); border-radius: 8px;
   font: inherit; color: var(--brand-navy); background: #fff;
 }
 .cd-search-row {
-  display: flex; align-items: center; gap: 0.55rem;
-  padding: 0.55rem 0.75rem; border: 1px solid rgba(15, 42, 86, 0.12); border-radius: 10px; background: #fff;
+  display: flex; align-items: center; gap: .44rem;
+  padding: .44rem .6rem; border: 1px solid rgba(15, 42, 86, 0.12); border-radius: 8px; background: #fff;
 }
 .cd-search-row i { color: #94a3b8; }
 .cd-search-row .cd-filter {
   flex: 1; border: 0; outline: none; font: inherit; color: var(--brand-navy); background: transparent;
 }
-.cd-actions { white-space: nowrap; display: flex; gap: 0.35rem; }
-.cd-actions .btn { padding: 0.28rem 0.55rem; }
+.cd-actions { white-space: nowrap; display: flex; gap: .28rem; }
+.cd-actions .btn { padding: .224rem .44rem; }
 .cd-empty {
-  text-align: center; padding: 1.75rem 1rem; color: #64748b; font-weight: 600;
+  text-align: center; padding: 1.4rem .8rem; color: #64748b; font-weight: 600;
 }
 .cd-empty[hidden] { display: none; }
 .cd-table[data-empty="1"] { display: none; }

@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v=menu30" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v=menu31" rel="stylesheet">
 </head>
 <body data-sidebar-collapse="sg-chamados-sidebar-collapsed">
     <script>
@@ -42,42 +42,62 @@
                     <span class="menu-label">Sistemas</span>
                 </a>
             </li>
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'dashboard') %}
             <li>
                 <a href="{{ url_for('main.dashboard') }}" class="{% if request.endpoint == 'main.dashboard' %}active{% endif %}" title="Dashboard">
                     <i class="fas fa-tachometer-alt menu-icon"></i>
                     <span class="menu-label">Dashboard</span>
                 </a>
             </li>
+            {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'chamados') %}
             <li>
                 <a href="{{ url_for('main.listar_chamados') }}" class="{% if request.endpoint == 'main.listar_chamados' %}active{% endif %}" title="Chamados">
                     <i class="fas fa-clipboard-list menu-icon"></i>
                     <span class="menu-label">Chamados</span>
                 </a>
             </li>
+            {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'novo_chamado') %}
             <li>
                 <a href="{{ url_for('main.novo_chamado') }}" class="{% if request.endpoint == 'main.novo_chamado' %}active{% endif %}" title="Novo Chamado">
                     <i class="fas fa-plus-circle menu-icon"></i>
                     <span class="menu-label">Novo Chamado</span>
                 </a>
             </li>
+            {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'clientes') %}
             <li>
-                <a href="{{ url_for('main.listar_clientes') }}" class="{% if request.endpoint == 'main.listar_clientes' %}active{% endif %}" title="Clientes">
+                <a href="{{ url_for('main.listar_clientes') }}" class="{% if request.endpoint in ('main.listar_clientes', 'main.novo_cliente', 'main.editar_cliente') %}active{% endif %}" title="Clientes">
                     <i class="fas fa-users menu-icon"></i>
                     <span class="menu-label">Clientes</span>
                 </a>
             </li>
+            {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'equipamentos') %}
+            <li>
+                <a href="{{ url_for('main.listar_equipamentos') }}" class="{% if request.endpoint in ('main.listar_equipamentos', 'main.novo_equipamento', 'main.editar_equipamento') %}active{% endif %}" title="Cadastro de Equipamentos">
+                    <i class="fas fa-tools menu-icon"></i>
+                    <span class="menu-label">Equipamentos</span>
+                </a>
+            </li>
+            {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'relatorios') %}
             <li>
                 <a href="{{ url_for('main.relatorios') }}" class="{% if request.endpoint == 'main.relatorios' %}active{% endif %}" title="Relatórios">
                     <i class="fas fa-chart-bar menu-icon"></i>
                     <span class="menu-label">Relatórios</span>
                 </a>
             </li>
+            {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'auditoria') %}
             <li>
                 <a href="{{ url_for('main.auditoria') }}" class="{% if request.endpoint == 'main.auditoria' %}active{% endif %}" title="Auditoria">
                     <i class="fas fa-clipboard-check menu-icon"></i>
                     <span class="menu-label">Auditoria</span>
                 </a>
             </li>
+            {% endif %}
             <li class="menu-footer">
                 <a href="{{ url_for('main.logout') }}" title="Sair">
                     <i class="fas fa-sign-out-alt menu-icon"></i>

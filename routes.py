@@ -11,15 +11,37 @@ from flask import (
 )
 from functools import wraps
 from password_utils import generate_password_hash, check_password_hash
-from models import db, Chamado, Usuario, Cliente, Equipamento, ConfiguracaoEmail
+from models import (
+    db,
+    Chamado,
+    Usuario,
+    Cliente,
+    Equipamento,
+    ConfiguracaoEmail,
+    ChamadoAtendimento,
+    ChamadoFoto,
+    TIPO_FOTO_CONSERTO,
+    TIPO_FOTO_ENCAMINHAMENTO,
+    SETORES_CHAMADO,
+    STATUS_AGUARDAR_PECA,
+    STATUS_ENCAMINHADO,
+    STATUS_ATENDIDO,
+    STATUS_FECHADOS,
+    status_fechado,
+    normalizar_setor_chamado,
+)
 from permissions_sistemas import SISTEMAS, aplicar_permissoes_formulario, conceder_acesso_total
 from sqlalchemy.orm import joinedload
-from sqlalchemy import func
-from datetime import datetime, timedelta
+from sqlalchemy import func, or_, and_
+from sqlalchemy.exc import IntegrityError
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from werkzeug.utils import secure_filename
 import os
 import random
 import secrets
 import string
+import uuid
 
 main = Blueprint('main', __name__)
 
@@ -82,11 +104,215 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+
+_CHAMADOS_ENDPOINT_MENUS = {
+    'main.dashboard': 'dashboard',
+    'main.listar_chamados': 'chamados',
+    'main.novo_chamado': 'novo_chamado',
+    'main.editar_chamado': 'chamados',
+    'main.listar_clientes': 'clientes',
+    'main.novo_cliente': 'clientes',
+    'main.editar_cliente': 'clientes',
+    'main.listar_equipamentos': 'equipamentos',
+    'main.novo_equipamento': 'equipamentos',
+    'main.editar_equipamento': 'equipamentos',
+    'main.api_equipamentos': 'equipamentos',
+    'main.api_equipamento': 'equipamentos',
+    'main.relatorios': 'relatorios',
+    'main.auditoria': 'auditoria',
+}
+
+
+@main.before_request
+def _checar_permissao_menu_chamados():
+    menu_key = _CHAMADOS_ENDPOINT_MENUS.get(request.endpoint)
+    if not menu_key:
+        return None
+    if 'user_id' not in session:
+        return None
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_sistema('chamados'):
+        flash('Você não tem permissão para o Sistema de Gestão de Chamados.', 'error')
+        return redirect(url_for('main.inicio'))
+    if user.tem_menu('chamados', menu_key):
+        return None
+    if (request.path or '').startswith('/api/'):
+        return jsonify({'ok': False, 'error': 'Você não tem permissão para acessar esta aba.'}), 403
+    flash('Você não tem permissão para acessar esta aba.', 'error')
+    return redirect(url_for('main.inicio'))
+
+
+def _parse_data_compra(valor):
+    raw = (valor or '').strip()
+    if not raw:
+        return None
+    for fmt in ('%Y-%m-%d', '%d/%m/%Y'):
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _vincular_equipamento_chamado(chamado, form, cliente_id):
+    """Grava patrimônio, nome e FK a partir do cadastro de equipamentos."""
+    eq_id_raw = (form.get('equipamento_id') or '').strip()
+    codigo = (form.get('patrimonio') or '').strip()
+    nome_form = (form.get('equipamento') or '').strip()
+    eq = None
+    if eq_id_raw.isdigit():
+        eq = Equipamento.query.filter_by(id=int(eq_id_raw), cliente_id=cliente_id).first()
+    if not eq and codigo:
+        eq = Equipamento.query.filter_by(patrimonio=codigo, cliente_id=cliente_id).first()
+        if not eq:
+            eq = Equipamento.query.filter_by(patrimonio=codigo).first()
+    if eq:
+        chamado.equipamento_id = eq.id
+        chamado.patrimonio = eq.patrimonio
+        chamado.equipamento = eq.nome_equipamento
+        return
+    chamado.equipamento_id = None
+    chamado.patrimonio = codigo or None
+    chamado.equipamento = nome_form or None
+
 def gerar_numero_chamado():
     """Gera um número único para o chamado"""
     prefixo = "OS"
     numero = ''.join(random.choices(string.digits, k=6))
     return f"{prefixo}{numero}"
+
+
+_FOTO_EXTS = {'.jpg', '.jpeg', '.png', '.webp', '.gif'}
+_UPLOAD_CHAMADOS = Path(__file__).resolve().parent / 'static' / 'uploads' / 'chamados'
+
+
+def _setor_usuario(usuario):
+    return normalizar_setor_chamado(getattr(usuario, 'setor', None) if usuario else '')
+
+
+def _eh_gestor(usuario):
+    return bool(usuario and (usuario.is_master or usuario.tipo == 'admin'))
+
+
+def _pendencias_chamados(usuario):
+    """Pendências do login: encaminhamentos ao setor do usuário e chamados aguardando peça."""
+    if not usuario:
+        return []
+    setor = _setor_usuario(usuario)
+    gestor = _eh_gestor(usuario)
+    seen = set()
+    items = []
+    rows = (
+        Chamado.query.options(joinedload(Chamado.cliente), joinedload(Chamado.encaminhado_por))
+        .filter(~Chamado.status.in_(STATUS_FECHADOS))
+        .order_by(Chamado.data_criacao.desc())
+        .all()
+    )
+    for chamado in rows:
+        dest = normalizar_setor_chamado(chamado.setor_destino)
+        encaminhado_para_mim = bool(dest) and (gestor or dest == setor)
+        aguardar_peca = chamado.status == STATUS_AGUARDAR_PECA and (
+            gestor or chamado.tecnico_id == usuario.id or dest == setor
+        )
+        if not encaminhado_para_mim and not aguardar_peca:
+            continue
+        if chamado.id in seen:
+            continue
+        seen.add(chamado.id)
+        if encaminhado_para_mim and aguardar_peca:
+            tipo = 'Aguardar peça / Encaminhado'
+        elif encaminhado_para_mim:
+            tipo = 'Encaminhado'
+        else:
+            tipo = STATUS_AGUARDAR_PECA
+        encaminhado_por = chamado.encaminhado_por
+        items.append({
+            'id': chamado.id,
+            'numero_chamado': chamado.numero_chamado,
+            'cliente': chamado.cliente.nome if chamado.cliente else 'N/A',
+            'status': chamado.status,
+            'tipo': tipo,
+            'setor_destino': dest or '',
+            'instrucoes': chamado.encaminhamento_instrucoes or '',
+            'fotos': _fotos_chamado_payload(chamado, TIPO_FOTO_ENCAMINHAMENTO),
+            'encaminhado_por': encaminhado_por.nome if encaminhado_por else '',
+            'encaminhado_em': (
+                chamado.encaminhado_em.strftime('%d/%m/%Y %H:%M') if chamado.encaminhado_em else ''
+            ),
+            'url_atender': url_for('main.listar_chamados', atender=chamado.id),
+        })
+    return items
+
+
+def _tipo_foto_chamado(foto):
+    tipo = (getattr(foto, 'tipo', None) or '').strip().lower()
+    if tipo == TIPO_FOTO_ENCAMINHAMENTO:
+        return TIPO_FOTO_ENCAMINHAMENTO
+    return TIPO_FOTO_CONSERTO
+
+
+def _fotos_chamado_payload(chamado, tipo=None):
+    itens = []
+    for foto in chamado.fotos.order_by(ChamadoFoto.id.desc()).all():
+        foto_tipo = _tipo_foto_chamado(foto)
+        if tipo and foto_tipo != tipo:
+            continue
+        itens.append({
+            'id': foto.id,
+            'url': url_for('static', filename=foto.caminho),
+            'nome': foto.nome_original or Path(foto.caminho).name,
+            'tipo': foto_tipo,
+        })
+    return itens
+
+
+def _arquivos_request(*nomes):
+    arquivos = []
+    for nome in nomes:
+        arquivos.extend(request.files.getlist(nome))
+    return arquivos
+
+
+def _salvar_fotos_chamado(chamado, atendimento, arquivos, tipo=TIPO_FOTO_CONSERTO):
+    _UPLOAD_CHAMADOS.mkdir(parents=True, exist_ok=True)
+    tipo = TIPO_FOTO_ENCAMINHAMENTO if tipo == TIPO_FOTO_ENCAMINHAMENTO else TIPO_FOTO_CONSERTO
+    for arquivo in arquivos:
+        if not arquivo or not getattr(arquivo, 'filename', None):
+            continue
+        original = secure_filename(arquivo.filename)
+        if not original:
+            continue
+        ext = Path(original).suffix.lower()
+        if ext not in _FOTO_EXTS:
+            continue
+        fname = f'ch_{chamado.id}_{uuid.uuid4().hex[:10]}{ext}'
+        dest = _UPLOAD_CHAMADOS / fname
+        arquivo.save(str(dest))
+        db.session.add(ChamadoFoto(
+            chamado_id=chamado.id,
+            atendimento_id=atendimento.id if atendimento else None,
+            caminho=f'uploads/chamados/{fname}',
+            nome_original=original,
+            tipo=tipo,
+        ))
+
+
+def _chamado_atender_payload(chamado):
+    todas = _fotos_chamado_payload(chamado)
+    return {
+        'id': chamado.id,
+        'numero_chamado': chamado.numero_chamado,
+        'cliente': chamado.cliente.nome if chamado.cliente else 'N/A',
+        'status': chamado.status,
+        'prioridade': chamado.prioridade,
+        'descricao': chamado.descricao or '',
+        'atendimento_notas': chamado.atendimento_notas or '',
+        'setor_destino': chamado.setor_destino or '',
+        'encaminhamento_instrucoes': chamado.encaminhamento_instrucoes or '',
+        'fotos': [f for f in todas if f['tipo'] != TIPO_FOTO_ENCAMINHAMENTO],
+        'fotos_encaminhamento': [f for f in todas if f['tipo'] == TIPO_FOTO_ENCAMINHAMENTO],
+        'setores': list(SETORES_CHAMADO),
+    }
 
 @main.route('/instalar-certificado')
 @main.route('/https-ajuda')
@@ -214,6 +440,7 @@ def login():
                 )
             except Exception:
                 pass
+            session['mostrar_pendencias'] = True
             flash('Login realizado com sucesso!', 'success')
             return redirect(url_for('main.inicio'))
         else:
@@ -409,6 +636,7 @@ def _acesso_payload(usuario):
         'email': usuario.email,
         'ativo': bool(usuario.ativo),
         'is_master': bool(usuario.is_master),
+        'setor': _setor_usuario(usuario),
         'sistemas': {chave: usuario.tem_sistema(chave) for chave in SISTEMAS},
         'permissoes': {sistema: usuario.menus_liberados(sistema) for sistema in SISTEMAS},
     }
@@ -440,6 +668,8 @@ def inicio():
         senha_salva = bool(row and row.senha) or bool(raw_cfg.get('senha'))
         smtp_ok = smtp_configurado()
 
+    pendencias = _pendencias_chamados(user)
+    mostrar_pendencias = bool(session.pop('mostrar_pendencias', False) and pendencias)
     return render_template(
         'inicio.html',
         user_name=user.nome if user else session.get('user_name', 'Usuário'),
@@ -451,6 +681,9 @@ def inicio():
         smtp_cfg=smtp_cfg,
         senha_salva=senha_salva,
         smtp_ok=smtp_ok,
+        pendencias=pendencias,
+        pendencias_js=pendencias,
+        mostrar_pendencias=mostrar_pendencias,
     )
 
 
@@ -551,6 +784,7 @@ def _salvar_acesso_geral(usuario, form, novo=False):
         raise ValueError('Já existe um acesso com este e-mail.')
     usuario.nome = nome
     usuario.email = email
+    usuario.setor = normalizar_setor_chamado(form.get('setor')) or None
     if senha:
         usuario.senha = generate_password_hash(senha)
     elif novo:
@@ -642,7 +876,7 @@ def dashboard():
     total_chamados = Chamado.query.count()
     chamados_pendentes = Chamado.query.filter_by(status='Pendente').count()
     chamados_em_andamento = Chamado.query.filter_by(status='Em Andamento').count()
-    chamados_concluidos = Chamado.query.filter_by(status='Concluído').count()
+    chamados_concluidos = Chamado.query.filter(Chamado.status.in_(STATUS_FECHADOS)).count()
 
     # Chamados recentes
     chamados_recentes = Chamado.query.options(joinedload(Chamado.cliente)).order_by(Chamado.data_criacao.desc()).limit(10).all()
@@ -659,16 +893,32 @@ def dashboard():
 @main.route('/chamados')
 @login_required
 def listar_chamados():
-    """Lista os chamados criados pelo usuário logado (todos os status)."""
+    """Lista chamados abertos pelo usuário e encaminhamentos ao seu setor."""
+    user = Usuario.query.get(session['user_id'])
     user_id = session['user_id']
+    setor = _setor_usuario(user)
+    conds = [Chamado.tecnico_id == user_id]
+    if setor:
+        conds.append(and_(Chamado.setor_destino == setor, ~Chamado.status.in_(STATUS_FECHADOS)))
     chamados = (
         Chamado.query.options(joinedload(Chamado.cliente))
-        .filter_by(tecnico_id=user_id)
+        .filter(or_(*conds))
         .order_by(Chamado.data_criacao.desc())
         .all()
     )
     clientes = Cliente.query.order_by(Cliente.nome.asc()).all()
-    return render_template('chamados.html', chamados=chamados, clientes=clientes)
+    if setor:
+        subtitulo = f'Chamados que você abriu e encaminhamentos para {setor}'
+    else:
+        subtitulo = 'Chamados que você abriu — todos os status'
+    return render_template(
+        'chamados.html',
+        chamados=chamados,
+        clientes=clientes,
+        setores=SETORES_CHAMADO,
+        subtitulo=subtitulo,
+        atender_id=request.args.get('atender', type=int),
+    )
 
 @main.route('/novo_chamado', methods=['GET', 'POST'])
 @login_required
@@ -690,7 +940,6 @@ def novo_chamado():
             chamado = Chamado(
                 numero_chamado=numero_chamado,
                 cliente_id=cliente_id,
-                equipamento=request.form.get('equipamento'),
                 tipo_servico=request.form['tipo_servico'],
                 descricao=request.form['descricao'],
                 status=request.form.get('status') or 'Pendente',
@@ -698,6 +947,7 @@ def novo_chamado():
                 observacoes=request.form.get('observacoes'),
                 tecnico_id=session['user_id']
             )
+            _vincular_equipamento_chamado(chamado, request.form, cliente_id)
 
             db.session.add(chamado)
             db.session.commit()
@@ -735,14 +985,14 @@ def editar_chamado(id):
     if request.method == 'POST':
         try:
             chamado.cliente_id = int(request.form['cliente_id'])
-            chamado.equipamento = request.form.get('equipamento')
+            _vincular_equipamento_chamado(chamado, request.form, chamado.cliente_id)
             chamado.tipo_servico = request.form['tipo_servico']
             chamado.descricao = request.form['descricao']
             chamado.status = request.form['status']
             chamado.prioridade = request.form['prioridade']
             chamado.observacoes = request.form['observacoes']
 
-            if request.form['status'] == 'Concluído' and not chamado.data_conclusao:
+            if status_fechado(request.form['status']) and not chamado.data_conclusao:
                 chamado.data_conclusao = datetime.utcnow()
 
             db.session.commit()
@@ -821,7 +1071,7 @@ def atualizar_status(id):
         novo_status = request.json.get('status')
 
         chamado.status = novo_status
-        if novo_status == 'Concluído' and not chamado.data_conclusao:
+        if status_fechado(novo_status) and not chamado.data_conclusao:
             chamado.data_conclusao = datetime.utcnow()
 
         db.session.commit()
@@ -837,6 +1087,99 @@ def atualizar_status(id):
             'success': False,
             'message': str(e)
         }), 400
+
+
+@main.route('/api/chamados/<int:id>/atender', methods=['GET', 'POST'])
+@login_required
+def atender_chamado(id):
+    """Consulta e grava atendimento do técnico (notas, foto, status, encaminhamento)."""
+    chamado = Chamado.query.options(
+        joinedload(Chamado.cliente),
+        joinedload(Chamado.encaminhado_por),
+    ).get_or_404(id)
+    if request.method == 'GET':
+        return jsonify({'ok': True, 'chamado': _chamado_atender_payload(chamado)})
+
+    user = Usuario.query.get(session['user_id'])
+    if not user:
+        return jsonify({'ok': False, 'message': 'Sessão inválida.'}), 401
+
+    acao = (request.form.get('acao') or 'salvar').strip().lower()
+    notas = (request.form.get('atendimento_notas') or '').strip()
+    instrucoes = (request.form.get('instrucoes') or '').strip()
+    setor = normalizar_setor_chamado(request.form.get('setor_destino'))
+    aguardar_peca = request.form.get('aguardar_peca') in ('1', 'on', 'true', 'sim')
+    status_form = (request.form.get('status') or '').strip()
+
+    if acao == 'encaminhar':
+        if not setor:
+            return jsonify({'ok': False, 'message': 'Selecione o setor para encaminhar.'}), 400
+        if not instrucoes:
+            return jsonify({'ok': False, 'message': 'Informe o que precisa fazer.'}), 400
+        chamado.setor_destino = setor
+        chamado.encaminhamento_instrucoes = instrucoes
+        chamado.encaminhado_por_id = user.id
+        chamado.encaminhado_em = datetime.utcnow()
+        chamado.status = STATUS_AGUARDAR_PECA if aguardar_peca else STATUS_ENCAMINHADO
+    elif acao == 'finalizar':
+        if setor:
+            chamado.setor_destino = setor
+            chamado.encaminhamento_instrucoes = instrucoes or chamado.encaminhamento_instrucoes
+            if not chamado.encaminhado_por_id:
+                chamado.encaminhado_por_id = user.id
+                chamado.encaminhado_em = datetime.utcnow()
+        chamado.status = STATUS_ATENDIDO
+    else:
+        if aguardar_peca:
+            chamado.status = STATUS_AGUARDAR_PECA
+        elif status_form:
+            chamado.status = status_form
+        if setor:
+            chamado.setor_destino = setor
+            chamado.encaminhamento_instrucoes = instrucoes or chamado.encaminhamento_instrucoes
+            if not chamado.encaminhado_por_id:
+                chamado.encaminhado_por_id = user.id
+                chamado.encaminhado_em = datetime.utcnow()
+
+    chamado.atendimento_notas = notas or chamado.atendimento_notas
+    if status_fechado(chamado.status) and not chamado.data_conclusao:
+        chamado.data_conclusao = datetime.utcnow()
+
+    pendencia_aberta = not status_fechado(chamado.status)
+    atendimento = ChamadoAtendimento(
+        chamado_id=chamado.id,
+        usuario_id=user.id,
+        o_que_foi_consertado=notas,
+        status=chamado.status,
+        setor_destino=chamado.setor_destino,
+        instrucoes=instrucoes if acao == 'encaminhar' else instrucoes,
+        pendencia_aberta=pendencia_aberta,
+    )
+    db.session.add(atendimento)
+    db.session.flush()
+
+    arquivos_conserto = _arquivos_request('fotos', 'foto')
+    arquivos_enc = _arquivos_request('fotos_encaminhar', 'fotos_encaminhamento')
+    try:
+        _salvar_fotos_chamado(chamado, atendimento, arquivos_conserto, TIPO_FOTO_CONSERTO)
+        _salvar_fotos_chamado(chamado, atendimento, arquivos_enc, TIPO_FOTO_ENCAMINHAMENTO)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'ok': False, 'message': f'Erro ao gravar atendimento: {exc}'}), 400
+
+    if acao == 'encaminhar':
+        msg = 'Encaminhamento registrado.'
+    elif acao == 'finalizar':
+        msg = 'Chamado finalizado.'
+    else:
+        msg = 'Atendimento gravado.'
+    return jsonify({
+        'ok': True,
+        'success': True,
+        'message': msg,
+        'chamado': _chamado_atender_payload(chamado),
+    })
 
 
 def _redir_usuarios_portal():
@@ -868,77 +1211,170 @@ def editar_usuario(id):
 @main.route('/equipamentos')
 @login_required
 def listar_equipamentos():
-    """Lista todos os equipamentos"""
-    equipamentos = Equipamento.query.order_by(Equipamento.data_criacao.desc()).all()
-    return render_template('equipamentos.html', equipamentos=equipamentos)
+    """Cadastro de equipamentos (patrimônios) vinculados ao cliente."""
+    equipamentos = (
+        Equipamento.query.options(joinedload(Equipamento.cliente))
+        .order_by(Equipamento.patrimonio.asc(), Equipamento.nome_equipamento.asc())
+        .all()
+    )
+    clientes = Cliente.query.order_by(Cliente.nome.asc()).all()
+    return render_template(
+        'equipamentos.html',
+        equipamentos=equipamentos,
+        clientes=clientes,
+    )
+
+
+def _dados_equipamento_form(data):
+    codigo = (data.get('codigo') or data.get('patrimonio') or '').strip()
+    nome = (data.get('nome') or data.get('nome_equipamento') or '').strip()
+    setor = (data.get('setor') or data.get('localizacao') or '').strip()
+    cliente_raw = data.get('cliente_id')
+    cliente_id = int(cliente_raw) if str(cliente_raw or '').isdigit() else None
+    if not codigo:
+        raise ValueError('Informe o código do equipamento.')
+    if not nome:
+        raise ValueError('Informe o nome do equipamento.')
+    if not cliente_id:
+        raise ValueError('Selecione o cliente.')
+    if not Cliente.query.get(cliente_id):
+        raise ValueError('Cliente inválido.')
+    return {
+        'patrimonio': codigo,
+        'nome_equipamento': nome,
+        'setor': setor or None,
+        'localizacao': setor or None,
+        'data_compra': _parse_data_compra(data.get('data_compra')),
+        'cliente_id': cliente_id,
+        'ativo': True,
+    }
+
+
+@main.route('/api/equipamentos', methods=['GET', 'POST'])
+@login_required
+def api_equipamentos():
+    if request.method == 'GET':
+        cliente_id = request.args.get('cliente_id', type=int)
+        q = Equipamento.query.options(joinedload(Equipamento.cliente))
+        if cliente_id:
+            q = q.filter_by(cliente_id=cliente_id)
+        itens = q.order_by(Equipamento.patrimonio.asc()).all()
+        return jsonify({'ok': True, 'equipamentos': [e.to_dict() for e in itens]})
+    data = request.get_json(silent=True) or request.form
+    try:
+        campos = _dados_equipamento_form(data)
+        equipamento = Equipamento(**campos)
+        db.session.add(equipamento)
+        db.session.commit()
+        return jsonify({
+            'ok': True,
+            'success': True,
+            'message': 'Equipamento cadastrado com sucesso!',
+            'equipamento': equipamento.to_dict(),
+        })
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc), 'message': str(exc)}), 400
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({
+            'ok': False,
+            'error': 'Já existe um equipamento com este código.',
+            'message': 'Já existe um equipamento com este código.',
+        }), 400
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': str(exc), 'message': str(exc)}), 400
+
+
+@main.route('/api/equipamentos/<int:id>', methods=['GET', 'PUT', 'DELETE'])
+@login_required
+def api_equipamento(id):
+    equipamento = Equipamento.query.get_or_404(id)
+    if request.method == 'GET':
+        return jsonify({'ok': True, 'equipamento': equipamento.to_dict()})
+    if request.method == 'DELETE':
+        try:
+            Chamado.query.filter_by(equipamento_id=equipamento.id).update(
+                {Chamado.equipamento_id: None}, synchronize_session=False
+            )
+            db.session.delete(equipamento)
+            db.session.commit()
+            return jsonify({'ok': True, 'success': True, 'message': 'Equipamento excluído.'})
+        except Exception as exc:
+            db.session.rollback()
+            return jsonify({'ok': False, 'error': str(exc), 'message': str(exc)}), 400
+    data = request.get_json(silent=True) or request.form
+    try:
+        campos = _dados_equipamento_form(data)
+        equipamento.patrimonio = campos['patrimonio']
+        equipamento.nome_equipamento = campos['nome_equipamento']
+        equipamento.setor = campos['setor']
+        equipamento.localizacao = campos['localizacao']
+        equipamento.data_compra = campos['data_compra']
+        equipamento.cliente_id = campos['cliente_id']
+        db.session.commit()
+        return jsonify({
+            'ok': True,
+            'success': True,
+            'message': 'Equipamento atualizado com sucesso!',
+            'equipamento': equipamento.to_dict(),
+        })
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc), 'message': str(exc)}), 400
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({
+            'ok': False,
+            'error': 'Já existe um equipamento com este código.',
+            'message': 'Já existe um equipamento com este código.',
+        }), 400
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': str(exc), 'message': str(exc)}), 400
 
 
 @main.route('/novo_equipamento', methods=['GET', 'POST'])
 @login_required
 def novo_equipamento():
-    """Criar novo equipamento"""
-    clientes = Cliente.query.all()
-    if request.method == 'POST':
-        try:
-            data_compra = datetime.strptime(request.form['data_compra'], '%Y-%m-%d').date() if request.form['data_compra'] else None
-            data_manutencao = datetime.strptime(request.form['data_manutencao'], '%Y-%m-%d').date() if request.form['data_manutencao'] else None
-            cliente_id = request.form.get('cliente_id')
-            if not cliente_id and request.form.get('localizacao'):
-                cli = Cliente.query.filter_by(nome=request.form['localizacao']).first()
-                cliente_id = cli.id if cli else None
-            if not cliente_id:
-                flash('Selecione um cliente/localização válido.', 'error')
-                return render_template('novo_equipamento.html', clientes=clientes)
-            equipamento = Equipamento(
-                nome_equipamento=request.form['nome_equipamento'],
-                modelo=request.form['modelo'],
-                numero_serie=request.form['numero_serie'] or None,
-                patrimonio=request.form['patrimonio'] or None,
-                localizacao=request.form['localizacao'],
-                ativo=request.form.get('ativo') == 'on',
-                data_compra=data_compra,
-                data_manutencao=data_manutencao,
-                cliente_id=int(cliente_id)
-            )
-            db.session.add(equipamento)
-            db.session.commit()
-            flash('Equipamento criado com sucesso!', 'success')
-            return redirect(url_for('main.listar_equipamentos'))
-        except Exception as e:
-            flash(f'Erro ao criar equipamento: {str(e)}', 'error')
-            db.session.rollback()
-    return render_template('novo_equipamento.html', clientes=clientes)
+    """Criar novo equipamento (popup na listagem; POST legado ainda aceito)."""
+    if request.method == 'GET':
+        return redirect(url_for('main.listar_equipamentos'))
+    clientes = Cliente.query.order_by(Cliente.nome.asc()).all()
+    try:
+        campos = _dados_equipamento_form(request.form)
+        equipamento = Equipamento(**campos)
+        db.session.add(equipamento)
+        db.session.commit()
+        flash('Equipamento criado com sucesso!', 'success')
+        return redirect(url_for('main.listar_equipamentos'))
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro ao criar equipamento: {str(e)}', 'error')
+    return render_template('equipamentos.html', equipamentos=Equipamento.query.all(), clientes=clientes)
 
 
 @main.route('/equipamentos/<int:id>/editar', methods=['GET', 'POST'])
 @login_required
 def editar_equipamento(id):
-    """Editar equipamento existente"""
+    """Editar equipamento existente (popup na listagem)."""
+    if request.method == 'GET':
+        return redirect(url_for('main.listar_equipamentos'))
     equipamento = Equipamento.query.get_or_404(id)
-    clientes = Cliente.query.all()
-    if request.method == 'POST':
-        try:
-            equipamento.nome_equipamento = request.form['nome_equipamento']
-            equipamento.modelo = request.form['modelo']
-            equipamento.numero_serie = request.form['numero_serie']
-            equipamento.patrimonio = request.form['patrimonio']
-            equipamento.localizacao = request.form['localizacao']
-            equipamento.ativo = request.form.get('ativo', True) == 'on'
-            if request.form['data_compra']:
-                equipamento.data_compra = datetime.strptime(request.form['data_compra'], '%Y-%m-%d')
-            else:
-                equipamento.data_compra = None
-            if request.form['data_manutencao']:
-                equipamento.data_manutencao = datetime.strptime(request.form['data_manutencao'], '%Y-%m-%d')
-            else:
-                equipamento.data_manutencao = None
-            db.session.commit()
-            flash('Equipamento atualizado com sucesso!', 'success')
-            return redirect(url_for('main.listar_equipamentos'))
-        except Exception as e:
-            flash(f'Erro ao atualizar equipamento: {str(e)}', 'error')
-            db.session.rollback()
-    return render_template('editar_equipamento.html', equipamento=equipamento, clientes=clientes)
+    try:
+        campos = _dados_equipamento_form(request.form)
+        equipamento.patrimonio = campos['patrimonio']
+        equipamento.nome_equipamento = campos['nome_equipamento']
+        equipamento.setor = campos['setor']
+        equipamento.localizacao = campos['localizacao']
+        equipamento.data_compra = campos['data_compra']
+        equipamento.cliente_id = campos['cliente_id']
+        db.session.commit()
+        flash('Equipamento atualizado com sucesso!', 'success')
+        return redirect(url_for('main.listar_equipamentos'))
+    except Exception as e:
+        flash(f'Erro ao atualizar equipamento: {str(e)}', 'error')
+        db.session.rollback()
+    return redirect(url_for('main.listar_equipamentos'))
 
 
 @main.route('/chamados/auditoria')
@@ -992,34 +1428,139 @@ def auditoria():
     )
 
 
+def _filtro_periodo_chamados():
+    """Filtro de data_criacao: presets 30/90/ano ou intervalo custom. Default: todos."""
+    periodo = (request.args.get('periodo') or 'todos').strip().lower()
+    if periodo not in ('todos', '30', '90', 'ano', 'custom'):
+        periodo = 'todos'
+    hoje = date.today()
+    data_de = _parse_data_compra(request.args.get('data_de'))
+    data_ate = _parse_data_compra(request.args.get('data_ate'))
+    if periodo == '30':
+        data_de, data_ate = hoje - timedelta(days=29), hoje
+    elif periodo == '90':
+        data_de, data_ate = hoje - timedelta(days=89), hoje
+    elif periodo == 'ano':
+        data_de, data_ate = date(hoje.year, 1, 1), hoje
+    elif periodo == 'todos':
+        data_de, data_ate = None, None
+    else:
+        periodo = 'custom'
+        if data_de and data_ate and data_de > data_ate:
+            data_de, data_ate = data_ate, data_de
+    filtros = []
+    if data_de:
+        filtros.append(Chamado.data_criacao >= datetime.combine(data_de, datetime.min.time()))
+    if data_ate:
+        filtros.append(
+            Chamado.data_criacao < datetime.combine(data_ate + timedelta(days=1), datetime.min.time())
+        )
+    return periodo, data_de, data_ate, filtros
+
+
 @main.route('/relatorios')
 #@login_required
 def relatorios():
     """Página de relatórios gerenciais"""
-    # Top clientes por número de chamados
-    top_clientes = db.session.query(
-        Cliente.nome,
-        func.count(Chamado.id).label('total_chamados')
-    ).join(Chamado).group_by(Cliente.id).order_by(func.count(Chamado.id).desc()).limit(10).all()
+    periodo, data_de, data_ate, filtros = _filtro_periodo_chamados()
 
-    # Top equipamentos por número de chamados
-    top_equipamentos = db.session.query(
-        Chamado.equipamento,
-        func.count(Chamado.id).label('total_chamados')
-    ).filter(Chamado.equipamento.isnot(None)).group_by(Chamado.equipamento).order_by(func.count(Chamado.id).desc()).limit(10).all()
+    total_chamados = Chamado.query.filter(*filtros).count()
+    clientes_distintos = (
+        db.session.query(func.count(func.distinct(Chamado.cliente_id))).filter(*filtros).scalar() or 0
+    )
 
-    # Para equipamentos, obter os problemas (tipo_servico e descricao)
+    status_rows = (
+        db.session.query(Chamado.status, func.count(Chamado.id))
+        .filter(*filtros)
+        .group_by(Chamado.status)
+        .all()
+    )
+    status_map = {(s or '').strip(): n for s, n in status_rows}
+
+    top_clientes_rows = (
+        db.session.query(Cliente.nome, func.count(Chamado.id).label('total'))
+        .join(Chamado)
+        .filter(*filtros)
+        .group_by(Cliente.id, Cliente.nome)
+        .order_by(func.count(Chamado.id).desc())
+        .limit(10)
+        .all()
+    )
+    top_clientes = []
+    for nome, total in top_clientes_rows:
+        pct = round((total * 100.0 / total_chamados), 1) if total_chamados else 0
+        top_clientes.append({'nome': nome or '—', 'total': int(total), 'pct': pct})
+
+    top = top_clientes[0] if top_clientes else None
+    stats = {
+        'total': total_chamados,
+        'clientes': int(clientes_distintos),
+        'top_cliente': top['nome'] if top else '—',
+        'top_cliente_qtd': top['total'] if top else 0,
+        'pendentes': int(status_map.get('Pendente', 0)),
+        'em_andamento': int(status_map.get('Em Andamento', 0)),
+        'concluidos': int(sum(status_map.get(s, 0) for s in STATUS_FECHADOS)),
+    }
+
+    top_eq_rows = (
+        db.session.query(Chamado.equipamento, func.count(Chamado.id).label('total'))
+        .filter(Chamado.equipamento.isnot(None), Chamado.equipamento != '', *filtros)
+        .group_by(Chamado.equipamento)
+        .order_by(func.count(Chamado.id).desc())
+        .limit(10)
+        .all()
+    )
+    top_equipamentos = []
+    for nome, total in top_eq_rows:
+        pct = round((total * 100.0 / total_chamados), 1) if total_chamados else 0
+        top_equipamentos.append({'nome': nome, 'total': int(total), 'pct': pct})
+
     equipamentos_problemas = {}
     for eq in top_equipamentos:
-        problemas = Chamado.query.filter_by(equipamento=eq[0]).with_entities(Chamado.tipo_servico, Chamado.descricao).all()
-        equipamentos_problemas[eq[0]] = problemas
+        tipos = (
+            db.session.query(Chamado.tipo_servico, func.count(Chamado.id))
+            .filter(Chamado.equipamento == eq['nome'], *filtros)
+            .group_by(Chamado.tipo_servico)
+            .order_by(func.count(Chamado.id).desc())
+            .all()
+        )
+        equipamentos_problemas[eq['nome']] = [
+            {'tipo': t or '—', 'total': int(n)} for t, n in tipos
+        ]
 
-    return render_template('relatorios.html', top_clientes=top_clientes, top_equipamentos=top_equipamentos, equipamentos_problemas=equipamentos_problemas)
+    return render_template(
+        'relatorios.html',
+        stats=stats,
+        top_clientes=top_clientes,
+        top_equipamentos=top_equipamentos,
+        equipamentos_problemas=equipamentos_problemas,
+        filtros={
+            'periodo': periodo,
+            'data_de': data_de.isoformat() if data_de else '',
+            'data_ate': data_ate.isoformat() if data_ate else '',
+        },
+    )
 
-@main.route('/api/equipamentos_por_cliente/<cliente_nome>', methods=['GET'])
+@main.route('/api/equipamentos_por_cliente/<cliente_ref>', methods=['GET'])
 @login_required
-def equipamentos_por_cliente(cliente_nome):
-    """API para retornar equipamentos filtrados por cliente (localizacao)"""
-    equipamentos = Equipamento.query.filter_by(localizacao=cliente_nome).all()
-    equipamentos_list = [{'patrimonio': e.patrimonio, 'nome_equipamento': e.nome_equipamento} for e in equipamentos]
-    return jsonify(equipamentos_list)
+def equipamentos_por_cliente(cliente_ref):
+    """Patrimônios vinculados ao cliente selecionado no chamado."""
+    q = Equipamento.query
+    if str(cliente_ref).isdigit():
+        q = q.filter_by(cliente_id=int(cliente_ref))
+    else:
+        cli = Cliente.query.filter_by(nome=cliente_ref).first()
+        if cli:
+            q = q.filter_by(cliente_id=cli.id)
+        else:
+            q = q.filter(or_(Equipamento.localizacao == cliente_ref, Equipamento.setor == cliente_ref))
+    equipamentos = q.order_by(Equipamento.patrimonio.asc(), Equipamento.nome_equipamento.asc()).all()
+    return jsonify([
+        {
+            'id': e.id,
+            'patrimonio': e.patrimonio or '',
+            'nome_equipamento': e.nome_equipamento,
+            'setor': e.setor or e.localizacao or '',
+        }
+        for e in equipamentos
+    ])

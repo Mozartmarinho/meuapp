@@ -3,6 +3,39 @@ from datetime import datetime
 
 db = SQLAlchemy()
 
+SETORES_CHAMADO = ('Obra', 'Elétrica', 'Compras')
+STATUS_AGUARDAR_PECA = 'Aguardar peça'
+STATUS_ENCAMINHADO = 'Encaminhado'
+STATUS_ATENDIDO = 'Atendido'
+STATUS_CONCLUIDO = 'Concluído'
+STATUS_FECHADOS = (STATUS_ATENDIDO, STATUS_CONCLUIDO)
+
+
+def status_fechado(status):
+    """Atendido (técnico finalizou) e Concluído são estados encerrados."""
+    return (status or '').strip() in STATUS_FECHADOS
+
+
+def normalizar_setor_chamado(valor):
+    """Normaliza o setor de encaminhamento (Obra, Elétrica, Compras)."""
+    raw = (valor or '').strip()
+    if not raw:
+        return ''
+    key = (
+        raw.lower()
+        .replace('é', 'e')
+        .replace('á', 'a')
+        .replace('í', 'i')
+        .replace('ó', 'o')
+        .replace('ú', 'u')
+    )
+    mapa = {
+        'obra': 'Obra',
+        'eletrica': 'Elétrica',
+        'compras': 'Compras',
+    }
+    return mapa.get(key, '')
+
 
 class Cliente(db.Model):
     __tablename__ = 'clientes'
@@ -41,14 +74,29 @@ class Chamado(db.Model):
     cliente = db.relationship('Cliente', backref='chamados')
     tipo_servico = db.Column(db.String(50), nullable=False)
     descricao = db.Column(db.Text)
-    status = db.Column(db.String(20), default='Pendente')
+    status = db.Column(db.String(40), default='Pendente')
     prioridade = db.Column(db.String(10), default='Normal')
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     data_conclusao = db.Column(db.DateTime)
     observacoes = db.Column(db.Text)
     equipamento = db.Column(db.String(100), nullable=True)
+    patrimonio = db.Column(db.String(50), nullable=True)
+    equipamento_id = db.Column(db.Integer, db.ForeignKey('equipamentos.id'), nullable=True)
+    equipamento_cadastro = db.relationship('Equipamento', foreign_keys=[equipamento_id])
     # Obrigatório no MySQL deste servidor
     tecnico_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
+    atendimento_notas = db.Column(db.Text)
+    setor_destino = db.Column(db.String(40))
+    encaminhamento_instrucoes = db.Column(db.Text)
+    encaminhado_por_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
+    encaminhado_em = db.Column(db.DateTime)
+    encaminhado_por = db.relationship('Usuario', foreign_keys=[encaminhado_por_id])
+    atendimentos = db.relationship(
+        'ChamadoAtendimento', backref='chamado', cascade='all, delete-orphan', lazy='dynamic'
+    )
+    fotos = db.relationship(
+        'ChamadoFoto', backref='chamado', cascade='all, delete-orphan', lazy='dynamic'
+    )
 
     def __repr__(self):
         return f'<Chamado {self.numero_chamado}>'
@@ -65,7 +113,12 @@ class Chamado(db.Model):
             'data_criacao': self.data_criacao.strftime('%d/%m/%Y %H:%M') if self.data_criacao else None,
             'data_conclusao': self.data_conclusao.strftime('%d/%m/%Y %H:%M') if self.data_conclusao else None,
             'observacoes': self.observacoes,
-            'equipamento': self.equipamento
+            'equipamento': self.equipamento,
+            'patrimonio': self.patrimonio,
+            'equipamento_id': self.equipamento_id,
+            'atendimento_notas': self.atendimento_notas,
+            'setor_destino': self.setor_destino,
+            'encaminhamento_instrucoes': self.encaminhamento_instrucoes,
         }
 
 
@@ -89,6 +142,7 @@ class Usuario(db.Model):
     perm_nutricao = db.Column(db.Boolean, default=False)
     perm_pesagem = db.Column(db.Boolean, default=False)
     perm_acesso = db.Column(db.Boolean, default=False)
+    setor = db.Column(db.String(40))
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     menus = db.relationship('PermissaoMenu', backref='usuario', cascade='all, delete-orphan', lazy='dynamic')
 
@@ -149,12 +203,12 @@ class Equipamento(db.Model):
     __tablename__ = 'equipamentos'
 
     id = db.Column(db.Integer, primary_key=True)
-    # Banco legado usa coluna "equipamento"
-    nome_equipamento = db.Column('equipamento', db.String(100), nullable=False)
+    nome_equipamento = db.Column(db.String(100), nullable=False)
     modelo = db.Column(db.String(100))
     numero_serie = db.Column(db.String(50), unique=True)
     patrimonio = db.Column(db.String(50), unique=True)
     localizacao = db.Column(db.String(100))
+    setor = db.Column(db.String(100))
     ativo = db.Column(db.Boolean, default=True)
     data_compra = db.Column(db.Date)
     data_manutencao = db.Column(db.Date)
@@ -169,12 +223,51 @@ class Equipamento(db.Model):
     def to_dict(self):
         return {
             'id': self.id,
+            'codigo': self.patrimonio,
             'nome_equipamento': self.nome_equipamento,
+            'nome': self.nome_equipamento,
             'modelo': self.modelo,
             'numero_serie': self.numero_serie,
             'patrimonio': self.patrimonio,
             'localizacao': self.localizacao,
+            'setor': self.setor or self.localizacao,
             'ativo': self.ativo,
+            'cliente_id': self.cliente_id,
+            'cliente_nome': self.cliente.nome if self.cliente else None,
             'data_compra': self.data_compra.strftime('%d/%m/%Y') if self.data_compra else None,
+            'data_compra_iso': self.data_compra.strftime('%Y-%m-%d') if self.data_compra else None,
             'data_manutencao': self.data_manutencao.strftime('%d/%m/%Y') if self.data_manutencao else None
         }
+
+
+class ChamadoAtendimento(db.Model):
+    __tablename__ = 'chamado_atendimentos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    chamado_id = db.Column(db.Integer, db.ForeignKey('chamados.id'), nullable=False, index=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
+    o_que_foi_consertado = db.Column(db.Text)
+    status = db.Column(db.String(40))
+    setor_destino = db.Column(db.String(40))
+    instrucoes = db.Column(db.Text)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    pendencia_aberta = db.Column(db.Boolean, default=True)
+    usuario = db.relationship('Usuario', foreign_keys=[usuario_id])
+
+
+TIPO_FOTO_CONSERTO = 'conserto'
+TIPO_FOTO_ENCAMINHAMENTO = 'encaminhamento'
+
+
+class ChamadoFoto(db.Model):
+    __tablename__ = 'chamado_fotos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    chamado_id = db.Column(db.Integer, db.ForeignKey('chamados.id'), nullable=False, index=True)
+    atendimento_id = db.Column(db.Integer, db.ForeignKey('chamado_atendimentos.id'))
+    caminho = db.Column(db.String(255), nullable=False)
+    nome_original = db.Column(db.String(200))
+    # conserto = o que foi consertado; encaminhamento = o que precisa fazer
+    tipo = db.Column(db.String(20), default=TIPO_FOTO_CONSERTO)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    atendimento = db.relationship('ChamadoAtendimento', backref='fotos')

@@ -19,21 +19,22 @@
             <select id="cliente_id" name="cliente_id" required>
                 <option value="">Selecione um cliente...</option>
                 {% for cliente in clientes %}
-                <option value="{{ cliente.id }}" data-nome="{{ cliente.nome }}">{{ cliente.nome }}</option>
+                <option value="{{ cliente.id }}">{{ cliente.nome }}</option>
                 {% endfor %}
             </select>
         </div>
 
         <div class="form-group">
             <label for="patrimonio">Patrimônio</label>
-            <select id="patrimonio" name="patrimonio">
-                <option value="">Selecione um patrimônio...</option>
+            <select id="patrimonio" name="patrimonio" disabled>
+                <option value="">Selecione um cliente primeiro</option>
             </select>
+            <input type="hidden" id="equipamento_id" name="equipamento_id" value="">
         </div>
 
         <div class="form-group">
             <label for="equipamento">Equipamento</label>
-            <input type="text" id="equipamento" name="equipamento" readonly>
+            <input type="text" id="equipamento" name="equipamento" readonly placeholder="Nome preenchido pelo patrimônio">
         </div>
 
         <div class="form-group">
@@ -115,6 +116,7 @@
     line-height: 1.35;
 }
 .novo-chamado-page textarea { min-height: 0; }
+.novo-chamado-page input[readonly] { background-color: var(--gray-100); }
 .novo-chamado-page .btn {
     gap: 0.32rem;
     padding: 0.45rem 0.8rem;
@@ -139,43 +141,66 @@ document.addEventListener('DOMContentLoaded', function() {
     const clienteSelect = document.getElementById('cliente_id');
     const patrimonioSelect = document.getElementById('patrimonio');
     const equipamentoInput = document.getElementById('equipamento');
+    const equipamentoIdInput = document.getElementById('equipamento_id');
 
-    clienteSelect.addEventListener('change', function() {
-        const opt = this.options[this.selectedIndex];
-        const clienteNome = opt && opt.getAttribute('data-nome');
-        patrimonioSelect.innerHTML = '<option value="">Carregando...</option>';
+    function limparPatrimonio(msg) {
+        patrimonioSelect.innerHTML = '<option value="">' + (msg || 'Selecione um cliente primeiro') + '</option>';
+        patrimonioSelect.disabled = true;
         equipamentoInput.value = '';
+        equipamentoIdInput.value = '';
+    }
 
-        if (clienteNome) {
-            fetch('/api/equipamentos_por_cliente/' + encodeURIComponent(clienteNome))
-                .then(response => response.json())
-                .then(data => {
-                    patrimonioSelect.innerHTML = '<option value="">Selecione um patrimônio...</option>';
-                    data.forEach(equip => {
-                        const option = document.createElement('option');
-                        option.value = equip.patrimonio;
-                        option.textContent = (equip.patrimonio || '') + ' - ' + (equip.nome_equipamento || '');
-                        patrimonioSelect.appendChild(option);
-                    });
-                })
-                .catch(error => {
-                    patrimonioSelect.innerHTML = '<option value="">Erro ao carregar patrimônios</option>';
-                    console.error('Erro ao buscar equipamentos:', error);
-                });
-        } else {
-            patrimonioSelect.innerHTML = '<option value="">Selecione um cliente primeiro</option>';
-        }
-    });
-
-    patrimonioSelect.addEventListener('change', function() {
-        const selectedOption = this.options[this.selectedIndex];
-        if (selectedOption && selectedOption.value) {
-            const text = selectedOption.textContent;
-            const idx = text.indexOf('-');
-            equipamentoInput.value = idx >= 0 ? text.substring(idx + 2) : text;
+    function aplicarNome() {
+        const opt = patrimonioSelect.options[patrimonioSelect.selectedIndex];
+        if (opt && opt.value) {
+            equipamentoInput.value = opt.getAttribute('data-nome') || '';
+            equipamentoIdInput.value = opt.getAttribute('data-id') || '';
         } else {
             equipamentoInput.value = '';
+            equipamentoIdInput.value = '';
         }
+    }
+
+    function carregarPatrimonios(clienteId) {
+        if (!clienteId) {
+            limparPatrimonio();
+            return;
+        }
+        patrimonioSelect.disabled = true;
+        patrimonioSelect.innerHTML = '<option value="">Carregando...</option>';
+        equipamentoInput.value = '';
+        equipamentoIdInput.value = '';
+        fetch('/api/equipamentos_por_cliente/' + encodeURIComponent(clienteId))
+            .then(function (response) { return response.json(); })
+            .then(function (data) {
+                patrimonioSelect.innerHTML = '<option value="">Selecione um patrimônio...</option>';
+                if (!data || !data.length) {
+                    patrimonioSelect.innerHTML = '<option value="">Nenhum patrimônio vinculado a este cliente</option>';
+                    patrimonioSelect.disabled = true;
+                    return;
+                }
+                data.forEach(function (equip) {
+                    const option = document.createElement('option');
+                    option.value = equip.patrimonio || '';
+                    option.setAttribute('data-id', equip.id);
+                    option.setAttribute('data-nome', equip.nome_equipamento || '');
+                    option.textContent = equip.patrimonio || '(sem código)';
+                    patrimonioSelect.appendChild(option);
+                });
+                patrimonioSelect.disabled = false;
+            })
+            .catch(function (error) {
+                limparPatrimonio('Erro ao carregar patrimônios');
+                console.error('Erro ao buscar equipamentos:', error);
+            });
+    }
+
+    clienteSelect.addEventListener('change', function() {
+        carregarPatrimonios(this.value);
+    });
+    patrimonioSelect.addEventListener('change', aplicarNome);
+    document.querySelector('form').addEventListener('reset', function () {
+        setTimeout(function () { limparPatrimonio(); }, 0);
     });
 });
 </script>

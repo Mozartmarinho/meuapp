@@ -28,8 +28,16 @@
         </div>
 
         <div class="form-group">
+            <label for="patrimonio">Patrimônio</label>
+            <select id="patrimonio" name="patrimonio" disabled>
+                <option value="">Selecione um cliente primeiro</option>
+            </select>
+            <input type="hidden" id="equipamento_id" name="equipamento_id" value="{{ chamado.equipamento_id or '' }}">
+        </div>
+
+        <div class="form-group">
             <label for="equipamento">Equipamento</label>
-            <input type="text" id="equipamento" name="equipamento" value="{{ chamado.equipamento or '' }}">
+            <input type="text" id="equipamento" name="equipamento" value="{{ chamado.equipamento or '' }}" readonly placeholder="Nome preenchido pelo patrimônio" style="background-color: var(--gray-100);">
         </div>
 
         <div class="form-group">
@@ -55,6 +63,9 @@
                 <select id="status" name="status">
                     <option value="Pendente" {% if chamado.status == 'Pendente' %}selected{% endif %}>Pendente</option>
                     <option value="Em Andamento" {% if chamado.status == 'Em Andamento' %}selected{% endif %}>Em Andamento</option>
+                    <option value="Aguardar peça" {% if chamado.status == 'Aguardar peça' %}selected{% endif %}>Aguardar peça</option>
+                    <option value="Encaminhado" {% if chamado.status == 'Encaminhado' %}selected{% endif %}>Encaminhado</option>
+                    <option value="Atendido" {% if chamado.status == 'Atendido' %}selected{% endif %}>Atendido</option>
                     <option value="Concluído" {% if chamado.status == 'Concluído' %}selected{% endif %}>Concluído</option>
                 </select>
             </div>
@@ -111,13 +122,91 @@
 
 {% block scripts %}
 <script>
-// Alerta quando o status for alterado para "Concluído"
+document.addEventListener('DOMContentLoaded', function() {
+    const clienteSelect = document.getElementById('cliente_id');
+    const patrimonioSelect = document.getElementById('patrimonio');
+    const equipamentoInput = document.getElementById('equipamento');
+    const equipamentoIdInput = document.getElementById('equipamento_id');
+    const selectedCodigo = {{ (chamado.patrimonio or '')|tojson }};
+    const selectedId = {{ (chamado.equipamento_id or '')|tojson }};
+    const selectedNome = {{ (chamado.equipamento or '')|tojson }};
+
+    function aplicarNome() {
+        const opt = patrimonioSelect.options[patrimonioSelect.selectedIndex];
+        if (opt && opt.value) {
+            equipamentoInput.value = opt.getAttribute('data-nome') || '';
+            equipamentoIdInput.value = opt.getAttribute('data-id') || '';
+        } else {
+            equipamentoInput.value = '';
+            equipamentoIdInput.value = '';
+        }
+    }
+
+    function carregarPatrimonios(clienteId, preferId, preferCodigo) {
+        if (!clienteId) {
+            patrimonioSelect.innerHTML = '<option value="">Selecione um cliente primeiro</option>';
+            patrimonioSelect.disabled = true;
+            equipamentoInput.value = '';
+            equipamentoIdInput.value = '';
+            return;
+        }
+        patrimonioSelect.disabled = true;
+        patrimonioSelect.innerHTML = '<option value="">Carregando...</option>';
+        fetch('/api/equipamentos_por_cliente/' + encodeURIComponent(clienteId))
+            .then(function (response) { return response.json(); })
+            .then(function (data) {
+                patrimonioSelect.innerHTML = '<option value="">Selecione um patrimônio...</option>';
+                if (!data || !data.length) {
+                    patrimonioSelect.innerHTML = '<option value="">Nenhum patrimônio vinculado a este cliente</option>';
+                    patrimonioSelect.disabled = true;
+                    return;
+                }
+                let matched = false;
+                data.forEach(function (equip) {
+                    const option = document.createElement('option');
+                    option.value = equip.patrimonio || '';
+                    option.setAttribute('data-id', equip.id);
+                    option.setAttribute('data-nome', equip.nome_equipamento || '');
+                    option.textContent = equip.patrimonio || '(sem código)';
+                    if (preferId && String(equip.id) === String(preferId)) {
+                        option.selected = true;
+                        matched = true;
+                    } else if (!matched && preferCodigo && equip.patrimonio === preferCodigo) {
+                        option.selected = true;
+                        matched = true;
+                    } else if (!matched && selectedNome && equip.nome_equipamento === selectedNome) {
+                        option.selected = true;
+                        matched = true;
+                    }
+                    patrimonioSelect.appendChild(option);
+                });
+                patrimonioSelect.disabled = false;
+                if (matched) aplicarNome();
+                else if (selectedNome) equipamentoInput.value = selectedNome;
+            })
+            .catch(function () {
+                patrimonioSelect.innerHTML = '<option value="">Erro ao carregar patrimônios</option>';
+                patrimonioSelect.disabled = true;
+            });
+    }
+
+    clienteSelect.addEventListener('change', function() {
+        carregarPatrimonios(this.value, null, null);
+        equipamentoInput.value = '';
+        equipamentoIdInput.value = '';
+    });
+    patrimonioSelect.addEventListener('change', aplicarNome);
+
+    if (clienteSelect.value) {
+        carregarPatrimonios(clienteSelect.value, selectedId, selectedCodigo);
+    }
+});
+
 document.getElementById('status').addEventListener('change', function() {
-    if (this.value === 'Concluído') {
-        if (confirm('Ao marcar como "Concluído", a data de conclusão será registrada automaticamente. Confirma?')) {
+    if (this.value === 'Concluído' || this.value === 'Atendido') {
+        if (confirm('Ao marcar como "' + this.value + '", a data de conclusão será registrada automaticamente. Confirma?')) {
             // Continua
         } else {
-            // Reverte para o valor anterior
             this.value = '{{ chamado.status }}';
         }
     }

@@ -240,7 +240,8 @@
         .portal-form input[type=text],
         .portal-form input[type=email],
         .portal-form input[type=password],
-        .portal-form input[type=number] {
+        .portal-form input[type=number],
+        .portal-form select {
             width: 100%;
             padding: 12px;
             border: 1px solid #d5e0ee;
@@ -248,7 +249,8 @@
             font-size: 15px;
             font-family: inherit;
         }
-        .portal-form input:focus {
+        .portal-form input:focus,
+        .portal-form select:focus {
             outline: none;
             border-color: var(--brand-blue);
             box-shadow: 0 0 0 3px rgba(27, 79, 156, 0.14);
@@ -293,12 +295,14 @@
         #modal-acessos .portal-form input[type=text],
         #modal-acessos .portal-form input[type=email],
         #modal-acessos .portal-form input[type=password],
-        #modal-acessos .portal-form input[type=number] {
+        #modal-acessos .portal-form input[type=number],
+        #modal-acessos .portal-form select {
             padding: 8px;
             border-radius: 7px;
             font-size: 11px;
         }
-        #modal-acessos .portal-form input:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.14); }
+        #modal-acessos .portal-form input:focus,
+        #modal-acessos .portal-form select:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.14); }
         #modal-acessos .check { gap: 6px; font-size: 0.7rem; font-weight: 600; }
         #modal-acessos input[type=checkbox] {
             width: 11px;
@@ -315,6 +319,31 @@
         }
         #modal-acessos .portal-actions { gap: 7px; margin-top: 13px; }
         #modal-acessos .perm-title { margin: 8px 0; font-size: 14px; }
+
+        #modal-pendencias { padding: 0.7rem; }
+        #modal-pendencias .portal-card { width: min(640px, 100%); padding: 1.12rem 1.12rem 0.96rem; }
+        #modal-pendencias .portal-head h2 { font-size: 1.19rem; }
+        #modal-pendencias .portal-head p { font-size: 0.64rem; }
+        .pend-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+        .pend-item {
+            border: 1px solid #d7e3f3;
+            border-radius: 10px;
+            padding: 10px 12px;
+            background: #f8fbff;
+        }
+        .pend-item strong { color: var(--brand-navy); font-size: 0.85rem; }
+        .pend-item .pend-meta { color: var(--muted); font-size: 0.72rem; margin-top: 3px; }
+        .pend-item .pend-inst { font-size: 0.76rem; margin-top: 4px; color: #35506f; }
+        .pend-fotos { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.4rem; }
+        .pend-fotos img {
+            width: 48px;
+            height: 48px;
+            object-fit: cover;
+            border-radius: 0.3rem;
+            border: 1px solid #d7e3f3;
+        }
+        .pend-item .pend-actions { margin-top: 8px; }
+        .pend-empty { color: var(--muted); font-size: 0.85rem; }
 
         body.modal-open { overflow: hidden; }
 
@@ -490,6 +519,11 @@
             </a>
             <div class="opcoes-bloco">
                 <div class="opcoes-titulo">Opções</div>
+                {% if pendencias %}
+                <button type="button" class="btn-opcao" data-open-modal="modal-pendencias">
+                    <i class="fas fa-bell"></i> Pendências ({{ pendencias|length }})
+                </button>
+                {% endif %}
                 <button type="button" class="btn-opcao" data-open-modal="modal-senha">
                     <i class="fas fa-key"></i> Alterar senha
                 </button>
@@ -625,6 +659,15 @@
                             <input type="email" id="acesso-email" name="email" required>
                         </div>
                         <div class="form-group">
+                            <label for="acesso-setor">Setor (chamados)</label>
+                            <select id="acesso-setor" name="setor">
+                                <option value="">— Nenhum —</option>
+                                <option value="Obra">Obra</option>
+                                <option value="Elétrica">Elétrica</option>
+                                <option value="Compras">Compras</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
                             <label for="acesso-senha">Senha</label>
                             <input type="password" id="acesso-senha" name="senha" autocomplete="new-password">
                         </div>
@@ -752,6 +795,44 @@
                     <button type="submit" class="portal-btn sec"><i class="fas fa-envelope"></i> Enviar link por e-mail</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <div class="portal-overlay" id="modal-pendencias" role="presentation">
+        <div class="portal-card narrow" role="dialog" aria-modal="true" aria-labelledby="pendencias-title">
+            <button type="button" class="portal-close" data-close-modal aria-label="Fechar">&times;</button>
+            <div class="portal-head">
+                <div>
+                    <h2 id="pendencias-title">Pendências</h2>
+                    <p>Chamados encaminhados ao seu setor e serviços aguardando peça.</p>
+                </div>
+            </div>
+            {% if pendencias %}
+            <ul class="pend-list">
+                {% for p in pendencias %}
+                <li class="pend-item">
+                    <strong>{{ p.numero_chamado }}</strong> · {{ p.cliente }}
+                    <div class="pend-meta">{{ p.tipo }}{% if p.setor_destino %} · {{ p.setor_destino }}{% endif %}{% if p.encaminhado_por %} · de {{ p.encaminhado_por }}{% endif %}{% if p.encaminhado_em %} · {{ p.encaminhado_em }}{% endif %}</div>
+                    {% if p.instrucoes %}<div class="pend-inst">{{ p.instrucoes }}</div>{% endif %}
+                    {% if p.fotos %}
+                    <div class="pend-fotos">
+                        {% for f in p.fotos %}
+                        <img src="{{ f.url }}" alt="{{ f.nome or 'Foto' }}">
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    <div class="pend-actions">
+                        <a class="portal-btn pri" href="{{ p.url_atender }}">Atender</a>
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="pend-empty">Nenhuma pendência no momento.</p>
+            {% endif %}
+            <div class="portal-actions">
+                <button type="button" class="portal-btn sec" data-close-modal>Fechar</button>
+            </div>
         </div>
     </div>
 
@@ -975,6 +1056,7 @@
             document.getElementById('acesso-id').value = item.id;
             document.getElementById('acesso-nome').value = item.nome || '';
             document.getElementById('acesso-email').value = item.email || '';
+            document.getElementById('acesso-setor').value = item.setor || '';
             document.getElementById('acesso-email').readOnly = !!item.is_master;
             document.getElementById('acesso-ativo').checked = !!item.ativo;
             document.getElementById('acesso-ativo').disabled = !!item.is_master;
@@ -1077,6 +1159,11 @@
             }
         });
         {% endif %}
+
+        var MOSTRAR_PENDENCIAS = {{ 'true' if mostrar_pendencias else 'false' }};
+        if (MOSTRAR_PENDENCIAS) {
+            openModal('modal-pendencias');
+        }
     })();
     </script>
 </body>

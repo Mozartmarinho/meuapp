@@ -27,15 +27,6 @@
         </div>
     </div>
 
-    <div class="dashboard-actions">
-        <a href="{{ url_for('main.listar_chamados') }}" class="btn btn-info">
-            <i class="fas fa-list"></i> Ver Todos os Chamados
-        </a>
-        <a href="{{ url_for('main.novo_chamado') }}" class="btn btn-primary">
-            <i class="fas fa-plus"></i> Novo Chamado
-        </a>
-    </div>
-
     <h2>Chamados Recentes</h2>
     <table>
         <thead>
@@ -43,6 +34,7 @@
                 <th>Nº Chamado</th>
                 <th>Cliente</th>
                 <th>Status</th>
+                <th>Setor</th>
                 <th>Prioridade</th>
                 <th>Ações</th>
             </tr>
@@ -52,7 +44,16 @@
             <tr>
                 <td>{{ chamado.numero_chamado }}</td>
                 <td>{{ chamado.cliente.nome if chamado.cliente else 'N/A' }}</td>
-                <td>{{ chamado.status }}</td>
+                <td>
+                    <span class="status-{{ chamado.status|lower|replace(' ', '-')|replace('í', 'i')|replace('ç', 'c') }}">{{ chamado.status }}</span>
+                </td>
+                <td>
+                    {% if chamado.setor_destino %}
+                    <span class="setor-blink">{{ chamado.setor_destino }}</span>
+                    {% else %}
+                    —
+                    {% endif %}
+                </td>
                 <td>{{ chamado.prioridade }}</td>
                 <td>
                     <a href="{{ url_for('main.editar_chamado', id=chamado.id) }}" class="btn btn-primary">
@@ -62,7 +63,7 @@
             </tr>
             {% else %}
             <tr>
-                <td colspan="5">Nenhum chamado recente encontrado.</td>
+                <td colspan="6">Nenhum chamado recente encontrado.</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -90,13 +91,6 @@
     .dashboard-container > h2 {
         font-size: 1.2rem;
         margin: 0;
-    }
-
-    .dashboard-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-bottom: 16px;
     }
 
     .dashboard-container .btn {
@@ -181,6 +175,12 @@
     .dashboard-container tr:hover {
         background-color: #f1f1f1;
     }
+    .status-pendente { color: #d39e00; font-weight: 700; }
+    .status-em-andamento { color: #17a2b8; font-weight: 700; }
+    .status-concluido { color: #28a745; font-weight: 700; }
+    .status-atendido { color: #0d9488; font-weight: 700; }
+    .status-aguardar-peca { color: #c05621; font-weight: 700; }
+    .status-encaminhado { color: #6f42c1; font-weight: 700; }
 </style>
 
 {% endblock %}

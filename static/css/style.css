@@ -361,6 +361,7 @@ textarea:focus {
 .status-pendente { background-color: #FEF3C7; color: #92400E; }
 .status-andamento { background-color: #DBEAFE; color: #1E40AF; }
 .status-concluido { background-color: #D1FAE5; color: #065F46; }
+.status-atendido { background-color: #CCFBF1; color: #115E59; }
 .prioridade-alta { background-color: #FEE2E2; color: #991B1B; }
 .prioridade-media { background-color: #FEF3C7; color: #92400E; }
 .prioridade-normal { background-color: #F3F4F6; color: #374151; }
@@ -892,4 +893,15 @@ textarea:focus {
     }
 
     .sidebar-logo img { max-width: 180px; }
+}
+
+/* Setor destino: pulse when assigned (Lista de Chamados / dashboard) */
+.setor-blink {
+    font-weight: 700;
+    animation: setor-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes setor-pulse {
+    0%, 100% { color: var(--brand-navy); opacity: 1; }
+    50% { color: #e67e22; opacity: 0.88; }
 }

@@ -2,14 +2,13 @@
 {% block title %}Balanças{% endblock %}
 {% block content %}
 <div class="balanca-cadastro">
-<div class="page-header">
-  <h1>Balanças cadastradas</h1>
-  <p>Identificação das balanças que enviam peso pelo agente local</p>
-</div>
-
-<div class="toolbar">
-  <button class="btn btn-primary btn-sm" type="button" onclick="abrirBalanca()">
-    <i class="fas fa-plus"></i> Nova balança
+<div class="page-header balanca-header">
+  <div>
+    <h1>Balanças cadastradas</h1>
+    <p>Identificação das balanças que enviam peso pelo agente local</p>
+  </div>
+  <button class="btn btn-primary" type="button" onclick="abrirBalanca()">
+    <i class="fas fa-plus"></i> Adicionar balança
   </button>
 </div>
 
@@ -57,11 +56,56 @@
 </div>
 </div>
 
+<div id="balModalOverlay" class="bal-modal-overlay" onclick="if(event.target===this)fecharBalanca()" hidden>
+  <div class="bal-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="balModalTitle">
+    <div class="bal-modal-header">
+      <h2 id="balModalTitle">Nova balança</h2>
+      <button type="button" class="bal-modal-close" onclick="fecharBalanca()" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="bal-modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="b-codigo">Código</label>
+          <input class="form-control" id="b-codigo" placeholder="BAL-02">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="b-nome">Nome</label>
+          <input class="form-control" id="b-nome" placeholder="Balança Expedição">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="b-local">Local</label>
+          <input class="form-control" id="b-local" placeholder="Galpão 1">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="b-com">Porta COM</label>
+          <input class="form-control" id="b-com" placeholder="COM3">
+        </div>
+      </div>
+    </div>
+    <div class="bal-modal-footer">
+      <button class="btn btn-primary" type="button" onclick="salvarBalanca()">
+        <i class="fas fa-save"></i> Salvar
+      </button>
+      <button class="btn btn-secondary" type="button" onclick="fecharBalanca()">
+        <i class="fas fa-door-open"></i> Fechar
+      </button>
+    </div>
+  </div>
+</div>
+
 <style>
 .balanca-cadastro .page-header { margin-bottom: 1rem; }
 .balanca-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
 .balanca-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
-.balanca-cadastro .toolbar { gap: 0.6rem; margin-bottom: 0.8rem; }
+.balanca-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
 .balanca-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
 .balanca-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
 .balanca-cadastro .btn-ghost { padding: 0.16rem 0.32rem; }
@@ -88,14 +132,60 @@
   padding: 0.12rem 0.28rem;
   line-height: 1.15;
 }
-#modalOverlay .modal-dialog { max-width: 512px; }
-#modalOverlay .modal-header { padding: 0.92rem 1rem 0; gap: 0.6rem; }
-#modalOverlay .modal-header h2 { font-size: 0.96rem; }
-#modalOverlay .modal-close { font-size: 1.2rem; }
-#modalOverlay .modal-body { padding: 0.8rem 1rem 0.92rem; }
-#modalOverlay .modal-footer { gap: 0.4rem; padding: 0.8rem 1rem; }
-#modalOverlay .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
-#modalOverlay .form-control {
+.bal-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(13, 43, 92, 0.55);
+}
+.bal-modal-overlay[hidden] { display: none !important; }
+.bal-modal-dialog {
+  background: #fff;
+  border-radius: 0.4rem;
+  width: 100%;
+  max-width: 512px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 12px 36px rgba(13, 43, 92, 0.25);
+  font-family: inherit;
+}
+.bal-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.92rem 1rem 0;
+  gap: 0.6rem;
+}
+.bal-modal-header h2 {
+  margin: 0;
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: #0f2a5c;
+}
+.bal-modal-close {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 1.2rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 0.12rem;
+}
+.bal-modal-close:hover { color: #0f2a5c; }
+.bal-modal-body { padding: 0.8rem 1rem 0.92rem; }
+.bal-modal-footer {
+  display: flex;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.72rem 1rem 0.92rem;
+  border-top: 1px solid #e2e8f0;
+}
+.bal-modal-body .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+.bal-modal-body .form-control {
   padding: 0.48rem 0.6rem;
   font-size: 0.8rem;
   border-radius: 0.3rem;
@@ -103,48 +193,31 @@
   height: auto;
   line-height: 1.25;
 }
-#modalOverlay .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
-#modalOverlay .form-group { margin-bottom: 0.8rem; }
-#modalOverlay .form-row { gap: 0.6rem; }
-#modalOverlay .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.bal-modal-body .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+.bal-modal-body .form-group { margin-bottom: 0.8rem; }
+.bal-modal-body .form-row { gap: 0.6rem; }
+.bal-modal-footer .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
 </style>
 {% endblock %}
 
 {% block scripts %}
 <script>
-function escAttr(v){
-  return String(v == null ? '' : v)
-    .replace(/&/g,'&amp;').replace(/"/g,'&quot;')
-    .replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
 function abrirBalanca(tr){
   const isEdit = !!(tr && tr.dataset && tr.dataset.id);
   const d = isEdit ? tr.dataset : {};
   window._editBalancaId = isEdit ? d.id : null;
-  const html = `
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Código</label>
-        <input class="form-control" id="b-codigo" value="${escAttr(d.codigo || '')}" placeholder="BAL-02">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Nome</label>
-        <input class="form-control" id="b-nome" value="${escAttr(d.nome || '')}" placeholder="Balança Expedição">
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Local</label>
-        <input class="form-control" id="b-local" value="${escAttr(d.local || '')}" placeholder="Galpão 1">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Porta COM</label>
-        <input class="form-control" id="b-com" value="${escAttr(d.porta || '')}" placeholder="COM3">
-      </div>
-    </div>
-  `;
-  abrirModal(isEdit ? 'Editar balança' : 'Nova balança', html, 'Gravar', salvarBalanca);
+  document.getElementById('balModalTitle').textContent = isEdit ? 'Editar balança' : 'Nova balança';
+  document.getElementById('b-codigo').value = d.codigo || '';
+  document.getElementById('b-nome').value = d.nome || '';
+  document.getElementById('b-local').value = d.local || '';
+  document.getElementById('b-com').value = d.porta || '';
+  document.getElementById('balModalOverlay').hidden = false;
+  setTimeout(function () { document.getElementById('b-codigo').focus(); }, 30);
+}
+
+function fecharBalanca(){
+  document.getElementById('balModalOverlay').hidden = true;
+  window._editBalancaId = null;
 }
 
 async function salvarBalanca(){
@@ -170,7 +243,7 @@ async function salvarBalanca(){
       showToast(j.error || 'Falha ao gravar', 'error');
       return;
     }
-    fecharModal();
+    fecharBalanca();
     location.reload();
   } catch (e) {
     showToast('Erro ao gravar', 'error');
@@ -191,5 +264,11 @@ async function excluirBalanca(id){
     showToast('Erro ao excluir', 'error');
   }
 }
+
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && !document.getElementById('balModalOverlay').hidden) {
+    fecharBalanca();
+  }
+});
 </script>
 {% endblock %}

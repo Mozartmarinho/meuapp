@@ -947,15 +947,114 @@ class AcessoEstacionamentoPermissao(db.Model):
         }
 
 
+ESCALA_TIPOS = {
+    'par': 'Escala par',
+    'impar': 'Escala ímpar',
+    'diaria': 'Diárias',
+}
+
+
+def _nome_escala_valido(valor):
+    texto = (valor or '').strip()
+    if not texto or texto in ('-', '—', '–'):
+        return ''
+    return texto
+
+
+def dias_uteis_mes(data_ref=None):
+    """Dias 1–31 do mês da data_ref que não caem em sábado nem domingo."""
+    if data_ref is None:
+        data_ref = date.today()
+    elif hasattr(data_ref, 'date'):
+        data_ref = data_ref.date()
+    out = []
+    for d in range(1, 32):
+        try:
+            dt = date(data_ref.year, data_ref.month, d)
+        except ValueError:
+            continue
+        if dt.weekday() < 5:
+            out.append(d)
+    return out
+
+
+def dias_padrao_escala(tipo, data_ref=None):
+    """Dias do mês (1–31) ativos segundo o tipo, antes de overrides."""
+    t = (tipo or 'diaria').strip().lower()
+    if t == 'par':
+        return [d for d in range(1, 32) if d % 2 == 0]
+    if t == 'impar':
+        return [d for d in range(1, 32) if d % 2 == 1]
+    return dias_uteis_mes(data_ref)
+
+
+def normalizar_tipo_escala(value):
+    t = (value or '').strip().lower()
+    if t in ('par', 'impar', 'diaria'):
+        return t
+    aliases = {
+        'pares': 'par',
+        'even': 'par',
+        'impares': 'impar',
+        'ímpares': 'impar',
+        'odd': 'impar',
+        'diarias': 'diaria',
+        'diária': 'diaria',
+        'diárias': 'diaria',
+        'todos': 'diaria',
+        'daily': 'diaria',
+    }
+    return aliases.get(t, 'diaria')
+
+
+def parse_dias_mes(raw, tipo='diaria', data_ref=None):
+    """Interpreta JSON/lista de dias ativos; fallback no padrão do tipo."""
+    if isinstance(raw, (list, dict)):
+        data = raw
+    else:
+        text = (raw or '').strip() if raw is not None else ''
+        if not text:
+            return dias_padrao_escala(tipo, data_ref)
+        try:
+            data = json.loads(text)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return dias_padrao_escala(tipo, data_ref)
+
+    days = None
+    if isinstance(data, dict):
+        if 'ativos' in data:
+            days = data.get('ativos')
+        else:
+            days = [int(k) for k, v in data.items() if v and str(k).isdigit()]
+    elif isinstance(data, list):
+        if data and all(isinstance(x, bool) for x in data):
+            days = [i + 1 for i, on in enumerate(data) if on]
+        else:
+            days = data
+    if days is None:
+        return dias_padrao_escala(tipo, data_ref)
+    out = []
+    for item in days:
+        try:
+            d = int(item)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= d <= 31:
+            out.append(d)
+    return sorted(set(out))
+
+
 class AcessoEscala(db.Model):
-    """Escala de trabalho/acesso do colaborador (ciclos, horários e exceções)."""
+    """Escala nomeada (par/ímpar/diária) com dias do mês e pessoas vinculadas."""
     __tablename__ = 'acesso_escalas'
 
     id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(120), nullable=False, default='')
     pessoa_id = db.Column(db.Integer, db.ForeignKey('acesso_pessoas.id'), nullable=True, index=True)
     nome_pessoa = db.Column(db.String(120), nullable=False, default='')
-    tipo = db.Column(db.String(40), nullable=False, default='5x2')  # espelho de dias_trabalho x dias_folga
-    data_inicio = db.Column(db.Date, nullable=False, index=True)
+    tipo = db.Column(db.String(40), nullable=False, default='diaria')  # par | impar | diaria
+    dias_mes = db.Column(db.Text)  # JSON [1, 3, 5, …] — override sobre o tipo
+    data_inicio = db.Column(db.Date, nullable=True, index=True)
     data_fim = db.Column(db.Date, nullable=True, index=True)
     dias_trabalho = db.Column(db.Integer, nullable=False, default=5)
     dias_folga = db.Column(db.Integer, nullable=False, default=2)
@@ -965,24 +1064,73 @@ class AcessoEscala(db.Model):
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
 
     pessoa = db.relationship('AcessoPessoa')
+    vinculos = db.relationship(
+        'AcessoEscalaPessoa',
+        back_populates='escala',
+        cascade='all, delete-orphan',
+    )
+
+    def normalize_tipo(self):
+        return normalizar_tipo_escala(self.tipo)
 
     def sync_tipo(self):
-        dt = self.dias_trabalho if self.dias_trabalho is not None else 5
-        df = self.dias_folga if self.dias_folga is not None else 2
-        self.tipo = f'{dt}x{df}'
+        """Mantido por compatibilidade; tipo agora é par/ímpar/diária."""
+        self.tipo = self.normalize_tipo()
         return self.tipo
+
+    def get_dias_ativos(self):
+        return parse_dias_mes(self.dias_mes, self.normalize_tipo(), self.data_inicio)
+
+    def set_dias_ativos(self, days):
+        if days is None:
+            clean = dias_padrao_escala(self.normalize_tipo(), self.data_inicio)
+        else:
+            clean = parse_dias_mes(days, self.normalize_tipo(), self.data_inicio)
+        self.dias_mes = json.dumps(clean)
+        return clean
+
+    def cobre_data(self, dia):
+        """True se o dia do calendário (date/datetime) está ativo nesta escala."""
+        if dia is None:
+            return False
+        if hasattr(dia, 'date'):
+            dia = dia.date()
+        if self.data_inicio and dia < self.data_inicio:
+            return False
+        if self.data_fim and dia > self.data_fim:
+            return False
+        return dia.day in set(self.get_dias_ativos())
 
     @property
     def tipo_label(self):
-        return self.tipo or self.sync_tipo()
+        return ESCALA_TIPOS.get(self.normalize_tipo(), 'Diárias')
 
-    def to_dict(self):
-        tipo = self.tipo_label
-        return {
+    def display_nome(self):
+        n = _nome_escala_valido(self.nome) or _nome_escala_valido(self.nome_pessoa)
+        if n:
+            return n
+        return f'Escala {self.id}' if self.id else 'Nova escala'
+
+    def to_dict(self, incluir_pessoas=False, qtd_pessoas=None):
+        tipo = self.normalize_tipo()
+        dias = self.get_dias_ativos()
+        vinculos = list(self.vinculos or []) if (incluir_pessoas or qtd_pessoas is None) else []
+        if qtd_pessoas is None:
+            qtd_pessoas = len(vinculos)
+            if qtd_pessoas == 0 and self.pessoa_id:
+                qtd_pessoas = 1
+        nome_esc = self.display_nome()
+        data = {
             'id': self.id,
+            'nome': nome_esc,
+            'nome_escala': nome_esc,
             'pessoa_id': self.pessoa_id,
             'nome_pessoa': self.nome_pessoa or '',
             'tipo': tipo,
+            'tipo_label': ESCALA_TIPOS.get(tipo, 'Diárias'),
+            'dias_ativos': dias,
+            'qtd_dias': len(dias),
+            'qtd_pessoas': int(qtd_pessoas or 0),
             'data_inicio': self.data_inicio.isoformat() if self.data_inicio else '',
             'data_inicio_fmt': self.data_inicio.strftime('%d/%m/%Y') if self.data_inicio else '',
             'data_fim': self.data_fim.isoformat() if self.data_fim else '',
@@ -992,6 +1140,47 @@ class AcessoEscala(db.Model):
             'hora_entrada': self.hora_entrada.strftime('%H:%M') if self.hora_entrada else '',
             'hora_saida': self.hora_saida.strftime('%H:%M') if self.hora_saida else '',
             'ativo': bool(self.ativo),
+            'data_criacao': self.data_criacao.strftime('%d/%m/%Y %H:%M') if self.data_criacao else '',
+        }
+        if incluir_pessoas:
+            pessoas = [v.to_dict() for v in vinculos]
+            if not pessoas and self.pessoa_id:
+                pessoas = [{
+                    'id': None,
+                    'escala_id': self.id,
+                    'pessoa_id': self.pessoa_id,
+                    'nome': self.nome_pessoa or (self.pessoa.nome if self.pessoa else ''),
+                    'matricula': self.pessoa.matricula if self.pessoa else '',
+                    'legado': True,
+                }]
+            data['pessoas'] = pessoas
+        return data
+
+
+class AcessoEscalaPessoa(db.Model):
+    """Colaborador vinculado a uma escala (depois que a escala já existe)."""
+    __tablename__ = 'acesso_escala_pessoas'
+    __table_args__ = (
+        db.UniqueConstraint('escala_id', 'pessoa_id', name='uq_acesso_escala_pessoa'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    escala_id = db.Column(db.Integer, db.ForeignKey('acesso_escalas.id'), nullable=False, index=True)
+    pessoa_id = db.Column(db.Integer, db.ForeignKey('acesso_pessoas.id'), nullable=False, index=True)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+
+    escala = db.relationship('AcessoEscala', back_populates='vinculos')
+    pessoa = db.relationship('AcessoPessoa')
+
+    def to_dict(self):
+        p = self.pessoa
+        return {
+            'id': self.id,
+            'escala_id': self.escala_id,
+            'pessoa_id': self.pessoa_id,
+            'nome': p.nome if p else '',
+            'matricula': p.matricula if p else '',
+            'legado': False,
             'data_criacao': self.data_criacao.strftime('%d/%m/%Y %H:%M') if self.data_criacao else '',
         }
 

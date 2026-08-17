@@ -7,13 +7,7 @@
     <div class="header">
         <div>
             <h1>Lista de Chamados</h1>
-            <p class="chamados-sub">Chamados que você abriu — todos os status</p>
-        </div>
-        <div class="header-actions">
-            <button type="button" class="btn btn-primary" id="btnNovoChamado">
-                <i class="fas fa-plus"></i> Novo Chamado
-            </button>
-            <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">Dashboard</a>
+            <p class="chamados-sub">{{ subtitulo }}</p>
         </div>
     </div>
 
@@ -24,6 +18,7 @@
                     <th>Nº Chamado</th>
                     <th>Cliente</th>
                     <th>Status</th>
+                    <th>Setor</th>
                     <th>Prioridade</th>
                     <th>Data</th>
                     <th>Ações</th>
@@ -35,21 +30,32 @@
                     <td>{{ chamado.numero_chamado }}</td>
                     <td>{{ chamado.cliente.nome if chamado.cliente else 'N/A' }}</td>
                     <td>
-                        <span class="status-{{ chamado.status|lower|replace(' ', '-')|replace('í', 'i') }}">{{ chamado.status }}</span>
+                        <span class="status-{{ chamado.status|lower|replace(' ', '-')|replace('í', 'i')|replace('ç', 'c') }}">{{ chamado.status }}</span>
+                    </td>
+                    <td>
+                        {% if chamado.setor_destino %}
+                        <span class="setor-blink">{{ chamado.setor_destino }}</span>
+                        {% else %}
+                        —
+                        {% endif %}
                     </td>
                     <td>
                         <span class="priority-{{ chamado.prioridade|lower|replace('é', 'e') }}">{{ chamado.prioridade }}</span>
                     </td>
                     <td>{{ chamado.data_criacao.strftime('%d/%m/%Y %H:%M') if chamado.data_criacao else '' }}</td>
-                    <td>
-                        <a href="{{ url_for('main.editar_chamado', id=chamado.id) }}" class="btn btn-primary btn-sm">
+                    <td class="acoes-cell">
+                        <button type="button" class="btn btn-primary btn-sm btn-atender"
+                            data-id="{{ chamado.id }}">
+                            <i class="fas fa-toolbox"></i> Atender
+                        </button>
+                        <a href="{{ url_for('main.editar_chamado', id=chamado.id) }}" class="btn btn-sm btn-editar-link">
                             <i class="fas fa-edit"></i> Editar
                         </a>
                     </td>
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="6" class="empty-row">Nenhum chamado encontrado.</td>
+                    <td colspan="7" class="empty-row">Nenhum chamado encontrado.</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -57,72 +63,83 @@
     </div>
 </div>
 
-<div id="modalNovoChamado" class="modal-overlay nc-modal" hidden>
-    <div class="modal-dialog nc-dialog" role="dialog" aria-modal="true" aria-labelledby="ncModalTitle">
+<div id="modalAtender" class="modal-overlay nc-modal" hidden>
+    <div class="modal-dialog nc-dialog" role="dialog" aria-modal="true" aria-labelledby="atModalTitle">
         <div class="modal-header">
-            <h2 id="ncModalTitle">Novo Chamado</h2>
-            <button type="button" class="modal-close" id="btnFecharNcX" aria-label="Fechar">&times;</button>
+            <h2 id="atModalTitle">Atender chamado</h2>
+            <button type="button" class="modal-close" id="btnFecharAtX" aria-label="Fechar">&times;</button>
         </div>
-        <form id="formNovoChamado" method="POST" action="{{ url_for('main.novo_chamado') }}">
+        <form id="formAtender" method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="acao" id="at_acao" value="salvar">
             <div class="modal-body">
-                <input type="hidden" name="status" value="Pendente">
+                <p class="at-meta" id="atMeta">—</p>
                 <div class="form-group">
-                    <label for="nc_cliente_id">Cliente *</label>
-                    <select id="nc_cliente_id" name="cliente_id" required>
-                        <option value="">Selecione um cliente...</option>
-                        {% for cliente in clientes %}
-                        <option value="{{ cliente.id }}" data-nome="{{ cliente.nome }}">{{ cliente.nome }}</option>
-                        {% endfor %}
+                    <label for="at_notas">O que foi consertado</label>
+                    <textarea id="at_notas" name="atendimento_notas" rows="3" placeholder="Descreva o serviço realizado"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="at_fotos">Foto</label>
+                    <input type="file" id="at_fotos" name="fotos" accept="image/*" multiple>
+                    <div class="at-fotos" id="atFotosExistentes"></div>
+                </div>
+                <div class="form-group at-check">
+                    <label>
+                        <input type="checkbox" id="at_aguardar_peca" name="aguardar_peca" value="1">
+                        Aguardar peça
+                    </label>
+                    <span class="at-hint">Marque se o serviço depende de peça.</span>
+                </div>
+                <div class="form-group">
+                    <label for="at_status">Status</label>
+                    <select id="at_status" name="status">
+                        <option value="Pendente">Pendente</option>
+                        <option value="Em Andamento">Em Andamento</option>
+                        <option value="Aguardar peça">Aguardar peça</option>
+                        <option value="Encaminhado">Encaminhado</option>
+                        <option value="Atendido">Atendido</option>
+                        <option value="Concluído">Concluído</option>
                     </select>
                 </div>
-                <div class="form-group">
-                    <label for="nc_patrimonio">Patrimônio</label>
-                    <select id="nc_patrimonio" name="patrimonio">
-                        <option value="">Selecione um patrimônio...</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="nc_equipamento">Equipamento</label>
-                    <input type="text" id="nc_equipamento" name="equipamento" readonly>
-                </div>
-                <div class="form-group">
-                    <label for="nc_tipo_servico">Tipo de Serviço *</label>
-                    <select id="nc_tipo_servico" name="tipo_servico" required>
-                        <option value="">Selecione...</option>
-                        <option value="Manutenção">Manutenção</option>
-                        <option value="Instalação">Instalação</option>
-                        <option value="Reparo">Reparo</option>
-                        <option value="Configuração">Configuração</option>
-                        <option value="Outro">Outro</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="nc_descricao">Descrição *</label>
-                    <textarea id="nc_descricao" name="descricao" rows="3" required></textarea>
-                </div>
-                <div class="form-group">
-                    <label for="nc_prioridade">Prioridade</label>
-                    <select id="nc_prioridade" name="prioridade">
-                        <option value="Normal">Normal</option>
-                        <option value="Média">Média</option>
-                        <option value="Alta">Alta</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="nc_observacoes">Observações</label>
-                    <textarea id="nc_observacoes" name="observacoes" rows="2"></textarea>
+                <div class="at-encaminhar">
+                    <p class="at-enc-title">Encaminhar para outro setor</p>
+                    <div class="form-group">
+                        <label for="at_setor">Setor</label>
+                        <select id="at_setor" name="setor_destino">
+                            <option value="">Selecione...</option>
+                            {% for setor in setores %}
+                            <option value="{{ setor }}">{{ setor }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="at_instrucoes">O que precisa fazer</label>
+                        <textarea id="at_instrucoes" name="instrucoes" rows="2" placeholder="Instruções para o setor de destino"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="at_fotos_enc">Adicionar foto</label>
+                        <div class="at-vincular-row">
+                            <input type="file" id="at_fotos_enc" name="fotos_encaminhar" accept="image/*" multiple>
+                            <button type="button" class="btn btn-secondary" id="btnVincularFotoEnc">
+                                <i class="fas fa-link"></i> Vincular
+                            </button>
+                        </div>
+                        <div class="at-fotos" id="atFotosEncaminhar"></div>
+                    </div>
                 </div>
             </div>
             <div class="nc-footer">
-                <button type="reset" class="btn nc-btn-muted">
-                    <i class="fas fa-undo"></i> Limpar
+                <button type="button" class="btn nc-btn-muted" id="btnFecharAt">
+                    <i class="fas fa-times"></i> Fechar
                 </button>
                 <div class="nc-footer-right">
-                    <button type="button" class="btn nc-btn-muted" id="btnFecharNc">
-                        <i class="fas fa-times"></i> Fechar
+                    <button type="submit" class="btn btn-secondary" id="btnEncaminharAt" data-acao="encaminhar">
+                        <i class="fas fa-share"></i> Encaminhar
                     </button>
-                    <button type="submit" class="btn btn-success" id="btnGravarNc">
+                    <button type="submit" class="btn btn-success" id="btnGravarAt" data-acao="salvar">
                         <i class="fas fa-save"></i> Gravar
+                    </button>
+                    <button type="submit" class="btn btn-finalizar" id="btnFinalizarAt" data-acao="finalizar">
+                        <i class="fas fa-check-circle"></i> Finalizar chamado
                     </button>
                 </div>
             </div>
@@ -142,7 +159,6 @@
 }
 .chamados-page h1 { margin: 0; font-size: 1.6rem; }
 .chamados-sub { margin: 0.2rem 0 0; color: var(--gray-600); font-size: 0.8rem; }
-.header-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .table-wrap {
     background: white;
     border-radius: 0.4rem;
@@ -159,9 +175,18 @@
 .chamados-page .table th { background: #f2f2f2; }
 .chamados-page .table tr:hover { background: #f1f1f1; }
 .empty-row { text-align: center; color: var(--gray-600); padding: 1.4rem !important; }
+.acoes-cell { white-space: nowrap; }
+.acoes-cell .btn { margin-right: 0.25rem; }
+.btn-editar-link {
+    background-color: var(--gray-300);
+    color: var(--gray-800);
+}
 .status-pendente { color: #d39e00; font-weight: 700; }
 .status-em-andamento { color: #17a2b8; font-weight: 700; }
 .status-concluido { color: #28a745; font-weight: 700; }
+.status-atendido { color: #0d9488; font-weight: 700; }
+.status-aguardar-peca { color: #c05621; font-weight: 700; }
+.status-encaminhado { color: #6f42c1; font-weight: 700; }
 .priority-alta { color: #dc3545; font-weight: 700; }
 .priority-normal, .priority-media { color: #6c757d; }
 .priority-baixa { color: #28a745; }
@@ -183,12 +208,14 @@
 .nc-dialog .form-group { margin-bottom: 0.56rem; }
 .nc-dialog label { font-size: 0.72rem; margin-bottom: 0.16rem; }
 .nc-dialog input[type="text"],
+.nc-dialog input[type="file"],
 .nc-dialog select,
 .nc-dialog textarea {
     padding: 0.48rem 0.6rem;
     font-size: 0.8rem;
     border-radius: 0.3rem;
     line-height: 1.35;
+    width: 100%;
 }
 .nc-dialog textarea { min-height: 0; resize: vertical; }
 .nc-footer {
@@ -208,31 +235,218 @@
     border-radius: 0.3rem;
 }
 .nc-btn-muted { background-color: var(--gray-300); color: var(--gray-800); }
+.btn-finalizar {
+    background-color: #0d9488;
+    color: #fff;
+}
+.btn-finalizar:hover { background-color: #0f766e; }
+.at-meta { margin: 0 0 0.5rem; color: var(--gray-600); font-size: 0.76rem; }
+.at-check label { display: flex; align-items: center; gap: 0.4rem; font-weight: 700; }
+.at-check input { width: auto; }
+.at-hint { display: block; color: var(--gray-600); font-size: 0.68rem; margin-top: 0.15rem; }
+.at-encaminhar {
+    border: 1px solid var(--gray-200);
+    border-radius: 0.35rem;
+    padding: 0.5rem 0.6rem 0.2rem;
+    margin-top: 0.3rem;
+    background: #f8fafc;
+}
+.at-enc-title {
+    margin: 0 0 0.4rem;
+    font-size: 0.76rem;
+    font-weight: 800;
+    color: var(--gray-800);
+}
+.at-fotos { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.4rem; }
+.at-fotos img {
+    width: 56px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: 0.3rem;
+    border: 1px solid var(--gray-200);
+}
+.at-vincular-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.at-vincular-row input[type="file"] {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+}
+.at-vincular-row .btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+.at-foto-item { position: relative; }
+.at-foto-item button {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: #64748b;
+    color: #fff;
+    font-size: 0.62rem;
+    line-height: 16px;
+    cursor: pointer;
+}
 body.modal-open { overflow: hidden; }
 </style>
 
 <script>
 (function () {
-    const overlay = document.getElementById('modalNovoChamado');
-    const form = document.getElementById('formNovoChamado');
-    const clienteSelect = document.getElementById('nc_cliente_id');
-    const patrimonioSelect = document.getElementById('nc_patrimonio');
-    const equipamentoInput = document.getElementById('nc_equipamento');
-    const btnGravar = document.getElementById('btnGravarNc');
+    const overlay = document.getElementById('modalAtender');
+    const form = document.getElementById('formAtender');
+    const acaoInput = document.getElementById('at_acao');
+    const btnGravar = document.getElementById('btnGravarAt');
+    const btnEncaminhar = document.getElementById('btnEncaminharAt');
+    const btnFinalizar = document.getElementById('btnFinalizarAt');
+    const abrirId = {{ atender_id|tojson }};
+    let chamadoId = null;
+    let fotosEncPendentes = [];
+    let fotosEncSalvas = [];
+    let fotosEncUrls = [];
 
     function abrirModal() {
         overlay.hidden = false;
         document.body.classList.add('modal-open');
-        clienteSelect.focus();
+    }
+    function limparFotosEnc() {
+        fotosEncUrls.forEach(function (u) {
+            try { URL.revokeObjectURL(u); } catch (e) {}
+        });
+        fotosEncUrls = [];
+        fotosEncPendentes = [];
+        fotosEncSalvas = [];
+        const inputEnc = document.getElementById('at_fotos_enc');
+        if (inputEnc) inputEnc.value = '';
+        const boxEnc = document.getElementById('atFotosEncaminhar');
+        if (boxEnc) boxEnc.innerHTML = '';
     }
     function fecharModal() {
         overlay.hidden = true;
         document.body.classList.remove('modal-open');
+        chamadoId = null;
+        form.reset();
+        document.getElementById('atFotosExistentes').innerHTML = '';
+        limparFotosEnc();
+    }
+    function arquivoIgual(a, b) {
+        return a && b && a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
+    }
+    function renderFotosEnc() {
+        const box = document.getElementById('atFotosEncaminhar');
+        box.innerHTML = '';
+        fotosEncUrls.forEach(function (u) {
+            try { URL.revokeObjectURL(u); } catch (e) {}
+        });
+        fotosEncUrls = [];
+        fotosEncSalvas.forEach(function (foto) {
+            const img = document.createElement('img');
+            img.src = foto.url;
+            img.alt = foto.nome || 'Foto';
+            box.appendChild(img);
+        });
+        fotosEncPendentes.forEach(function (arquivo, idx) {
+            const wrap = document.createElement('div');
+            wrap.className = 'at-foto-item';
+            const img = document.createElement('img');
+            const url = URL.createObjectURL(arquivo);
+            fotosEncUrls.push(url);
+            img.src = url;
+            img.alt = arquivo.name || 'Foto';
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.setAttribute('aria-label', 'Remover');
+            btn.textContent = '×';
+            btn.addEventListener('click', function () {
+                fotosEncPendentes.splice(idx, 1);
+                renderFotosEnc();
+            });
+            wrap.appendChild(img);
+            wrap.appendChild(btn);
+            box.appendChild(wrap);
+        });
+    }
+    function vincularFotosEnc() {
+        const input = document.getElementById('at_fotos_enc');
+        const selecionados = Array.prototype.slice.call((input && input.files) || []);
+        if (!selecionados.length) {
+            alert('Selecione uma foto para vincular.');
+            return;
+        }
+        selecionados.forEach(function (arquivo) {
+            const jaTem = fotosEncPendentes.some(function (p) { return arquivoIgual(p, arquivo); });
+            if (!jaTem) fotosEncPendentes.push(arquivo);
+        });
+        input.value = '';
+        renderFotosEnc();
+    }
+    function coletarFotosEncaminhar() {
+        const input = document.getElementById('at_fotos_enc');
+        const selecionados = Array.prototype.slice.call((input && input.files) || []);
+        const todos = fotosEncPendentes.slice();
+        selecionados.forEach(function (arquivo) {
+            const jaTem = todos.some(function (p) { return arquivoIgual(p, arquivo); });
+            if (!jaTem) todos.push(arquivo);
+        });
+        return todos;
     }
 
-    document.getElementById('btnNovoChamado').addEventListener('click', abrirModal);
-    document.getElementById('btnFecharNc').addEventListener('click', fecharModal);
-    document.getElementById('btnFecharNcX').addEventListener('click', fecharModal);
+    function preencher(data) {
+        chamadoId = data.id;
+        form.action = '/api/chamados/' + data.id + '/atender';
+        document.getElementById('atModalTitle').textContent = 'Atender ' + (data.numero_chamado || '');
+        document.getElementById('atMeta').textContent =
+            (data.cliente || 'N/A') + ' · Status atual: ' + (data.status || '—');
+        document.getElementById('at_notas').value = data.atendimento_notas || '';
+        document.getElementById('at_status').value = data.status || 'Em Andamento';
+        document.getElementById('at_aguardar_peca').checked = data.status === 'Aguardar peça';
+        document.getElementById('at_setor').value = data.setor_destino || '';
+        document.getElementById('at_instrucoes').value = data.encaminhamento_instrucoes || '';
+        const box = document.getElementById('atFotosExistentes');
+        box.innerHTML = '';
+        (data.fotos || []).forEach(function (foto) {
+            const img = document.createElement('img');
+            img.src = foto.url;
+            img.alt = foto.nome || 'Foto';
+            box.appendChild(img);
+        });
+        fotosEncPendentes = [];
+        fotosEncSalvas = data.fotos_encaminhamento || [];
+        renderFotosEnc();
+    }
+
+    function carregar(id) {
+        fetch('/api/chamados/' + id + '/atender', {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data.ok) {
+                alert(data.message || 'Não foi possível abrir o atendimento.');
+                return;
+            }
+            preencher(data.chamado);
+            abrirModal();
+        })
+        .catch(function () {
+            alert('Não foi possível abrir o atendimento.');
+        });
+    }
+
+    document.querySelectorAll('.btn-atender').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            carregar(btn.getAttribute('data-id'));
+        });
+    });
+    document.getElementById('btnFecharAt').addEventListener('click', fecharModal);
+    document.getElementById('btnFecharAtX').addEventListener('click', fecharModal);
     overlay.addEventListener('click', function (ev) {
         if (ev.target === overlay) fecharModal();
     });
@@ -240,48 +454,45 @@ body.modal-open { overflow: hidden; }
         if (ev.key === 'Escape' && !overlay.hidden) fecharModal();
     });
 
-    clienteSelect.addEventListener('change', function () {
-        const opt = this.options[this.selectedIndex];
-        const clienteNome = opt && opt.getAttribute('data-nome');
-        patrimonioSelect.innerHTML = '<option value="">Carregando...</option>';
-        equipamentoInput.value = '';
-        if (clienteNome) {
-            fetch('/api/equipamentos_por_cliente/' + encodeURIComponent(clienteNome))
-                .then(function (r) { return r.json(); })
-                .then(function (data) {
-                    patrimonioSelect.innerHTML = '<option value="">Selecione um patrimônio...</option>';
-                    data.forEach(function (equip) {
-                        const option = document.createElement('option');
-                        option.value = equip.patrimonio;
-                        option.textContent = (equip.patrimonio || '') + ' - ' + (equip.nome_equipamento || '');
-                        patrimonioSelect.appendChild(option);
-                    });
-                })
-                .catch(function () {
-                    patrimonioSelect.innerHTML = '<option value="">Erro ao carregar patrimônios</option>';
-                });
-        } else {
-            patrimonioSelect.innerHTML = '<option value="">Selecione um cliente primeiro</option>';
-        }
+    document.getElementById('at_aguardar_peca').addEventListener('change', function () {
+        if (this.checked) document.getElementById('at_status').value = 'Aguardar peça';
     });
-
-    patrimonioSelect.addEventListener('change', function () {
-        const selectedOption = this.options[this.selectedIndex];
-        if (selectedOption && selectedOption.value) {
-            const text = selectedOption.textContent;
-            const idx = text.indexOf('-');
-            equipamentoInput.value = idx >= 0 ? text.substring(idx + 2) : text;
-        } else {
-            equipamentoInput.value = '';
-        }
+    document.getElementById('at_status').addEventListener('change', function () {
+        document.getElementById('at_aguardar_peca').checked = this.value === 'Aguardar peça';
     });
+    document.getElementById('btnVincularFotoEnc').addEventListener('click', vincularFotosEnc);
 
     form.addEventListener('submit', function (e) {
         e.preventDefault();
+        const acao = (e.submitter && e.submitter.getAttribute('data-acao')) || 'salvar';
+        if (acao === 'encaminhar') {
+            if (!document.getElementById('at_setor').value) {
+                alert('Selecione o setor para encaminhar.');
+                return;
+            }
+            if (!(document.getElementById('at_instrucoes').value || '').trim()) {
+                alert('Informe o que precisa fazer.');
+                return;
+            }
+        }
+        acaoInput.value = acao;
         btnGravar.disabled = true;
+        btnEncaminhar.disabled = true;
+        if (btnFinalizar) btnFinalizar.disabled = true;
+        if (acao === 'finalizar') {
+            document.getElementById('at_status').value = 'Atendido';
+            document.getElementById('at_aguardar_peca').checked = false;
+        }
+        const fd = new FormData(form);
+        fd.set('acao', acao);
+        if (acao === 'finalizar') fd.set('status', 'Atendido');
+        fd.delete('fotos_encaminhar');
+        coletarFotosEncaminhar().forEach(function (arquivo) {
+            fd.append('fotos_encaminhar', arquivo);
+        });
         fetch(form.action, {
             method: 'POST',
-            body: new FormData(form),
+            body: fd,
             headers: {
                 'X-Requested-With': 'XMLHttpRequest',
                 'Accept': 'application/json'
@@ -291,17 +502,23 @@ body.modal-open { overflow: hidden; }
         .then(function (res) {
             if (res.ok && (res.data.ok || res.data.success)) {
                 fecharModal();
-                location.reload();
+                location.href = '{{ url_for("main.listar_chamados") }}';
             } else {
-                alert((res.data && res.data.message) || 'Erro ao gravar chamado');
+                alert((res.data && res.data.message) || 'Erro ao gravar atendimento');
                 btnGravar.disabled = false;
+                btnEncaminhar.disabled = false;
+                if (btnFinalizar) btnFinalizar.disabled = false;
             }
         })
         .catch(function () {
-            alert('Erro ao gravar chamado');
+            alert('Erro ao gravar atendimento');
             btnGravar.disabled = false;
+            btnEncaminhar.disabled = false;
+            if (btnFinalizar) btnFinalizar.disabled = false;
         });
     });
+
+    if (abrirId) carregar(abrirId);
 })();
 </script>
 {% endblock %}

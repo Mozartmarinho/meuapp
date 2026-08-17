@@ -1,74 +1,300 @@
 {% extends "base.html" %}
 
-{% block title %}Equipamentos - São Geraldo Service{% endblock %}
+{% block title %}Cadastro de Equipamentos - São Geraldo Service{% endblock %}
 
 {% block content %}
-<div class="container">
+<div class="chamados-page eq-page">
     <div class="header">
-        <h1>Gerenciar Equipamentos</h1>
-        <a href="{{ url_for('main.novo_equipamento') }}" class="btn btn-success">
+        <div>
+            <h1>Cadastro de Equipamentos</h1>
+            <p class="chamados-sub">Vincule o patrimônio ao cliente cadastrado</p>
+        </div>
+        <button type="button" class="btn btn-success" id="btnNovoEq">
             <i class="fas fa-plus"></i> Novo Equipamento
-        </a>
+        </button>
     </div>
 
-    <div class="table-container">
-        {% if equipamentos %}
-        <table class="table">
+    <div class="table-wrap">
+        <table class="table" id="tabelaEquipamentos">
             <thead>
                 <tr>
+                    <th>Código</th>
                     <th>Nome</th>
-                    <th>Modelo</th>
-                    <th>Nº Série</th>
-                    <th>Patrimônio</th>
-                    <th>Localização</th>
-                    <th>Ativo</th>
-                    <th>Data Compra</th>
-                    <th>Data Manutenção</th>
+                    <th>Setor</th>
+                    <th>Data compra</th>
+                    <th>Cliente</th>
                     <th>Ações</th>
                 </tr>
             </thead>
             <tbody>
-                {% for equipamento in equipamentos %}
-                <tr>
-                    <td>{{ equipamento.nome_equipamento }}</td>
-                    <td>{{ equipamento.modelo or '-' }}</td>
-                    <td>{{ equipamento.numero_serie or '-' }}</td>
-                    <td>{{ equipamento.patrimonio or '-' }}</td>
-                    <td>{{ equipamento.localizacao or '-' }}</td>
-                    <td>{{ 'Sim' if equipamento.ativo else 'Não' }}</td>
-                    <td>{{ equipamento.data_compra.strftime('%d/%m/%Y') if equipamento.data_compra else '-' }}</td>
-                    <td>{{ equipamento.data_manutencao.strftime('%d/%m/%Y') if equipamento.data_manutencao else '-' }}</td>
-                    <td>
-                        <a href="{{ url_for('main.editar_equipamento', id=equipamento.id) }}" class="btn btn-primary btn-sm">
-                            <i class="fas fa-edit"></i> Editar
-                        </a>
+                {% for eq in equipamentos %}
+                <tr data-id="{{ eq.id }}"
+                    data-codigo="{{ eq.patrimonio or '' }}"
+                    data-nome="{{ eq.nome_equipamento or '' }}"
+                    data-setor="{{ eq.setor or eq.localizacao or '' }}"
+                    data-compra="{{ eq.data_compra.strftime('%Y-%m-%d') if eq.data_compra else '' }}"
+                    data-cliente="{{ eq.cliente_id or '' }}">
+                    <td><strong>{{ eq.patrimonio or '—' }}</strong></td>
+                    <td>{{ eq.nome_equipamento }}</td>
+                    <td>{{ eq.setor or eq.localizacao or '—' }}</td>
+                    <td>{{ eq.data_compra.strftime('%d/%m/%Y') if eq.data_compra else '—' }}</td>
+                    <td>{{ eq.cliente.nome if eq.cliente else '—' }}</td>
+                    <td class="acoes-cell">
+                        <button type="button" class="btn btn-sm btn-editar-link btn-editar-eq" title="Editar">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-excluir-eq" title="Excluir">
+                            <i class="fas fa-trash"></i>
+                        </button>
                     </td>
+                </tr>
+                {% else %}
+                <tr id="linhaVazia">
+                    <td colspan="6" class="empty-row">Nenhum equipamento cadastrado.</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-        {% else %}
-        <div class="empty-state">
-            <i class="fas fa-tools"></i>
-            <p>Nenhum equipamento cadastrado</p>
-            <a href="{{ url_for('main.novo_equipamento') }}" class="btn btn-primary">
-                <i class="fas fa-plus"></i> Cadastrar Primeiro Equipamento
-            </a>
+    </div>
+</div>
+
+<div id="modalEquipamento" class="modal-overlay nc-modal" hidden>
+    <div class="modal-dialog nc-dialog" role="dialog" aria-modal="true" aria-labelledby="eqModalTitle">
+        <div class="modal-header">
+            <h2 id="eqModalTitle">Novo Equipamento</h2>
+            <button type="button" class="modal-close" id="btnFecharEqX" aria-label="Fechar">&times;</button>
         </div>
-        {% endif %}
+        <form id="formEquipamento">
+            <input type="hidden" id="eq_id" value="">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="eq_codigo">Código equip *</label>
+                    <input type="text" id="eq_codigo" name="codigo" required maxlength="50" placeholder="Código do patrimônio">
+                </div>
+                <div class="form-group">
+                    <label for="eq_nome">Nome *</label>
+                    <input type="text" id="eq_nome" name="nome" required maxlength="100">
+                </div>
+                <div class="form-group">
+                    <label for="eq_setor">Setor</label>
+                    <input type="text" id="eq_setor" name="setor" maxlength="100" placeholder="Setor onde o equipamento está">
+                </div>
+                <div class="form-group">
+                    <label for="eq_compra">Data compra</label>
+                    <input type="date" id="eq_compra" name="data_compra">
+                </div>
+                <div class="form-group">
+                    <label for="eq_cliente">Cliente *</label>
+                    <select id="eq_cliente" name="cliente_id" required>
+                        <option value="">Selecione um cliente...</option>
+                        {% for cliente in clientes %}
+                        <option value="{{ cliente.id }}">{{ cliente.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="nc-footer">
+                <button type="button" class="btn nc-btn-muted" id="btnFecharEq">
+                    <i class="fas fa-times"></i> Fechar
+                </button>
+                <button type="submit" class="btn btn-success" id="btnGravarEq">
+                    <i class="fas fa-save"></i> Gravar
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 
 <style>
-.container { padding: 20px 0; }
-.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 1rem; flex-wrap: wrap; }
-.header h1 { margin: 0; }
-.table { width: 100%; border-collapse: collapse; background: white; }
-.table th, .table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-.table th { background: #f2f2f2; }
-.table tr:hover { background: #f1f1f1; }
-.empty-state { text-align: center; padding: 60px 20px; color: #666; }
-.empty-state i { font-size: 48px; margin-bottom: 20px; opacity: 0.5; }
-.btn-sm { padding: 4px 8px; font-size: 12px; }
+.chamados-page { padding: 4px 0; }
+.chamados-page .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+}
+.chamados-page h1 { margin: 0; font-size: 1.6rem; }
+.chamados-sub { margin: 0.2rem 0 0; color: var(--gray-600); font-size: 0.8rem; }
+.table-wrap {
+    background: white;
+    border-radius: 0.4rem;
+    overflow: auto;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+}
+.chamados-page .table { width: 100%; border-collapse: collapse; background: white; }
+.chamados-page .table th, .chamados-page .table td {
+    padding: 0.6rem 0.7rem;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+    font-size: 0.85rem;
+}
+.chamados-page .table th { background: #f2f2f2; }
+.chamados-page .table tr:hover { background: #f1f1f1; }
+.empty-row { text-align: center; color: var(--gray-600); padding: 1.4rem !important; }
+.acoes-cell { white-space: nowrap; }
+.acoes-cell .btn { margin-right: 0.25rem; }
+.btn-editar-link { background-color: var(--gray-300); color: var(--gray-800); }
+.btn-excluir-eq { background-color: #f8d7da; color: #842029; }
+.nc-modal { padding: 0.8rem; align-items: center; justify-content: center; }
+.nc-modal:not([hidden]) { display: flex; }
+.nc-dialog {
+    max-width: 420px;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    font-size: 0.8rem;
+}
+.nc-dialog .modal-header { padding: 0.92rem 1rem 0; gap: 0.6rem; }
+.nc-dialog .modal-header h2 { font-size: 0.96rem; margin: 0; }
+.nc-dialog .modal-close { font-size: 1.2rem; }
+.nc-dialog .modal-body { padding: 0.72rem 1rem 0.4rem; overflow-y: auto; }
+.nc-dialog .form-group { margin-bottom: 0.56rem; }
+.nc-dialog label { font-size: 0.72rem; margin-bottom: 0.16rem; }
+.nc-dialog input[type="text"],
+.nc-dialog input[type="date"],
+.nc-dialog select {
+    padding: 0.48rem 0.6rem;
+    font-size: 0.8rem;
+    border-radius: 0.3rem;
+    line-height: 1.35;
+    width: 100%;
+}
+.nc-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.64rem 1rem 0.8rem;
+    flex-wrap: wrap;
+    border-top: 1px solid var(--gray-200);
+}
+.nc-dialog .btn {
+    gap: 0.32rem;
+    padding: 0.45rem 0.8rem;
+    font-size: 0.76rem;
+    border-radius: 0.3rem;
+}
+.nc-btn-muted { background-color: var(--gray-300); color: var(--gray-800); }
+body.modal-open { overflow: hidden; }
 </style>
+
+<script>
+(function () {
+    const overlay = document.getElementById('modalEquipamento');
+    const form = document.getElementById('formEquipamento');
+    const btnGravar = document.getElementById('btnGravarEq');
+
+    function abrirModal() {
+        overlay.hidden = false;
+        document.body.classList.add('modal-open');
+    }
+    function fecharModal() {
+        overlay.hidden = true;
+        document.body.classList.remove('modal-open');
+        form.reset();
+        document.getElementById('eq_id').value = '';
+        btnGravar.disabled = false;
+    }
+
+    function abrirNovo() {
+        document.getElementById('eqModalTitle').textContent = 'Novo Equipamento';
+        form.reset();
+        document.getElementById('eq_id').value = '';
+        abrirModal();
+        setTimeout(function () { document.getElementById('eq_codigo').focus(); }, 30);
+    }
+
+    function abrirEditar(tr) {
+        document.getElementById('eqModalTitle').textContent = 'Editar Equipamento';
+        document.getElementById('eq_id').value = tr.getAttribute('data-id') || '';
+        document.getElementById('eq_codigo').value = tr.getAttribute('data-codigo') || '';
+        document.getElementById('eq_nome').value = tr.getAttribute('data-nome') || '';
+        document.getElementById('eq_setor').value = tr.getAttribute('data-setor') || '';
+        document.getElementById('eq_compra').value = tr.getAttribute('data-compra') || '';
+        document.getElementById('eq_cliente').value = tr.getAttribute('data-cliente') || '';
+        abrirModal();
+    }
+
+    document.getElementById('btnNovoEq').addEventListener('click', abrirNovo);
+    document.getElementById('btnFecharEq').addEventListener('click', fecharModal);
+    document.getElementById('btnFecharEqX').addEventListener('click', fecharModal);
+    overlay.addEventListener('click', function (ev) {
+        if (ev.target === overlay) fecharModal();
+    });
+    document.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Escape' && !overlay.hidden) fecharModal();
+    });
+
+    document.querySelectorAll('.btn-editar-eq').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            abrirEditar(btn.closest('tr'));
+        });
+    });
+    document.querySelectorAll('.btn-excluir-eq').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const tr = btn.closest('tr');
+            const id = tr.getAttribute('data-id');
+            const codigo = tr.getAttribute('data-codigo') || '';
+            if (!confirm('Excluir o equipamento ' + (codigo || '') + '?')) return;
+            fetch('/api/equipamentos/' + id, {
+                method: 'DELETE',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+            .then(function (res) {
+                if (res.ok && (res.data.ok || res.data.success)) {
+                    location.reload();
+                } else {
+                    alert((res.data && (res.data.error || res.data.message)) || 'Erro ao excluir');
+                }
+            })
+            .catch(function () { alert('Erro ao excluir'); });
+        });
+    });
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        const id = document.getElementById('eq_id').value;
+        const body = {
+            codigo: (document.getElementById('eq_codigo').value || '').trim(),
+            nome: (document.getElementById('eq_nome').value || '').trim(),
+            setor: (document.getElementById('eq_setor').value || '').trim(),
+            data_compra: document.getElementById('eq_compra').value || '',
+            cliente_id: document.getElementById('eq_cliente').value || ''
+        };
+        if (!body.codigo || !body.nome || !body.cliente_id) {
+            alert('Preencha código, nome e cliente.');
+            return;
+        }
+        btnGravar.disabled = true;
+        const url = id ? '/api/equipamentos/' + id : '/api/equipamentos';
+        fetch(url, {
+            method: id ? 'PUT' : 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify(body)
+        })
+        .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+        .then(function (res) {
+            if (res.ok && (res.data.ok || res.data.success)) {
+                fecharModal();
+                location.reload();
+            } else {
+                alert((res.data && (res.data.error || res.data.message)) || 'Erro ao gravar');
+                btnGravar.disabled = false;
+            }
+        })
+        .catch(function () {
+            alert('Erro ao gravar');
+            btnGravar.disabled = false;
+        });
+    });
+})();
+</script>
 {% endblock %}

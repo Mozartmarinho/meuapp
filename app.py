@@ -144,6 +144,10 @@ def ensure_usuarios_schema():
                 db.session.execute(text(f'ALTER TABLE usuarios ADD COLUMN {col} TINYINT(1) NOT NULL DEFAULT 0'))
                 db.session.commit()
                 cols.add(col)
+        if 'setor' not in cols:
+            db.session.execute(text('ALTER TABLE usuarios ADD COLUMN setor VARCHAR(40) NULL'))
+            db.session.commit()
+            cols.add('setor')
         # Índice único em usuario (ignora se já existir)
         try:
             db.session.execute(text('CREATE UNIQUE INDEX uq_usuarios_usuario ON usuarios (usuario)'))
@@ -155,7 +159,7 @@ def ensure_usuarios_schema():
 
 
 def ensure_chamados_schema():
-    """Garante colunas do modelo Chamado (tecnico_id, equipamento) e FK de tecnico."""
+    """Garante colunas do modelo Chamado (tecnico_id, equipamento, atendimento) e FK de tecnico."""
     from sqlalchemy import inspect, text
     try:
         insp = inspect(db.engine)
@@ -166,9 +170,39 @@ def ensure_chamados_schema():
         if 'tecnico_id' not in cols:
             db.session.execute(text('ALTER TABLE chamados ADD COLUMN tecnico_id INT NULL'))
             db.session.commit()
+            cols.add('tecnico_id')
         if 'equipamento' not in cols:
             db.session.execute(text('ALTER TABLE chamados ADD COLUMN equipamento VARCHAR(100) NULL'))
             db.session.commit()
+            cols.add('equipamento')
+        extras = {
+            'atendimento_notas': 'TEXT NULL',
+            'setor_destino': 'VARCHAR(40) NULL',
+            'encaminhamento_instrucoes': 'TEXT NULL',
+            'encaminhado_por_id': 'INT NULL',
+            'encaminhado_em': 'DATETIME NULL',
+            'patrimonio': 'VARCHAR(50) NULL',
+            'equipamento_id': 'INT NULL',
+        }
+        for col, ddl in extras.items():
+            if col not in cols:
+                db.session.execute(text(f'ALTER TABLE chamados ADD COLUMN {col} {ddl}'))
+                db.session.commit()
+                cols.add(col)
+        try:
+            db.session.execute(text('ALTER TABLE chamados MODIFY COLUMN status VARCHAR(40) NULL'))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        insp = inspect(db.engine)
+        tables = set(insp.get_table_names())
+        if 'chamado_fotos' in tables:
+            foto_cols = {c['name'] for c in insp.get_columns('chamado_fotos')}
+            if 'tipo' not in foto_cols:
+                db.session.execute(text(
+                    "ALTER TABLE chamado_fotos ADD COLUMN tipo VARCHAR(20) NULL DEFAULT 'conserto'"
+                ))
+                db.session.commit()
         if 'usuarios' not in tables:
             return
         insp = inspect(db.engine)
@@ -185,6 +219,79 @@ def ensure_chamados_schema():
                 'FOREIGN KEY (tecnico_id) REFERENCES usuarios(id)'
             ))
             db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def ensure_equipamentos_schema():
+    """Garante tabela/colunas de equipamentos (patrimônio vinculado ao cliente)."""
+    from sqlalchemy import inspect, text
+    try:
+        insp = inspect(db.engine)
+        tables = set(insp.get_table_names())
+        if 'equipamentos' not in tables:
+            return
+        cols = {c['name'] for c in insp.get_columns('equipamentos')}
+        extras = {
+            'setor': 'VARCHAR(100) NULL',
+            'cliente_id': 'INT NULL',
+            'patrimonio': 'VARCHAR(50) NULL',
+            'localizacao': 'VARCHAR(100) NULL',
+            'data_compra': 'DATE NULL',
+            'ativo': 'TINYINT(1) NOT NULL DEFAULT 1',
+            'nome_equipamento': 'VARCHAR(100) NULL',
+        }
+        for col, ddl in extras.items():
+            if col not in cols:
+                db.session.execute(text(f'ALTER TABLE equipamentos ADD COLUMN {col} {ddl}'))
+                db.session.commit()
+                cols.add(col)
+        if 'equipamento' in cols and 'nome_equipamento' in cols:
+            try:
+                db.session.execute(text(
+                    'UPDATE equipamentos SET nome_equipamento = equipamento '
+                    'WHERE (nome_equipamento IS NULL OR nome_equipamento = \'\') '
+                    'AND equipamento IS NOT NULL'
+                ))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+        if 'clientes' in tables:
+            fks = insp.get_foreign_keys('equipamentos')
+            has_fk = any(
+                'cliente_id' in (fk.get('constrained_columns') or [])
+                and fk.get('referred_table') == 'clientes'
+                for fk in fks
+            )
+            if not has_fk and 'cliente_id' in cols:
+                try:
+                    db.session.execute(text(
+                        'ALTER TABLE equipamentos '
+                        'ADD CONSTRAINT fk_equipamentos_cliente '
+                        'FOREIGN KEY (cliente_id) REFERENCES clientes(id)'
+                    ))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+        if 'chamados' in tables:
+            chamado_cols = {c['name'] for c in insp.get_columns('chamados')}
+            if 'equipamento_id' in chamado_cols:
+                fks = insp.get_foreign_keys('chamados')
+                has_eq_fk = any(
+                    'equipamento_id' in (fk.get('constrained_columns') or [])
+                    and fk.get('referred_table') == 'equipamentos'
+                    for fk in fks
+                )
+                if not has_eq_fk:
+                    try:
+                        db.session.execute(text(
+                            'ALTER TABLE chamados '
+                            'ADD CONSTRAINT fk_chamados_equipamento '
+                            'FOREIGN KEY (equipamento_id) REFERENCES equipamentos(id)'
+                        ))
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
     except Exception:
         db.session.rollback()
 
@@ -224,6 +331,7 @@ if __name__ == '__main__':
         ensure_usuarios_schema()
         ensure_clientes_schema()
         ensure_chamados_schema()
+        ensure_equipamentos_schema()
         from nutricao_service import seed_nutricao
         from routes_pesagem import seed_pesagem
         from routes_acesso import seed_acesso

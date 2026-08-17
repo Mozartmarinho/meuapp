@@ -24,6 +24,9 @@
                 <option value="">Todos</option>
                 <option value="Pendente" {% if status_filtro == 'Pendente' %}selected{% endif %}>Pendente</option>
                 <option value="Em Andamento" {% if status_filtro == 'Em Andamento' %}selected{% endif %}>Em Andamento</option>
+                <option value="Aguardar peça" {% if status_filtro == 'Aguardar peça' %}selected{% endif %}>Aguardar peça</option>
+                <option value="Encaminhado" {% if status_filtro == 'Encaminhado' %}selected{% endif %}>Encaminhado</option>
+                <option value="Atendido" {% if status_filtro == 'Atendido' %}selected{% endif %}>Atendido</option>
                 <option value="Concluído" {% if status_filtro == 'Concluído' %}selected{% endif %}>Concluído</option>
             </select>
         </div>
@@ -64,6 +67,9 @@
                     <select class="status-select" data-id="{{ chamado.id }}" style="border: none; background: transparent; font-weight: 500;">
                         <option value="Pendente" {% if chamado.status == 'Pendente' %}selected{% endif %}>Pendente</option>
                         <option value="Em Andamento" {% if chamado.status == 'Em Andamento' %}selected{% endif %}>Em Andamento</option>
+                        <option value="Aguardar peça" {% if chamado.status == 'Aguardar peça' %}selected{% endif %}>Aguardar peça</option>
+                        <option value="Encaminhado" {% if chamado.status == 'Encaminhado' %}selected{% endif %}>Encaminhado</option>
+                        <option value="Atendido" {% if chamado.status == 'Atendido' %}selected{% endif %}>Atendido</option>
                         <option value="Concluído" {% if chamado.status == 'Concluído' %}selected{% endif %}>Concluído</option>
                     </select>
                 </td>

@@ -18,6 +18,7 @@ from flask import (
     url_for, flash, session, Response, send_file,
 )
 from sqlalchemy import func, or_, inspect, text
+from sqlalchemy.exc import IntegrityError, OperationalError
 from werkzeug.utils import secure_filename
 
 from models import db, Usuario
@@ -33,7 +34,8 @@ from models_acesso import (
     AcessoPessoaDocumento,
     AcessoUsuarioPermissao, AcessoPerfilPermissao,
     AcessoBackupLog, AcessoBackupConfig, AcessoRefeicao,
-    AcessoControleAdicional, AcessoEscala,
+    AcessoControleAdicional, AcessoEscala, AcessoEscalaPessoa,
+    dias_padrao_escala, normalizar_tipo_escala,
     AcessoGrupoRefeicao, AcessoItemRefeicao, AcessoVinculoRefeicao,
     AcessoVeiculo, AcessoVeiculoEvento,
     AcessoImpressora,
@@ -467,6 +469,8 @@ def ensure_acesso_schema():
     try:
         db.create_all()
         insp = inspect(db.engine)
+        if hasattr(insp, 'clear_cache'):
+            insp.clear_cache()
         tables = set(insp.get_table_names())
 
         if 'acesso_horarios' in tables:
@@ -653,12 +657,14 @@ def ensure_acesso_schema():
                 ))
                 db.session.commit()
 
-        # Escalas: colunas do ciclo/horário (migração leve se tabela já existia)
+        # Escalas: colunas do ciclo/horário + tipo par/ímpar/diária
         if 'acesso_escalas' in set(insp.get_table_names()):
             ecols = {c['name'] for c in insp.get_columns('acesso_escalas')}
             especs = {
+                'nome': "VARCHAR(120) NOT NULL DEFAULT ''",
                 'nome_pessoa': "VARCHAR(120) NOT NULL DEFAULT ''",
-                'tipo': "VARCHAR(40) NOT NULL DEFAULT '5x2'",
+                'tipo': "VARCHAR(40) NOT NULL DEFAULT 'diaria'",
+                'dias_mes': 'TEXT NULL',
                 'dias_trabalho': 'INT NOT NULL DEFAULT 5',
                 'dias_folga': 'INT NOT NULL DEFAULT 2',
                 'hora_entrada': 'TIME NULL',
@@ -675,6 +681,54 @@ def ensure_acesso_schema():
                     f"ALTER TABLE acesso_escalas {', '.join(ealters)}"
                 ))
                 db.session.commit()
+            try:
+                db.session.execute(text(
+                    "UPDATE acesso_escalas SET nome = nome_pessoa "
+                    "WHERE (nome IS NULL OR nome='') "
+                    "AND nome_pessoa IS NOT NULL AND nome_pessoa<>''"
+                ))
+                db.session.execute(text(
+                    "UPDATE acesso_escalas SET tipo='diaria' "
+                    "WHERE tipo IS NULL OR tipo='' "
+                    "OR tipo NOT IN ('par','impar','diaria')"
+                ))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+            try:
+                db.session.execute(text(
+                    'ALTER TABLE acesso_escalas MODIFY COLUMN `data_inicio` DATE NULL'
+                ))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
+        if hasattr(insp, 'clear_cache'):
+            insp.clear_cache()
+        tables_after = set(insp.get_table_names())
+        if 'acesso_escala_pessoas' not in tables_after:
+            try:
+                AcessoEscalaPessoa.__table__.create(bind=db.engine, checkfirst=True)
+                if hasattr(insp, 'clear_cache'):
+                    insp.clear_cache()
+                tables_after = set(insp.get_table_names())
+            except Exception:
+                LOG.exception('Falha ao criar tabela acesso_escala_pessoas')
+                db.session.rollback()
+        if 'acesso_escala_pessoas' in tables_after and 'acesso_escalas' in tables_after:
+            try:
+                db.session.execute(text(
+                    "INSERT INTO acesso_escala_pessoas (escala_id, pessoa_id, data_criacao) "
+                    "SELECT e.id, e.pessoa_id, UTC_TIMESTAMP() FROM acesso_escalas e "
+                    "WHERE e.pessoa_id IS NOT NULL "
+                    "AND NOT EXISTS ("
+                    "  SELECT 1 FROM acesso_escala_pessoas v "
+                    "  WHERE v.escala_id = e.id AND v.pessoa_id = e.pessoa_id"
+                    ")"
+                ))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
 
         # Empresas: logo para listagem / relatórios
         if 'acesso_empresas' in set(insp.get_table_names()):
@@ -2267,18 +2321,33 @@ def escalas_page():
     query = AcessoEscala.query
     if q:
         like = f'%{q}%'
-        query = query.filter(AcessoEscala.nome_pessoa.ilike(like))
+        ids_pessoa = (
+            db.session.query(AcessoEscalaPessoa.escala_id)
+            .join(AcessoPessoa, AcessoPessoa.id == AcessoEscalaPessoa.pessoa_id)
+            .filter(or_(
+                AcessoPessoa.nome.ilike(like),
+                AcessoPessoa.matricula.ilike(like),
+            ))
+        )
+        query = query.filter(or_(
+            AcessoEscala.nome.ilike(like),
+            AcessoEscala.nome_pessoa.ilike(like),
+            AcessoEscala.id.in_(ids_pessoa),
+        ))
     if status == 'ativo':
         query = query.filter(AcessoEscala.ativo.is_(True))
     elif status == 'inativo':
         query = query.filter(AcessoEscala.ativo.is_(False))
-    escalas = [
-        e.to_dict()
-        for e in query.order_by(
-            AcessoEscala.nome_pessoa.asc(),
-            AcessoEscala.data_inicio.desc(),
-        ).limit(500).all()
-    ]
+    rows = query.order_by(
+        AcessoEscala.nome.asc(),
+        AcessoEscala.id.desc(),
+    ).limit(500).all()
+    counts = dict(
+        db.session.query(AcessoEscalaPessoa.escala_id, func.count(AcessoEscalaPessoa.id))
+        .group_by(AcessoEscalaPessoa.escala_id)
+        .all()
+    )
+    escalas = [e.to_dict(qtd_pessoas=counts.get(e.id, 0)) for e in rows]
     pessoas = (
         AcessoPessoa.query
         .order_by(AcessoPessoa.nome.asc())
@@ -2475,51 +2544,67 @@ def api_pessoa_veiculo_item(vid):
 
 
 # ---- APIs Escalas ----
+def _escala_counts_map(ids=None):
+    q = db.session.query(AcessoEscalaPessoa.escala_id, func.count(AcessoEscalaPessoa.id)).group_by(
+        AcessoEscalaPessoa.escala_id
+    )
+    if ids is not None:
+        q = q.filter(AcessoEscalaPessoa.escala_id.in_(list(ids) or [0]))
+    return dict(q.all())
+
+
+def _escala_to_dict(item, incluir_pessoas=False):
+    qtd = (
+        db.session.query(func.count(AcessoEscalaPessoa.id))
+        .filter(AcessoEscalaPessoa.escala_id == item.id)
+        .scalar()
+        or 0
+    )
+    return item.to_dict(incluir_pessoas=incluir_pessoas, qtd_pessoas=qtd)
+
+
 def _escala_from_payload(data, item=None):
-    pessoa_id = _parse_int(data.get('pessoa_id'))
-    nome_pessoa = (data.get('nome_pessoa') or data.get('nome') or '').strip()
+    nome = (data.get('nome') or data.get('nome_pessoa') or data.get('nome_escala') or '').strip()
+    tipo = normalizar_tipo_escala(data.get('tipo'))
     data_inicio = _parse_date(data.get('data_inicio'))
     data_fim = _parse_date(data.get('data_fim'))
     dias_trabalho = _parse_int(data.get('dias_trabalho'))
     dias_folga = _parse_int(data.get('dias_folga'))
     hora_entrada = _parse_time(data.get('hora_entrada'))
     hora_saida = _parse_time(data.get('hora_saida'))
+    dias_ativos = data.get('dias_ativos')
+    if dias_ativos is None:
+        dias_ativos = data.get('dias_mes')
 
-    if pessoa_id:
-        pessoa = AcessoPessoa.query.get(pessoa_id)
-        if not pessoa:
-            return None, ('Pessoa não encontrada', 404)
-        if not nome_pessoa:
-            nome_pessoa = pessoa.nome
-    else:
-        pessoa_id = None
-
-    if not nome_pessoa:
-        return None, ('Selecione um colaborador', 400)
-    if not data_inicio:
-        return None, ('Data inicial é obrigatória', 400)
-    if data_fim and data_fim < data_inicio:
+    if not nome:
+        return None, ('Informe o nome da escala', 400)
+    if data_fim and data_inicio and data_fim < data_inicio:
         return None, ('Data final não pode ser anterior à data inicial', 400)
 
     if dias_trabalho is None:
-        dias_trabalho = 5
+        dias_trabalho = item.dias_trabalho if item is not None and item.dias_trabalho is not None else 5
     if dias_folga is None:
-        dias_folga = 2
+        dias_folga = item.dias_folga if item is not None and item.dias_folga is not None else 2
     if dias_trabalho < 0 or dias_folga < 0:
         return None, ('Dias de trabalho/folga inválidos', 400)
 
     if item is None:
         item = AcessoEscala()
+        if not data_inicio:
+            data_inicio = date.today()
 
-    item.pessoa_id = pessoa_id
-    item.nome_pessoa = nome_pessoa
-    item.data_inicio = data_inicio
+    item.nome = nome
+    item.tipo = tipo
+    item.data_inicio = data_inicio if data_inicio is not None else item.data_inicio
     item.data_fim = data_fim
     item.dias_trabalho = dias_trabalho
     item.dias_folga = dias_folga
     item.hora_entrada = hora_entrada
     item.hora_saida = hora_saida
-    item.sync_tipo()
+    if dias_ativos is None and item.dias_mes is None:
+        item.set_dias_ativos(dias_padrao_escala(tipo, item.data_inicio))
+    elif dias_ativos is not None:
+        item.set_dias_ativos(dias_ativos)
     if 'ativo' in data:
         item.ativo = _parse_bool(data.get('ativo'), True)
     elif item.id is None:
@@ -2527,25 +2612,43 @@ def _escala_from_payload(data, item=None):
     return item, None
 
 
+def _query_escalas_filtrada():
+    q = (request.args.get('q') or '').strip()
+    status = (request.args.get('status') or '').strip().lower()
+    query = AcessoEscala.query
+    if q:
+        like = f'%{q}%'
+        ids_pessoa = (
+            db.session.query(AcessoEscalaPessoa.escala_id)
+            .join(AcessoPessoa, AcessoPessoa.id == AcessoEscalaPessoa.pessoa_id)
+            .filter(or_(
+                AcessoPessoa.nome.ilike(like),
+                AcessoPessoa.matricula.ilike(like),
+            ))
+        )
+        query = query.filter(or_(
+            AcessoEscala.nome.ilike(like),
+            AcessoEscala.nome_pessoa.ilike(like),
+            AcessoEscala.id.in_(ids_pessoa),
+        ))
+    if status == 'ativo':
+        query = query.filter(AcessoEscala.ativo.is_(True))
+    elif status == 'inativo':
+        query = query.filter(AcessoEscala.ativo.is_(False))
+    return query
+
+
 @acesso.route('/acesso/api/escalas', methods=['GET', 'POST'])
 @login_required
 def api_escalas():
     seed_acesso()
     if request.method == 'GET':
-        q = (request.args.get('q') or '').strip()
-        status = (request.args.get('status') or '').strip().lower()
-        query = AcessoEscala.query
-        if q:
-            query = query.filter(AcessoEscala.nome_pessoa.ilike(f'%{q}%'))
-        if status == 'ativo':
-            query = query.filter(AcessoEscala.ativo.is_(True))
-        elif status == 'inativo':
-            query = query.filter(AcessoEscala.ativo.is_(False))
-        items = query.order_by(
-            AcessoEscala.nome_pessoa.asc(),
-            AcessoEscala.data_inicio.desc(),
+        items = _query_escalas_filtrada().order_by(
+            AcessoEscala.nome.asc(),
+            AcessoEscala.id.desc(),
         ).limit(500).all()
-        return jsonify([e.to_dict() for e in items])
+        counts = _escala_counts_map([e.id for e in items])
+        return jsonify([e.to_dict(qtd_pessoas=counts.get(e.id, 0)) for e in items])
 
     data = request.get_json(silent=True) or request.form or {}
     item, err = _escala_from_payload(data)
@@ -2554,7 +2657,7 @@ def api_escalas():
         return jsonify({'ok': False, 'error': msg}), code
     db.session.add(item)
     db.session.commit()
-    return jsonify({'ok': True, 'escala': item.to_dict()}), 201
+    return jsonify({'ok': True, 'escala': _escala_to_dict(item, incluir_pessoas=True)}), 201
 
 
 @acesso.route('/acesso/api/escalas/<int:eid>', methods=['GET', 'PUT', 'DELETE'])
@@ -2564,7 +2667,7 @@ def api_escala_item(eid):
     item = AcessoEscala.query.get_or_404(eid)
 
     if request.method == 'GET':
-        return jsonify({'ok': True, 'escala': item.to_dict()})
+        return jsonify({'ok': True, 'escala': _escala_to_dict(item, incluir_pessoas=True)})
 
     if request.method == 'DELETE':
         db.session.delete(item)
@@ -2577,7 +2680,189 @@ def api_escala_item(eid):
         msg, code = err
         return jsonify({'ok': False, 'error': msg}), code
     db.session.commit()
-    return jsonify({'ok': True, 'escala': item.to_dict()})
+    return jsonify({'ok': True, 'escala': _escala_to_dict(item, incluir_pessoas=True)})
+
+
+def _escala_api_get(eid):
+    item = AcessoEscala.query.get(eid)
+    if item is None:
+        return None, (jsonify({'ok': False, 'error': 'Escala inválida ou não encontrada'}), 404)
+    return item, None
+
+
+def _pessoa_por_token(raw):
+    """Resolve colaborador por PK inteiro, matrícula ou documento (CPF)."""
+    token = str(raw or '').strip()
+    if not token:
+        return None
+    pid = _parse_int(token)
+    if pid:
+        pessoa = AcessoPessoa.query.get(pid)
+        if pessoa:
+            return pessoa
+    return (
+        AcessoPessoa.query.filter(AcessoPessoa.matricula == token).first()
+        or AcessoPessoa.query.filter(AcessoPessoa.documento == token).first()
+    )
+
+
+def _pessoas_from_escala_payload(data):
+    raw_ids = []
+    for key in ('pessoa_ids', 'ids'):
+        val = data.get(key)
+        if isinstance(val, list):
+            raw_ids.extend(val)
+        elif val not in (None, ''):
+            raw_ids.append(val)
+    for key in ('pessoa_id', 'id'):
+        if data.get(key) not in (None, ''):
+            raw_ids.append(data.get(key))
+    for key in ('matricula', 'documento', 'cpf'):
+        val = data.get(key)
+        if val not in (None, ''):
+            raw_ids.append(val)
+
+    found = {}
+    missing = []
+    for raw in raw_ids:
+        pessoa = _pessoa_por_token(raw)
+        if pessoa:
+            found[pessoa.id] = pessoa
+        else:
+            token = str(raw or '').strip()
+            if token and token not in missing:
+                missing.append(token)
+    return found, missing
+
+
+def _escala_pessoas_payload(item):
+    return {
+        'ok': True,
+        'escala': _escala_to_dict(item, incluir_pessoas=True),
+        'pessoas': [v.to_dict() for v in item.vinculos],
+    }
+
+
+@acesso.route('/acesso/api/escalas/<int:eid>/pessoas', methods=['GET', 'POST'])
+@login_required
+def api_escala_pessoas(eid):
+    seed_acesso()
+    item, err = _escala_api_get(eid)
+    if err:
+        return err
+    if request.method == 'GET':
+        payload = _escala_pessoas_payload(item)
+        q = (request.args.get('q') or '').strip()
+        linked = {v.pessoa_id for v in item.vinculos}
+        query = AcessoPessoa.query
+        if q:
+            like = f'%{q}%'
+            query = query.filter(or_(
+                AcessoPessoa.nome.ilike(like),
+                AcessoPessoa.matricula.ilike(like),
+                AcessoPessoa.documento.ilike(like),
+            ))
+        candidatos = (
+            query.order_by(AcessoPessoa.nome.asc())
+            .limit(40)
+            .all()
+        )
+        payload['candidatos'] = [
+            {'id': p.id, 'nome': p.nome, 'matricula': p.matricula or ''}
+            for p in candidatos
+            if p.id not in linked
+        ][:20]
+        return jsonify(payload)
+
+    data = request.get_json(silent=True) or request.form or {}
+    found, missing = _pessoas_from_escala_payload(data)
+    if not found and missing:
+        return jsonify({
+            'ok': False,
+            'error': 'Pessoa não encontrada (id/matrícula inválidos).',
+        }), 404
+    if not found:
+        return jsonify({
+            'ok': False,
+            'error': 'Informe o colaborador (id ou matrícula).',
+        }), 400
+
+    try:
+        existentes = {
+            v.pessoa_id for v in AcessoEscalaPessoa.query.filter_by(escala_id=eid).all()
+        }
+        added = []
+        already = []
+        for pid, pessoa in found.items():
+            if pid in existentes:
+                already.append(pid)
+                continue
+            db.session.add(AcessoEscalaPessoa(escala_id=eid, pessoa_id=pid))
+            added.append(pid)
+            existentes.add(pid)
+        if added and not item.pessoa_id:
+            first = found.get(added[0])
+            item.pessoa_id = added[0]
+            item.nome_pessoa = first.nome if first else item.nome_pessoa
+        db.session.commit()
+        db.session.refresh(item)
+    except IntegrityError:
+        db.session.rollback()
+        LOG.exception('vínculo duplicado ou FK inválida escala=%s', eid)
+        return jsonify({
+            'ok': False,
+            'error': 'Este colaborador já está nesta escala (ou o vínculo é inválido).',
+        }), 409
+    except OperationalError:
+        db.session.rollback()
+        LOG.exception('falha operacional ao vincular escala=%s', eid)
+        return jsonify({
+            'ok': False,
+            'error': 'Tabela de vínculos indisponível. Reinicie o aplicativo neste repositório.',
+        }), 500
+    except Exception as exc:
+        db.session.rollback()
+        LOG.exception('falha ao vincular pessoa na escala %s', eid)
+        return jsonify({'ok': False, 'error': f'Não foi possível vincular: {exc}'}), 500
+
+    payload = _escala_pessoas_payload(item)
+    payload['added'] = added
+    payload['already'] = already
+    if not added and already:
+        payload['error'] = 'Colaborador já está nesta escala.'
+    return jsonify(payload), 201 if added else 200
+
+
+@acesso.route('/acesso/api/escalas/<int:eid>/pessoas/<int:pid>', methods=['DELETE'])
+@login_required
+def api_escala_pessoa_item(eid, pid):
+    seed_acesso()
+    item, err = _escala_api_get(eid)
+    if err:
+        return err
+    vinculo = AcessoEscalaPessoa.query.filter_by(escala_id=eid, pessoa_id=pid).first()
+    if vinculo:
+        db.session.delete(vinculo)
+    elif item.pessoa_id == pid:
+        item.pessoa_id = None
+        item.nome_pessoa = ''
+    else:
+        return jsonify({'ok': False, 'error': 'Pessoa não está nesta escala'}), 404
+    if item.pessoa_id == pid:
+        restante = (
+            AcessoEscalaPessoa.query
+            .filter(AcessoEscalaPessoa.escala_id == eid, AcessoEscalaPessoa.pessoa_id != pid)
+            .first()
+        )
+        if restante:
+            item.pessoa_id = restante.pessoa_id
+            item.nome_pessoa = restante.pessoa.nome if restante.pessoa else ''
+        else:
+            item.pessoa_id = None
+            item.nome_pessoa = ''
+    db.session.commit()
+    db.session.refresh(item)
+    return jsonify(_escala_pessoas_payload(item))
 
 
 def _parse_date_arg(value):
