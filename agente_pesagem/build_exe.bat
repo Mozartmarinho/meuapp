@@ -6,20 +6,31 @@ if not exist ".venv" (
 )
 call .venv\Scripts\activate.bat
 pip install -r requirements.txt -q
-pyinstaller --noconfirm --onefile --windowed --name AgentePesagem agente_pesagem.py
+python make_icon.py
+if errorlevel 1 (
+  echo Falha ao gerar o icone sao_geraldo.ico
+  if /I not "%~1"=="nopause" pause
+  exit /b 1
+)
+pyinstaller --noconfirm --onefile --windowed --name AgentePesagem --icon sao_geraldo.ico --add-data "sao_geraldo.ico;." --add-data "sao_geraldo.png;." --hidden-import PIL --hidden-import PIL.Image --hidden-import PIL.ImageTk agente_pesagem.py
 if errorlevel 1 (
   echo Falha ao gerar o executavel.
-  pause
+  if /I not "%~1"=="nopause" pause
   exit /b 1
 )
 copy /Y config.json dist\config.json >nul
 
+set "VER=1.2.0"
+for /f "tokens=2 delims='" %%V in ('findstr /R /C:"^APP_VERSION" agente_pesagem.py') do set "VER=%%V"
+
 set "PUB=..\static\downloads\agente_pesagem"
 mkdir "%PUB%" 2>nul
 copy /Y dist\AgentePesagem.exe "%PUB%\AgentePesagem.exe" >nul
+copy /Y dist\AgentePesagem.exe "%PUB%\AgentePesagem-%VER%.exe" >nul
 copy /Y config.json "%PUB%\config.json" >nul
 
 echo.
 echo Pronto: dist\AgentePesagem.exe
 echo Publicado em: %PUB%\AgentePesagem.exe
-pause
+echo Publicado em: %PUB%\AgentePesagem-%VER%.exe
+if /I not "%~1"=="nopause" pause

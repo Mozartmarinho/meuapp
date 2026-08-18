@@ -27,16 +27,17 @@
 <div class="card" style="margin-bottom:1.25rem;padding:1rem 1.15rem;">
   <h3 style="margin:0 0 0.85rem;font-family:var(--font-brand);color:var(--brand-navy);">Agente local (.exe)</h3>
   <div style="display:flex;flex-wrap:wrap;gap:0.65rem;">
-    <a class="btn btn-primary" href="{{ url_for('static', filename='downloads/agente_pesagem/AgentePesagem.exe') }}" download>
+    <a class="btn btn-primary" href="{{ url_for('pesagem.download_agente_arquivo', nome='AgentePesagem-' ~ agente_versao ~ '.exe', v=agente_versao) }}">
       <i class="fas fa-download"></i> Baixar AgentePesagem.exe
     </a>
-    <a class="btn btn-secondary" href="{{ url_for('static', filename='downloads/agente_pesagem/config.json') }}" download>
+    <a class="btn btn-secondary" href="{{ url_for('pesagem.download_agente_arquivo', nome='config.json', v=agente_versao) }}">
       <i class="fas fa-file-code"></i> Baixar config.json
     </a>
-    <a class="btn btn-secondary" href="{{ url_for('static', filename='downloads/agente_pesagem/instalar_inicio_windows.bat') }}" download>
+    <a class="btn btn-secondary" href="{{ url_for('pesagem.download_agente_arquivo', nome='instalar_inicio_windows.bat', v=agente_versao) }}">
       <i class="fas fa-power-off"></i> Baixar instalador
     </a>
   </div>
+  <p style="margin:0.75rem 0 0;font-size:0.8rem;color:var(--gray-500);">Versão {{ agente_versao }}</p>
 </div>
 
 <div class="card" style="padding:0;overflow:hidden;">
@@ -46,6 +47,7 @@
         <tr>
           <th>Data/Hora</th>
           <th>Balança</th>
+          <th>Cliente</th>
           <th>Peso</th>
           <th>Estável</th>
           <th>Origem</th>
@@ -58,6 +60,7 @@
         <tr>
           <td>{{ l.data_leitura }}</td>
           <td>{{ l.balanca_codigo }}</td>
+          <td>{{ l.cliente_nome or '-' }}</td>
           <td><strong>{{ '%.3f'|format(l.peso) }}</strong> {{ l.unidade }}</td>
           <td>{{ 'Sim' if l.estavel else 'Não' }}</td>
           <td>{{ l.origem }}</td>
@@ -66,7 +69,7 @@
         </tr>
         {% else %}
         <tr>
-          <td colspan="7" style="text-align:center;padding:1.5rem;color:#64748b;">
+          <td colspan="8" style="text-align:center;padding:1.5rem;color:#64748b;">
             Nenhuma leitura ainda. Conecte a balança e inicie o agente Windows.
           </td>
         </tr>

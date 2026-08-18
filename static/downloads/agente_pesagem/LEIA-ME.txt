@@ -2,8 +2,11 @@ Agente de Pesagem — São Geraldo Service
 =====================================
 
 O programa abre uma janela com:
-- Peso atual da balança (tempo real)
+- Peso atual da balança (tempo real no visor)
+- Seleção de cliente e foto cadastrada (servidor http://192.168.1.179)
 - Botão ENVIAR PARA O SERVIDOR
+- Registro (log) da conexão
+- Configuração (F2)
 
 Arquivos:
 - AgentePesagem.exe
@@ -12,8 +15,28 @@ Arquivos:
 
 Passos:
 1) Baixe os arquivos na mesma pasta.
-2) Ajuste config.json (servidor_url / porta_com) se precisar.
-3) Abra AgentePesagem.exe, confira o peso e clique em ENVIAR.
+2) Ajuste config.json se precisar.
+   servidor_url padrão: http://192.168.1.179
+3) Abra AgentePesagem.exe, escolha o cliente, confira o peso e clique em ENVIAR.
 4) (Opcional) rode instalar_inicio_windows.bat para iniciar com o Windows.
 
 Para testar sem balança: no config.json use "modo_simulacao": true
+
+Como ligar a balança
+--------------------
+Peso ao vivo (visor 000.00):
+- Cabo RS-232 da balança (Prog+4+3) no adaptador USB-serial deste PC.
+- Configuração → “Peso ao vivo (Urano RS-232)”, porta COM, Atualizar se precisar.
+- Protocolo Auto, Uran12 (EOT+ENQ) ou STD04 (ENQ+LF+CR).
+- 9600 bps, 8 bits, sem paridade, 2 stop bits (8N2).
+
+Ethernet / etiqueta (NÃO é visor ao vivo):
+- Rede na BA37, porta 33581 (spec 166), spec 43 = 1 (servidor).
+- O TCP conecta, mas o peso só chega ao pressionar [Imprimir]
+  ou ligar [Modo Autom.] com peso estável.
+- Configuração → “Ethernet (etiqueta)”.
+
+Modo cliente (a balança conecta neste PC): porta 33582 (spec 167).
+  Na balança: spec 43 = 2, specs 154-157 = IP deste computador.
+  Configuração → “Balança conecta neste PC”.
+- Se o Windows pedir permissão de firewall, permita o AgentePesagem.

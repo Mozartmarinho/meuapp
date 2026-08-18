@@ -317,6 +317,13 @@
                     <i class="fas fa-chevron-down chev"></i>
                 </button>
                 <ul class="menu-sub {% if grp_acesso %}open{% endif %}" id="menuAcesso">
+                    {% if usuario_atual and usuario_atual.tem_menu('acesso', 'equipamentos') %}
+                    <li>
+                        <a href="{{ url_for('acesso.equipamentos_page') }}" class="{% if active_page == 'equipamentos' %}active{% endif %}">
+                            <i class="fas fa-microchip"></i> <span class="menu-label">Equipamentos</span>
+                        </a>
+                    </li>
+                    {% endif %}
                     {% if usuario_atual and usuario_atual.tem_menu('acesso', 'grupos') %}
                     <li>
                         <a href="{{ url_for('acesso.grupos_page') }}" class="{% if active_page == 'grupos' %}active{% endif %}">
@@ -342,13 +349,6 @@
                     <li>
                         <a href="{{ url_for('acesso.impressoras_page') }}" class="{% if active_page == 'impressoras' %}active{% endif %}">
                             <i class="fas fa-print"></i> <span class="menu-label">Impressoras</span>
-                        </a>
-                    </li>
-                    {% endif %}
-                    {% if usuario_atual and usuario_atual.tem_menu('acesso', 'equipamentos') %}
-                    <li>
-                        <a href="{{ url_for('acesso.equipamentos_page') }}" class="{% if active_page == 'equipamentos' %}active{% endif %}">
-                            <i class="fas fa-microchip"></i> <span class="menu-label">Equipamentos</span>
                         </a>
                     </li>
                     {% endif %}

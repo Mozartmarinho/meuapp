@@ -25,6 +25,24 @@ class PesagemBalanca(db.Model):
         }
 
 
+class PesagemCliente(db.Model):
+    __tablename__ = 'pesagem_clientes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(120), nullable=False)
+    imagem_path = db.Column(db.String(255))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self, imagem_url=''):
+        return {
+            'id': self.id,
+            'nome': self.nome,
+            'imagem_path': self.imagem_path or '',
+            'imagem_url': imagem_url or '',
+            'created_at': self.created_at.isoformat(sep=' ', timespec='seconds') if self.created_at else '',
+        }
+
+
 class PesagemLeitura(db.Model):
     __tablename__ = 'pesagem_leituras'
 
@@ -41,6 +59,9 @@ class PesagemLeitura(db.Model):
     computador = db.Column(db.String(120))
     porta_com = db.Column(db.String(20))
     observacao = db.Column(db.String(255))
+    cliente_id = db.Column(db.Integer, db.ForeignKey('pesagem_clientes.id'), nullable=True)
+    cliente = db.relationship('PesagemCliente', backref='leituras')
+    cliente_nome = db.Column(db.String(120))
     data_leitura = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
     def to_dict(self):
@@ -56,5 +77,7 @@ class PesagemLeitura(db.Model):
             'computador': self.computador or '',
             'porta_com': self.porta_com or '',
             'observacao': self.observacao or '',
+            'cliente_id': self.cliente_id,
+            'cliente_nome': self.cliente_nome or '',
             'data_leitura': self.data_leitura.isoformat(sep=' ', timespec='seconds') if self.data_leitura else '',
         }

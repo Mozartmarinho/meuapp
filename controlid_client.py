@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import logging
 import os
+import socket
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -223,15 +224,81 @@ def device_json(
         return {'_raw': resp.text}
 
 
-def probe(creds: DeviceCreds, timeout: float = 5.0) -> dict[str, Any]:
-    """Testa reachability via login. Retorna device_id se disponível."""
-    info = login(creds, force=True, timeout=timeout)
-    return {
+def _tcp_probe(host: str, port: int, timeout: float) -> str:
+    """Retorna open | timeout | closed."""
+    try:
+        with socket.create_connection((host, int(port)), timeout=float(timeout)):
+            return 'open'
+    except socket.timeout:
+        return 'timeout'
+    except TimeoutError:
+        return 'timeout'
+    except OSError:
+        return 'closed'
+    except Exception:
+        return 'error'
+
+
+def tcp_reachable(host: str, porta: int = 80, timeout: float = 4.0) -> dict[str, Any]:
+    """Checagem leve estilo Sollus: TCP na porta HTTP; 443 só se 80 recusar rápido."""
+    host = (host or '').strip()
+    if not host:
+        return {'ok': False, 'port': None, 'reason': 'no-ip'}
+    porta = int(porta or 80)
+    st = _tcp_probe(host, porta, timeout)
+    if st == 'open':
+        return {'ok': True, 'port': porta, 'reason': 'tcp'}
+    if st == 'timeout':
+        return {'ok': False, 'port': porta, 'reason': 'timeout'}
+    if porta != 443:
+        st2 = _tcp_probe(host, 443, timeout)
+        if st2 == 'open':
+            return {'ok': True, 'port': 443, 'reason': 'tcp'}
+        return {'ok': False, 'port': 443, 'reason': st2}
+    return {'ok': False, 'port': porta, 'reason': st}
+
+
+def probe(creds: DeviceCreds, timeout: float = 4.0, try_login: bool = True) -> dict[str, Any]:
+    """Reachability estilo Sollus: TCP 80/443 = online.
+
+    login.fcgi com credenciais cadastradas é opcional: HTTP 401/403 ainda é
+    online (equipamento respondeu; senha diferente da nossa). Timeout TCP =
+    offline. Não usa ICMP.
+    """
+    tcp = tcp_reachable(creds.ip, creds.porta or 80, timeout=timeout)
+    if not tcp.get('ok'):
+        return {
+            'ok': False,
+            'reachable': False,
+            'ip': creds.ip,
+            'port': tcp.get('port'),
+            'session': False,
+            'device_id': None,
+            'error': tcp.get('reason') or 'unreachable',
+        }
+    out: dict[str, Any] = {
         'ok': True,
+        'reachable': True,
         'ip': creds.ip,
-        'device_id': info.get('device_id'),
-        'session': True,
+        'port': tcp.get('port'),
+        'session': False,
+        'device_id': None,
+        'via': 'tcp',
     }
+    if not try_login:
+        return out
+    try:
+        info = login(creds, force=True, timeout=min(float(timeout), 5.0))
+        out['session'] = True
+        out['device_id'] = info.get('device_id')
+        out['via'] = 'login'
+    except ControlIDError as exc:
+        msg = str(exc)
+        out['login_error'] = msg
+        low = msg.lower()
+        if 'http 401' in low or 'http 403' in low or 'invalid login' in low:
+            out['via'] = 'http-auth'
+    return out
 
 
 def system_information(creds: DeviceCreds) -> dict[str, Any]:

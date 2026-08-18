@@ -262,6 +262,27 @@
         .hint { color: var(--muted); font-size: 0.85rem; margin-top: 6px; line-height: 1.45; }
         .perm-title { margin: 12px 0; color: #0D2B5C; font-size: 20px; font-family: Rajdhani, sans-serif; }
 
+        .setor-field-row { display: flex; gap: 6px; align-items: stretch; }
+        .setor-field-row select { flex: 1; min-width: 0; }
+        .btn-setor-plus {
+            flex: 0 0 2.2rem;
+            width: 2.2rem;
+            padding: 0;
+            border: 1px solid #d5e0ee;
+            border-radius: 10px;
+            background: var(--brand-blue);
+            color: #fff;
+            font-size: 1.2rem;
+            font-weight: 800;
+            line-height: 1;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn-setor-plus:hover { filter: brightness(1.08); }
+
+        #modal-setor-funcao { z-index: 95; }
+        #modal-setor-funcao .portal-card { width: min(400px, 100%); }
+
         /* Modal Acessos (lista + Novo/Editar): ~30% menor. Não afeta Configurações / Alterar senha. */
         #modal-acessos { padding: 0.7rem; }
         #modal-acessos .portal-card {
@@ -319,6 +340,12 @@
         }
         #modal-acessos .portal-actions { gap: 7px; margin-top: 13px; }
         #modal-acessos .perm-title { margin: 8px 0; font-size: 14px; }
+        #modal-acessos .btn-setor-plus {
+            flex-basis: 28px;
+            width: 28px;
+            border-radius: 7px;
+            font-size: 0.95rem;
+        }
 
         #modal-pendencias { padding: 0.7rem; }
         #modal-pendencias .portal-card { width: min(640px, 100%); padding: 1.12rem 1.12rem 0.96rem; }
@@ -660,16 +687,31 @@
                         </div>
                         <div class="form-group">
                             <label for="acesso-setor">Setor (chamados)</label>
-                            <select id="acesso-setor" name="setor">
-                                <option value="">— Nenhum —</option>
-                                <option value="Obra">Obra</option>
-                                <option value="Elétrica">Elétrica</option>
-                                <option value="Compras">Compras</option>
-                            </select>
+                            <div class="setor-field-row">
+                                <select id="acesso-setor" name="setor">
+                                    <option value="">— Nenhum —</option>
+                                    {% for setor in setores_chamados %}
+                                    <option value="{{ setor }}">{{ setor }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="button" class="btn-setor-plus" data-setor-tipo="chamados" title="Adicionar função ou setor" aria-label="Adicionar setor de chamados">+</button>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label for="acesso-senha">Senha</label>
                             <input type="password" id="acesso-senha" name="senha" autocomplete="new-password">
+                        </div>
+                        <div class="form-group">
+                            <label for="acesso-setor-nutricao">Setor (nutrição)</label>
+                            <div class="setor-field-row">
+                                <select id="acesso-setor-nutricao" name="setor_nutricao">
+                                    <option value="">— Nenhum —</option>
+                                    {% for setor in setores_nutricao %}
+                                    <option value="{{ setor }}">{{ setor }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="button" class="btn-setor-plus" data-setor-tipo="nutricao" title="Adicionar função ou setor" aria-label="Adicionar setor de nutrição">+</button>
+                            </div>
                         </div>
                         <div class="form-group" style="display:flex;align-items:flex-end">
                             <label class="check">
@@ -702,6 +744,32 @@
                     </div>
                 </form>
             </div>
+        </div>
+    </div>
+
+    <div class="portal-overlay" id="modal-setor-funcao" role="presentation">
+        <div class="portal-card narrow" role="dialog" aria-modal="true" aria-labelledby="setor-funcao-title">
+            <button type="button" class="portal-close" data-close-modal aria-label="Fechar">&times;</button>
+            <div class="portal-head">
+                <div>
+                    <h2 id="setor-funcao-title">Nova função / setor</h2>
+                    <p id="setor-funcao-hint">O nome entra só neste catálogo (chamados ou nutrição).</p>
+                </div>
+            </div>
+            <div class="portal-alert" id="setor-funcao-msg" hidden></div>
+            <form class="portal-form" id="form-setor-funcao" autocomplete="off">
+                <input type="hidden" name="tipo" id="setor-funcao-tipo" value="">
+                <div class="grid" style="grid-template-columns:1fr">
+                    <div class="form-group">
+                        <label for="setor-funcao-nome">Nome *</label>
+                        <input type="text" id="setor-funcao-nome" name="nome" maxlength="80" required>
+                    </div>
+                </div>
+                <div class="portal-actions">
+                    <button type="button" class="portal-btn sec" data-close-modal>Fechar</button>
+                    <button type="submit" class="portal-btn pri"><i class="fas fa-save"></i> Salvar</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -804,7 +872,7 @@
             <div class="portal-head">
                 <div>
                     <h2 id="pendencias-title">Pendências</h2>
-                    <p>Chamados encaminhados ao seu setor e serviços aguardando peça.</p>
+                    <p>Chamados no seu setor, devoluções e serviços aguardando peça.</p>
                 </div>
             </div>
             {% if pendencias %}
@@ -813,7 +881,8 @@
                 <li class="pend-item">
                     <strong>{{ p.numero_chamado }}</strong> · {{ p.cliente }}
                     <div class="pend-meta">{{ p.tipo }}{% if p.setor_destino %} · {{ p.setor_destino }}{% endif %}{% if p.encaminhado_por %} · de {{ p.encaminhado_por }}{% endif %}{% if p.encaminhado_em %} · {{ p.encaminhado_em }}{% endif %}</div>
-                    {% if p.instrucoes %}<div class="pend-inst">{{ p.instrucoes }}</div>{% endif %}
+                    {% if p.notas %}<div class="pend-inst">{{ p.notas }}</div>{% endif %}
+                    {% if p.instrucoes and p.instrucoes != p.notas %}<div class="pend-inst">{{ p.instrucoes }}</div>{% endif %}
                     {% if p.fotos %}
                     <div class="pend-fotos">
                         {% for f in p.fotos %}
@@ -904,8 +973,8 @@
         });
         document.addEventListener('keydown', function (ev) {
             if (ev.key === 'Escape') {
-                var open = document.querySelector('.portal-overlay.is-open');
-                if (open) closeModal(open);
+                var opens = document.querySelectorAll('.portal-overlay.is-open');
+                if (opens.length) closeModal(opens[opens.length - 1]);
             }
         });
 
@@ -948,6 +1017,11 @@
         var URL_NOVO = {{ url_for('main.novo_acesso') | tojson }};
         var URL_EDITAR_TPL = {{ url_for('main.editar_acesso', id=0) | tojson }};
         var URL_CONFIG = {{ url_for('main.configuracoes') | tojson }};
+        var URL_SETOR = {{ url_for('main.criar_setor_funcao') | tojson }};
+        var SETORES = {
+            chamados: {{ setores_chamados | tojson }},
+            nutricao: {{ setores_nutricao | tojson }}
+        };
 
         function urlEditar(id) {
             return URL_EDITAR_TPL.replace('/0/', '/' + id + '/');
@@ -976,6 +1050,29 @@
             return String(str || '').replace(/[&<>"']/g, function (ch) {
                 return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
             });
+        }
+
+        function fillSetorSelect(selectId, nomes, selected) {
+            var select = document.getElementById(selectId);
+            if (!select) return;
+            var current = selected != null ? selected : select.value;
+            select.innerHTML = '<option value="">— Nenhum —</option>';
+            (nomes || []).forEach(function (nome) {
+                var opt = document.createElement('option');
+                opt.value = nome;
+                opt.textContent = nome;
+                select.appendChild(opt);
+            });
+            if (current) {
+                var found = Array.prototype.some.call(select.options, function (o) { return o.value === current; });
+                if (!found) {
+                    var extra = document.createElement('option');
+                    extra.value = current;
+                    extra.textContent = current;
+                    select.appendChild(extra);
+                }
+                select.value = current;
+            }
         }
 
         function ensureCatalogMenus() {
@@ -1050,13 +1147,16 @@
             resetAcessoForm();
             if (!item) {
                 document.getElementById('acesso-form-title').textContent = 'Novo acesso';
+                fillSetorSelect('acesso-setor', SETORES.chamados, '');
+                fillSetorSelect('acesso-setor-nutricao', SETORES.nutricao, '');
                 return;
             }
             document.getElementById('acesso-form-title').textContent = 'Editar acesso';
             document.getElementById('acesso-id').value = item.id;
             document.getElementById('acesso-nome').value = item.nome || '';
             document.getElementById('acesso-email').value = item.email || '';
-            document.getElementById('acesso-setor').value = item.setor || '';
+            fillSetorSelect('acesso-setor', SETORES.chamados, item.setor || '');
+            fillSetorSelect('acesso-setor-nutricao', SETORES.nutricao, item.setor_nutricao || '');
             document.getElementById('acesso-email').readOnly = !!item.is_master;
             document.getElementById('acesso-ativo').checked = !!item.ativo;
             document.getElementById('acesso-ativo').disabled = !!item.is_master;
@@ -1104,6 +1204,57 @@
 
         document.querySelectorAll('#form-acesso .sistema-check').forEach(function (check) {
             check.addEventListener('change', function () { setSistemaState(check); });
+        });
+
+        document.querySelectorAll('#form-acesso .btn-setor-plus').forEach(function (btn) {
+            btn.addEventListener('click', function (ev) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                var tipo = btn.getAttribute('data-setor-tipo') || 'chamados';
+                document.getElementById('setor-funcao-tipo').value = tipo;
+                document.getElementById('setor-funcao-nome').value = '';
+                document.getElementById('setor-funcao-title').textContent = tipo === 'nutricao'
+                    ? 'Nova função / setor (nutrição)'
+                    : 'Nova função / setor (chamados)';
+                showMsg(document.getElementById('setor-funcao-msg'), true, '');
+                document.getElementById('modal-setor-funcao').classList.add('is-open');
+                document.body.classList.add('modal-open');
+                setTimeout(function () {
+                    var input = document.getElementById('setor-funcao-nome');
+                    if (input) input.focus();
+                }, 30);
+            });
+        });
+
+        document.getElementById('form-setor-funcao').addEventListener('submit', async function (ev) {
+            ev.preventDefault();
+            var form = ev.currentTarget;
+            var msg = document.getElementById('setor-funcao-msg');
+            var nome = (document.getElementById('setor-funcao-nome').value || '').trim();
+            if (!nome) {
+                showMsg(msg, false, 'Informe o nome da função ou setor.');
+                return;
+            }
+            var tipo = document.getElementById('setor-funcao-tipo').value;
+            var btn = form.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            try {
+                var data = await postForm(URL_SETOR, form);
+                showMsg(msg, !!data.ok, data.message || (data.ok ? 'Adicionado.' : 'Não foi possível salvar.'));
+                if (data.ok) {
+                    SETORES[tipo] = data.setores || SETORES[tipo];
+                    if (SETORES[tipo] && data.nome && SETORES[tipo].indexOf(data.nome) < 0) {
+                        SETORES[tipo] = SETORES[tipo].concat([data.nome]);
+                    }
+                    var selectId = tipo === 'nutricao' ? 'acesso-setor-nutricao' : 'acesso-setor';
+                    fillSetorSelect(selectId, SETORES[tipo], data.nome || nome);
+                    closeModal(document.getElementById('modal-setor-funcao'));
+                }
+            } catch (err) {
+                showMsg(msg, false, 'Não foi possível salvar. Tente de novo.');
+            } finally {
+                btn.disabled = false;
+            }
         });
 
         document.getElementById('form-acesso').addEventListener('submit', async function (ev) {

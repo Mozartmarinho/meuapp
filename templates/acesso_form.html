@@ -22,6 +22,23 @@
         input[type=text], input[type=email], input[type=password], select { width:100%; padding:12px; border:1px solid #d5e0ee; border-radius:10px; font-size:15px; }
         .sistema { border:1px solid #d7e3f3; border-radius:12px; padding:14px; margin-bottom:12px; }
         .check { display:flex; align-items:center; gap:8px; font-weight:600; }
+        .setor-field-row { display:flex; gap:6px; align-items:stretch; }
+        .setor-field-row select { flex:1; min-width:0; }
+        .btn-setor-plus {
+            flex:0 0 2.2rem; width:2.2rem; padding:0; border:1px solid #d5e0ee; border-radius:10px;
+            background:var(--brand-blue); color:#fff; font-size:1.2rem; font-weight:800; line-height:1;
+            cursor:pointer; font-family:inherit;
+        }
+        .portal-overlay {
+            display:none; position:fixed; inset:0; z-index:80; align-items:center; justify-content:center;
+            padding:1rem; background:rgba(13,43,92,.55);
+        }
+        .portal-overlay.is-open { display:flex; }
+        .portal-card {
+            width:min(400px,100%); background:#fff; border-radius:18px; padding:1.2rem;
+            box-shadow:0 24px 60px rgba(13,43,92,.28);
+        }
+        .portal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:14px; }
         .menus { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px; padding-left:8px; margin-top:8px; }
         .actions { display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
         .btn { display:inline-flex; align-items:center; gap:.45rem; padding:.7rem 1rem; border-radius:999px; text-decoration:none; font-weight:700; border:0; cursor:pointer; }
@@ -55,8 +72,32 @@
                     <input type="email" id="email" name="email" value="{{ acesso.email if acesso else '' }}" required {{ 'readonly' if acesso and acesso.is_master else '' }}>
                 </div>
                 <div class="form-group">
+                    <label for="setor">Setor (chamados)</label>
+                    <div class="setor-field-row">
+                        <select id="setor" name="setor">
+                            <option value="">— Nenhum —</option>
+                            {% for s in setores_chamados %}
+                            <option value="{{ s }}" {% if acesso and acesso.setor == s %}selected{% endif %}>{{ s }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="button" class="btn-setor-plus" data-setor-tipo="chamados" title="Adicionar função ou setor" aria-label="Adicionar setor de chamados">+</button>
+                    </div>
+                </div>
+                <div class="form-group">
                     <label for="senha">Senha {{ '' if not acesso else '(deixe em branco para manter)' }}</label>
                     <input type="password" id="senha" name="senha" {{ 'required' if not acesso else '' }}>
+                </div>
+                <div class="form-group">
+                    <label for="setor_nutricao">Setor (nutrição)</label>
+                    <div class="setor-field-row">
+                        <select id="setor_nutricao" name="setor_nutricao">
+                            <option value="">— Nenhum —</option>
+                            {% for s in setores_nutricao %}
+                            <option value="{{ s }}" {% if acesso and acesso.setor_nutricao == s %}selected{% endif %}>{{ s }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="button" class="btn-setor-plus" data-setor-tipo="nutricao" title="Adicionar função ou setor" aria-label="Adicionar setor de nutrição">+</button>
+                    </div>
                 </div>
                 <div class="form-group" style="display:flex;align-items:flex-end">
                     <label class="check">
@@ -93,6 +134,24 @@
             </div>
         </form>
     </main>
+    <div class="portal-overlay" id="modal-setor-funcao">
+        <div class="portal-card">
+            <h2 id="setor-funcao-title" style="font-family:Rajdhani,sans-serif;color:var(--brand-navy);margin-bottom:8px">Nova função / setor</h2>
+            <p style="color:var(--muted);font-size:.9rem;margin-bottom:12px">O nome entra só neste catálogo (chamados ou nutrição).</p>
+            <div class="alert alert-error" id="setor-funcao-msg" hidden></div>
+            <form id="form-setor-funcao" autocomplete="off">
+                <input type="hidden" name="tipo" id="setor-funcao-tipo" value="">
+                <div class="form-group">
+                    <label for="setor-funcao-nome">Nome *</label>
+                    <input type="text" id="setor-funcao-nome" name="nome" maxlength="80" required>
+                </div>
+                <div class="portal-actions">
+                    <button type="button" class="btn btn-sec" id="setor-funcao-fechar">Fechar</button>
+                    <button type="submit" class="btn btn-pri"><i class="fas fa-save"></i> Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
     <script>
     document.querySelectorAll('.sistema-check').forEach(function(check) {
         check.addEventListener('change', function() {
@@ -106,6 +165,57 @@
             if (box) box.style.opacity = check.checked ? '1' : '.45';
         });
     });
+    (function () {
+        var URL_SETOR = {{ url_for('main.criar_setor_funcao') | tojson }};
+        var overlay = document.getElementById('modal-setor-funcao');
+        function fillSelect(selectId, nomes, selected) {
+            var select = document.getElementById(selectId);
+            if (!select) return;
+            select.innerHTML = '<option value="">— Nenhum —</option>';
+            (nomes || []).forEach(function (nome) {
+                var opt = document.createElement('option');
+                opt.value = nome;
+                opt.textContent = nome;
+                if (nome === selected) opt.selected = true;
+                select.appendChild(opt);
+            });
+        }
+        document.querySelectorAll('.btn-setor-plus').forEach(function (btn) {
+            btn.addEventListener('click', function (ev) {
+                ev.preventDefault();
+                document.getElementById('setor-funcao-tipo').value = btn.getAttribute('data-setor-tipo') || 'chamados';
+                document.getElementById('setor-funcao-nome').value = '';
+                document.getElementById('setor-funcao-title').textContent =
+                    btn.getAttribute('data-setor-tipo') === 'nutricao'
+                        ? 'Nova função / setor (nutrição)'
+                        : 'Nova função / setor (chamados)';
+                var msg = document.getElementById('setor-funcao-msg');
+                msg.hidden = true;
+                overlay.classList.add('is-open');
+                setTimeout(function () { document.getElementById('setor-funcao-nome').focus(); }, 30);
+            });
+        });
+        function fechar() { overlay.classList.remove('is-open'); }
+        document.getElementById('setor-funcao-fechar').addEventListener('click', fechar);
+        overlay.addEventListener('click', function (ev) { if (ev.target === overlay) fechar(); });
+        document.getElementById('form-setor-funcao').addEventListener('submit', async function (ev) {
+            ev.preventDefault();
+            var nome = (document.getElementById('setor-funcao-nome').value || '').trim();
+            var msg = document.getElementById('setor-funcao-msg');
+            if (!nome) { msg.hidden = false; msg.textContent = 'Informe o nome da função ou setor.'; return; }
+            var tipo = document.getElementById('setor-funcao-tipo').value;
+            var res = await fetch(URL_SETOR, {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                body: new FormData(ev.currentTarget)
+            });
+            var data = await res.json();
+            if (!data.ok) { msg.hidden = false; msg.textContent = data.message || 'Não foi possível salvar.'; return; }
+            var selectId = tipo === 'nutricao' ? 'setor_nutricao' : 'setor';
+            fillSelect(selectId, data.setores, data.nome || nome);
+            fechar();
+        });
+    })();
     </script>
 </body>
 </html>

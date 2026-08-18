@@ -621,7 +621,7 @@ def api_clinica_enfermarias(cid):
             'todas': list_enfermarias(somente_ativas=True),
         })
 
-    d = request.get_json(force=True) or {}
+        d = request.get_json(force=True) or {}
     ids = d.get('enfermaria_ids')
     if ids is None:
         return jsonify({'ok': False, 'error': 'Informe enfermaria_ids'}), 400

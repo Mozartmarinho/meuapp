@@ -1,3 +1,4 @@
 pyserial>=3.5
 requests>=2.28
+pillow>=10.0
 pyinstaller>=6.0

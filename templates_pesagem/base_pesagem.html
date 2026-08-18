@@ -58,6 +58,14 @@
                 </a>
             </li>
             {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('pesagem', 'clientes') %}
+            <li>
+                <a href="{{ url_for('pesagem.clientes_page') }}" class="{% if active_page == 'clientes' %}active{% endif %}" title="Cadastro de Cliente">
+                    <i class="fas fa-user menu-icon"></i>
+                    <span class="menu-label">Cadastro de Cliente</span>
+                </a>
+            </li>
+            {% endif %}
             {% if usuario_atual and usuario_atual.tem_menu('pesagem', 'auditoria') %}
             <li>
                 <a href="{{ url_for('pesagem.auditoria') }}" class="{% if active_page == 'auditoria' %}active{% endif %}" title="Auditoria">

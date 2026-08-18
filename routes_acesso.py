@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from functools import wraps
 from datetime import datetime, date, time, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import csv
 import io
 import json
@@ -10,12 +11,15 @@ import logging
 import os
 import secrets
 import re
+import threading
+import time as time_mod
+import unicodedata
 import uuid
 from pathlib import Path
 
 from flask import (
     Blueprint, render_template, request, jsonify, redirect,
-    url_for, flash, session, Response, send_file,
+    url_for, flash, session, Response, send_file, current_app,
 )
 from sqlalchemy import func, or_, inspect, text
 from sqlalchemy.exc import IntegrityError, OperationalError
@@ -35,7 +39,7 @@ from models_acesso import (
     AcessoUsuarioPermissao, AcessoPerfilPermissao,
     AcessoBackupLog, AcessoBackupConfig, AcessoRefeicao,
     AcessoControleAdicional, AcessoEscala, AcessoEscalaPessoa,
-    dias_padrao_escala, normalizar_tipo_escala,
+    dias_padrao_escala, normalizar_tipo_escala, normalizar_tipo_equipamento,
     AcessoGrupoRefeicao, AcessoItemRefeicao, AcessoVinculoRefeicao,
     AcessoVeiculo, AcessoVeiculoEvento,
     AcessoImpressora,
@@ -393,6 +397,87 @@ def _controlid_mark_online(eq, online=True, device_id=None):
         eq.device_id = str(device_id).strip()
 
 
+_online_probe_lock = threading.Lock()
+_online_probe_last = 0.0
+ONLINE_PROBE_TTL = 20.0
+ONLINE_PROBE_TIMEOUT = 4.0
+
+
+def _apply_probe_results(eqs, timeout=ONLINE_PROBE_TIMEOUT, try_login=False):
+    """Atualiza eq.online em paralelo (TCP 80/443; login 401 ainda é online)."""
+    jobs = []
+    for eq in eqs:
+        if not (getattr(eq, 'ip', None) or '').strip():
+            eq.online = False
+            continue
+        jobs.append((eq.id, cid.creds_from_equipamento(eq)))
+    if not jobs:
+        db.session.commit()
+        return {}
+
+    results: dict = {}
+
+    def _work(payload):
+        eid, creds = payload
+        try:
+            return eid, cid.probe(creds, timeout=timeout, try_login=try_login)
+        except Exception as exc:
+            return eid, {'ok': False, 'reachable': False, 'error': str(exc)}
+
+    workers = min(12, max(1, len(jobs)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futs = [pool.submit(_work, job) for job in jobs]
+        for fut in as_completed(futs):
+            eid, info = fut.result()
+            results[eid] = info
+
+    by_id = {eq.id: eq for eq in eqs}
+    for eid, info in results.items():
+        eq = by_id.get(eid)
+        if eq is None:
+            continue
+        if info.get('ok') or info.get('reachable'):
+            _controlid_mark_online(eq, True, info.get('device_id'))
+        else:
+            eq.online = False
+    db.session.commit()
+    return results
+
+
+def _kick_online_probe():
+    """Dispara probe em background se o TTL expirou (dashboard / listagens)."""
+    global _online_probe_last
+    now = time_mod.time()
+    if now - _online_probe_last < ONLINE_PROBE_TTL:
+        return
+    if not _online_probe_lock.acquire(blocking=False):
+        return
+    app_obj = current_app._get_current_object()
+
+    def _run():
+        global _online_probe_last
+        try:
+            with app_obj.app_context():
+                eqs = AcessoEquipamento.query.filter(
+                    AcessoEquipamento.ativo.is_(True),
+                    AcessoEquipamento.ip.isnot(None),
+                    AcessoEquipamento.ip != '',
+                ).all()
+                _apply_probe_results(eqs)
+                _online_probe_last = time_mod.time()
+        except Exception:
+            LOG.exception('refresh online equipamentos')
+        finally:
+            _online_probe_lock.release()
+
+    threading.Thread(target=_run, daemon=True, name='acesso-online-probe').start()
+
+
+def _equipamentos_ativos_query():
+    """Hub / KPIs: só equipamentos ativos (cadastro Sollus)."""
+    return AcessoEquipamento.query.filter_by(ativo=True).order_by(AcessoEquipamento.nome)
+
+
 def _controlid_eqs_alvo(equipamento_id=None, ids=None, only_online=False, only_ativo=True):
     q = AcessoEquipamento.query
     if only_ativo:
@@ -534,6 +619,15 @@ def ensure_acesso_schema():
             if ialters:
                 db.session.execute(text(
                     f"ALTER TABLE acesso_itens_refeicao {', '.join(ialters)}"
+                ))
+                db.session.commit()
+
+        if 'acesso_equipamentos' in tables:
+            eqcols = {c['name'] for c in insp.get_columns('acesso_equipamentos')}
+            if 'tipo' not in eqcols:
+                db.session.execute(text(
+                    "ALTER TABLE acesso_equipamentos "
+                    "ADD COLUMN `tipo` VARCHAR(40) NULL DEFAULT 'catraca'"
                 ))
                 db.session.commit()
 
@@ -771,6 +865,50 @@ def ensure_usuarios_acesso_schema():
         db.session.rollback()
 
 
+# Cadastro Sollus (LAN): 6 catracas — nomes e IPs oficiais. Não alterar IPs.
+SOLLUS_EQUIPAMENTOS = (
+    ('Escritorio', '192.168.0.247'),
+    ('Fabrica', '192.168.0.234'),
+    ('Portão Principal', '192.168.0.246'),
+    ('Portaria', '192.168.0.239'),
+    ('Recepção', '192.168.0.237'),
+    ('Refeitorio', '192.168.0.233'),
+)
+SOLLUS_EQUIP_IPS = {ip for _, ip in SOLLUS_EQUIPAMENTOS}
+# Cadastros locais de teste (não existem no Sollus).
+EQUIPAMENTOS_TESTE_EXTRAS = (
+    ('Catraca Principal', '192.168.1.50'),
+    ('Porta Administrativo', '192.168.1.51'),
+)
+
+
+def _fold_nome_equipamento(value):
+    text = (value or '').strip().lower()
+    nfkd = unicodedata.normalize('NFKD', text)
+    return ''.join(ch for ch in nfkd if not unicodedata.combining(ch))
+
+
+def _alinhar_equipamentos_sollus():
+    """Garante os 6 nomes Sollus e inativa extras de teste (192.168.1.50/51)."""
+    nome_por_ip = {ip: nome for nome, ip in SOLLUS_EQUIPAMENTOS}
+    extras_ip = {ip for _, ip in EQUIPAMENTOS_TESTE_EXTRAS}
+    extras_fold = {_fold_nome_equipamento(n) for n, _ in EQUIPAMENTOS_TESTE_EXTRAS}
+
+    for eq in AcessoEquipamento.query.all():
+        ip = (eq.ip or '').strip()
+        fold = _fold_nome_equipamento(eq.nome)
+        if ip in SOLLUS_EQUIP_IPS:
+            wanted = nome_por_ip[ip]
+            if eq.nome != wanted:
+                eq.nome = wanted
+            if (eq.local or '').strip() != wanted:
+                eq.local = wanted
+            eq.ativo = True
+            continue
+        if ip in extras_ip or fold in extras_fold:
+            eq.ativo = False
+
+
 def seed_acesso():
     """Dados iniciais do módulo de Controle de Acesso."""
     ensure_acesso_schema()
@@ -848,9 +986,11 @@ def seed_acesso():
         ('Refeitorio', '192.168.0.233', 'DEV-REF', False, 'Entrada/Saida', 'iDFace'),
     ]
     for nome, ip, device_id, online, giro, modelo in equipamentos_seed:
-        eq = AcessoEquipamento.query.filter(
-            or_(AcessoEquipamento.device_id == device_id, AcessoEquipamento.nome == nome)
-        ).first()
+        eq = AcessoEquipamento.query.filter(AcessoEquipamento.ip == ip).first()
+        if not eq:
+            eq = AcessoEquipamento.query.filter(
+                or_(AcessoEquipamento.device_id == device_id, AcessoEquipamento.nome == nome)
+            ).first()
         if not eq:
             db.session.add(AcessoEquipamento(
                 nome=nome, marca='Control iD', modelo=modelo, ip=ip, device_id=device_id,
@@ -858,10 +998,17 @@ def seed_acesso():
                 last_alive=agora if online else None, ativo=True,
             ))
         else:
-            eq.ip = eq.ip or ip
+            if (eq.ip or '').strip() not in SOLLUS_EQUIP_IPS:
+                eq.ip = eq.ip or ip
+            if eq.nome != nome:
+                eq.nome = nome
+            if not (eq.local or '').strip():
+                eq.local = nome
+            eq.ativo = True
             eq.online = online if eq.last_alive is None else eq.online
             if online and not eq.last_alive:
                 eq.last_alive = agora
+    _alinhar_equipamentos_sollus()
 
     if AcessoAmbiente.query.count() == 0:
         db.session.add_all([
@@ -1274,6 +1421,7 @@ def dashboard():
 
     eventos = q.order_by(AcessoEvento.data_hora.desc()).limit(50).all()
     equipamentos = AcessoEquipamento.query.filter_by(ativo=True).order_by(AcessoEquipamento.nome).all()
+    _kick_online_probe()
     online_list = [e for e in equipamentos if e.online]
     ambientes = AcessoAmbiente.query.filter_by(ativo=True).order_by(AcessoAmbiente.nome).all()
 
@@ -1320,6 +1468,7 @@ def api_dashboard():
     pct_lib = ((stats['liberados'] - base_lib) / base_lib) * 100 if base_lib else (100.0 if stats['liberados'] else 0.0)
     eventos = q.order_by(AcessoEvento.data_hora.desc()).limit(50).all()
     equipamentos = AcessoEquipamento.query.filter_by(ativo=True).order_by(AcessoEquipamento.nome).all()
+    _kick_online_probe()
     online = sum(1 for e in equipamentos if e.online)
     return jsonify({
         'ok': True,
@@ -1478,7 +1627,8 @@ def pessoas_export_csv():
 @login_required
 def equipamentos_page():
     seed_acesso()
-    equipamentos = AcessoEquipamento.query.order_by(AcessoEquipamento.nome).all()
+    _kick_online_probe()
+    equipamentos = _equipamentos_ativos_query().all()
     online_count = sum(1 for e in equipamentos if e.online)
     return render_template(
         'acesso_equipamentos.html',
@@ -2024,7 +2174,7 @@ def _sync_offline_evento_existe(eq_id, pessoa_ref, data_hora, status, direction)
 @login_required
 def sync_offline_page():
     seed_acesso()
-    equipamentos = AcessoEquipamento.query.order_by(AcessoEquipamento.nome).all()
+    equipamentos = _equipamentos_ativos_query().all()
     hoje = date.today()
     return render_template(
         'acesso_sync_offline.html',
@@ -5370,7 +5520,7 @@ def api_pessoa_item(pid):
 def api_equipamentos():
     seed_acesso()
     if request.method == 'GET':
-        return jsonify([e.to_dict() for e in AcessoEquipamento.query.order_by(AcessoEquipamento.nome).all()])
+        return jsonify([e.to_dict() for e in _equipamentos_ativos_query().all()])
 
     data = request.get_json(silent=True) or request.form
     nome = (data.get('nome') or '').strip()
@@ -5381,8 +5531,16 @@ def api_equipamentos():
     if device_id and AcessoEquipamento.query.filter_by(device_id=device_id).first():
         return jsonify({'ok': False, 'error': 'device_id já cadastrado'}), 400
 
+    def _as_bool(val, default=True):
+        if val is None:
+            return default
+        if isinstance(val, bool):
+            return val
+        return str(val).strip().lower() not in ('0', 'false', 'off', '')
+
     eq = AcessoEquipamento(
         nome=nome,
+        tipo=normalizar_tipo_equipamento(data.get('tipo')),
         marca=(data.get('marca') or 'Control iD').strip(),
         modelo=(data.get('modelo') or '').strip() or None,
         ip=(data.get('ip') or '').strip() or None,
@@ -5391,10 +5549,15 @@ def api_equipamentos():
         senha_disp=(data.get('senha_disp') or '').strip() or None,
         controle_giro=(data.get('controle_giro') or 'Ambos os lados').strip(),
         local=(data.get('local') or '').strip() or None,
-        ativo=str(data.get('ativo', '1')).lower() not in ('0', 'false', 'off'),
+        online=_as_bool(data.get('online'), False),
+        ativo=_as_bool(data.get('ativo', True), True),
     )
     db.session.add(eq)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': 'Não foi possível cadastrar (registro duplicado)'}), 400
     return jsonify({'ok': True, 'equipamento': eq.to_dict()}), 201
 
 
@@ -5483,18 +5646,27 @@ def api_equipamentos_acoes():
         if not alvo or not (alvo.ip or '').strip():
             return jsonify({'ok': False, 'error': 'Selecione um equipamento com IP'}), 400
         try:
-            info = cid.probe(cid.creds_from_equipamento(alvo))
-            _controlid_mark_online(alvo, True, info.get('device_id'))
-            db.session.commit()
-            return jsonify({
-                'ok': True,
-                'message': f'{alvo.nome} online (device_id={info.get("device_id") or alvo.device_id or "—"})',
-                'equipamento': alvo.to_dict(),
-            })
-        except cid.ControlIDError as exc:
+            info = cid.probe(cid.creds_from_equipamento(alvo), timeout=ONLINE_PROBE_TIMEOUT)
+        except Exception as exc:
             _controlid_mark_online(alvo, False)
             db.session.commit()
             return jsonify({'ok': False, 'error': str(exc)}), 502
+        if info.get('ok') or info.get('reachable'):
+            _controlid_mark_online(alvo, True, info.get('device_id'))
+            db.session.commit()
+            via = info.get('via') or 'tcp'
+            extra = info.get('device_id') or alvo.device_id or '—'
+            return jsonify({
+                'ok': True,
+                'message': f'{alvo.nome} online ({via}, porta {info.get("port") or 80}, device_id={extra})',
+                'equipamento': alvo.to_dict(),
+            })
+        _controlid_mark_online(alvo, False)
+        db.session.commit()
+        return jsonify({
+            'ok': False,
+            'error': info.get('error') or f'{alvo.nome} offline',
+        }), 502
 
     if acao in ('puxar_device_id', 'puxar_id'):
         if not alvo or not (alvo.ip or '').strip():
@@ -5516,6 +5688,28 @@ def api_equipamentos_acoes():
             return jsonify({'ok': False, 'error': str(exc)}), 502
 
     return jsonify({'ok': False, 'error': 'Ação desconhecida'}), 400
+
+
+@acesso.route('/acesso/api/equipamentos/status', methods=['GET', 'POST'])
+@login_required
+def api_equipamentos_status():
+    """Probe paralelo (TCP 80/443) e devolve a lista com online atualizado."""
+    seed_acesso()
+    eqs = _equipamentos_ativos_query().all()
+    alvos = [e for e in eqs if (e.ip or '').strip()]
+    global _online_probe_last
+    with _online_probe_lock:
+        if time_mod.time() - _online_probe_last > 1.5:
+            _apply_probe_results(alvos)
+            _online_probe_last = time_mod.time()
+    eqs = _equipamentos_ativos_query().all()
+    online = sum(1 for e in eqs if e.online)
+    return jsonify({
+        'ok': True,
+        'equipamentos': [e.to_dict() for e in eqs],
+        'online_count': online,
+        'offline_count': len(eqs) - online,
+    })
 
 
 @acesso.route('/acesso/api/equipamentos/atualizar-data-hora', methods=['POST'])
@@ -5648,6 +5842,8 @@ def api_equipamento_item(eid):
     for field in ('nome', 'marca', 'modelo', 'ip', 'usuario_disp', 'controle_giro', 'local'):
         if field in data:
             setattr(eq, field, (data.get(field) or '').strip() or None)
+    if 'tipo' in data:
+        eq.tipo = normalizar_tipo_equipamento(data.get('tipo'))
     if 'senha_disp' in data:
         senha = data.get('senha_disp')
         # string vazia mantém senha atual; null explícito limpa

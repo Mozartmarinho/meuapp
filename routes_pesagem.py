@@ -1,22 +1,36 @@
 """Rotas do Sistema de Controle de Pesagem."""
 from functools import wraps
 from datetime import datetime
+from pathlib import Path
 import os
 import socket
+import uuid
 
 from flask import (
     Blueprint, render_template, request, jsonify, redirect,
-    url_for, flash, session,
+    url_for, flash, session, send_file,
 )
 from sqlalchemy import func
+from werkzeug.utils import secure_filename
 
 from models import db, Usuario
-from models_pesagem import PesagemBalanca, PesagemLeitura
+from models_pesagem import PesagemBalanca, PesagemCliente, PesagemLeitura
 
 pesagem = Blueprint('pesagem', __name__, template_folder='templates_pesagem')
 
 # Token do agente local (.exe). Pode sobrescrever com PESAGEM_API_KEY no ambiente.
 PESAGEM_API_KEY = os.environ.get('PESAGEM_API_KEY', 'saogeraldo-pesagem-2025')
+_FOTO_EXTS = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'}
+_UPLOAD_CLIENTES = Path(__file__).resolve().parent / 'static' / 'uploads' / 'pesagem_clientes'
+_MAX_IMG_BYTES = 8 * 1024 * 1024
+_AGENTE_DIR = Path(__file__).resolve().parent / 'agente_pesagem'
+_AGENTE_DOWNLOAD_DIR = Path(__file__).resolve().parent / 'static' / 'downloads' / 'agente_pesagem'
+_AGENTE_DOWNLOADS = {
+    'AgentePesagem.exe': 'application/vnd.microsoft.portable-executable',
+    'config.json': 'application/json',
+    'instalar_inicio_windows.bat': 'application/x-bat',
+}
+_EXE_MIME = 'application/vnd.microsoft.portable-executable'
 
 
 def login_required(f):
@@ -32,16 +46,27 @@ def login_required(f):
 _PESAGEM_ENDPOINT_MENUS = {
     'pesagem.dashboard': 'dashboard',
     'pesagem.balancas_page': 'balancas',
+    'pesagem.clientes_page': 'clientes',
     'pesagem.auditoria': 'auditoria',
+    'pesagem.download_agente_arquivo': 'dashboard',
     'pesagem.api_listar_leituras': 'dashboard',
     'pesagem.api_balancas': 'balancas',
     'pesagem.api_balanca': 'balancas',
+    'pesagem.api_listar_clientes': 'clientes',
+    'pesagem.api_criar_cliente': 'clientes',
+    'pesagem.api_cliente': 'clientes',
 }
 
 
 @pesagem.before_request
 def _checar_permissao_menu_pesagem():
     if request.endpoint in ('pesagem.api_health', 'pesagem.api_receber_leitura'):
+        return None
+    path = (request.path or '').rstrip('/')
+    # AgentePesagem.exe: lista somente leitura do Cadastro de Cliente (pesagem_clientes)
+    if request.method == 'GET' and path == '/api/pesagem/clientes' and _check_api_key():
+        return None
+    if request.endpoint == 'pesagem.api_listar_clientes' and _check_api_key():
         return None
     if 'user_id' not in session:
         return None
@@ -63,11 +88,13 @@ def _checar_permissao_menu_pesagem():
 def _check_api_key():
     key = (
         request.headers.get('X-API-Key')
+        or request.headers.get('X-Api-Key')
         or request.headers.get('Authorization', '').replace('Bearer ', '').strip()
-        or (request.get_json(silent=True) or {}).get('api_key')
         or request.args.get('api_key')
     )
-    return key and key == PESAGEM_API_KEY
+    if not key and request.method in ('POST', 'PUT', 'PATCH'):
+        key = (request.get_json(silent=True) or {}).get('api_key')
+    return bool(key) and key == PESAGEM_API_KEY
 
 
 def api_key_required(f):
@@ -89,6 +116,128 @@ def seed_pesagem():
             ativo=True,
         ))
         db.session.commit()
+
+
+def _agente_pesagem_version() -> str:
+    src = _AGENTE_DIR / 'agente_pesagem.py'
+    try:
+        for line in src.read_text(encoding='utf-8').splitlines():
+            stripped = line.strip()
+            if stripped.startswith('APP_VERSION'):
+                return stripped.split('=', 1)[1].strip().strip('\'"')
+    except OSError:
+        pass
+    return '1.2.0'
+
+
+def _agente_exe_download_name() -> str:
+    return f'AgentePesagem-{_agente_pesagem_version()}.exe'
+
+
+@pesagem.route('/pesagem/download/<path:nome>')
+@login_required
+def download_agente_arquivo(nome):
+    """Serve o .exe/.json/.bat publicados por build_exe.bat, sem cache do navegador."""
+    nome = Path(nome).name
+    versioned_exe = _agente_exe_download_name()
+    if nome in ('AgentePesagem.exe', versioned_exe):
+        mime = _EXE_MIME
+        path_versioned = _AGENTE_DOWNLOAD_DIR / versioned_exe
+        path_plain = _AGENTE_DOWNLOAD_DIR / 'AgentePesagem.exe'
+        path = path_versioned if path_versioned.is_file() else path_plain
+        download_name = versioned_exe
+    else:
+        mime = _AGENTE_DOWNLOADS.get(nome)
+        path = _AGENTE_DOWNLOAD_DIR / nome
+        download_name = nome
+    if not mime:
+        return 'Arquivo não permitido.', 404
+    if not path.is_file():
+        return (
+            f'{nome} não encontrado. Gere com agente_pesagem/build_exe.bat.',
+            404,
+        )
+    resp = send_file(
+        path,
+        as_attachment=True,
+        download_name=download_name,
+        mimetype=mime,
+        conditional=False,
+        etag=False,
+        max_age=0,
+    )
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '0'
+    resp.headers['Content-Disposition'] = f'attachment; filename="{download_name}"'
+    return resp
+
+
+def _imagem_url_cliente(cliente):
+    """URL da foto do Cadastro de Cliente (pesagem). Relativa para o agente prefixar o servidor."""
+    if not cliente or not cliente.imagem_path:
+        return ''
+    rel = str(cliente.imagem_path).replace('\\', '/').lstrip('/')
+    if not rel.startswith('uploads/pesagem_clientes/'):
+        return ''
+    return f'/static/{rel}'
+
+
+def _cliente_to_dict(cliente):
+    return cliente.to_dict(imagem_url=_imagem_url_cliente(cliente))
+
+
+def _apagar_arquivo_cliente(rel_path):
+    if not rel_path:
+        return
+    rel = str(rel_path).replace('\\', '/').lstrip('/')
+    if not rel.startswith('uploads/pesagem_clientes/'):
+        return
+    dest = Path(__file__).resolve().parent / 'static' / rel
+    try:
+        if dest.is_file():
+            dest.unlink()
+    except OSError:
+        pass
+
+
+def _salvar_imagem_cliente(upload, cliente_id):
+    if not upload or not getattr(upload, 'filename', None):
+        return None
+    original = secure_filename(upload.filename or '')
+    if not original:
+        return None
+    ext = Path(original).suffix.lower()
+    if ext not in _FOTO_EXTS:
+        raise ValueError('Use uma imagem JPG, PNG, WEBP, GIF ou BMP.')
+    upload.stream.seek(0, os.SEEK_END)
+    size = upload.stream.tell()
+    upload.stream.seek(0)
+    if size > _MAX_IMG_BYTES:
+        raise ValueError('Imagem maior que 8 MB.')
+    _UPLOAD_CLIENTES.mkdir(parents=True, exist_ok=True)
+    fname = f'cli_{int(cliente_id)}_{uuid.uuid4().hex[:10]}{ext}'
+    dest = _UPLOAD_CLIENTES / fname
+    upload.save(str(dest))
+    return f'uploads/pesagem_clientes/{fname}'
+
+
+def _resolver_cliente_leitura(d):
+    """Aceita cliente_id / cliente_nome do agente sem alterar o peso."""
+    cliente_id = None
+    raw_id = d.get('cliente_id')
+    if raw_id not in (None, '', 0, '0'):
+        try:
+            cliente_id = int(raw_id)
+        except (TypeError, ValueError):
+            cliente_id = None
+    nome = (d.get('cliente_nome') or d.get('cliente') or '').strip()[:120] or None
+    if cliente_id:
+        cli = PesagemCliente.query.get(cliente_id)
+        if cli:
+            return cli.id, nome or cli.nome
+        return None, nome
+    return None, nome
 
 
 def _parse_float(value):
@@ -133,6 +282,7 @@ def dashboard():
         ultima=ultima.to_dict() if ultima else None,
         api_key=PESAGEM_API_KEY,
         server_hint=request.host_url.rstrip('/'),
+        agente_versao=_agente_pesagem_version(),
         **{'active_page': 'dashboard'},
     )
 
@@ -146,6 +296,17 @@ def balancas_page():
         'pesagem_balancas.html',
         balancas=[b.to_dict() for b in balancas],
         **{'active_page': 'balancas'},
+    )
+
+
+@pesagem.route('/pesagem/clientes')
+@login_required
+def clientes_page():
+    clientes = PesagemCliente.query.order_by(PesagemCliente.nome).all()
+    return render_template(
+        'pesagem_clientes.html',
+        clientes=[_cliente_to_dict(c) for c in clientes],
+        **{'active_page': 'clientes'},
     )
 
 
@@ -240,6 +401,8 @@ def api_receber_leitura():
         if d.get('porta_com'):
             balanca.porta_com = str(d.get('porta_com'))[:20]
 
+    cliente_id, cliente_nome = _resolver_cliente_leitura(d)
+
     leitura = PesagemLeitura(
         balanca_id=balanca.id,
         balanca_codigo=codigo,
@@ -251,6 +414,8 @@ def api_receber_leitura():
         computador=(d.get('computador') or '')[:120] or None,
         porta_com=(d.get('porta_com') or '')[:20] or None,
         observacao=(d.get('observacao') or '')[:255] or None,
+        cliente_id=cliente_id,
+        cliente_nome=cliente_nome,
         data_leitura=datetime.utcnow(),
     )
     db.session.add(leitura)
@@ -332,3 +497,74 @@ def api_balanca(bid):
         b.ativo = bool(d.get('ativo'))
     db.session.commit()
     return jsonify({'ok': True, 'balanca': b.to_dict()})
+
+
+@pesagem.route('/api/pesagem/clientes', methods=['GET'])
+def api_listar_clientes():
+    """Lista o Cadastro de Cliente da pesagem (tabela pesagem_clientes), não os clientes de Chamados.
+
+    AgentePesagem.exe autentica com X-API-Key; a tela web usa a sessão.
+    """
+    if not _check_api_key() and 'user_id' not in session:
+        return jsonify({'ok': False, 'error': 'Não autorizado'}), 401
+    rows = PesagemCliente.query.order_by(PesagemCliente.nome).all()
+    return jsonify({'ok': True, 'clientes': [_cliente_to_dict(c) for c in rows]})
+
+
+@pesagem.route('/api/pesagem/clientes', methods=['POST'])
+@login_required
+def api_criar_cliente():
+    nome = (request.form.get('nome') or '').strip()
+    if not nome and request.is_json:
+        nome = ((request.get_json(silent=True) or {}).get('nome') or '').strip()
+    if not nome:
+        return jsonify({'ok': False, 'error': 'Nome do cliente é obrigatório'}), 400
+    c = PesagemCliente(nome=nome[:120])
+    db.session.add(c)
+    db.session.flush()
+    try:
+        path = _salvar_imagem_cliente(request.files.get('imagem'), c.id)
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+    if path:
+        c.imagem_path = path
+    db.session.commit()
+    return jsonify({'ok': True, 'cliente': _cliente_to_dict(c)})
+
+
+@pesagem.route('/api/pesagem/clientes/<int:cid>', methods=['PUT', 'DELETE'])
+@login_required
+def api_cliente(cid):
+    c = PesagemCliente.query.get(cid)
+    if not c:
+        return jsonify({'ok': False, 'error': 'Cliente não encontrado'}), 404
+
+    if request.method == 'DELETE':
+        PesagemLeitura.query.filter_by(cliente_id=c.id).update(
+            {PesagemLeitura.cliente_id: None}, synchronize_session=False
+        )
+        _apagar_arquivo_cliente(c.imagem_path)
+        db.session.delete(c)
+        db.session.commit()
+        return jsonify({'ok': True})
+
+    nome = (request.form.get('nome') or '').strip()
+    if not nome and request.is_json:
+        nome = ((request.get_json(silent=True) or {}).get('nome') or '').strip()
+    if not nome:
+        nome = (c.nome or '').strip()
+    if not nome:
+        return jsonify({'ok': False, 'error': 'Nome do cliente é obrigatório'}), 400
+    c.nome = nome[:120]
+    upload = request.files.get('imagem')
+    if upload and getattr(upload, 'filename', None):
+        try:
+            path = _salvar_imagem_cliente(upload, c.id)
+        except ValueError as exc:
+            return jsonify({'ok': False, 'error': str(exc)}), 400
+        if path:
+            _apagar_arquivo_cliente(c.imagem_path)
+            c.imagem_path = path
+    db.session.commit()
+    return jsonify({'ok': True, 'cliente': _cliente_to_dict(c)})

@@ -154,11 +154,38 @@ acesso_grupo_equipamentos = db.Table(
 )
 
 
+TIPOS_EQUIPAMENTO = ('catraca', 'controlador', 'terminal')
+TIPOS_EQUIPAMENTO_LABEL = {
+    'catraca': 'Catraca',
+    'controlador': 'Controlador',
+    'terminal': 'Terminal',
+}
+
+
+def normalizar_tipo_equipamento(value, default='catraca'):
+    raw = (value or '').strip().lower()
+    aliases = {
+        'catraca': 'catraca',
+        'torniquete': 'catraca',
+        'idblock': 'catraca',
+        'controlador': 'controlador',
+        'controller': 'controlador',
+        'terminal': 'terminal',
+        'leitor': 'terminal',
+        'idface': 'terminal',
+        'idflex': 'terminal',
+    }
+    if raw in TIPOS_EQUIPAMENTO:
+        return raw
+    return aliases.get(raw, default if default in TIPOS_EQUIPAMENTO else 'catraca')
+
+
 class AcessoEquipamento(db.Model):
     __tablename__ = 'acesso_equipamentos'
 
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
+    tipo = db.Column(db.String(40), default='catraca')  # catraca | controlador | terminal
     marca = db.Column(db.String(80), default='Control iD')
     modelo = db.Column(db.String(80), default='iDFace')
     ip = db.Column(db.String(45))
@@ -178,10 +205,16 @@ class AcessoEquipamento(db.Model):
         back_populates='equipamentos',
     )
 
+    def tipo_norm(self):
+        return normalizar_tipo_equipamento(self.tipo)
+
     def to_dict(self, incluir_senha=False):
+        tipo = self.tipo_norm()
         d = {
             'id': self.id,
             'nome': self.nome,
+            'tipo': tipo,
+            'tipo_label': TIPOS_EQUIPAMENTO_LABEL.get(tipo, 'Catraca'),
             'marca': self.marca or '',
             'modelo': self.modelo or '',
             'ip': self.ip or '',

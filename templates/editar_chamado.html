@@ -3,121 +3,205 @@
 {% block title %}Editar Chamado - São Geraldo Service{% endblock %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-    <h1 style="color: var(--gray-800);">Editar Chamado - {{ chamado.numero_chamado }}</h1>
-    <a href="{{ url_for('main.listar_chamados') }}" class="btn" style="background-color: var(--gray-300); color: var(--gray-800);">
-        <i class="fas fa-arrow-left"></i> Voltar
-    </a>
-</div>
+<div class="editar-chamado-page">
+    <div class="ec-header">
+        <h1>Editar Chamado - {{ chamado.numero_chamado }}</h1>
+        <a href="{{ url_for('main.listar_chamados') }}" class="btn ec-btn-muted">
+            <i class="fas fa-arrow-left"></i> Voltar
+        </a>
+    </div>
 
-<div class="form-container">
-    <form method="POST" action="{{ url_for('main.editar_chamado', id=chamado.id) }}">
-        <div class="form-group">
-            <label for="numero_chamado">Número do Chamado</label>
-            <input type="text" id="numero_chamado" value="{{ chamado.numero_chamado }}" readonly style="background-color: var(--gray-100);">
-        </div>
+    <div class="form-container">
+        <form method="POST" action="{{ url_for('main.editar_chamado', id=chamado.id) }}">
+            <div class="form-group">
+                <label for="numero_chamado">Número do Chamado</label>
+                <input type="text" id="numero_chamado" value="{{ chamado.numero_chamado }}" readonly>
+            </div>
 
-        <div class="form-group">
-            <label for="cliente_id">Cliente *</label>
-            <select id="cliente_id" name="cliente_id" required>
-                <option value="">Selecione um cliente...</option>
-                {% for cliente in clientes %}
-                <option value="{{ cliente.id }}" {% if cliente.id == chamado.cliente_id %}selected{% endif %}>{{ cliente.nome }}</option>
-                {% endfor %}
-            </select>
-        </div>
-
-        <div class="form-group">
-            <label for="patrimonio">Patrimônio</label>
-            <select id="patrimonio" name="patrimonio" disabled>
-                <option value="">Selecione um cliente primeiro</option>
-            </select>
-            <input type="hidden" id="equipamento_id" name="equipamento_id" value="{{ chamado.equipamento_id or '' }}">
-        </div>
-
-        <div class="form-group">
-            <label for="equipamento">Equipamento</label>
-            <input type="text" id="equipamento" name="equipamento" value="{{ chamado.equipamento or '' }}" readonly placeholder="Nome preenchido pelo patrimônio" style="background-color: var(--gray-100);">
-        </div>
-
-        <div class="form-group">
-            <label for="tipo_servico">Tipo de Serviço *</label>
-            <select id="tipo_servico" name="tipo_servico" required>
-                <option value="">Selecione...</option>
-                <option value="Manutenção" {% if chamado.tipo_servico == 'Manutenção' %}selected{% endif %}>Manutenção</option>
-                <option value="Instalação" {% if chamado.tipo_servico == 'Instalação' %}selected{% endif %}>Instalação</option>
-                <option value="Reparo" {% if chamado.tipo_servico == 'Reparo' %}selected{% endif %}>Reparo</option>
-                <option value="Configuração" {% if chamado.tipo_servico == 'Configuração' %}selected{% endif %}>Configuração</option>
-                <option value="Outro" {% if chamado.tipo_servico == 'Outro' %}selected{% endif %}>Outro</option>
-            </select>
-        </div>
-
-        <div class="form-group">
-            <label for="descricao">Descrição *</label>
-            <textarea id="descricao" name="descricao" rows="4" required>{{ chamado.descricao }}</textarea>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-<div class="form-group">
-                <label for="status">Status</label>
-                <select id="status" name="status">
-                    <option value="Pendente" {% if chamado.status == 'Pendente' %}selected{% endif %}>Pendente</option>
-                    <option value="Em Andamento" {% if chamado.status == 'Em Andamento' %}selected{% endif %}>Em Andamento</option>
-                    <option value="Aguardar peça" {% if chamado.status == 'Aguardar peça' %}selected{% endif %}>Aguardar peça</option>
-                    <option value="Encaminhado" {% if chamado.status == 'Encaminhado' %}selected{% endif %}>Encaminhado</option>
-                    <option value="Atendido" {% if chamado.status == 'Atendido' %}selected{% endif %}>Atendido</option>
-                    <option value="Concluído" {% if chamado.status == 'Concluído' %}selected{% endif %}>Concluído</option>
+            <div class="form-group">
+                <label for="cliente_id">Cliente *</label>
+                <select id="cliente_id" name="cliente_id" required>
+                    <option value="">Selecione um cliente...</option>
+                    {% for cliente in clientes %}
+                    <option value="{{ cliente.id }}" {% if cliente.id == chamado.cliente_id %}selected{% endif %}>{{ cliente.nome }}</option>
+                    {% endfor %}
                 </select>
             </div>
 
             <div class="form-group">
-                <label for="prioridade">Prioridade</label>
-                <select id="prioridade" name="prioridade">
-                    <option value="Normal" {% if chamado.prioridade == 'Normal' %}selected{% endif %}>Normal</option>
-                    <option value="Média" {% if chamado.prioridade == 'Média' %}selected{% endif %}>Média</option>
-                    <option value="Alta" {% if chamado.prioridade == 'Alta' %}selected{% endif %}>Alta</option>
+                <label for="patrimonio">Patrimônio</label>
+                <select id="patrimonio" name="patrimonio" disabled>
+                    <option value="">Selecione um cliente primeiro</option>
+                </select>
+                <input type="hidden" id="equipamento_id" name="equipamento_id" value="{{ chamado.equipamento_id or '' }}">
+            </div>
+
+            <div class="form-group">
+                <label for="equipamento">Equipamento</label>
+                <input type="text" id="equipamento" name="equipamento" value="{{ chamado.equipamento or '' }}" readonly placeholder="Nome preenchido pelo patrimônio">
+            </div>
+
+            <div class="form-group">
+                <label for="tipo_servico">Tipo de Serviço *</label>
+                <select id="tipo_servico" name="tipo_servico" required>
+                    <option value="">Selecione...</option>
+                    <option value="Manutenção" {% if chamado.tipo_servico == 'Manutenção' %}selected{% endif %}>Manutenção</option>
+                    <option value="Instalação" {% if chamado.tipo_servico == 'Instalação' %}selected{% endif %}>Instalação</option>
+                    <option value="Reparo" {% if chamado.tipo_servico == 'Reparo' %}selected{% endif %}>Reparo</option>
+                    <option value="Configuração" {% if chamado.tipo_servico == 'Configuração' %}selected{% endif %}>Configuração</option>
+                    <option value="Outro" {% if chamado.tipo_servico == 'Outro' %}selected{% endif %}>Outro</option>
                 </select>
             </div>
-        </div>
 
-        <div class="form-group">
-            <label for="observacoes">Observações</label>
-            <textarea id="observacoes" name="observacoes" rows="3">{{ chamado.observacoes if chamado.observacoes else '' }}</textarea>
-        </div>
+            <div class="form-group">
+                <label for="descricao">Descrição *</label>
+                <textarea id="descricao" name="descricao" rows="4" required>{{ chamado.descricao }}</textarea>
+            </div>
 
-        <!-- Informações do chamado -->
-        <div style="background-color: var(--gray-100); padding: 1rem; border-radius: 0.375rem; margin: 1.5rem 0;">
-            <h4 style="margin-bottom: 0.5rem; color: var(--gray-800);">Informações do Chamado</h4>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; font-size: 0.875rem;">
-                <div>
-                    <strong>Data de Criação:</strong><br>
-                    {{ chamado.data_criacao.strftime('%d/%m/%Y %H:%M') if chamado.data_criacao else '-' }}
+            <div class="ec-row">
+                <div class="form-group">
+                    <label for="status">Status</label>
+                    <select id="status" name="status">
+                        <option value="Pendente" {% if chamado.status == 'Pendente' %}selected{% endif %}>Pendente</option>
+                        <option value="Em Andamento" {% if chamado.status == 'Em Andamento' %}selected{% endif %}>Em Andamento</option>
+                        <option value="Aguardar peça" {% if chamado.status == 'Aguardar peça' %}selected{% endif %}>Aguardar peça</option>
+                        <option value="Encaminhado" {% if chamado.status == 'Encaminhado' %}selected{% endif %}>Encaminhado</option>
+                        <option value="Atendido" {% if chamado.status == 'Atendido' %}selected{% endif %}>Atendido</option>
+                        <option value="Concluído" {% if chamado.status == 'Concluído' %}selected{% endif %}>Concluído</option>
+                    </select>
                 </div>
-                {% if chamado.data_conclusao %}
-                <div>
-                    <strong>Data de Conclusão:</strong><br>
-                    {{ chamado.data_conclusao.strftime('%d/%m/%Y %H:%M') }}
-                </div>
- {% endif %}
-                <div>
-                    <strong>Status Atual:</strong><br>
-                    <span class="status-badge status-{{ chamado.status.lower().replace(' ', '') }}">
-                        {{ chamado.status }}
-                    </span>
+
+                <div class="form-group">
+                    <label for="prioridade">Prioridade</label>
+                    <select id="prioridade" name="prioridade">
+                        <option value="Normal" {% if chamado.prioridade == 'Normal' %}selected{% endif %}>Normal</option>
+                        <option value="Média" {% if chamado.prioridade == 'Média' %}selected{% endif %}>Média</option>
+                        <option value="Alta" {% if chamado.prioridade == 'Alta' %}selected{% endif %}>Alta</option>
+                    </select>
                 </div>
             </div>
-        </div>
 
-        <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem;">
-            <a href="{{ url_for('main.listar_chamados') }}" class="btn" style="background-color: var(--gray-300); color: var(--gray-800);">
-                <i class="fas fa-times"></i> Cancelar
-            </a>
-            <button type="submit" class="btn btn-success">
-                <i class="fas fa-save"></i> Salvar Alterações
-            </button>
-        </div>
-    </form>
+            <div class="form-group">
+                <label for="observacoes">Observações</label>
+                <textarea id="observacoes" name="observacoes" rows="3">{{ chamado.observacoes if chamado.observacoes else '' }}</textarea>
+            </div>
+
+            <!-- Informações do chamado -->
+            <div class="ec-info">
+                <h4>Informações do Chamado</h4>
+                <div class="ec-info-grid">
+                    <div>
+                        <strong>Data de Criação:</strong><br>
+                        {{ chamado.data_criacao.strftime('%d/%m/%Y %H:%M') if chamado.data_criacao else '-' }}
+                    </div>
+                    {% if chamado.data_conclusao %}
+                    <div>
+                        <strong>Data de Conclusão:</strong><br>
+                        {{ chamado.data_conclusao.strftime('%d/%m/%Y %H:%M') }}
+                    </div>
+                    {% endif %}
+                    <div>
+                        <strong>Status Atual:</strong><br>
+                        <span class="status-badge status-{{ chamado.status.lower().replace(' ', '') }}">
+                            {{ chamado.status }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ec-actions">
+                <a href="{{ url_for('main.listar_chamados') }}" class="btn ec-btn-muted">
+                    <i class="fas fa-times"></i> Cancelar
+                </a>
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-save"></i> Salvar Alterações
+                </button>
+            </div>
+        </form>
+    </div>
 </div>
+
+<style>
+.editar-chamado-page { font-size: 0.7rem; }
+.editar-chamado-page .ec-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.4rem;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+}
+.editar-chamado-page .ec-header h1 {
+    color: var(--gray-800);
+    font-size: 1.4rem;
+    font-weight: 700;
+    line-height: 1.2;
+    margin: 0;
+}
+.editar-chamado-page .form-container {
+    padding: 1.05rem;
+    max-width: 560px;
+    border-radius: 0.35rem;
+}
+.editar-chamado-page .form-group { margin-bottom: 0.88rem; }
+.editar-chamado-page label {
+    font-size: 0.7rem;
+    margin-bottom: 0.32rem;
+}
+.editar-chamado-page input[type="text"],
+.editar-chamado-page select,
+.editar-chamado-page textarea {
+    padding: 0.53rem;
+    font-size: 0.7rem;
+    border-radius: 0.26rem;
+    line-height: 1.35;
+}
+.editar-chamado-page textarea { min-height: 0; }
+.editar-chamado-page input[readonly] { background-color: var(--gray-100); }
+.editar-chamado-page .btn {
+    gap: 0.28rem;
+    padding: 0.49rem 0.88rem;
+    font-size: 0.67rem;
+    border-radius: 0.26rem;
+}
+.editar-chamado-page .ec-btn-muted {
+    background-color: var(--gray-300);
+    color: var(--gray-800);
+}
+.editar-chamado-page .ec-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.7rem;
+}
+.editar-chamado-page .ec-info {
+    background-color: var(--gray-100);
+    padding: 0.7rem;
+    border-radius: 0.26rem;
+    margin: 1.05rem 0;
+}
+.editar-chamado-page .ec-info h4 {
+    margin-bottom: 0.35rem;
+    color: var(--gray-800);
+    font-size: 0.93rem;
+}
+.editar-chamado-page .ec-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.7rem;
+    font-size: 0.61rem;
+}
+.editar-chamado-page .status-badge {
+    padding: 0.18rem 0.53rem;
+    font-size: 0.61rem;
+}
+.editar-chamado-page .ec-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.7rem;
+    margin-top: 1.4rem;
+    flex-wrap: wrap;
+}
+</style>
 {% endblock %}
 
 {% block scripts %}

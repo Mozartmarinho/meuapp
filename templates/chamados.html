@@ -73,12 +73,17 @@
             <input type="hidden" name="acao" id="at_acao" value="salvar">
             <div class="modal-body">
                 <p class="at-meta" id="atMeta">—</p>
+                <div class="at-origem" id="atOrigemBox" hidden>
+                    <p class="at-origem-line" id="atOrigemTexto"></p>
+                    <p class="at-origem-label">O que precisa fazer</p>
+                    <p class="at-origem-inst" id="atOrigemInstrucoes"></p>
+                </div>
                 <div class="form-group">
                     <label for="at_notas">O que foi consertado</label>
                     <textarea id="at_notas" name="atendimento_notas" rows="3" placeholder="Descreva o serviço realizado"></textarea>
                 </div>
                 <div class="form-group">
-                    <label for="at_fotos">Foto</label>
+                    <label for="at_fotos">Foto do serviço</label>
                     <input type="file" id="at_fotos" name="fotos" accept="image/*" multiple>
                     <div class="at-fotos" id="atFotosExistentes"></div>
                 </div>
@@ -87,7 +92,7 @@
                         <input type="checkbox" id="at_aguardar_peca" name="aguardar_peca" value="1">
                         Aguardar peça
                     </label>
-                    <span class="at-hint">Marque se o serviço depende de peça.</span>
+                    <span class="at-hint">Marque para encaminhar automaticamente para Compras.</span>
                 </div>
                 <div class="form-group">
                     <label for="at_status">Status</label>
@@ -96,12 +101,13 @@
                         <option value="Em Andamento">Em Andamento</option>
                         <option value="Aguardar peça">Aguardar peça</option>
                         <option value="Encaminhado">Encaminhado</option>
+                        <option value="Devolvido">Devolvido</option>
                         <option value="Atendido">Atendido</option>
                         <option value="Concluído">Concluído</option>
                     </select>
                 </div>
                 <div class="at-encaminhar">
-                    <p class="at-enc-title">Encaminhar para outro setor</p>
+                    <p class="at-enc-title" id="atEncTitle">Encaminhar para outro setor</p>
                     <div class="form-group">
                         <label for="at_setor">Setor</label>
                         <select id="at_setor" name="setor_destino">
@@ -187,6 +193,7 @@
 .status-atendido { color: #0d9488; font-weight: 700; }
 .status-aguardar-peca { color: #c05621; font-weight: 700; }
 .status-encaminhado { color: #6f42c1; font-weight: 700; }
+.status-devolvido { color: #0369a1; font-weight: 700; }
 .priority-alta { color: #dc3545; font-weight: 700; }
 .priority-normal, .priority-media { color: #6c757d; }
 .priority-baixa { color: #28a745; }
@@ -241,6 +248,16 @@
 }
 .btn-finalizar:hover { background-color: #0f766e; }
 .at-meta { margin: 0 0 0.5rem; color: var(--gray-600); font-size: 0.76rem; }
+.at-origem {
+    border: 1px solid #c4b5fd;
+    background: #f5f3ff;
+    border-radius: 0.35rem;
+    padding: 0.45rem 0.55rem;
+    margin: 0 0 0.55rem;
+}
+.at-origem-line { margin: 0 0 0.28rem; font-size: 0.72rem; font-weight: 700; color: #5b21b6; }
+.at-origem-label { margin: 0; font-size: 0.64rem; color: var(--gray-600); font-weight: 700; }
+.at-origem-inst { margin: 0.1rem 0 0; font-size: 0.74rem; color: var(--gray-800); white-space: pre-wrap; }
 .at-check label { display: flex; align-items: center; gap: 0.4rem; font-weight: 700; }
 .at-check input { width: auto; }
 .at-hint { display: block; color: var(--gray-600); font-size: 0.68rem; margin-top: 0.15rem; }
@@ -311,6 +328,9 @@ body.modal-open { overflow: hidden; }
     let fotosEncPendentes = [];
     let fotosEncSalvas = [];
     let fotosEncUrls = [];
+    let podeDevolver = false;
+    let setorDevolver = '';
+    let instrucoesOrigem = '';
 
     function abrirModal() {
         overlay.hidden = false;
@@ -332,9 +352,16 @@ body.modal-open { overflow: hidden; }
         overlay.hidden = true;
         document.body.classList.remove('modal-open');
         chamadoId = null;
+        podeDevolver = false;
+        setorDevolver = '';
+        instrucoesOrigem = '';
         form.reset();
         document.getElementById('atFotosExistentes').innerHTML = '';
+        const origemBox = document.getElementById('atOrigemBox');
+        if (origemBox) origemBox.hidden = true;
         limparFotosEnc();
+        if (btnEncaminhar) btnEncaminhar.innerHTML = '<i class="fas fa-share"></i> Encaminhar';
+        if (btnFinalizar) btnFinalizar.innerHTML = '<i class="fas fa-check-circle"></i> Finalizar chamado';
     }
     function arquivoIgual(a, b) {
         return a && b && a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
@@ -398,17 +425,75 @@ body.modal-open { overflow: hidden; }
         return todos;
     }
 
+    function temFotoServico() {
+        const input = document.getElementById('at_fotos');
+        return !!(input && input.files && input.files.length);
+    }
+
+    function atualizarAcoes() {
+        const peca = document.getElementById('at_aguardar_peca').checked;
+        const encTitle = document.getElementById('atEncTitle');
+        if (peca) {
+            document.getElementById('at_status').value = 'Aguardar peça';
+            document.getElementById('at_setor').value = 'Compras';
+            btnEncaminhar.innerHTML = '<i class="fas fa-share"></i> Encaminhar para Compras';
+            if (encTitle) encTitle.textContent = 'Encaminhar para Compras';
+            if (podeDevolver && !(document.getElementById('at_instrucoes').value || '').trim()) {
+                document.getElementById('at_instrucoes').value = instrucoesOrigem || 'Aguardar peça';
+            }
+        } else {
+            btnEncaminhar.innerHTML = '<i class="fas fa-share"></i> Encaminhar';
+            if (encTitle) encTitle.textContent = 'Encaminhar para outro setor';
+            if (podeDevolver && document.getElementById('at_setor').value === 'Compras') {
+                document.getElementById('at_setor').value = '';
+            }
+        }
+        if (btnFinalizar) {
+            if (podeDevolver) {
+                const dest = setorDevolver || 'setor de origem';
+                btnFinalizar.innerHTML = '<i class="fas fa-undo"></i> Atendido e devolver para ' + dest;
+            } else {
+                btnFinalizar.innerHTML = '<i class="fas fa-check-circle"></i> Finalizar chamado';
+            }
+        }
+    }
+
     function preencher(data) {
         chamadoId = data.id;
+        podeDevolver = !!data.pode_devolver;
+        setorDevolver = data.setor_devolver || data.setor_origem || '';
+        instrucoesOrigem = data.encaminhamento_instrucoes || '';
         form.action = '/api/chamados/' + data.id + '/atender';
         document.getElementById('atModalTitle').textContent = 'Atender ' + (data.numero_chamado || '');
         document.getElementById('atMeta').textContent =
             (data.cliente || 'N/A') + ' · Status atual: ' + (data.status || '—');
+        const origemBox = document.getElementById('atOrigemBox');
+        const origemTxt = document.getElementById('atOrigemTexto');
+        const origemInst = document.getElementById('atOrigemInstrucoes');
+        if (origemBox) {
+            const deQuem = data.encaminhado_por || '';
+            const deSetor = data.encaminhado_por_setor || data.setor_origem || '';
+            if (podeDevolver && (deQuem || deSetor || instrucoesOrigem)) {
+                origemBox.hidden = false;
+                let linha = 'Encaminhado';
+                if (deQuem) linha += ' por ' + deQuem;
+                if (deSetor) linha += ' (' + deSetor + ')';
+                origemTxt.textContent = linha;
+                origemInst.textContent = instrucoesOrigem || '—';
+            } else {
+                origemBox.hidden = true;
+            }
+        }
         document.getElementById('at_notas').value = data.atendimento_notas || '';
         document.getElementById('at_status').value = data.status || 'Em Andamento';
         document.getElementById('at_aguardar_peca').checked = data.status === 'Aguardar peça';
-        document.getElementById('at_setor').value = data.setor_destino || '';
-        document.getElementById('at_instrucoes').value = data.encaminhamento_instrucoes || '';
+        if (podeDevolver) {
+            document.getElementById('at_setor').value = '';
+            document.getElementById('at_instrucoes').value = '';
+        } else {
+            document.getElementById('at_setor').value = data.setor_destino || '';
+            document.getElementById('at_instrucoes').value = instrucoesOrigem;
+        }
         const box = document.getElementById('atFotosExistentes');
         box.innerHTML = '';
         (data.fotos || []).forEach(function (foto) {
@@ -420,6 +505,7 @@ body.modal-open { overflow: hidden; }
         fotosEncPendentes = [];
         fotosEncSalvas = data.fotos_encaminhamento || [];
         renderFotosEnc();
+        atualizarAcoes();
     }
 
     function carregar(id) {
@@ -455,16 +541,22 @@ body.modal-open { overflow: hidden; }
     });
 
     document.getElementById('at_aguardar_peca').addEventListener('change', function () {
-        if (this.checked) document.getElementById('at_status').value = 'Aguardar peça';
+        atualizarAcoes();
     });
     document.getElementById('at_status').addEventListener('change', function () {
         document.getElementById('at_aguardar_peca').checked = this.value === 'Aguardar peça';
+        atualizarAcoes();
     });
     document.getElementById('btnVincularFotoEnc').addEventListener('click', vincularFotosEnc);
 
     form.addEventListener('submit', function (e) {
         e.preventDefault();
         const acao = (e.submitter && e.submitter.getAttribute('data-acao')) || 'salvar';
+        const peca = document.getElementById('at_aguardar_peca').checked;
+        const notas = (document.getElementById('at_notas').value || '').trim();
+        if (peca && acao === 'encaminhar') {
+            document.getElementById('at_setor').value = 'Compras';
+        }
         if (acao === 'encaminhar') {
             if (!document.getElementById('at_setor').value) {
                 alert('Selecione o setor para encaminhar.');
@@ -474,18 +566,39 @@ body.modal-open { overflow: hidden; }
                 alert('Informe o que precisa fazer.');
                 return;
             }
+            if (podeDevolver && peca) {
+                if (!notas) {
+                    alert('Informe o que foi consertado.');
+                    return;
+                }
+                if (!temFotoServico()) {
+                    alert('Anexe a foto do serviço realizado.');
+                    return;
+                }
+            }
+        }
+        if (acao === 'finalizar' && podeDevolver) {
+            if (!notas) {
+                alert('Informe o que foi consertado.');
+                return;
+            }
+            if (!temFotoServico()) {
+                alert('Anexe a foto do serviço realizado.');
+                return;
+            }
         }
         acaoInput.value = acao;
         btnGravar.disabled = true;
         btnEncaminhar.disabled = true;
         if (btnFinalizar) btnFinalizar.disabled = true;
-        if (acao === 'finalizar') {
+        if (acao === 'finalizar' && !podeDevolver) {
             document.getElementById('at_status').value = 'Atendido';
             document.getElementById('at_aguardar_peca').checked = false;
         }
         const fd = new FormData(form);
         fd.set('acao', acao);
-        if (acao === 'finalizar') fd.set('status', 'Atendido');
+        if (peca && acao === 'encaminhar') fd.set('setor_destino', 'Compras');
+        if (acao === 'finalizar' && !podeDevolver) fd.set('status', 'Atendido');
         fd.delete('fotos_encaminhar');
         coletarFotosEncaminhar().forEach(function (arquivo) {
             fd.append('fotos_encaminhar', arquivo);

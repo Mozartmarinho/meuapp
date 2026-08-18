@@ -145,9 +145,18 @@ def ensure_usuarios_schema():
                 db.session.commit()
                 cols.add(col)
         if 'setor' not in cols:
-            db.session.execute(text('ALTER TABLE usuarios ADD COLUMN setor VARCHAR(40) NULL'))
+            db.session.execute(text('ALTER TABLE usuarios ADD COLUMN setor VARCHAR(80) NULL'))
             db.session.commit()
             cols.add('setor')
+        if 'setor_nutricao' not in cols:
+            db.session.execute(text('ALTER TABLE usuarios ADD COLUMN setor_nutricao VARCHAR(80) NULL'))
+            db.session.commit()
+            cols.add('setor_nutricao')
+        try:
+            db.session.execute(text('ALTER TABLE usuarios MODIFY COLUMN setor VARCHAR(80) NULL'))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
         # Índice único em usuario (ignora se já existir)
         try:
             db.session.execute(text('CREATE UNIQUE INDEX uq_usuarios_usuario ON usuarios (usuario)'))
@@ -178,6 +187,7 @@ def ensure_chamados_schema():
         extras = {
             'atendimento_notas': 'TEXT NULL',
             'setor_destino': 'VARCHAR(40) NULL',
+            'setor_origem': 'VARCHAR(40) NULL',
             'encaminhamento_instrucoes': 'TEXT NULL',
             'encaminhado_por_id': 'INT NULL',
             'encaminhado_em': 'DATETIME NULL',
@@ -191,6 +201,16 @@ def ensure_chamados_schema():
                 cols.add(col)
         try:
             db.session.execute(text('ALTER TABLE chamados MODIFY COLUMN status VARCHAR(40) NULL'))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        try:
+            db.session.execute(text('ALTER TABLE chamados MODIFY COLUMN setor_destino VARCHAR(80) NULL'))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        try:
+            db.session.execute(text('ALTER TABLE chamados MODIFY COLUMN setor_origem VARCHAR(80) NULL'))
             db.session.commit()
         except Exception:
             db.session.rollback()
@@ -322,6 +342,60 @@ def ensure_clientes_schema():
         db.session.rollback()
 
 
+def ensure_pesagem_schema():
+    """Garante tabela pesagem_clientes e colunas de cliente nas leituras."""
+    from sqlalchemy import inspect, text
+    try:
+        insp = inspect(db.engine)
+        tables = set(insp.get_table_names())
+        if 'pesagem_leituras' not in tables:
+            return
+        cols = {c['name'] for c in insp.get_columns('pesagem_leituras')}
+        if 'cliente_id' not in cols:
+            db.session.execute(text('ALTER TABLE pesagem_leituras ADD COLUMN cliente_id INT NULL'))
+            db.session.commit()
+            cols.add('cliente_id')
+        if 'cliente_nome' not in cols:
+            db.session.execute(text('ALTER TABLE pesagem_leituras ADD COLUMN cliente_nome VARCHAR(120) NULL'))
+            db.session.commit()
+            cols.add('cliente_nome')
+    except Exception:
+        db.session.rollback()
+
+
+def ensure_setores_funcao_schema():
+    """Cria setores_funcao e semeia os padrões de chamados e nutrição."""
+    from sqlalchemy import inspect
+    from models import (
+        SetorFuncao,
+        SETORES_CHAMADO,
+        SETORES_NUTRICAO,
+        TIPO_SETOR_CHAMADOS,
+        TIPO_SETOR_NUTRICAO,
+        _fold_setor,
+    )
+    try:
+        insp = inspect(db.engine)
+        if 'setores_funcao' not in set(insp.get_table_names()):
+            SetorFuncao.__table__.create(db.engine, checkfirst=True)
+        seeds = (
+            (TIPO_SETOR_CHAMADOS, SETORES_CHAMADO),
+            (TIPO_SETOR_NUTRICAO, SETORES_NUTRICAO),
+        )
+        existentes = SetorFuncao.query.all()
+        seen = {(_fold_setor(r.tipo), _fold_setor(r.nome)) for r in existentes}
+        for tipo, nomes in seeds:
+            for nome in nomes:
+                key = (_fold_setor(tipo), _fold_setor(nome))
+                if key in seen:
+                    continue
+                db.session.add(SetorFuncao(tipo=tipo, nome=nome, padrao=True))
+                seen.add(key)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 if __name__ == '__main__':
     from password_utils import generate_password_hash
 
@@ -332,6 +406,8 @@ if __name__ == '__main__':
         ensure_clientes_schema()
         ensure_chamados_schema()
         ensure_equipamentos_schema()
+        ensure_pesagem_schema()
+        ensure_setores_funcao_schema()
         from nutricao_service import seed_nutricao
         from routes_pesagem import seed_pesagem
         from routes_acesso import seed_acesso

@@ -77,6 +77,18 @@
             <input type="text" id="f_nome" name="nome" required placeholder="Ex: Catraca Recepção">
           </label>
           <div class="he-form-row">
+            <label>Tipo
+              <select id="f_tipo" name="tipo">
+                <option value="catraca">Catraca</option>
+                <option value="controlador">Controlador</option>
+                <option value="terminal">Terminal</option>
+              </select>
+            </label>
+            <label>Local
+              <input type="text" id="f_local" name="local" placeholder="Recepção, Portaria…">
+            </label>
+          </div>
+          <div class="he-form-row">
             <label>Marca
               <input type="text" id="f_marca" name="marca" placeholder="Control iD">
             </label>
@@ -86,7 +98,7 @@
           </div>
           <div class="he-form-row">
             <label>IP
-              <input type="text" id="f_ip" name="ip" placeholder="192.168.1.50">
+              <input type="text" id="f_ip" name="ip" placeholder="192.168.0.237">
             </label>
             <label>Device ID
               <div class="he-id-row">
@@ -105,9 +117,6 @@
               <input type="password" id="f_senha_disp" name="senha_disp" placeholder="••••••" autocomplete="new-password">
             </label>
           </div>
-          <label>Local
-            <input type="text" id="f_local" name="local" placeholder="Recepção, Portaria…">
-          </label>
           <label>Controle de giro
             <select id="f_controle_giro" name="controle_giro">
               <option>Ambos os lados</option>
@@ -140,6 +149,58 @@
   <span class="he-toast-icon" aria-hidden="true"><i class="fas fa-check"></i></span>
   <span class="he-toast-msg" id="heToastMsg"></span>
   <button type="button" class="he-toast-close" id="heToastClose" aria-label="Dispensar">&times;</button>
+</div>
+
+<!-- Modal Novo Equipamento -->
+<div class="modal-backdrop" id="modalNovoEquip" hidden>
+  <div class="modal-card he-novo-card">
+    <div class="modal-head">
+      <div>
+        <h3>Novo Equipamento</h3>
+        <p class="he-modal-sub">Cadastre catraca, controlador ou terminal</p>
+      </div>
+      <button type="button" class="modal-close" data-close-modal="modalNovoEquip" aria-label="Fechar">&times;</button>
+    </div>
+    <form id="formNovoEquip" class="he-form he-novo-form" autocomplete="off">
+      <div class="modal-body">
+        <label>Nome *
+          <input type="text" id="n_nome" name="nome" required placeholder="Ex: Catraca Recepção">
+        </label>
+        <div class="he-form-row">
+          <label>Tipo
+            <select id="n_tipo" name="tipo">
+              <option value="catraca">Catraca</option>
+              <option value="controlador">Controlador</option>
+              <option value="terminal">Terminal</option>
+            </select>
+          </label>
+          <label>IP
+            <input type="text" id="n_ip" name="ip" placeholder="192.168.0.237">
+          </label>
+        </div>
+        <label>Local
+          <input type="text" id="n_local" name="local" placeholder="Recepção, Portaria…">
+        </label>
+        <div class="he-form-row">
+          <label>Marca
+            <input type="text" id="n_marca" name="marca" placeholder="Control iD" value="Control iD">
+          </label>
+          <label>Modelo
+            <input type="text" id="n_modelo" name="modelo" placeholder="iDFace / iDFlex / iDBlock">
+          </label>
+        </div>
+        <div class="he-checks">
+          <label class="he-check"><input type="checkbox" id="n_ativo" name="ativo" checked> Ativo</label>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-secondary" data-close-modal="modalNovoEquip">Cancelar</button>
+        <button type="submit" class="btn-acesso" id="btnSalvarNovo">
+          <i class="fas fa-floppy-disk"></i> Salvar
+        </button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <!-- Modal Configurar Servidor -->
@@ -231,6 +292,11 @@
 .he-btn:hover { background: rgba(255,255,255,0.22); }
 .he-btn-primary { background: #fff; color: var(--brand-navy); border-color: #fff; }
 .he-btn-primary:hover { background: #f1f5f9; color: var(--brand-navy); }
+.he-btn-primary:disabled { opacity: 1; cursor: pointer; }
+.he-modal-sub { margin: 0.2rem 0 0; font-size: 0.68rem; color: #64748b; font-weight: 600; }
+.he-novo-card { width: min(440px, 100%); }
+.he-novo-form { gap: 0; }
+.he-novo-form .modal-body { display: flex; flex-direction: column; gap: 0.6rem; }
 .he-chev { font-size: 0.56rem; opacity: 0.85; margin-left: 0.12rem; }
 
 .he-dropdown { position: relative; }
@@ -241,6 +307,7 @@
   box-shadow: 0 9.6px 22.4px rgba(13, 43, 92, 0.18);
   padding: 0.32rem; display: flex; flex-direction: column; gap: 0.12rem;
 }
+.he-dropdown-menu[hidden] { display: none !important; }
 .he-dd-item {
   display: flex; align-items: center; gap: 0.56rem;
   width: 100%; border: 0; background: transparent; text-align: left;
@@ -479,6 +546,7 @@
   const API_DATA_HORA = {{ url_for('acesso.api_equipamentos_atualizar_data_hora')|tojson }};
   const API_REINICIAR = {{ url_for('acesso.api_equipamentos_reiniciar_conexao')|tojson }};
   const API_PUXAR = {{ url_for('acesso.api_equipamentos_puxar_device_id')|tojson }};
+  const API_STATUS = {{ url_for('acesso.api_equipamentos_status')|tojson }};
   let equipamentos = {{ equipamentos|tojson }};
   let selectedId = null;
   let mode = null; // 'edit' | 'create' | null
@@ -549,6 +617,10 @@
 
   function tagsFromEquip(e) {
     const tags = [];
+    const tipo = (e.tipo || e.tipo_label || '').toLowerCase();
+    if (tipo.includes('controlador')) tags.push({ t: 'CONTROLADOR', c: '' });
+    else if (tipo.includes('terminal')) tags.push({ t: 'TERMINAL', c: '' });
+    else tags.push({ t: 'CATRACA', c: '' });
     const giro = (e.controle_giro || '').toLowerCase();
     if (giro.includes('somente entrada')) tags.push({ t: 'ENTRADA', c: '' });
     else if (giro.includes('somente saida') || giro.includes('somente saída')) tags.push({ t: 'SAÍDA', c: '' });
@@ -577,7 +649,7 @@
     const q = (buscaEl.value || '').trim().toLowerCase();
     const filtered = equipamentos.filter(e => {
       if (!q) return true;
-      const blob = [e.nome, e.ip, e.modelo, e.marca, e.local, e.device_id, e.controle_giro]
+      const blob = [e.nome, e.ip, e.modelo, e.marca, e.local, e.device_id, e.controle_giro, e.tipo, e.tipo_label]
         .join(' ').toLowerCase();
       return blob.includes(q);
     });
@@ -626,6 +698,7 @@
     document.getElementById('formHint').textContent = 'Cadastro no painel direito';
     document.getElementById('f_id').value = '';
     document.getElementById('f_nome').value = '';
+    document.getElementById('f_tipo').value = 'catraca';
     document.getElementById('f_marca').value = 'Control iD';
     document.getElementById('f_modelo').value = '';
     document.getElementById('f_ip').value = '';
@@ -642,6 +715,18 @@
     document.getElementById('f_nome').focus();
   }
 
+  function openNovoModal() {
+    document.getElementById('n_nome').value = '';
+    document.getElementById('n_tipo').value = 'catraca';
+    document.getElementById('n_ip').value = '';
+    document.getElementById('n_local').value = '';
+    document.getElementById('n_marca').value = 'Control iD';
+    document.getElementById('n_modelo').value = '';
+    document.getElementById('n_ativo').checked = true;
+    document.getElementById('modalNovoEquip').hidden = false;
+    setTimeout(() => document.getElementById('n_nome').focus(), 30);
+  }
+
   function selectEquip(id) {
     const e = equipamentos.find(x => x.id === id);
     if (!e) return;
@@ -653,6 +738,7 @@
     document.getElementById('formHint').textContent = e.online ? 'Online' : 'Offline';
     document.getElementById('f_id').value = e.id;
     document.getElementById('f_nome').value = e.nome || '';
+    document.getElementById('f_tipo').value = e.tipo || 'catraca';
     document.getElementById('f_marca').value = e.marca || 'Control iD';
     document.getElementById('f_modelo').value = e.modelo || '';
     document.getElementById('f_ip').value = e.ip || '';
@@ -671,6 +757,7 @@
   function formPayload() {
     const payload = {
       nome: document.getElementById('f_nome').value.trim(),
+      tipo: document.getElementById('f_tipo').value,
       marca: document.getElementById('f_marca').value.trim() || 'Control iD',
       modelo: document.getElementById('f_modelo').value.trim(),
       ip: document.getElementById('f_ip').value.trim(),
@@ -738,32 +825,80 @@
   });
 
   document.getElementById('btnCancelar').addEventListener('click', showEmpty);
-  document.getElementById('btnNovoEquip').addEventListener('click', openCreate);
+  const btnNovo = document.getElementById('btnNovoEquip');
+  btnNovo.disabled = false;
+  btnNovo.removeAttribute('disabled');
+  btnNovo.hidden = false;
+  btnNovo.addEventListener('click', openNovoModal);
   buscaEl.addEventListener('input', renderLista);
+
+  document.getElementById('formNovoEquip').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const data = {
+      nome: document.getElementById('n_nome').value.trim(),
+      tipo: document.getElementById('n_tipo').value,
+      ip: document.getElementById('n_ip').value.trim(),
+      local: document.getElementById('n_local').value.trim(),
+      marca: document.getElementById('n_marca').value.trim() || 'Control iD',
+      modelo: document.getElementById('n_modelo').value.trim(),
+      ativo: document.getElementById('n_ativo').checked,
+      online: false,
+    };
+    if (!data.nome) { toast('Nome é obrigatório', 'error'); return; }
+    const btn = document.getElementById('btnSalvarNovo');
+    btn.disabled = true;
+    try {
+      const r = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const res = await r.json();
+      if (!res.ok) { toast(res.error || 'Erro ao cadastrar', 'error'); return; }
+      equipamentos.push(res.equipamento);
+      equipamentos.sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt'));
+      updateKpis();
+      document.getElementById('modalNovoEquip').hidden = true;
+      toast('Equipamento cadastrado');
+      selectEquip(res.equipamento.id);
+    } catch (err) {
+      toast('Falha de comunicação', 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
 
   /* ---- Dropdown Ações ---- */
   const btnAcoes = document.getElementById('btnAcoes');
   const menuAcoes = document.getElementById('acoesMenu');
   const dropdown = document.getElementById('acoesDropdown');
 
+  function isAcoesOpen() {
+    return !menuAcoes.hidden;
+  }
   function closeAcoes() {
     menuAcoes.hidden = true;
     btnAcoes.setAttribute('aria-expanded', 'false');
   }
   function toggleAcoes() {
-    const open = menuAcoes.hidden;
-    menuAcoes.hidden = !open;
-    btnAcoes.setAttribute('aria-expanded', open ? 'true' : 'false');
+    const willOpen = menuAcoes.hidden;
+    menuAcoes.hidden = !willOpen;
+    btnAcoes.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
   }
   btnAcoes.addEventListener('click', (e) => {
     e.stopPropagation();
     toggleAcoes();
   });
-  document.addEventListener('click', (e) => {
-    if (!dropdown.contains(e.target)) closeAcoes();
-  });
+  document.addEventListener('pointerdown', (e) => {
+    if (!isAcoesOpen()) return;
+    if (dropdown.contains(e.target)) return;
+    closeAcoes();
+  }, true);
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeAcoes();
+    if (e.key === 'Escape' && isAcoesOpen()) {
+      closeAcoes();
+      btnAcoes.focus();
+    }
   });
 
   async function postAcao(acao, extra) {
@@ -912,6 +1047,27 @@
 
   updateKpis();
   renderLista();
+
+  (async function refreshOnlineStatus() {
+    try {
+      const r = await fetch(API_STATUS, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const res = await r.json();
+      if (!res.ok || !Array.isArray(res.equipamentos)) return;
+      equipamentos = res.equipamentos;
+      updateKpis();
+      renderLista();
+      if (selectedId) {
+        const still = equipamentos.find(e => e.id === selectedId);
+        if (still) selectEquip(selectedId);
+      }
+    } catch (err) {
+      console.warn('status equipamentos', err);
+    }
+  })();
 })();
 </script>
 {% endblock %}

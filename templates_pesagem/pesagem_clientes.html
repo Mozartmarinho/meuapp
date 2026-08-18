@@ -1,0 +1,451 @@
+{% extends "base_pesagem.html" %}
+{% block title %}Cadastro de Cliente{% endblock %}
+{% block content %}
+<div class="balanca-cadastro">
+<div class="page-header balanca-header">
+  <div>
+    <h1>Cadastro de Cliente</h1>
+    <p>Clientes da pesagem, com imagem para o agente local</p>
+  </div>
+  <div class="balanca-header-actions">
+    <label class="cli-search">
+      <i class="fas fa-search" aria-hidden="true"></i>
+      <input type="search" id="buscaCliente" placeholder="Buscar cliente..." autocomplete="off" aria-label="Buscar cliente">
+    </label>
+    <button class="btn btn-primary" type="button" onclick="abrirCliente()">
+      <i class="fas fa-plus"></i> Adicionar cliente
+    </button>
+  </div>
+</div>
+
+<div class="card" style="padding:0;overflow:visible;">
+  <table class="data-table" id="tabelaClientes">
+    <thead>
+      <tr>
+        <th class="cli-col-img">Imagem</th>
+        <th class="cli-col-nome">Nome do cliente</th>
+        <th class="cli-col-acoes">Ações</th>
+      </tr>
+    </thead>
+    <tbody id="tabelaClientesBody">
+      {% for c in clientes %}
+      <tr data-id="{{ c.id }}"
+          data-nome="{{ c.nome }}"
+          data-imagem="{{ c.imagem_path or '' }}">
+        <td class="cli-col-img">
+          {% if c.imagem_path %}
+          <div class="cli-thumb-wrap">
+            <img src="{{ url_for('static', filename=c.imagem_path) }}" alt="" class="cli-thumb">
+            <img src="{{ url_for('static', filename=c.imagem_path) }}" alt="" class="cli-thumb-zoom" aria-hidden="true">
+          </div>
+          {% else %}
+          —
+          {% endif %}
+        </td>
+        <td class="cli-col-nome">{{ c.nome }}</td>
+        <td class="cli-col-acoes">
+          <div class="balanca-acoes">
+            <button class="btn btn-ghost btn-sm" type="button" title="Editar" onclick="abrirCliente(this.closest('tr'))">
+              <i class="fas fa-edit"></i>
+            </button>
+            <button class="btn btn-ghost btn-sm" type="button" title="Excluir" onclick="excluirCliente({{ c.id }})">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr id="linhaVazia">
+        <td colspan="3" style="text-align:center;padding:1rem;">Nenhum cliente cadastrado.</td>
+      </tr>
+      {% endfor %}
+      {% if clientes %}
+      <tr id="linhaFiltroVazio" hidden>
+        <td colspan="3" style="text-align:center;padding:1rem;">Nenhum cliente encontrado.</td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+</div>
+
+<div id="cliModalOverlay" class="bal-modal-overlay" onclick="if(event.target===this)fecharCliente()" hidden>
+  <div class="bal-modal-dialog cli-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="cliModalTitle">
+    <div class="bal-modal-header">
+      <h2 id="cliModalTitle">Novo cliente</h2>
+      <button type="button" class="bal-modal-close" onclick="fecharCliente()" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="bal-modal-body">
+      <div class="form-group">
+        <label class="form-label" for="c-nome">Nome do cliente</label>
+        <input class="form-control" id="c-nome" placeholder="Nome do cliente">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="c-imagem">Imagem</label>
+        <input class="form-control" id="c-imagem" type="file" accept="image/*">
+        <div class="cli-preview-wrap">
+          <img id="c-preview" alt="Pré-visualização" hidden>
+          <span id="c-preview-empty" class="cli-preview-empty">Nenhuma imagem</span>
+        </div>
+      </div>
+    </div>
+    <div class="bal-modal-footer">
+      <button class="btn btn-primary" type="button" onclick="salvarCliente()">
+        <i class="fas fa-save"></i> Salvar
+      </button>
+      <button class="btn btn-secondary" type="button" onclick="fecharCliente()">
+        <i class="fas fa-door-open"></i> Fechar
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+.balanca-cadastro .page-header { margin-bottom: 1rem; }
+.balanca-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.balanca-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.balanca-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+.balanca-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+.cli-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.cli-search i {
+  position: absolute;
+  left: 0.56rem;
+  color: #94a3b8;
+  pointer-events: none;
+  font-size: 0.72rem;
+}
+.cli-search input {
+  width: 11.5rem;
+  padding: 0.48rem 0.64rem 0.48rem 1.68rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 0.3rem;
+  font: inherit;
+  font-size: 0.76rem;
+  color: #0f2a5c;
+  background: #fff;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+.cli-search input:focus {
+  outline: none;
+  border-color: #1b4f9c;
+  box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15);
+}
+.cli-search input::placeholder { color: #94a3b8; }
+tr.cli-hidden { display: none; }
+.balanca-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.balanca-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
+.balanca-cadastro .btn-ghost { padding: 0.16rem 0.32rem; }
+.balanca-cadastro .card { padding: 1rem; margin-bottom: 0.8rem; }
+.balanca-cadastro .data-table { font-size: 0.8rem; border-collapse: separate; border-spacing: 0; }
+.balanca-cadastro .data-table th,
+.balanca-cadastro .data-table td {
+  padding: 0.22rem 0.64rem;
+  font-size: 0.76rem;
+  line-height: 1.2;
+  vertical-align: middle;
+}
+.balanca-cadastro .data-table th { font-size: 0.76rem; padding-top: 0.28rem; padding-bottom: 0.28rem; }
+.balanca-cadastro .data-table th.cli-col-img,
+.balanca-cadastro .data-table td.cli-col-img {
+  width: 140px;
+  max-width: 154px;
+  padding-top: 0.45rem;
+  padding-bottom: 0.45rem;
+}
+.balanca-cadastro .data-table th.cli-col-nome,
+.balanca-cadastro .data-table td.cli-col-nome {
+  width: 1%;
+  white-space: nowrap;
+}
+.balanca-cadastro .data-table tbody tr {
+  height: 100%;
+}
+.balanca-cadastro .data-table th.cli-col-acoes,
+.balanca-cadastro .data-table td.cli-col-acoes {
+  text-align: right;
+  vertical-align: middle;
+  height: 100%;
+}
+.cli-thumb-wrap {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  cursor: pointer;
+  z-index: 1;
+}
+.cli-thumb-wrap:hover,
+.cli-thumb-wrap:focus-within {
+  z-index: 80;
+}
+.balanca-cadastro .data-table tbody tr:has(.cli-thumb-wrap:hover),
+.balanca-cadastro .data-table tbody tr:has(.cli-thumb-wrap:focus-within) {
+  position: relative;
+  z-index: 80;
+}
+.cli-thumb {
+  height: 67px;
+  width: auto;
+  max-width: 126px;
+  object-fit: contain;
+  object-position: left center;
+  border-radius: 0.25rem;
+  display: block;
+  background: #f8fafc;
+  border: 1px solid #e8eef6;
+}
+.cli-thumb-zoom {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%) scale(0.96);
+  height: 224px;
+  width: auto;
+  max-width: 280px;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid #dbe4f0;
+  border-radius: 0.4rem;
+  box-shadow: 0 12px 32px rgba(13, 43, 92, 0.22);
+  padding: 8px;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 80;
+  transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
+}
+.cli-thumb-wrap:hover .cli-thumb-zoom,
+.cli-thumb-wrap:focus-within .cli-thumb-zoom {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) scale(1);
+}
+.balanca-cadastro .balanca-acoes {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.08rem;
+  white-space: nowrap;
+  height: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
+  vertical-align: middle;
+}
+.balanca-cadastro .balanca-acoes .btn {
+  flex-shrink: 0;
+  padding: 0.12rem 0.28rem;
+  line-height: 1.15;
+}
+.cli-modal-dialog { max-width: 420px; }
+.cli-preview-wrap {
+  margin-top: 0.5rem;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 0.3rem;
+  padding: 0.4rem;
+}
+.cli-preview-wrap img {
+  max-height: 96px;
+  max-width: 100%;
+  object-fit: contain;
+}
+.cli-preview-empty { font-size: 0.72rem; color: #94a3b8; }
+.bal-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(13, 43, 92, 0.55);
+}
+.bal-modal-overlay[hidden] { display: none !important; }
+.bal-modal-dialog {
+  background: #fff;
+  border-radius: 0.4rem;
+  width: 100%;
+  max-width: 512px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 12px 36px rgba(13, 43, 92, 0.25);
+  font-family: inherit;
+}
+.bal-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.92rem 1rem 0;
+  gap: 0.6rem;
+}
+.bal-modal-header h2 {
+  margin: 0;
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: #0f2a5c;
+}
+.bal-modal-close {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 1.2rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 0.12rem;
+}
+.bal-modal-close:hover { color: #0f2a5c; }
+.bal-modal-body { padding: 0.8rem 1rem 0.92rem; }
+.bal-modal-footer {
+  display: flex;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.72rem 1rem 0.92rem;
+  border-top: 1px solid #e2e8f0;
+}
+.bal-modal-body .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+.bal-modal-body .form-control {
+  padding: 0.48rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+.bal-modal-body .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+.bal-modal-body .form-group { margin-bottom: 0.8rem; }
+.bal-modal-footer .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function _setPreview(src){
+  const img = document.getElementById('c-preview');
+  const empty = document.getElementById('c-preview-empty');
+  if (src) {
+    img.src = src;
+    img.hidden = false;
+    empty.hidden = true;
+  } else {
+    img.removeAttribute('src');
+    img.hidden = true;
+    empty.hidden = false;
+  }
+}
+
+function abrirCliente(tr){
+  const isEdit = !!(tr && tr.dataset && tr.dataset.id);
+  const d = isEdit ? tr.dataset : {};
+  window._editClienteId = isEdit ? d.id : null;
+  document.getElementById('cliModalTitle').textContent = isEdit ? 'Editar cliente' : 'Novo cliente';
+  document.getElementById('c-nome').value = d.nome || '';
+  document.getElementById('c-imagem').value = '';
+  if (d.imagem) {
+    _setPreview('/static/' + d.imagem);
+  } else {
+    _setPreview('');
+  }
+  document.getElementById('cliModalOverlay').hidden = false;
+  setTimeout(function () { document.getElementById('c-nome').focus(); }, 30);
+}
+
+function fecharCliente(){
+  document.getElementById('cliModalOverlay').hidden = true;
+  window._editClienteId = null;
+}
+
+document.getElementById('c-imagem').addEventListener('change', function () {
+  const f = this.files && this.files[0];
+  if (!f) return;
+  const url = URL.createObjectURL(f);
+  _setPreview(url);
+});
+
+async function salvarCliente(){
+  const nome = (document.getElementById('c-nome').value || '').trim();
+  if (!nome){
+    showToast('Nome do cliente é obrigatório', 'error');
+    return;
+  }
+  const fd = new FormData();
+  fd.append('nome', nome);
+  const file = document.getElementById('c-imagem').files[0];
+  if (file) fd.append('imagem', file);
+  const id = window._editClienteId;
+  const url = id ? `/api/pesagem/clientes/${id}` : '/api/pesagem/clientes';
+  const method = id ? 'PUT' : 'POST';
+  try {
+    const r = await fetch(url, { method, body: fd });
+    const j = await r.json();
+    if (!r.ok || j.ok === false){
+      showToast(j.error || 'Falha ao gravar', 'error');
+      return;
+    }
+    fecharCliente();
+    location.reload();
+  } catch (e) {
+    showToast('Erro ao gravar', 'error');
+  }
+}
+
+async function excluirCliente(id){
+  if (!confirm('Excluir este cliente? As leituras já registradas são mantidas.')) return;
+  try {
+    const r = await fetch(`/api/pesagem/clientes/${id}`, { method: 'DELETE' });
+    const j = await r.json();
+    if (!r.ok || j.ok === false){
+      showToast(j.error || 'Falha ao excluir', 'error');
+      return;
+    }
+    location.reload();
+  } catch (e) {
+    showToast('Erro ao excluir', 'error');
+  }
+}
+
+function filtrarClientes(){
+  const q = (document.getElementById('buscaCliente').value || '').trim().toLowerCase();
+  const rows = document.querySelectorAll('#tabelaClientesBody tr[data-id]');
+  let visible = 0;
+  rows.forEach(function (tr) {
+    const nome = (tr.dataset.nome || '').toLowerCase();
+    const match = !q || nome.includes(q);
+    tr.classList.toggle('cli-hidden', !match);
+    if (match) visible++;
+  });
+  const emptyFilter = document.getElementById('linhaFiltroVazio');
+  if (emptyFilter) emptyFilter.hidden = visible > 0 || rows.length === 0;
+}
+
+document.getElementById('buscaCliente').addEventListener('input', filtrarClientes);
+
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && !document.getElementById('cliModalOverlay').hidden) {
+    fecharCliente();
+  }
+});
+</script>
+{% endblock %}

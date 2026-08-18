@@ -19,16 +19,26 @@ from models import (
     Equipamento,
     ConfiguracaoEmail,
     ChamadoAtendimento,
+    ChamadoEncaminhamento,
     ChamadoFoto,
     TIPO_FOTO_CONSERTO,
     TIPO_FOTO_ENCAMINHAMENTO,
-    SETORES_CHAMADO,
+    TIPO_HOP_ENCAMINHAR,
+    TIPO_HOP_DEVOLVER,
+    TIPO_HOP_PECA,
+    SETOR_COMPRAS,
     STATUS_AGUARDAR_PECA,
     STATUS_ENCAMINHADO,
+    STATUS_DEVOLVIDO,
     STATUS_ATENDIDO,
     STATUS_FECHADOS,
+    TIPO_SETOR_CHAMADOS,
+    TIPO_SETOR_NUTRICAO,
     status_fechado,
     normalizar_setor_chamado,
+    normalizar_setor,
+    listar_setores,
+    adicionar_setor,
 )
 from permissions_sistemas import SISTEMAS, aplicar_permissoes_formulario, conceder_acesso_total
 from sqlalchemy.orm import joinedload
@@ -194,6 +204,63 @@ def _eh_gestor(usuario):
     return bool(usuario and (usuario.is_master or usuario.tipo == 'admin'))
 
 
+def _ultimo_hop(chamado):
+    return (
+        ChamadoEncaminhamento.query
+        .filter_by(chamado_id=chamado.id)
+        .order_by(ChamadoEncaminhamento.id.desc())
+        .first()
+    )
+
+
+def _setor_origem_atual(chamado):
+    origem = normalizar_setor_chamado(getattr(chamado, 'setor_origem', None))
+    if origem:
+        return origem
+    hop = _ultimo_hop(chamado)
+    if hop:
+        de = normalizar_setor_chamado(hop.de_setor)
+        if de:
+            return de
+    encaminhado_por = chamado.encaminhado_por
+    if encaminhado_por:
+        s = _setor_usuario(encaminhado_por)
+        if s:
+            return s
+    if getattr(chamado, 'tecnico_id', None):
+        tec = Usuario.query.get(chamado.tecnico_id)
+        s = _setor_usuario(tec)
+        if s:
+            return s
+    return ''
+
+
+def _pode_devolver(chamado, usuario):
+    """Técnico do setor destino de um encaminhamento aberto (não de uma devolução)."""
+    dest = normalizar_setor_chamado(chamado.setor_destino)
+    if not dest or not usuario:
+        return False
+    user_setor = _setor_usuario(usuario)
+    if not (_eh_gestor(usuario) or dest == user_setor):
+        return False
+    hop = _ultimo_hop(chamado)
+    if hop:
+        if (hop.tipo or '') == TIPO_HOP_DEVOLVER:
+            return False
+        para = normalizar_setor_chamado(hop.para_setor)
+        return bool(not para or para == dest)
+    origem = _setor_origem_atual(chamado)
+    if origem and origem != dest:
+        return True
+    if chamado.encaminhado_por_id and chamado.encaminhado_por_id != usuario.id:
+        return True
+    return False
+
+
+def _setor_atuacao(usuario, chamado):
+    return _setor_usuario(usuario) or normalizar_setor_chamado(chamado.setor_destino) or ''
+
+
 def _pendencias_chamados(usuario):
     """Pendências do login: encaminhamentos ao setor do usuário e chamados aguardando peça."""
     if not usuario:
@@ -219,13 +286,19 @@ def _pendencias_chamados(usuario):
         if chamado.id in seen:
             continue
         seen.add(chamado.id)
-        if encaminhado_para_mim and aguardar_peca:
+        origem = _setor_origem_atual(chamado)
+        if chamado.status == STATUS_DEVOLVIDO:
+            tipo = f'{origem or "Setor"} devolveu {chamado.numero_chamado}'
+        elif encaminhado_para_mim and aguardar_peca:
             tipo = 'Aguardar peça / Encaminhado'
         elif encaminhado_para_mim:
             tipo = 'Encaminhado'
         else:
             tipo = STATUS_AGUARDAR_PECA
         encaminhado_por = chamado.encaminhado_por
+        fotos_tipo = (
+            TIPO_FOTO_CONSERTO if chamado.status == STATUS_DEVOLVIDO else TIPO_FOTO_ENCAMINHAMENTO
+        )
         items.append({
             'id': chamado.id,
             'numero_chamado': chamado.numero_chamado,
@@ -233,8 +306,10 @@ def _pendencias_chamados(usuario):
             'status': chamado.status,
             'tipo': tipo,
             'setor_destino': dest or '',
+            'setor_origem': origem or '',
             'instrucoes': chamado.encaminhamento_instrucoes or '',
-            'fotos': _fotos_chamado_payload(chamado, TIPO_FOTO_ENCAMINHAMENTO),
+            'notas': chamado.atendimento_notas or '',
+            'fotos': _fotos_chamado_payload(chamado, fotos_tipo),
             'encaminhado_por': encaminhado_por.nome if encaminhado_por else '',
             'encaminhado_em': (
                 chamado.encaminhado_em.strftime('%d/%m/%Y %H:%M') if chamado.encaminhado_em else ''
@@ -297,8 +372,11 @@ def _salvar_fotos_chamado(chamado, atendimento, arquivos, tipo=TIPO_FOTO_CONSERT
         ))
 
 
-def _chamado_atender_payload(chamado):
+def _chamado_atender_payload(chamado, usuario=None):
     todas = _fotos_chamado_payload(chamado)
+    origem = _setor_origem_atual(chamado)
+    encaminhado_por = chamado.encaminhado_por
+    pode_devolver = _pode_devolver(chamado, usuario) if usuario else False
     return {
         'id': chamado.id,
         'numero_chamado': chamado.numero_chamado,
@@ -308,10 +386,19 @@ def _chamado_atender_payload(chamado):
         'descricao': chamado.descricao or '',
         'atendimento_notas': chamado.atendimento_notas or '',
         'setor_destino': chamado.setor_destino or '',
+        'setor_origem': origem or '',
         'encaminhamento_instrucoes': chamado.encaminhamento_instrucoes or '',
+        'encaminhado_por': encaminhado_por.nome if encaminhado_por else '',
+        'encaminhado_por_setor': _setor_usuario(encaminhado_por) if encaminhado_por else '',
+        'encaminhado_em': (
+            chamado.encaminhado_em.strftime('%d/%m/%Y %H:%M') if chamado.encaminhado_em else ''
+        ),
+        'pode_devolver': pode_devolver,
+        'setor_devolver': origem if pode_devolver else '',
+        'usuario_setor': _setor_usuario(usuario) if usuario else '',
         'fotos': [f for f in todas if f['tipo'] != TIPO_FOTO_ENCAMINHAMENTO],
         'fotos_encaminhamento': [f for f in todas if f['tipo'] == TIPO_FOTO_ENCAMINHAMENTO],
-        'setores': list(SETORES_CHAMADO),
+        'setores': listar_setores(TIPO_SETOR_CHAMADOS),
     }
 
 @main.route('/instalar-certificado')
@@ -637,6 +724,9 @@ def _acesso_payload(usuario):
         'ativo': bool(usuario.ativo),
         'is_master': bool(usuario.is_master),
         'setor': _setor_usuario(usuario),
+        'setor_nutricao': normalizar_setor(
+            TIPO_SETOR_NUTRICAO, getattr(usuario, 'setor_nutricao', None)
+        ),
         'sistemas': {chave: usuario.tem_sistema(chave) for chave in SISTEMAS},
         'permissoes': {sistema: usuario.menus_liberados(sistema) for sistema in SISTEMAS},
     }
@@ -684,6 +774,8 @@ def inicio():
         pendencias=pendencias,
         pendencias_js=pendencias,
         mostrar_pendencias=mostrar_pendencias,
+        setores_chamados=listar_setores(TIPO_SETOR_CHAMADOS),
+        setores_nutricao=listar_setores(TIPO_SETOR_NUTRICAO),
     )
 
 
@@ -785,6 +877,7 @@ def _salvar_acesso_geral(usuario, form, novo=False):
     usuario.nome = nome
     usuario.email = email
     usuario.setor = normalizar_setor_chamado(form.get('setor')) or None
+    usuario.setor_nutricao = normalizar_setor(TIPO_SETOR_NUTRICAO, form.get('setor_nutricao')) or None
     if senha:
         usuario.senha = generate_password_hash(senha)
     elif novo:
@@ -799,6 +892,52 @@ def _salvar_acesso_geral(usuario, form, novo=False):
     else:
         aplicar_permissoes_formulario(usuario, form)
     db.session.commit()
+
+
+@main.route('/acessos/setores', methods=['POST'])
+@login_required
+def criar_setor_funcao():
+    """(+) no cadastro de Acessos: inclui função/setor no catálogo do dropdown."""
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.pode_gerenciar_acessos():
+        if _wants_json():
+            return jsonify({'ok': False, 'message': 'Sem permissão para gerenciar acessos.'}), 403
+        flash('Você não tem permissão para gerenciar acessos.', 'error')
+        return redirect(url_for('main.inicio'))
+    data = request.get_json(silent=True) or {}
+    tipo = (request.form.get('tipo') or data.get('tipo') or '').strip()
+    nome = request.form.get('nome') if request.form.get('nome') is not None else data.get('nome')
+    try:
+        salvo = adicionar_setor(tipo, nome)
+        setores = listar_setores(tipo)
+        if _wants_json():
+            return jsonify({
+                'ok': True,
+                'message': 'Função/setor adicionado.',
+                'nome': salvo,
+                'tipo': tipo,
+                'setores': setores,
+            })
+        flash('Função/setor adicionado.', 'success')
+        return redirect(url_for('main.inicio'))
+    except ValueError as e:
+        db.session.rollback()
+        if _wants_json():
+            return jsonify({'ok': False, 'message': str(e)}), 400
+        flash(str(e), 'error')
+        return redirect(url_for('main.inicio'))
+    except IntegrityError:
+        db.session.rollback()
+        if _wants_json():
+            return jsonify({'ok': False, 'message': 'Essa função ou setor já existe.'}), 400
+        flash('Essa função ou setor já existe.', 'error')
+        return redirect(url_for('main.inicio'))
+    except Exception as e:
+        db.session.rollback()
+        if _wants_json():
+            return jsonify({'ok': False, 'message': str(e)}), 400
+        flash(str(e), 'error')
+        return redirect(url_for('main.inicio'))
 
 
 @main.route('/acessos/novo', methods=['GET', 'POST'])
@@ -831,6 +970,8 @@ def novo_acesso():
         sistemas=SISTEMAS,
         permissoes={},
         user_name=user.nome,
+        setores_chamados=listar_setores(TIPO_SETOR_CHAMADOS),
+        setores_nutricao=listar_setores(TIPO_SETOR_NUTRICAO),
     )
 
 
@@ -865,6 +1006,8 @@ def editar_acesso(id):
         sistemas=SISTEMAS,
         permissoes=permissoes,
         user_name=user.nome,
+        setores_chamados=listar_setores(TIPO_SETOR_CHAMADOS),
+        setores_nutricao=listar_setores(TIPO_SETOR_NUTRICAO),
     )
 
 @main.route('/dashboard')
@@ -915,7 +1058,7 @@ def listar_chamados():
         'chamados.html',
         chamados=chamados,
         clientes=clientes,
-        setores=SETORES_CHAMADO,
+        setores=listar_setores(TIPO_SETOR_CHAMADOS),
         subtitulo=subtitulo,
         atender_id=request.args.get('atender', type=int),
     )
@@ -1097,10 +1240,10 @@ def atender_chamado(id):
         joinedload(Chamado.cliente),
         joinedload(Chamado.encaminhado_por),
     ).get_or_404(id)
-    if request.method == 'GET':
-        return jsonify({'ok': True, 'chamado': _chamado_atender_payload(chamado)})
-
     user = Usuario.query.get(session['user_id'])
+    if request.method == 'GET':
+        return jsonify({'ok': True, 'chamado': _chamado_atender_payload(chamado, user)})
+
     if not user:
         return jsonify({'ok': False, 'message': 'Sessão inválida.'}), 401
 
@@ -1110,31 +1253,85 @@ def atender_chamado(id):
     setor = normalizar_setor_chamado(request.form.get('setor_destino'))
     aguardar_peca = request.form.get('aguardar_peca') in ('1', 'on', 'true', 'sim')
     status_form = (request.form.get('status') or '').strip()
+    pode_devolver = _pode_devolver(chamado, user)
+    origem = _setor_origem_atual(chamado)
+    arquivos_conserto = _arquivos_request('fotos', 'foto')
+    arquivos_enc = _arquivos_request('fotos_encaminhar', 'fotos_encaminhamento')
+    hop_tipo = None
+    hop_de = ''
+    hop_para = ''
+    atendimento_status = None
+
+    if aguardar_peca:
+        setor = SETOR_COMPRAS
+
+    def _exige_servico():
+        if not notas:
+            return 'Informe o que foi consertado.'
+        tem_foto = any(
+            arq and getattr(arq, 'filename', None) for arq in arquivos_conserto
+        )
+        if not tem_foto:
+            return 'Anexe a foto do serviço realizado.'
+        return None
 
     if acao == 'encaminhar':
+        if aguardar_peca:
+            setor = SETOR_COMPRAS
         if not setor:
             return jsonify({'ok': False, 'message': 'Selecione o setor para encaminhar.'}), 400
         if not instrucoes:
+            instrucoes = chamado.encaminhamento_instrucoes or ''
+        if not instrucoes:
+            instrucoes = 'Aguardar peça' if aguardar_peca else ''
+        if not instrucoes:
             return jsonify({'ok': False, 'message': 'Informe o que precisa fazer.'}), 400
+        if pode_devolver and aguardar_peca:
+            erro = _exige_servico()
+            if erro:
+                return jsonify({'ok': False, 'message': erro}), 400
+        de_setor = _setor_atuacao(user, chamado)
+        chamado.setor_origem = de_setor or chamado.setor_origem
         chamado.setor_destino = setor
         chamado.encaminhamento_instrucoes = instrucoes
         chamado.encaminhado_por_id = user.id
         chamado.encaminhado_em = datetime.utcnow()
         chamado.status = STATUS_AGUARDAR_PECA if aguardar_peca else STATUS_ENCAMINHADO
+        hop_tipo = TIPO_HOP_PECA if aguardar_peca else TIPO_HOP_ENCAMINHAR
+        hop_de, hop_para = de_setor, setor
     elif acao == 'finalizar':
-        if setor:
-            chamado.setor_destino = setor
-            chamado.encaminhamento_instrucoes = instrucoes or chamado.encaminhamento_instrucoes
-            if not chamado.encaminhado_por_id:
-                chamado.encaminhado_por_id = user.id
-                chamado.encaminhado_em = datetime.utcnow()
-        chamado.status = STATUS_ATENDIDO
+        if pode_devolver:
+            dest_voltar = origem
+            if not dest_voltar:
+                return jsonify({
+                    'ok': False,
+                    'message': (
+                        'Não foi possível identificar o setor que encaminhou. '
+                        'Cadastre o setor de origem (ex.: Informática) em Acessos.'
+                    ),
+                }), 400
+            erro = _exige_servico()
+            if erro:
+                return jsonify({'ok': False, 'message': erro}), 400
+            de_setor = _setor_atuacao(user, chamado)
+            chamado.setor_origem = de_setor
+            chamado.setor_destino = dest_voltar
+            chamado.encaminhado_por_id = user.id
+            chamado.encaminhado_em = datetime.utcnow()
+            chamado.status = STATUS_DEVOLVIDO
+            chamado.data_conclusao = None
+            hop_tipo = TIPO_HOP_DEVOLVER
+            hop_de, hop_para = de_setor, dest_voltar
+            atendimento_status = STATUS_ATENDIDO
+        else:
+            chamado.status = STATUS_ATENDIDO
     else:
         if aguardar_peca:
             chamado.status = STATUS_AGUARDAR_PECA
         elif status_form:
-            chamado.status = status_form
-        if setor:
+            if not (pode_devolver and status_fechado(status_form)):
+                chamado.status = status_form
+        if setor and not pode_devolver:
             chamado.setor_destino = setor
             chamado.encaminhamento_instrucoes = instrucoes or chamado.encaminhamento_instrucoes
             if not chamado.encaminhado_por_id:
@@ -1142,7 +1339,9 @@ def atender_chamado(id):
                 chamado.encaminhado_em = datetime.utcnow()
 
     chamado.atendimento_notas = notas or chamado.atendimento_notas
-    if status_fechado(chamado.status) and not chamado.data_conclusao:
+    if chamado.status == STATUS_DEVOLVIDO:
+        chamado.data_conclusao = None
+    elif status_fechado(chamado.status) and not chamado.data_conclusao:
         chamado.data_conclusao = datetime.utcnow()
 
     pendencia_aberta = not status_fechado(chamado.status)
@@ -1150,16 +1349,27 @@ def atender_chamado(id):
         chamado_id=chamado.id,
         usuario_id=user.id,
         o_que_foi_consertado=notas,
-        status=chamado.status,
+        status=atendimento_status or chamado.status,
         setor_destino=chamado.setor_destino,
-        instrucoes=instrucoes if acao == 'encaminhar' else instrucoes,
+        instrucoes=instrucoes,
         pendencia_aberta=pendencia_aberta,
     )
     db.session.add(atendimento)
     db.session.flush()
 
-    arquivos_conserto = _arquivos_request('fotos', 'foto')
-    arquivos_enc = _arquivos_request('fotos_encaminhar', 'fotos_encaminhamento')
+    if hop_tipo:
+        db.session.add(ChamadoEncaminhamento(
+            chamado_id=chamado.id,
+            usuario_id=user.id,
+            atendimento_id=atendimento.id,
+            de_setor=hop_de or None,
+            para_setor=hop_para,
+            notas=notas or None,
+            instrucoes=notas if hop_tipo == TIPO_HOP_DEVOLVER else instrucoes,
+            tipo=hop_tipo,
+            status=chamado.status,
+        ))
+
     try:
         _salvar_fotos_chamado(chamado, atendimento, arquivos_conserto, TIPO_FOTO_CONSERTO)
         _salvar_fotos_chamado(chamado, atendimento, arquivos_enc, TIPO_FOTO_ENCAMINHAMENTO)
@@ -1169,7 +1379,9 @@ def atender_chamado(id):
         return jsonify({'ok': False, 'message': f'Erro ao gravar atendimento: {exc}'}), 400
 
     if acao == 'encaminhar':
-        msg = 'Encaminhamento registrado.'
+        msg = f'Encaminhado para {chamado.setor_destino}.'
+    elif acao == 'finalizar' and hop_tipo == TIPO_HOP_DEVOLVER:
+        msg = f'Atendido e devolvido para {chamado.setor_destino}.'
     elif acao == 'finalizar':
         msg = 'Chamado finalizado.'
     else:
@@ -1178,7 +1390,7 @@ def atender_chamado(id):
         'ok': True,
         'success': True,
         'message': msg,
-        'chamado': _chamado_atender_payload(chamado),
+        'chamado': _chamado_atender_payload(chamado, user),
     })
 
 

@@ -3,12 +3,26 @@ from datetime import datetime
 
 db = SQLAlchemy()
 
-SETORES_CHAMADO = ('Obra', 'Elétrica', 'Compras')
+SETORES_CHAMADO = ('Informática', 'Elétrica', 'Obra', 'Compras')
+SETORES_NUTRICAO = (
+    'Nutricionista UAN',
+    'Nutricionista Clínica',
+    'Administrativo',
+    'Técnico nutrição',
+    'Gerente nutrição',
+)
+TIPO_SETOR_CHAMADOS = 'chamados'
+TIPO_SETOR_NUTRICAO = 'nutricao'
+SETOR_COMPRAS = 'Compras'
 STATUS_AGUARDAR_PECA = 'Aguardar peça'
 STATUS_ENCAMINHADO = 'Encaminhado'
+STATUS_DEVOLVIDO = 'Devolvido'
 STATUS_ATENDIDO = 'Atendido'
 STATUS_CONCLUIDO = 'Concluído'
 STATUS_FECHADOS = (STATUS_ATENDIDO, STATUS_CONCLUIDO)
+TIPO_HOP_ENCAMINHAR = 'encaminhar'
+TIPO_HOP_DEVOLVER = 'devolver'
+TIPO_HOP_PECA = 'peca'
 
 
 def status_fechado(status):
@@ -16,25 +30,85 @@ def status_fechado(status):
     return (status or '').strip() in STATUS_FECHADOS
 
 
-def normalizar_setor_chamado(valor):
-    """Normaliza o setor de encaminhamento (Obra, Elétrica, Compras)."""
+def _fold_setor(valor):
+    raw = (valor or '').strip().lower()
+    trans = str.maketrans({
+        'á': 'a', 'à': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a',
+        'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+        'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
+        'ó': 'o', 'ò': 'o', 'ô': 'o', 'õ': 'o', 'ö': 'o',
+        'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u',
+        'ç': 'c',
+    })
+    return raw.translate(trans)
+
+
+def setores_padrao(tipo):
+    if tipo == TIPO_SETOR_NUTRICAO:
+        return SETORES_NUTRICAO
+    return SETORES_CHAMADO
+
+
+def listar_setores(tipo):
+    """Catálogo do dropdown: padrões sempre primeiro, depois extras cadastrados."""
+    nomes = list(setores_padrao(tipo))
+    seen = {_fold_setor(n) for n in nomes}
+    try:
+        rows = (
+            SetorFuncao.query.filter_by(tipo=tipo)
+            .order_by(SetorFuncao.id.asc())
+            .all()
+        )
+        for row in rows:
+            key = _fold_setor(row.nome)
+            if key and key not in seen:
+                nomes.append(row.nome)
+                seen.add(key)
+    except Exception:
+        pass
+    return nomes
+
+
+def normalizar_setor(tipo, valor):
+    """Casa com o catálogo do tipo (padrões + extras), ignorando acento/caixa."""
     raw = (valor or '').strip()
     if not raw:
         return ''
-    key = (
-        raw.lower()
-        .replace('é', 'e')
-        .replace('á', 'a')
-        .replace('í', 'i')
-        .replace('ó', 'o')
-        .replace('ú', 'u')
-    )
-    mapa = {
-        'obra': 'Obra',
-        'eletrica': 'Elétrica',
-        'compras': 'Compras',
-    }
-    return mapa.get(key, '')
+    key = _fold_setor(raw)
+    for nome in listar_setores(tipo):
+        if _fold_setor(nome) == key:
+            return nome
+    if tipo == TIPO_SETOR_CHAMADOS:
+        mapa = {
+            'informatica': 'Informática',
+            'obra': 'Obra',
+            'eletrica': 'Elétrica',
+            'compras': 'Compras',
+        }
+        return mapa.get(key, '')
+    return ''
+
+
+def normalizar_setor_chamado(valor):
+    """Normaliza o setor de encaminhamento (padrões + extras de chamados)."""
+    return normalizar_setor(TIPO_SETOR_CHAMADOS, valor)
+
+
+def adicionar_setor(tipo, nome):
+    """Inclui uma função/setor extra no catálogo do tipo. Não aceita vazio nem duplicata."""
+    nome = (nome or '').strip()
+    if not nome:
+        raise ValueError('Informe o nome da função ou setor.')
+    if len(nome) > 80:
+        raise ValueError('Nome muito longo (máximo 80 caracteres).')
+    if tipo not in (TIPO_SETOR_CHAMADOS, TIPO_SETOR_NUTRICAO):
+        raise ValueError('Tipo de setor inválido.')
+    if normalizar_setor(tipo, nome):
+        raise ValueError('Essa função ou setor já existe.')
+    row = SetorFuncao(tipo=tipo, nome=nome, padrao=False)
+    db.session.add(row)
+    db.session.commit()
+    return row.nome
 
 
 class Cliente(db.Model):
@@ -86,7 +160,8 @@ class Chamado(db.Model):
     # Obrigatório no MySQL deste servidor
     tecnico_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
     atendimento_notas = db.Column(db.Text)
-    setor_destino = db.Column(db.String(40))
+    setor_destino = db.Column(db.String(80))
+    setor_origem = db.Column(db.String(80))
     encaminhamento_instrucoes = db.Column(db.Text)
     encaminhado_por_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
     encaminhado_em = db.Column(db.DateTime)
@@ -96,6 +171,9 @@ class Chamado(db.Model):
     )
     fotos = db.relationship(
         'ChamadoFoto', backref='chamado', cascade='all, delete-orphan', lazy='dynamic'
+    )
+    encaminhamentos = db.relationship(
+        'ChamadoEncaminhamento', backref='chamado', cascade='all, delete-orphan', lazy='dynamic'
     )
 
     def __repr__(self):
@@ -118,6 +196,7 @@ class Chamado(db.Model):
             'equipamento_id': self.equipamento_id,
             'atendimento_notas': self.atendimento_notas,
             'setor_destino': self.setor_destino,
+            'setor_origem': self.setor_origem,
             'encaminhamento_instrucoes': self.encaminhamento_instrucoes,
         }
 
@@ -142,7 +221,8 @@ class Usuario(db.Model):
     perm_nutricao = db.Column(db.Boolean, default=False)
     perm_pesagem = db.Column(db.Boolean, default=False)
     perm_acesso = db.Column(db.Boolean, default=False)
-    setor = db.Column(db.String(40))
+    setor = db.Column(db.String(80))
+    setor_nutricao = db.Column(db.String(80))
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     menus = db.relationship('PermissaoMenu', backref='usuario', cascade='all, delete-orphan', lazy='dynamic')
 
@@ -170,6 +250,21 @@ class Usuario(db.Model):
     def pode_gerenciar_acessos(self):
         """Acessos/Configurações na home: checkbox do sistema 'acesso' (perm_acesso) ou master."""
         return bool(self.is_master or self.perm_acesso)
+
+
+class SetorFuncao(db.Model):
+    """Catálogo de funções/setores dos dropdowns de Acessos (chamados vs nutrição)."""
+    __tablename__ = 'setores_funcao'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tipo = db.Column(db.String(20), nullable=False, index=True)
+    nome = db.Column(db.String(80), nullable=False)
+    padrao = db.Column(db.Boolean, default=False, nullable=False)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('tipo', 'nome', name='uq_setores_funcao_tipo_nome'),
+    )
 
 
 class PermissaoMenu(db.Model):
@@ -257,6 +352,25 @@ class ChamadoAtendimento(db.Model):
 
 TIPO_FOTO_CONSERTO = 'conserto'
 TIPO_FOTO_ENCAMINHAMENTO = 'encaminhamento'
+
+
+class ChamadoEncaminhamento(db.Model):
+    """Histórico de hops: Informática → Elétrica → Compras ou devolver à origem."""
+    __tablename__ = 'chamado_encaminhamentos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    chamado_id = db.Column(db.Integer, db.ForeignKey('chamados.id'), nullable=False, index=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
+    atendimento_id = db.Column(db.Integer, db.ForeignKey('chamado_atendimentos.id'))
+    de_setor = db.Column(db.String(40))
+    para_setor = db.Column(db.String(40), nullable=False)
+    notas = db.Column(db.Text)
+    instrucoes = db.Column(db.Text)
+    tipo = db.Column(db.String(20), default=TIPO_HOP_ENCAMINHAR)
+    status = db.Column(db.String(40))
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    usuario = db.relationship('Usuario', foreign_keys=[usuario_id])
+    atendimento = db.relationship('ChamadoAtendimento', foreign_keys=[atendimento_id])
 
 
 class ChamadoFoto(db.Model):
