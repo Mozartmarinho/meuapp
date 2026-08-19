@@ -1,5 +1,6 @@
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 
 db = SQLAlchemy()
 
@@ -23,6 +24,39 @@ STATUS_FECHADOS = (STATUS_ATENDIDO, STATUS_CONCLUIDO)
 TIPO_HOP_ENCAMINHAR = 'encaminhar'
 TIPO_HOP_DEVOLVER = 'devolver'
 TIPO_HOP_PECA = 'peca'
+MESA_PADRAO = 'Suporte'
+PASTA_CONHECIMENTO_PADRAO = 'Conhecimentos'
+TIPOS_CONTRATO = (
+    'Suporte',
+    'Locação',
+    'Projeto',
+    'Manutenção',
+    'Horas',
+    'Mensalidade',
+    'Avulso',
+    'Personalizado',
+)
+CANAIS_MENSAGEM = ('E-mail', 'WhatsApp', 'Telefone', 'Chat')
+CANAIS_ENVIO_LIVE = ('E-mail',)
+PRIORIDADES_SLA = ('Alta', 'Normal', 'Baixa')
+SLA_PADRAO_HORAS = {
+    'Alta': (4, 8),
+    'Normal': (8, 24),
+    'Média': (8, 24),
+    'Baixa': (24, 72),
+}
+SLA_CONTRATO_TIPO = {
+    'Suporte': (8, 24),
+    'Locação': (12, 48),
+    'Projeto': (24, 72),
+    'Manutenção': (8, 24),
+    'Horas': (4, 16),
+    'Mensalidade': (8, 24),
+    'Avulso': (16, 48),
+    'Personalizado': (8, 24),
+}
+SLA_ALERTA_HORAS = 2
+TICKET_PARADO_HORAS = 24
 
 
 def status_fechado(status):
@@ -119,6 +153,7 @@ class Cliente(db.Model):
     endereco = db.Column(db.String(200))
     # Colunas do schema GitHub (criadas na migração Linux se faltarem)
     telefone = db.Column(db.String(20))
+    email = db.Column(db.String(120))
     responsavel = db.Column(db.String(100))
     telefone_responsavel = db.Column(db.String(20))
     ativo = db.Column(db.Boolean, default=True)
@@ -133,6 +168,7 @@ class Cliente(db.Model):
             'nome': self.nome,
             'endereco': self.endereco,
             'telefone': self.telefone,
+            'email': self.email,
             'responsavel': self.responsavel,
             'telefone_responsavel': self.telefone_responsavel,
             'data_criacao': self.data_criacao.strftime('%d/%m/%Y %H:%M') if self.data_criacao else None
@@ -150,6 +186,10 @@ class Chamado(db.Model):
     descricao = db.Column(db.Text)
     status = db.Column(db.String(40), default='Pendente')
     prioridade = db.Column(db.String(10), default='Normal')
+    mesa_id = db.Column(db.Integer, db.ForeignKey('mesas.id'), index=True)
+    mesa = db.relationship('MesaServico', foreign_keys=[mesa_id])
+    contrato_id = db.Column(db.Integer, db.ForeignKey('contratos.id'), index=True)
+    contrato = db.relationship('Contrato', foreign_keys=[contrato_id])
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     data_conclusao = db.Column(db.DateTime)
     observacoes = db.Column(db.Text)
@@ -162,6 +202,8 @@ class Chamado(db.Model):
     atendimento_notas = db.Column(db.Text)
     setor_destino = db.Column(db.String(80))
     setor_origem = db.Column(db.String(80))
+    setor_tecnico_id = db.Column(db.Integer, db.ForeignKey('chamado_setores.id'), nullable=True)
+    setor_tecnico = db.relationship('ChamadoSetor', foreign_keys='[Chamado.setor_tecnico_id]')
     encaminhamento_instrucoes = db.Column(db.Text)
     encaminhado_por_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
     encaminhado_em = db.Column(db.DateTime)
@@ -174,6 +216,9 @@ class Chamado(db.Model):
     )
     encaminhamentos = db.relationship(
         'ChamadoEncaminhamento', backref='chamado', cascade='all, delete-orphan', lazy='dynamic'
+    )
+    mensagens = db.relationship(
+        'ChamadoMensagem', backref='chamado', cascade='all, delete-orphan', lazy='dynamic'
     )
 
     def __repr__(self):
@@ -188,6 +233,8 @@ class Chamado(db.Model):
             'descricao': self.descricao,
             'status': self.status,
             'prioridade': self.prioridade,
+            'mesa_id': self.mesa_id,
+            'mesa': self.mesa.nome if self.mesa else None,
             'data_criacao': self.data_criacao.strftime('%d/%m/%Y %H:%M') if self.data_criacao else None,
             'data_conclusao': self.data_conclusao.strftime('%d/%m/%Y %H:%M') if self.data_conclusao else None,
             'observacoes': self.observacoes,
@@ -223,6 +270,7 @@ class Usuario(db.Model):
     perm_acesso = db.Column(db.Boolean, default=False)
     setor = db.Column(db.String(80))
     setor_nutricao = db.Column(db.String(80))
+    telefone = db.Column(db.String(20))
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     menus = db.relationship('PermissaoMenu', backref='usuario', cascade='all, delete-orphan', lazy='dynamic')
 
@@ -267,6 +315,39 @@ class SetorFuncao(db.Model):
     )
 
 
+class ChamadoSetor(db.Model):
+    """Setores técnicos para vinculação de chamados."""
+    __tablename__ = 'chamado_setores'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(80), nullable=False, unique=True)
+    ativo = db.Column(db.Boolean, default=True, nullable=False)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+
+    tecnicos = db.relationship('ChamadoTecnico', backref='setor', lazy='dynamic')
+
+    def __repr__(self):
+        return f'<ChamadoSetor {self.nome}>'
+
+
+class ChamadoTecnico(db.Model):
+    """Técnicos vinculados a setores."""
+    __tablename__ = 'chamado_tecnicos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(120))
+    setor_id = db.Column(db.Integer, db.ForeignKey('chamado_setores.id'), nullable=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
+    ativo = db.Column(db.Boolean, default=True, nullable=False)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+
+    usuario = db.relationship('Usuario', foreign_keys=[usuario_id])
+
+    def __repr__(self):
+        return f'<ChamadoTecnico {self.nome}>'
+
+
 class PermissaoMenu(db.Model):
     __tablename__ = 'permissoes_menu'
 
@@ -294,6 +375,33 @@ class ConfiguracaoEmail(db.Model):
     atualizado_em = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class RecursoGrupo(db.Model):
+    """Grupo de recursos dentro de um cliente."""
+    __tablename__ = 'recurso_grupos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(80), nullable=False)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False, index=True)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    cliente = db.relationship('Cliente', backref='recurso_grupos')
+
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'nome', name='uq_recurso_grupos_cliente_nome'),
+    )
+
+
+def grupo_recurso_padrao(cliente_id):
+    if not cliente_id:
+        return None
+    row = RecursoGrupo.query.filter_by(cliente_id=cliente_id, nome=GRUPO_RECURSO_PADRAO).first()
+    if row:
+        return row
+    row = RecursoGrupo(nome=GRUPO_RECURSO_PADRAO, cliente_id=int(cliente_id))
+    db.session.add(row)
+    db.session.flush()
+    return row
+
+
 class Equipamento(db.Model):
     __tablename__ = 'equipamentos'
 
@@ -308,9 +416,15 @@ class Equipamento(db.Model):
     data_compra = db.Column(db.Date)
     data_manutencao = db.Column(db.Date)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
-    # Obrigatório no MySQL deste servidor
+    atualizado_em = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False)
     cliente = db.relationship('Cliente', backref='equipamentos')
+    tipo_recurso = db.Column(db.String(40), default='Estação')
+    grupo_id = db.Column(db.Integer, db.ForeignKey('recurso_grupos.id'), index=True)
+    grupo = db.relationship('RecursoGrupo', foreign_keys=[grupo_id])
+    usuario_equipamento = db.Column(db.String(120))
+    ip = db.Column(db.String(45))
+    is_agente = db.Column(db.Boolean, default=False, nullable=False)
 
     def __repr__(self):
         return f'<Equipamento {self.nome_equipamento}>'
@@ -331,7 +445,14 @@ class Equipamento(db.Model):
             'cliente_nome': self.cliente.nome if self.cliente else None,
             'data_compra': self.data_compra.strftime('%d/%m/%Y') if self.data_compra else None,
             'data_compra_iso': self.data_compra.strftime('%Y-%m-%d') if self.data_compra else None,
-            'data_manutencao': self.data_manutencao.strftime('%d/%m/%Y') if self.data_manutencao else None
+            'data_manutencao': self.data_manutencao.strftime('%d/%m/%Y') if self.data_manutencao else None,
+            'tipo_recurso': self.tipo_recurso or 'Estação',
+            'grupo_id': self.grupo_id,
+            'grupo_nome': self.grupo.nome if self.grupo else None,
+            'usuario_equipamento': self.usuario_equipamento or '',
+            'ip': self.ip or '',
+            'is_agente': bool(self.is_agente),
+            'atualizado_em': self.atualizado_em.strftime('%d/%m/%Y %H:%M') if self.atualizado_em else None,
         }
 
 
@@ -352,6 +473,17 @@ class ChamadoAtendimento(db.Model):
 
 TIPO_FOTO_CONSERTO = 'conserto'
 TIPO_FOTO_ENCAMINHAMENTO = 'encaminhamento'
+TIPOS_RECURSO = (
+    'Access Point',
+    'Celulares e Comunicação',
+    'Estação',
+    'Hardware',
+    'Mobília',
+    'Periférico',
+    'Servidor Local',
+    'Software',
+)
+GRUPO_RECURSO_PADRAO = 'Geral'
 
 
 class ChamadoEncaminhamento(db.Model):
@@ -385,3 +517,292 @@ class ChamadoFoto(db.Model):
     tipo = db.Column(db.String(20), default=TIPO_FOTO_CONSERTO)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     atendimento = db.relationship('ChamadoAtendimento', backref='fotos')
+
+
+class ChamadoConhecimento(db.Model):
+    """Base de conhecimentos (artigos) do módulo de chamados."""
+    __tablename__ = 'chamado_conhecimentos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    titulo = db.Column(db.String(200), nullable=False)
+    pasta = db.Column(db.String(80), default='Conhecimentos')
+    tags = db.Column(db.String(255))
+    catalogo = db.Column(db.String(80), default='Todos')
+    corpo = db.Column(db.Text)
+    arquivo = db.Column(db.String(255))
+    arquivo_nome = db.Column(db.String(200))
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    usuario = db.relationship('Usuario', foreign_keys=[usuario_id])
+
+
+class MesaServico(db.Model):
+    """Mesa de serviço (ex.: Suporte) — personalização da operação."""
+    __tablename__ = 'mesas'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(80), nullable=False, unique=True)
+    ativa = db.Column(db.Boolean, default=True, nullable=False)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class SlaPrioridade(db.Model):
+    """Prazo de atendimento e solução (horas) por prioridade."""
+    __tablename__ = 'sla_prioridades'
+
+    id = db.Column(db.Integer, primary_key=True)
+    prioridade = db.Column(db.String(10), nullable=False, unique=True)
+    prazo_atendimento_horas = db.Column(db.Integer, nullable=False, default=8)
+    prazo_solucao_horas = db.Column(db.Integer, nullable=False, default=24)
+
+
+class Contrato(db.Model):
+    __tablename__ = 'contratos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False, index=True)
+    tipo = db.Column(db.String(40), nullable=False, default='Suporte')
+    inicio = db.Column(db.Date)
+    vencimento = db.Column(db.Date)
+    dados_faturamento = db.Column(db.Text)
+    valor = db.Column(db.Numeric(12, 2))
+    observacao = db.Column(db.Text)
+    sla_atendimento_horas = db.Column(db.Integer)
+    sla_solucao_horas = db.Column(db.Integer)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    cliente = db.relationship('Cliente', backref='contratos')
+
+
+class ChamadoMensagem(db.Model):
+    """Comunicação do ticket: interno vs cliente, por canal."""
+    __tablename__ = 'chamado_mensagens'
+
+    id = db.Column(db.Integer, primary_key=True)
+    chamado_id = db.Column(db.Integer, db.ForeignKey('chamados.id'), nullable=False, index=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
+    texto = db.Column(db.Text, nullable=False)
+    canal = db.Column(db.String(20), default='Chat')
+    visivel_cliente = db.Column(db.Boolean, default=True, nullable=False)
+    enviada = db.Column(db.Boolean, default=False, nullable=False)
+    origem = db.Column(db.String(20), default='usuario')
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    usuario = db.relationship('Usuario', foreign_keys=[usuario_id])
+
+
+class ChamadoAutomacao(db.Model):
+    """Regras simples: ao criar (prioridade) ou ao mudar status → nota / mesa."""
+    __tablename__ = 'chamado_automacoes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(120), nullable=False)
+    gatilho = db.Column(db.String(20), nullable=False, default='criar')
+    prioridade_quando = db.Column(db.String(10))
+    status_quando = db.Column(db.String(40))
+    acao = db.Column(db.String(20), nullable=False, default='mensagem')
+    mensagem_padrao = db.Column(db.Text)
+    mesa_id = db.Column(db.Integer, db.ForeignKey('mesas.id'))
+    ativa = db.Column(db.Boolean, default=True, nullable=False)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    mesa = db.relationship('MesaServico', foreign_keys=[mesa_id])
+
+
+class ConhecimentoPasta(db.Model):
+    __tablename__ = 'conhecimento_pastas'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(80), nullable=False, unique=True)
+
+
+def normalizar_prioridade(valor):
+    raw = (valor or '').strip()
+    key = _fold_setor(raw)
+    mapa = {
+        'alta': 'Alta',
+        'normal': 'Normal',
+        'media': 'Média',
+        'baixa': 'Baixa',
+    }
+    return mapa.get(key, 'Normal')
+
+
+def sla_horas_prioridade(prioridade):
+    pri = normalizar_prioridade(prioridade)
+    try:
+        row = SlaPrioridade.query.filter(
+            db.func.lower(SlaPrioridade.prioridade) == pri.lower()
+        ).first()
+        if not row and pri == 'Média':
+            row = SlaPrioridade.query.filter_by(prioridade='Normal').first()
+        if row:
+            return int(row.prazo_atendimento_horas or 8), int(row.prazo_solucao_horas or 24)
+    except Exception:
+        pass
+    return SLA_PADRAO_HORAS.get(pri, SLA_PADRAO_HORAS['Normal'])
+
+
+def sla_horas_tipo_contrato(tipo):
+    return SLA_CONTRATO_TIPO.get((tipo or '').strip(), SLA_CONTRATO_TIPO['Suporte'])
+
+
+def contrato_vigente(cliente_id, ref_date=None):
+    if not cliente_id:
+        return None
+    ref = ref_date or date.today()
+    try:
+        q = Contrato.query.filter_by(cliente_id=cliente_id).order_by(Contrato.id.desc())
+        vigentes = []
+        for c in q.all():
+            ini = c.inicio or date.min
+            fim = c.vencimento or date.max
+            if ini <= ref <= fim:
+                vigentes.append(c)
+        if vigentes:
+            return vigentes[0]
+        return q.first()
+    except Exception:
+        return None
+
+
+def sla_horas_contrato(contrato):
+    if not contrato:
+        return None
+    at_h = contrato.sla_atendimento_horas
+    sol_h = contrato.sla_solucao_horas
+    if at_h and sol_h:
+        return int(at_h), int(sol_h)
+    padrao = sla_horas_tipo_contrato(contrato.tipo)
+    return int(at_h or padrao[0]), int(sol_h or padrao[1])
+
+
+def sla_do_chamado(chamado):
+    criado = getattr(chamado, 'data_criacao', None)
+    if not criado:
+        return None
+    fonte = 'prioridade'
+    contrato = getattr(chamado, 'contrato', None)
+    if contrato is None and getattr(chamado, 'contrato_id', None):
+        try:
+            contrato = Contrato.query.get(chamado.contrato_id)
+        except Exception:
+            contrato = None
+    if contrato is None:
+        contrato = contrato_vigente(
+            getattr(chamado, 'cliente_id', None),
+            criado.date() if hasattr(criado, 'date') else None,
+        )
+    horas_contrato = sla_horas_contrato(contrato)
+    if horas_contrato:
+        at_h, sol_h = horas_contrato
+        fonte = 'contrato'
+    else:
+        at_h, sol_h = sla_horas_prioridade(getattr(chamado, 'prioridade', None))
+    venc_at = criado + timedelta(hours=at_h)
+    venc_sol = criado + timedelta(hours=sol_h)
+    agora = datetime.utcnow()
+    fechado = status_fechado(getattr(chamado, 'status', None))
+    rest_at = (venc_at - agora).total_seconds() / 3600.0
+    rest_sol = (venc_sol - agora).total_seconds() / 3600.0
+    return {
+        'prioridade': normalizar_prioridade(chamado.prioridade),
+        'horas_atendimento': at_h,
+        'horas_solucao': sol_h,
+        'venc_atendimento': venc_at,
+        'venc_solucao': venc_sol,
+        'atendimento_vencido': (not fechado) and venc_at < agora,
+        'solucao_vencida': (not fechado) and venc_sol < agora,
+        'atendimento_proximo': (not fechado) and 0 <= rest_at <= SLA_ALERTA_HORAS,
+        'solucao_proxima': (not fechado) and 0 <= rest_sol <= SLA_ALERTA_HORAS,
+        'fechado': fechado,
+        'fonte': fonte,
+        'contrato': contrato,
+        'contrato_tipo': contrato.tipo if contrato else None,
+    }
+
+
+def _bucket_sla(dt, hoje, agora, fechado):
+    if not dt or fechado:
+        return None
+    if dt < agora:
+        return 'vencido'
+    d = dt.date() if hasattr(dt, 'date') else dt
+    if d == hoje:
+        return 'hoje'
+    if d == hoje + timedelta(days=1):
+        return 'amanha'
+    if d > hoje:
+        return 'depois'
+    return None
+
+
+def mesas_ativas():
+    try:
+        return MesaServico.query.filter_by(ativa=True).order_by(MesaServico.nome.asc()).all()
+    except Exception:
+        return []
+
+
+def mesa_padrao():
+    try:
+        row = MesaServico.query.filter_by(nome=MESA_PADRAO).first()
+        if row:
+            return row
+        row = MesaServico.query.filter_by(ativa=True).order_by(MesaServico.id.asc()).first()
+        return row
+    except Exception:
+        return None
+
+
+def resolver_mesa_id(raw):
+    if raw is not None and str(raw).strip().isdigit():
+        mesa = MesaServico.query.get(int(raw))
+        if mesa and mesa.ativa:
+            return mesa.id
+    padrao = mesa_padrao()
+    return padrao.id if padrao else None
+
+
+def parse_valor_faturamento(raw):
+    txt = (raw or '').strip().replace('R$', '').replace(' ', '')
+    if not txt:
+        return None
+    if ',' in txt and '.' in txt:
+        txt = txt.replace('.', '').replace(',', '.')
+    elif ',' in txt:
+        txt = txt.replace(',', '.')
+    try:
+        return Decimal(txt)
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def aplicar_automacoes(chamado, evento, usuario, status_anterior=None):
+    """evento: 'criar' | 'status'. Anexa nota na timeline e/ou muda a mesa."""
+    try:
+        regras = ChamadoAutomacao.query.filter_by(ativa=True).all()
+    except Exception:
+        return
+    pri = normalizar_prioridade(getattr(chamado, 'prioridade', None))
+    for regra in regras:
+        ok = False
+        if evento == 'criar' and (regra.gatilho or '') == 'criar':
+            if not regra.prioridade_quando or normalizar_prioridade(regra.prioridade_quando) == pri:
+                ok = True
+        elif evento == 'status' and (regra.gatilho or '') == 'status':
+            alvo = (regra.status_quando or '').strip()
+            if alvo and (chamado.status or '').strip() == alvo and (status_anterior or '') != alvo:
+                ok = True
+        if not ok:
+            continue
+        if (regra.acao or '') == 'mesa' and regra.mesa_id:
+            chamado.mesa_id = regra.mesa_id
+        texto = (regra.mensagem_padrao or '').strip() or f'Automação: {regra.nome}'
+        uid = usuario.id if usuario else chamado.tecnico_id
+        db.session.add(ChamadoMensagem(
+            chamado_id=chamado.id,
+            usuario_id=uid,
+            texto=texto,
+            canal='Interno',
+            visivel_cliente=False,
+            enviada=False,
+            origem='automacao',
+        ))

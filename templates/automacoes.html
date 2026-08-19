@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+{% block title %}Automações{% endblock %}
+{% block content %}
+<div class="mdk-crud">
+    <h1>Automações e mesas</h1>
+    <p class="chamados-sub">Regras da operação: mesas de serviço, SLA por prioridade e notas automáticas na timeline do ticket.</p>
+
+    <div class="mdk-card" style="margin-bottom:0.8rem">
+        <h3>Mesas de serviço</h3>
+        <form method="POST" class="mdk-inline-form">
+            <input type="hidden" name="acao" value="mesa">
+            <input type="text" name="nome" placeholder="Nome da mesa" required maxlength="80">
+            <button type="submit" class="mdk-btn mdk-btn-teal">Adicionar</button>
+        </form>
+        <table class="mdk-table">
+            <thead><tr><th>Mesa</th><th>Ativa</th><th></th></tr></thead>
+            <tbody>
+                {% for m in mesas %}
+                <tr>
+                    <td>{{ m.nome }}</td>
+                    <td>{{ 'Sim' if m.ativa else 'Não' }}</td>
+                    <td>
+                        <form method="POST" style="display:inline">
+                            <input type="hidden" name="acao" value="toggle_mesa">
+                            <input type="hidden" name="id" value="{{ m.id }}">
+                            <button class="mdk-btn" type="submit">{{ 'Desativar' if m.ativa else 'Ativar' }}</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="3" class="mdk-empty">Nenhuma mesa.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="mdk-card" style="margin-bottom:0.8rem">
+        <h3>SLA por prioridade (padrão)</h3>
+        <p class="mdk-empty" style="text-align:left;padding:0 0 0.5rem">Usado quando o cliente não tem contrato com SLA próprio.</p>
+        {% for s in slas %}
+        <form method="POST" class="mdk-inline-form">
+            <input type="hidden" name="acao" value="sla">
+            <input type="hidden" name="prioridade" value="{{ s.prioridade }}">
+            <strong>{{ s.prioridade }}</strong>
+            <label>Atendimento (h) <input type="number" min="1" name="prazo_atendimento_horas" value="{{ s.prazo_atendimento_horas }}"></label>
+            <label>Solução (h) <input type="number" min="1" name="prazo_solucao_horas" value="{{ s.prazo_solucao_horas }}"></label>
+            <button type="submit" class="mdk-btn mdk-btn-teal">Salvar</button>
+        </form>
+        {% endfor %}
+    </div>
+
+    <div class="mdk-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem">
+            <h3 style="margin:0">Automações</h3>
+            <button type="button" class="mdk-btn mdk-btn-teal" id="btnNovaAutomacao">+ Adicionar nova automação</button>
+        </div>
+        <table class="mdk-table">
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>Quando (gatilho)</th>
+                    <th>Condição</th>
+                    <th>Ação</th>
+                    <th>Ativo</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% set gatilho_label = {
+                    'criar': 'Ticket criado',
+                    'status': 'Status alterado',
+                    'sla_proximo': 'SLA próximo do vencimento',
+                    'sla_vencido': 'SLA vencido',
+                    'sem_resposta': 'Ticket sem resposta (24h)'
+                } %}
+                {% set acao_label = {
+                    'email': 'Enviar e-mail ao solicitante',
+                    'mensagem': 'Adicionar nota na timeline',
+                    'status': 'Alterar status',
+                    'notificar': 'Notificar responsável',
+                    'mesa': 'Mudar mesa'
+                } %}
+                {% for r in regras %}
+                <tr>
+                    <td>
+                        <strong>{{ r.nome }}</strong>
+                        {% if r.mensagem_padrao %}<br><small style="color:#6b7280">{{ r.mensagem_padrao[:60] }}{% if r.mensagem_padrao|length > 60 %}…{% endif %}</small>{% endif %}
+                    </td>
+                    <td>{{ gatilho_label.get(r.gatilho, r.gatilho) }}</td>
+                    <td>
+                        {% if r.prioridade_quando %}Prioridade: {{ r.prioridade_quando }}{% endif %}
+                        {% if r.status_quando %}Status: {{ r.status_quando }}{% endif %}
+                        {% if not r.prioridade_quando and not r.status_quando %}—{% endif %}
+                    </td>
+                    <td>{{ acao_label.get(r.acao, r.acao) }}{% if r.acao == 'mesa' and r.mesa %} → {{ r.mesa.nome }}{% endif %}</td>
+                    <td>
+                        <form method="POST" style="display:inline">
+                            <input type="hidden" name="acao" value="toggle_regra">
+                            <input type="hidden" name="id" value="{{ r.id }}">
+                            <button class="mdk-btn" type="submit" style="padding:0.2rem 0.55rem;font-size:0.72rem">
+                                {% if r.ativa %}<span style="color:#059669">✔ Ativo</span>{% else %}<span style="color:#9ca3af">✗ Inativo</span>{% endif %}
+                            </button>
+                        </form>
+                    </td>
+                    <td style="white-space:nowrap">
+                        <button type="button" class="mdk-btn" style="padding:0.2rem 0.55rem;font-size:0.72rem"
+                            data-edit-id="{{ r.id }}"
+                            data-nome="{{ r.nome }}"
+                            data-gatilho="{{ r.gatilho }}"
+                            data-prioridade="{{ r.prioridade_quando or '' }}"
+                            data-status-quando="{{ r.status_quando or '' }}"
+                            data-acao-regra="{{ r.acao }}"
+                            data-mensagem="{{ r.mensagem_padrao or '' }}"
+                            data-mesa-id="{{ r.mesa_id or '' }}"
+                            data-ativa="{{ '1' if r.ativa else '0' }}">Editar</button>
+                        <form method="POST" style="display:inline" onsubmit="return confirm('Excluir esta automação?')">
+                            <input type="hidden" name="acao" value="excluir_regra">
+                            <input type="hidden" name="id" value="{{ r.id }}">
+                            <button class="mdk-btn" type="submit" style="padding:0.2rem 0.55rem;font-size:0.72rem;color:#dc2626">Excluir</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="mdk-empty">Nenhuma automação cadastrada.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Popup de automação -->
+<div id="modalAutomacao" class="modal-overlay" hidden style="padding:0.8rem;align-items:center;justify-content:center">
+    <div class="modal-dialog" role="dialog" aria-modal="true" style="max-width:460px;width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;font-size:0.8rem">
+        <div class="modal-header" style="padding:0.9rem 1rem 0;gap:0.6rem">
+            <h2 id="automModalTitle" style="font-size:0.95rem;margin:0">Nova automação</h2>
+            <button type="button" class="modal-close" id="btnFecharAutomX" aria-label="Fechar">&times;</button>
+        </div>
+        <form id="formAutomacao" method="POST" style="display:flex;flex-direction:column;overflow:hidden">
+            <input type="hidden" name="acao" id="autom_acao" value="regra">
+            <input type="hidden" name="id" id="autom_id" value="">
+            <div class="modal-body" style="padding:0.72rem 1rem 0.4rem;overflow-y:auto">
+                <div class="form-group">
+                    <label for="autom_nome">Nome da regra</label>
+                    <input type="text" id="autom_nome" name="nome" required maxlength="120" placeholder="Ex.: Alta prioridade → nota automática">
+                </div>
+                <div class="form-group">
+                    <label for="autom_gatilho">Quando (gatilho)</label>
+                    <select id="autom_gatilho" name="gatilho">
+                        <option value="criar">Ticket criado</option>
+                        <option value="status">Status alterado</option>
+                        <option value="sla_proximo">SLA próximo do vencimento</option>
+                        <option value="sla_vencido">SLA vencido</option>
+                        <option value="sem_resposta">Ticket sem resposta (24h)</option>
+                    </select>
+                </div>
+                <div class="form-group" id="boxPrioridade">
+                    <label for="autom_prioridade">Condição — Prioridade</label>
+                    <select id="autom_prioridade" name="prioridade_quando">
+                        <option value="">Qualquer</option>
+                        <option>Alta</option>
+                        <option>Normal</option>
+                        <option>Baixa</option>
+                    </select>
+                </div>
+                <div class="form-group" id="boxStatusQuando" hidden>
+                    <label for="autom_status_quando">Condição — Status</label>
+                    <select id="autom_status_quando" name="status_quando">
+                        <option value="">Qualquer</option>
+                        <option>Pendente</option>
+                        <option>Em Andamento</option>
+                        <option>Encaminhado</option>
+                        <option>Atendido</option>
+                        <option>Concluído</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="autom_acao_regra">Ação</label>
+                    <select id="autom_acao_regra" name="acao_regra">
+                        <option value="email">Enviar e-mail ao solicitante</option>
+                        <option value="mensagem">Adicionar nota na timeline</option>
+                        <option value="status">Alterar status</option>
+                        <option value="notificar">Notificar responsável</option>
+                        <option value="mesa">Mudar mesa</option>
+                    </select>
+                </div>
+                <div class="form-group" id="boxMesa" hidden>
+                    <label for="autom_mesa_id">Mesa destino</label>
+                    <select id="autom_mesa_id" name="mesa_id">
+                        <option value="">—</option>
+                        {% for m in mesas %}
+                        <option value="{{ m.id }}">{{ m.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" id="boxMensagem">
+                    <label for="autom_mensagem">Mensagem / nota</label>
+                    <textarea id="autom_mensagem" name="mensagem_padrao" rows="3" placeholder="Texto que será inserido na timeline ou enviado por e-mail"></textarea>
+                </div>
+                <div class="form-group" id="boxAtiva" style="display:flex;align-items:center;gap:0.5rem">
+                    <input type="checkbox" id="autom_ativa" name="ativa" value="1" checked style="width:auto">
+                    <label for="autom_ativa" style="margin:0;cursor:pointer">Automação ativa</label>
+                </div>
+            </div>
+            <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:0.5rem;padding:0.64rem 1rem 0.8rem;border-top:1px solid var(--gray-200)">
+                <button type="button" class="btn btn-secondary" id="btnFecharAutomFooter" style="font-size:0.76rem;padding:0.4rem 0.8rem">Fechar</button>
+                <button type="submit" class="btn btn-primary" style="font-size:0.76rem;padding:0.4rem 0.8rem">Salvar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+(function () {
+    const overlay = document.getElementById('modalAutomacao');
+    const title = document.getElementById('automModalTitle');
+    const acaoInput = document.getElementById('autom_acao');
+    const idInput = document.getElementById('autom_id');
+    const gatilhoSel = document.getElementById('autom_gatilho');
+    const acaoRegra = document.getElementById('autom_acao_regra');
+    const boxMesa = document.getElementById('boxMesa');
+    const boxMensagem = document.getElementById('boxMensagem');
+    const boxPrioridade = document.getElementById('boxPrioridade');
+    const boxStatusQuando = document.getElementById('boxStatusQuando');
+
+    function syncGatilho() {
+        const v = gatilhoSel.value;
+        boxPrioridade.hidden = (v !== 'criar');
+        boxStatusQuando.hidden = (v !== 'status');
+    }
+    function syncAcao() {
+        const v = acaoRegra.value;
+        boxMesa.hidden = (v !== 'mesa');
+        boxMensagem.hidden = (v === 'mesa' || v === 'status' || v === 'notificar');
+    }
+    gatilhoSel.addEventListener('change', syncGatilho);
+    acaoRegra.addEventListener('change', syncAcao);
+
+    function abrirModal(edit) {
+        if (edit) {
+            title.textContent = 'Editar automação';
+            acaoInput.value = 'editar_regra';
+            idInput.value = edit.dataset.editId;
+            document.getElementById('autom_nome').value = edit.dataset.nome;
+            gatilhoSel.value = edit.dataset.gatilho;
+            document.getElementById('autom_prioridade').value = edit.dataset.prioridade;
+            document.getElementById('autom_status_quando').value = edit.dataset.statusQuando;
+            acaoRegra.value = edit.dataset.acaoRegra;
+            document.getElementById('autom_mensagem').value = edit.dataset.mensagem;
+            document.getElementById('autom_mesa_id').value = edit.dataset.mesaId;
+            document.getElementById('autom_ativa').checked = edit.dataset.ativa === '1';
+        } else {
+            title.textContent = 'Nova automação';
+            acaoInput.value = 'regra';
+            idInput.value = '';
+            document.getElementById('formAutomacao').reset();
+            document.getElementById('autom_ativa').checked = true;
+        }
+        syncGatilho();
+        syncAcao();
+        overlay.hidden = false;
+        document.body.classList.add('modal-open');
+    }
+
+    function fecharModal() {
+        overlay.hidden = true;
+        document.body.classList.remove('modal-open');
+    }
+
+    document.getElementById('btnNovaAutomacao').addEventListener('click', () => abrirModal(null));
+    document.getElementById('btnFecharAutomX').addEventListener('click', fecharModal);
+    document.getElementById('btnFecharAutomFooter').addEventListener('click', fecharModal);
+    overlay.addEventListener('click', e => { if (e.target === overlay) fecharModal(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !overlay.hidden) fecharModal(); });
+
+    document.querySelectorAll('[data-edit-id]').forEach(btn => {
+        btn.addEventListener('click', () => abrirModal(btn));
+    });
+
+    syncGatilho();
+    syncAcao();
+})();
+</script>
+{% endblock %}

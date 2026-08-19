@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Novo conhecimento{% endblock %}
+{% block content %}
+<div class="mdk-kb-form">
+    <h1>Novo conhecimento</h1>
+    <form method="POST" enctype="multipart/form-data" id="formConhecimento">
+        <input type="text" class="mdk-kb-title" name="titulo" placeholder="Digite um título..." required maxlength="200" autocomplete="off">
+        <div class="mdk-kb-meta">
+            <span class="mdk-kb-tag"><i class="fas fa-folder"></i> Pasta</span>
+            <select class="mdk-select" name="pasta">
+                {% for p in pastas %}
+                <option value="{{ p }}" {% if p == 'Conhecimentos' %}selected{% endif %}>{{ p }}</option>
+                {% endfor %}
+            </select>
+            <label>Nova pasta
+                <input type="text" name="pasta_nova" placeholder="Opcional" maxlength="80">
+            </label>
+            <label>Tags
+                <input type="text" name="tags" placeholder="Separe por vírgula ou Enter" id="kbTags">
+            </label>
+            <label>Catálogo
+                <select class="mdk-select" name="catalogo">
+                    <option value="Todos">Todos</option>
+                </select>
+            </label>
+        </div>
+        <div class="mdk-kb-editor">
+            <div class="mdk-kb-toolbar-ed">
+                <button type="button" data-cmd="bold" title="Negrito"><i class="fas fa-bold"></i></button>
+                <button type="button" data-cmd="italic" title="Itálico"><i class="fas fa-italic"></i></button>
+                <button type="button" data-cmd="insertUnorderedList" title="Lista"><i class="fas fa-list-ul"></i></button>
+                <button type="button" data-cmd="insertOrderedList" title="Lista numerada"><i class="fas fa-list-ol"></i></button>
+            </div>
+            <div class="mdk-kb-body" id="kbBody" contenteditable="true" data-placeholder="Escreva o conteúdo..."></div>
+            <textarea name="corpo" id="kbCorpo" hidden></textarea>
+        </div>
+        <div class="mdk-kb-attach">
+            <label class="mdk-btn">
+                <i class="fas fa-paperclip"></i> Anexar arquivo
+                <input type="file" name="arquivo" hidden>
+            </label>
+            <small>Máximo 25 MB</small>
+            <span id="kbFileName"></span>
+        </div>
+        <div class="mdk-kb-actions">
+            <a class="mdk-btn" href="{{ url_for('main.conhecimentos') }}">Cancelar</a>
+            <button type="submit" class="mdk-btn mdk-btn-teal">Criar conhecimento</button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+    const body = document.getElementById('kbBody');
+    const hidden = document.getElementById('kbCorpo');
+    document.querySelectorAll('[data-cmd]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.execCommand(btn.getAttribute('data-cmd'), false, null);
+            body.focus();
+        });
+    });
+    document.getElementById('formConhecimento').addEventListener('submit', function () {
+        hidden.value = body.innerHTML;
+    });
+    const tags = document.getElementById('kbTags');
+    tags.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const v = tags.value.trim();
+        if (!v) return;
+        if (v.slice(-1) !== ',') tags.value = v + ', ';
+    });
+    const file = document.querySelector('input[name="arquivo"]');
+    file.addEventListener('change', function () {
+        const n = document.getElementById('kbFileName');
+        n.textContent = (this.files && this.files[0]) ? this.files[0].name : '';
+        if (this.files && this.files[0] && this.files[0].size > 25 * 1024 * 1024) {
+            if (window.mdkToast) window.mdkToast('Arquivo excede 25 MB');
+            this.value = '';
+            n.textContent = '';
+        }
+    });
+})();
+</script>
+{% endblock %}

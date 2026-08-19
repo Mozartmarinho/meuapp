@@ -75,10 +75,20 @@
                     <label for="prioridade">Prioridade</label>
                     <select id="prioridade" name="prioridade">
                         <option value="Normal" {% if chamado.prioridade == 'Normal' %}selected{% endif %}>Normal</option>
-                        <option value="Média" {% if chamado.prioridade == 'Média' %}selected{% endif %}>Média</option>
                         <option value="Alta" {% if chamado.prioridade == 'Alta' %}selected{% endif %}>Alta</option>
+                        <option value="Baixa" {% if chamado.prioridade == 'Baixa' %}selected{% endif %}>Baixa</option>
+                        <option value="Média" {% if chamado.prioridade == 'Média' %}selected{% endif %}>Média</option>
                     </select>
                 </div>
+            </div>
+
+            <div class="form-group">
+                <label for="mesa_id">Mesa de serviço</label>
+                <select id="mesa_id" name="mesa_id">
+                    {% for m in mesas %}
+                    <option value="{{ m.id }}" {% if chamado.mesa_id == m.id %}selected{% endif %}>{{ m.nome }}</option>
+                    {% endfor %}
+                </select>
             </div>
 
             <div class="form-group">

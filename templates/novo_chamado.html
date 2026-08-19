@@ -13,7 +13,7 @@
 
 <div class="form-container">
     <form method="POST" action="{{ url_for('main.novo_chamado') }}">
-        <input type="hidden" name="status" value="Pendente">
+        <input type="hidden" name="status" value="{{ status_inicial|default('Pendente') }}">
         <div class="form-group">
             <label for="cliente_id">Cliente *</label>
             <select id="cliente_id" name="cliente_id" required>
@@ -55,11 +55,31 @@
         </div>
 
         <div class="form-group">
+            <label for="setor_tecnico_id">Setor</label>
+            <select id="setor_tecnico_id" name="setor_tecnico_id">
+                <option value="">Selecione o setor...</option>
+                {% for setor in setores_tecnicos %}
+                <option value="{{ setor.id }}">{{ setor.nome }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="mesa_id">Mesa de serviço</label>
+            <select id="mesa_id" name="mesa_id">
+                {% for m in mesas %}
+                <option value="{{ m.id }}" {% if mesa_padrao_id == m.id %}selected{% endif %}>{{ m.nome }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
             <label for="prioridade">Prioridade</label>
             <select id="prioridade" name="prioridade">
                 <option value="Normal">Normal</option>
-                <option value="Média">Média</option>
                 <option value="Alta">Alta</option>
+                <option value="Baixa">Baixa</option>
+                <option value="Média">Média</option>
             </select>
         </div>
 

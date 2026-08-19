@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Contratos{% endblock %}
+{% block content %}
+<div class="mdk-crud">
+    <div class="mdk-crud-head">
+        <h1>Contratos</h1>
+        <button type="button" class="mdk-btn mdk-btn-teal" id="btnNovoContrato"><i class="fas fa-plus"></i> Novo contrato</button>
+    </div>
+    {% if cliente_filtro %}
+    <p class="chamados-sub">Filtrado pelo cliente #{{ cliente_filtro }} · <a href="{{ url_for('main.contratos') }}">Ver todos</a></p>
+    {% endif %}
+    <div class="mdk-card" style="overflow:auto">
+        <table class="mdk-table">
+            <thead>
+                <tr>
+                    <th>Cliente</th>
+                    <th>Tipo</th>
+                    <th>Início</th>
+                    <th>Vencimento</th>
+                    <th>SLA at./sol.</th>
+                    <th>Faturamento</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in contratos %}
+                <tr>
+                    <td>{{ c.cliente.nome if c.cliente else '—' }}</td>
+                    <td>{{ c.tipo }}</td>
+                    <td>{{ c.inicio.strftime('%d/%m/%Y') if c.inicio else '—' }}</td>
+                    <td>{{ c.vencimento.strftime('%d/%m/%Y') if c.vencimento else '—' }}</td>
+                    <td>{{ c.sla_atendimento_horas or '—' }}h / {{ c.sla_solucao_horas or '—' }}h</td>
+                    <td>{{ c.valor or '' }} {% if c.dados_faturamento %}<small>{{ c.dados_faturamento[:80] }}</small>{% endif %}</td>
+                    <td>
+                        <button type="button" class="mdk-btn btn-edit-ct" data-ct="{{ {
+                            'id': c.id,
+                            'cliente_id': c.cliente_id,
+                            'tipo': c.tipo,
+                            'inicio': c.inicio.isoformat() if c.inicio else '',
+                            'vencimento': c.vencimento.isoformat() if c.vencimento else '',
+                            'valor': c.valor|string if c.valor else '',
+                            'dados_faturamento': c.dados_faturamento or '',
+                            'observacao': c.observacao or '',
+                            'sla_atendimento_horas': c.sla_atendimento_horas or '',
+                            'sla_solucao_horas': c.sla_solucao_horas or ''
+                        }|tojson|e }}">Editar</button>
+                        <form method="POST" action="{{ url_for('main.excluir_contrato', id=c.id) }}" style="display:inline" onsubmit="return confirm('Excluir este contrato?');">
+                            <button type="submit" class="mdk-btn">Excluir</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="mdk-empty">Nenhum contrato cadastrado.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div id="modalContrato" class="modal-overlay nc-modal" hidden>
+    <div class="modal-dialog nc-dialog" role="dialog">
+        <div class="modal-header">
+            <h2 id="ctTitle">Contrato</h2>
+            <button type="button" class="modal-close" id="ctCloseX" aria-label="Fechar">&times;</button>
+        </div>
+        <form method="POST" action="{{ url_for('main.contratos') }}" id="formContrato">
+            <input type="hidden" name="id" id="ct_id">
+            <div class="mdk-form-grid">
+                <label>Cliente *
+                    <select name="cliente_id" id="ct_cliente" required>
+                        <option value="">Selecione...</option>
+                        {% for cli in clientes %}
+                        <option value="{{ cli.id }}" {% if cliente_filtro == cli.id %}selected{% endif %}>{{ cli.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>Tipo
+                    <select name="tipo" id="ct_tipo">
+                        {% for t in tipos %}
+                        <option value="{{ t }}">{{ t }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>Início <input type="date" name="inicio" id="ct_inicio"></label>
+                <label>Vencimento <input type="date" name="vencimento" id="ct_vencimento"></label>
+                <label>SLA atendimento (h) <input type="number" min="1" name="sla_atendimento_horas" id="ct_sla_at"></label>
+                <label>SLA solução (h) <input type="number" min="1" name="sla_solucao_horas" id="ct_sla_sol"></label>
+                <label>Valor faturamento <input type="text" name="valor" id="ct_valor" placeholder="0,00"></label>
+                <label class="full">Dados de faturamento <textarea name="dados_faturamento" id="ct_dados" rows="2"></textarea></label>
+                <label class="full">Observação <textarea name="observacao" id="ct_obs" rows="2"></textarea></label>
+            </div>
+            <div class="nc-actions">
+                <button type="button" class="mdk-btn" id="ctFechar">Fechar</button>
+                <button type="submit" class="mdk-btn mdk-btn-teal">Salvar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+    const slaTipos = {{ sla_tipos|tojson }};
+    const overlay = document.getElementById('modalContrato');
+    function openModal() { overlay.hidden = false; }
+    function closeModal() { overlay.hidden = true; }
+    function fillSla() {
+        const t = document.getElementById('ct_tipo').value;
+        const pair = slaTipos[t];
+        if (!pair) return;
+        if (!document.getElementById('ct_sla_at').value) document.getElementById('ct_sla_at').value = pair[0];
+        if (!document.getElementById('ct_sla_sol').value) document.getElementById('ct_sla_sol').value = pair[1];
+    }
+    document.getElementById('btnNovoContrato').addEventListener('click', function () {
+        document.getElementById('formContrato').reset();
+        document.getElementById('ct_id').value = '';
+        document.getElementById('ctTitle').textContent = 'Novo contrato';
+        fillSla();
+        openModal();
+    });
+    document.getElementById('ct_tipo').addEventListener('change', function () {
+        const pair = slaTipos[this.value];
+        if (pair) {
+            document.getElementById('ct_sla_at').value = pair[0];
+            document.getElementById('ct_sla_sol').value = pair[1];
+        }
+    });
+    document.querySelectorAll('.btn-edit-ct').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const d = JSON.parse(btn.getAttribute('data-ct'));
+            document.getElementById('ctTitle').textContent = 'Editar contrato';
+            document.getElementById('ct_id').value = d.id;
+            document.getElementById('ct_cliente').value = d.cliente_id;
+            document.getElementById('ct_tipo').value = d.tipo;
+            document.getElementById('ct_inicio').value = d.inicio;
+            document.getElementById('ct_vencimento').value = d.vencimento;
+            document.getElementById('ct_valor').value = d.valor;
+            document.getElementById('ct_dados').value = d.dados_faturamento;
+            document.getElementById('ct_obs').value = d.observacao;
+            document.getElementById('ct_sla_at').value = d.sla_atendimento_horas;
+            document.getElementById('ct_sla_sol').value = d.sla_solucao_horas;
+            openModal();
+        });
+    });
+    document.getElementById('ctFechar').addEventListener('click', closeModal);
+    document.getElementById('ctCloseX').addEventListener('click', closeModal);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+})();
+</script>
+{% endblock %}

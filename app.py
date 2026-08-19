@@ -152,6 +152,10 @@ def ensure_usuarios_schema():
             db.session.execute(text('ALTER TABLE usuarios ADD COLUMN setor_nutricao VARCHAR(80) NULL'))
             db.session.commit()
             cols.add('setor_nutricao')
+        if 'telefone' not in cols:
+            db.session.execute(text('ALTER TABLE usuarios ADD COLUMN telefone VARCHAR(20) NULL'))
+            db.session.commit()
+            cols.add('telefone')
         try:
             db.session.execute(text('ALTER TABLE usuarios MODIFY COLUMN setor VARCHAR(80) NULL'))
             db.session.commit()
@@ -193,6 +197,8 @@ def ensure_chamados_schema():
             'encaminhado_em': 'DATETIME NULL',
             'patrimonio': 'VARCHAR(50) NULL',
             'equipamento_id': 'INT NULL',
+            'mesa_id': 'INT NULL',
+            'contrato_id': 'INT NULL',
         }
         for col, ddl in extras.items():
             if col not in cols:
@@ -249,6 +255,9 @@ def ensure_equipamentos_schema():
     try:
         insp = inspect(db.engine)
         tables = set(insp.get_table_names())
+        if 'recurso_grupos' not in tables:
+            from models import RecursoGrupo
+            RecursoGrupo.__table__.create(db.engine, checkfirst=True)
         if 'equipamentos' not in tables:
             return
         cols = {c['name'] for c in insp.get_columns('equipamentos')}
@@ -260,6 +269,12 @@ def ensure_equipamentos_schema():
             'data_compra': 'DATE NULL',
             'ativo': 'TINYINT(1) NOT NULL DEFAULT 1',
             'nome_equipamento': 'VARCHAR(100) NULL',
+            'tipo_recurso': "VARCHAR(40) NULL DEFAULT 'Estação'",
+            'grupo_id': 'INT NULL',
+            'usuario_equipamento': 'VARCHAR(120) NULL',
+            'ip': 'VARCHAR(45) NULL',
+            'is_agente': 'TINYINT(1) NOT NULL DEFAULT 0',
+            'atualizado_em': 'DATETIME NULL',
         }
         for col, ddl in extras.items():
             if col not in cols:
@@ -276,6 +291,14 @@ def ensure_equipamentos_schema():
                 db.session.commit()
             except Exception:
                 db.session.rollback()
+        try:
+            db.session.execute(text(
+                'ALTER TABLE equipamentos ADD CONSTRAINT fk_equipamentos_grupo '
+                'FOREIGN KEY (grupo_id) REFERENCES recurso_grupos(id)'
+            ))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
         if 'clientes' in tables:
             fks = insp.get_foreign_keys('equipamentos')
             has_fk = any(
@@ -335,6 +358,8 @@ def ensure_clientes_schema():
             alters.append('ADD COLUMN ativo TINYINT(1) NOT NULL DEFAULT 1')
         if 'data_criacao' not in cols:
             alters.append('ADD COLUMN data_criacao DATETIME NULL')
+        if 'email' not in cols:
+            alters.append('ADD COLUMN email VARCHAR(120) NULL')
         for clause in alters:
             db.session.execute(text(f'ALTER TABLE clientes {clause}'))
             db.session.commit()
@@ -396,6 +421,148 @@ def ensure_setores_funcao_schema():
         db.session.rollback()
 
 
+def ensure_tecnicos_schema():
+    """Cria tabelas chamado_setores e chamado_tecnicos e semeia setores padrão."""
+    from sqlalchemy import inspect, text
+    from models import ChamadoSetor, ChamadoTecnico
+    SETORES_PADRAO = ['Informática', 'Edificação', 'Elétrica', 'Máquinas', 'Compras']
+    try:
+        insp = inspect(db.engine)
+        tables = set(insp.get_table_names())
+        if 'chamado_setores' not in tables:
+            ChamadoSetor.__table__.create(db.engine, checkfirst=True)
+        if 'chamado_tecnicos' not in tables:
+            ChamadoTecnico.__table__.create(db.engine, checkfirst=True)
+        # Add setor_tecnico_id to chamados if missing
+        if 'chamados' in tables:
+            cols = {c['name'] for c in insp.get_columns('chamados')}
+            if 'setor_tecnico_id' not in cols:
+                db.session.execute(text('ALTER TABLE chamados ADD COLUMN setor_tecnico_id INT NULL'))
+                db.session.commit()
+                try:
+                    db.session.execute(text(
+                        'ALTER TABLE chamados ADD CONSTRAINT fk_chamados_setor_tecnico '
+                        'FOREIGN KEY (setor_tecnico_id) REFERENCES chamado_setores(id)'
+                    ))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+        # Seed default setores
+        for nome in SETORES_PADRAO:
+            if not ChamadoSetor.query.filter_by(nome=nome).first():
+                db.session.add(ChamadoSetor(nome=nome, ativo=True))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def ensure_operacao_chamados_schema():
+    """Tabelas e sementes: mesas, SLA, contratos, mensagens, automações, pastas."""
+    from sqlalchemy import inspect, text
+    from models import (
+        MesaServico,
+        SlaPrioridade,
+        ChamadoAutomacao,
+        ConhecimentoPasta,
+        MESA_PADRAO,
+        PASTA_CONHECIMENTO_PADRAO,
+        SLA_PADRAO_HORAS,
+        STATUS_ENCAMINHADO,
+    )
+    try:
+        insp = inspect(db.engine)
+        tables = set(insp.get_table_names())
+        if 'mesas' not in tables:
+            MesaServico.__table__.create(db.engine, checkfirst=True)
+        if 'sla_prioridades' not in tables:
+            SlaPrioridade.__table__.create(db.engine, checkfirst=True)
+        if 'contratos' not in tables:
+            from models import Contrato
+            Contrato.__table__.create(db.engine, checkfirst=True)
+        if 'chamado_mensagens' not in tables:
+            from models import ChamadoMensagem
+            ChamadoMensagem.__table__.create(db.engine, checkfirst=True)
+        if 'chamado_automacoes' not in tables:
+            ChamadoAutomacao.__table__.create(db.engine, checkfirst=True)
+        if 'conhecimento_pastas' not in tables:
+            ConhecimentoPasta.__table__.create(db.engine, checkfirst=True)
+        insp = inspect(db.engine)
+        if 'contratos' in set(insp.get_table_names()):
+            ccols = {c['name'] for c in insp.get_columns('contratos')}
+            if 'sla_atendimento_horas' not in ccols:
+                db.session.execute(text('ALTER TABLE contratos ADD COLUMN sla_atendimento_horas INT NULL'))
+                db.session.commit()
+            if 'sla_solucao_horas' not in ccols:
+                db.session.execute(text('ALTER TABLE contratos ADD COLUMN sla_solucao_horas INT NULL'))
+                db.session.commit()
+        if 'chamados' in set(insp.get_table_names()):
+            cols = {c['name'] for c in insp.get_columns('chamados')}
+            if 'mesa_id' not in cols:
+                db.session.execute(text('ALTER TABLE chamados ADD COLUMN mesa_id INT NULL'))
+                db.session.commit()
+            if 'contrato_id' not in cols:
+                db.session.execute(text('ALTER TABLE chamados ADD COLUMN contrato_id INT NULL'))
+                db.session.commit()
+            try:
+                db.session.execute(text(
+                    'ALTER TABLE chamados ADD CONSTRAINT fk_chamados_mesa '
+                    'FOREIGN KEY (mesa_id) REFERENCES mesas(id)'
+                ))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+            try:
+                db.session.execute(text(
+                    'ALTER TABLE chamados ADD CONSTRAINT fk_chamados_contrato '
+                    'FOREIGN KEY (contrato_id) REFERENCES contratos(id)'
+                ))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+        if not MesaServico.query.filter_by(nome=MESA_PADRAO).first():
+            db.session.add(MesaServico(nome=MESA_PADRAO, ativa=True))
+            db.session.flush()
+        suporte = MesaServico.query.filter_by(nome=MESA_PADRAO).first()
+        if suporte:
+            try:
+                db.session.execute(
+                    text('UPDATE chamados SET mesa_id = :mid WHERE mesa_id IS NULL'),
+                    {'mid': suporte.id},
+                )
+            except Exception:
+                db.session.rollback()
+        for pri, horas in (('Alta', (4, 8)), ('Normal', (8, 24)), ('Baixa', (24, 72))):
+            row = SlaPrioridade.query.filter_by(prioridade=pri).first()
+            if not row:
+                db.session.add(SlaPrioridade(
+                    prioridade=pri,
+                    prazo_atendimento_horas=horas[0],
+                    prazo_solucao_horas=horas[1],
+                ))
+        if not ConhecimentoPasta.query.filter_by(nome=PASTA_CONHECIMENTO_PADRAO).first():
+            db.session.add(ConhecimentoPasta(nome=PASTA_CONHECIMENTO_PADRAO))
+        if not ChamadoAutomacao.query.first():
+            db.session.add(ChamadoAutomacao(
+                nome='Prioridade Alta — nota na abertura',
+                gatilho='criar',
+                prioridade_quando='Alta',
+                acao='mensagem',
+                mensagem_padrao='Ticket de prioridade Alta. Atenção ao SLA de atendimento e solução.',
+                ativa=True,
+            ))
+            db.session.add(ChamadoAutomacao(
+                nome='Encaminhado — nota na timeline',
+                gatilho='status',
+                status_quando=STATUS_ENCAMINHADO,
+                acao='mensagem',
+                mensagem_padrao='Ticket encaminhado. Acompanhe o setor de destino.',
+                ativa=True,
+            ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 if __name__ == '__main__':
     from password_utils import generate_password_hash
 
@@ -408,6 +575,8 @@ if __name__ == '__main__':
         ensure_equipamentos_schema()
         ensure_pesagem_schema()
         ensure_setores_funcao_schema()
+        ensure_operacao_chamados_schema()
+        ensure_tecnicos_schema()
         from nutricao_service import seed_nutricao
         from routes_pesagem import seed_pesagem
         from routes_acesso import seed_acesso

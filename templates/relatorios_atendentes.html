@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }} - Relatórios{% endblock %}
+{% block content %}
+<div class="chamados-page rel-page">
+    <div class="header">
+        <div>
+            <a class="mdk-btn" href="{{ url_for('main.relatorios') }}" style="margin-bottom:0.35rem"><i class="fas fa-arrow-left"></i> Relatórios</a>
+            <h1>{{ titulo }}</h1>
+            <p class="chamados-sub">Volume, tempo de atendimento, % SLA cumprido e carga por {{ 'área' if agrup == 'setor' else 'atendente' }}</p>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" onclick="window.print()"><i class="fas fa-print"></i> Imprimir</button>
+    </div>
+    <form class="rel-toolbar" method="get" action="{{ url_for('main.relatorio_item', slug=slug) }}">
+        <input type="hidden" name="periodo" value="{{ filtros.periodo }}">
+        <div class="rel-presets">
+            <a class="rel-chip{% if filtros.periodo == 'todos' %} active{% endif %}" href="{{ url_for('main.relatorio_item', slug=slug, periodo='todos') }}">Todos</a>
+            <a class="rel-chip{% if filtros.periodo == '30' %} active{% endif %}" href="{{ url_for('main.relatorio_item', slug=slug, periodo='30') }}">30 dias</a>
+            <a class="rel-chip{% if filtros.periodo == '90' %} active{% endif %}" href="{{ url_for('main.relatorio_item', slug=slug, periodo='90') }}">90 dias</a>
+        </div>
+        <div class="form-group fg">
+            <label class="form-label">De</label>
+            <input class="form-control" type="date" name="data_de" value="{{ filtros.data_de }}">
+        </div>
+        <div class="form-group fg">
+            <label class="form-label">Até</label>
+            <input class="form-control" type="date" name="data_ate" value="{{ filtros.data_ate }}">
+        </div>
+        <button class="btn btn-primary btn-sm" type="submit"><i class="fas fa-filter"></i> Filtrar</button>
+    </form>
+    <div class="rel-stats">
+        <div class="rel-stat"><span class="rel-stat-label">Volume</span><strong>{{ stats.volume }}</strong></div>
+        <div class="rel-stat"><span class="rel-stat-label">Abertos</span><strong>{{ stats.abertos }}</strong></div>
+        <div class="rel-stat rel-stat-ok"><span class="rel-stat-label">Concluídos</span><strong>{{ stats.concluidos }}</strong></div>
+        <div class="rel-stat"><span class="rel-stat-label">Tempo médio</span><strong>{% if stats.tempo_medio is not none %}{{ stats.tempo_medio }} h{% else %}—{% endif %}</strong></div>
+        <div class="rel-stat rel-stat-top"><span class="rel-stat-label">% SLA cumprido</span><strong>{% if stats.sla_pct is not none %}{{ stats.sla_pct }}%{% else %}—{% endif %}</strong></div>
+        <div class="rel-stat"><span class="rel-stat-label">{{ 'Áreas' if agrup == 'setor' else 'Atendentes' }}</span><strong>{{ stats.atendentes }}</strong></div>
+    </div>
+    <section class="rel-card">
+        <h2>Performance</h2>
+        {% if linhas %}
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>{{ 'Área' if agrup == 'setor' else 'Atendente' }}</th>
+                        {% if agrup != 'setor' %}<th>Setor / mesa</th>{% endif %}
+                        <th>Pendentes</th>
+                        <th>Em andamento</th>
+                        <th>Concluídos</th>
+                        <th>Total</th>
+                        <th>Tempo médio</th>
+                        <th>% SLA</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in linhas %}
+                    <tr>
+                        <td>{{ r.nome }}</td>
+                        {% if agrup != 'setor' %}<td>{{ r.setor }}</td>{% endif %}
+                        <td>{{ r.pendente }}</td>
+                        <td>{{ r.andamento }}</td>
+                        <td>{{ r.concluidos }}</td>
+                        <td>{{ r.total }}</td>
+                        <td>{% if r.tempo_medio is not none %}{{ r.tempo_medio }} h{% else %}—{% endif %}</td>
+                        <td>{% if r.sla_pct is not none %}{{ r.sla_pct }}%{% else %}—{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="rel-empty">Sem chamados no período.</p>
+        {% endif %}
+    </section>
+</div>
+<style>
+.rel-page { padding: 4px 0 1.2rem; }
+.rel-page .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.85rem; gap:0.8rem; flex-wrap:wrap; }
+.rel-page h1 { margin:0; font-size:1.6rem; }
+.rel-toolbar { display:flex; flex-wrap:wrap; align-items:flex-end; gap:0.52rem; margin-bottom:0.85rem; background:#fff; border:1px solid var(--brand-soft,#d7e3f4); border-radius:0.4rem; padding:0.65rem 0.8rem; }
+.rel-presets { display:flex; gap:0.32rem; }
+.rel-chip { display:inline-flex; padding:0.38rem 0.7rem; border-radius:999px; background:#e8eef6; color:#0D2B5C; font-size:0.72rem; font-weight:700; text-decoration:none; }
+.rel-chip.active { background:#1D4E89; color:#fff; }
+.rel-stats { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:0.55rem; margin-bottom:0.85rem; }
+.rel-stat { background:#fff; border:1px solid #d7e3f4; border-radius:0.4rem; padding:0.7rem 0.8rem; border-left:3px solid #1ABC9C; }
+.rel-stat-label { display:block; font-size:0.68rem; color:#5b6b7c; font-weight:700; text-transform:uppercase; }
+.rel-stat strong { display:block; margin-top:0.2rem; font-size:1.15rem; }
+.rel-card { background:#fff; border:1px solid #d7e3f4; border-radius:0.4rem; padding:0.85rem 1rem; }
+.table-wrap { overflow:auto; }
+.rel-page .table { width:100%; border-collapse:collapse; }
+.rel-page .table th, .rel-page .table td { padding:0.42rem 0.6rem; border-bottom:1px solid #e5e7eb; font-size:0.8rem; text-align:left; }
+.rel-page .table th { background:#1D4E89; color:#fff; }
+@media (max-width:900px) { .rel-stats { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+</style>
+{% endblock %}

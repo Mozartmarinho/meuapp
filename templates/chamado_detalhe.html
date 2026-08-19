@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}{{ chamado.numero_chamado }} - Tickets{% endblock %}
+
+{% block content %}
+<div class="mdk-detail">
+    <div class="mdk-detail-head">
+        <a class="mdk-btn" href="{{ url_for('main.listar_chamados') }}"><i class="fas fa-arrow-left"></i></a>
+        <h1>#{{ chamado.numero_chamado }} — {{ titulo_ticket }}</h1>
+        {% if aberto %}
+        <span class="mdk-aberto green">Aberto</span>
+        {% else %}
+        <span class="mdk-aberto mdk-fechado">{{ chamado.status }}</span>
+        {% endif %}
+        <div class="mdk-drop" data-mdk-drop>
+            <button type="button" class="mdk-btn mdk-btn-teal" data-mdk-drop-btn>Ações do ticket <i class="fas fa-chevron-down"></i></button>
+            <div class="mdk-drop-menu" data-mdk-drop-menu hidden>
+                <a href="{{ url_for('main.listar_chamados', atender=chamado.id) }}"><i class="fas fa-toolbox"></i> Atender</a>
+                <a href="{{ url_for('main.editar_chamado', id=chamado.id) }}"><i class="fas fa-edit"></i> Editar</a>
+            </div>
+        </div>
+        <a class="mdk-btn mdk-btn-teal mdk-icon-btn" href="{{ url_for('main.novo_chamado') }}" title="Abrir novo ticket"><i class="fas fa-plus"></i></a>
+    </div>
+
+    <div class="mdk-tabs" role="tablist">
+        <button type="button" class="mdk-tab is-active" data-det-tab="info">Informações gerais</button>
+        <button type="button" class="mdk-tab" data-det-tab="com">Comunicação</button>
+        <button type="button" class="mdk-tab" data-det-tab="hist">Histórico</button>
+    </div>
+
+    <div class="mdk-panel" data-det="info">
+        <div class="mdk-detail-grid">
+            <aside>
+                <div class="mdk-card mdk-side-block">
+                    <h3>Informações do solicitante</h3>
+                    <p class="mdk-kv"><span>Nome</span>{{ solicitante.nome if solicitante else '—' }}</p>
+                    <p class="mdk-kv"><span>Telefone</span>{{ solicitante.telefone if solicitante and solicitante.telefone else '—' }}</p>
+                    <p class="mdk-kv"><span>E-mail</span>{{ solicitante.email if solicitante else '—' }}</p>
+                </div>
+                <div class="mdk-card mdk-side-block">
+                    <h3>Cliente</h3>
+                    <p class="mdk-kv"><span>Nome</span>{{ chamado.cliente.nome if chamado.cliente else '—' }}</p>
+                    <p class="mdk-kv"><span>Telefone</span>{{ chamado.cliente.telefone if chamado.cliente and chamado.cliente.telefone else '—' }}</p>
+                    <p class="mdk-kv"><span>Responsável</span>{{ chamado.cliente.responsavel if chamado.cliente and chamado.cliente.responsavel else '—' }}</p>
+                </div>
+                <div class="mdk-card mdk-side-block">
+                    <h3>Últimos tickets</h3>
+                    {% if ultimos %}
+                    <ul class="mdk-note-list">
+                        {% for u in ultimos %}
+                        <li>
+                            <a href="{{ url_for('main.ver_chamado', id=u.id) }}">{{ u.numero_chamado }}</a>
+                            <small>{{ u.status }}</small>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="mdk-empty">Nenhum outro ticket deste cliente.</p>
+                    {% endif %}
+                </div>
+                <div class="mdk-card mdk-side-block">
+                    <h3>Conhecimentos</h3>
+                    <p class="mdk-empty">Nenhum artigo vinculado.</p>
+                </div>
+            </aside>
+            <section>
+                <div class="mdk-card" style="margin-bottom:0.7rem">
+                    <h3>Descrição</h3>
+                    <p class="mdk-kv"><span>Tipo</span>{{ chamado.tipo_servico or '—' }}</p>
+                    <div class="mdk-desc">{{ chamado.descricao or '—' }}</div>
+                    {% if chamado.equipamento or chamado.patrimonio %}
+                    <p class="mdk-kv" style="margin-top:0.6rem"><span>Equipamento</span>{{ chamado.equipamento or '—' }} {% if chamado.patrimonio %}({{ chamado.patrimonio }}){% endif %}</p>
+                    {% endif %}
+                    {% if chamado.observacoes %}
+                    <p class="mdk-kv"><span>Observações</span>{{ chamado.observacoes }}</p>
+                    {% endif %}
+                </div>
+                <div class="mdk-card">
+                    <h3>Arquivos</h3>
+                    <div class="mdk-files">
+                        {% for f in fotos %}
+                        <a href="{{ url_for('static', filename=f.caminho) }}" target="_blank" rel="noopener">
+                            <img src="{{ url_for('static', filename=f.caminho) }}" alt="{{ f.nome_original or 'Anexo' }}">
+                        </a>
+                        {% else %}
+                        <p class="mdk-empty" style="padding:0.4rem 0">Nenhum arquivo.</p>
+                        {% endfor %}
+                    </div>
+                    <a class="mdk-btn" href="{{ url_for('main.listar_chamados', atender=chamado.id) }}" style="margin-top:0.5rem">
+                        <i class="fas fa-paperclip"></i> Anexar (via Atender)
+                    </a>
+                </div>
+            </section>
+            <aside>
+                <div class="mdk-card">
+                    <form method="POST" action="{{ url_for('main.atualizar_mesa_chamado', id=chamado.id) }}" class="mdk-field">
+                        <label>Mesa</label>
+                        <select class="mdk-select" name="mesa_id" onchange="this.form.submit()">
+                            {% for m in mesas %}
+                            <option value="{{ m.id }}" {% if chamado.mesa_id == m.id %}selected{% endif %}>{{ m.nome }}</option>
+                            {% endfor %}
+                        </select>
+                    </form>
+                    <div class="mdk-field"><label>Tipo</label><div class="val">{{ chamado.tipo_servico or '—' }}</div></div>
+                    <div class="mdk-field"><label>Prioridade</label><div class="val">{{ chamado.prioridade }}</div></div>
+                    <div class="mdk-field"><label>Área / setor</label><div class="val">{{ chamado.setor_destino or user_setor or '—' }}</div></div>
+                    <div class="mdk-field"><label>Status</label><div class="val">{{ chamado.status }}</div></div>
+                    <div class="mdk-field"><label>Estágio</label><div class="val">{{ estagio_label }}</div></div>
+                    <div class="mdk-field"><label>Responsável</label><div class="val">{{ solicitante.nome if solicitante else '—' }}</div></div>
+                    <div class="mdk-field"><label>Origem</label><div class="val">{{ chamado.setor_origem or 'Sistema de Chamados' }}</div></div>
+                    <div class="mdk-field mdk-sla-box">
+                        <label>SLA</label>
+                        {% if sla %}
+                        <div class="val">
+                            Atendimento {{ sla.horas_atendimento }}h · {{ sla.venc_atendimento.strftime('%d/%m/%Y %H:%M') }}
+                            {% if sla.atendimento_vencido %}<span class="mdk-sla-bad">vencido</span>
+                            {% elif sla.atendimento_proximo %}<span class="mdk-sla-warn">próximo</span>{% endif %}
+                        </div>
+                        <div class="val">
+                            Solução {{ sla.horas_solucao }}h · {{ sla.venc_solucao.strftime('%d/%m/%Y %H:%M') }}
+                            {% if sla.solucao_vencida %}<span class="mdk-sla-bad">vencido</span>
+                            {% elif sla.solucao_proxima %}<span class="mdk-sla-warn">próximo</span>{% endif %}
+                        </div>
+                        <small>
+                            Fonte: {% if sla.fonte == 'contrato' %}contrato {{ sla.contrato_tipo or '' }}{% else %}prioridade {{ sla.prioridade }}{% endif %}
+                        </small>
+                        {% else %}
+                        <div class="val">Sem data de abertura</div>
+                        {% endif %}
+                    </div>
+                    <a class="mdk-btn mdk-btn-teal" href="{{ url_for('main.listar_chamados', atender=chamado.id) }}" style="width:100%">
+                        <i class="fas fa-toolbox"></i> Atender
+                    </a>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <div class="mdk-panel" data-det="com" hidden>
+        <div class="mdk-card">
+            <h3>Comunicação</h3>
+            <ul class="mdk-timeline">
+                {% for m in mensagens %}
+                <li class="{{ 'mdk-msg-interno' if not m.visivel_cliente else 'mdk-msg-cliente' }}">
+                    <time>{{ m.data_criacao.strftime('%d/%m/%Y %H:%M') if m.data_criacao else '' }}</time>
+                    <strong>{{ m.usuario.nome if m.usuario else 'Sistema' }}</strong>
+                    <span class="mdk-canal">{{ m.canal }}{% if not m.visivel_cliente %} · interno{% endif %}{% if m.enviada %} · e-mail enviado{% elif m.canal == 'E-mail' %} · registrado{% endif %}</span>
+                    <p>{{ m.texto }}</p>
+                </li>
+                {% endfor %}
+                {% for a in atends %}
+                <li>
+                    <time>{{ a.data_criacao.strftime('%d/%m/%Y %H:%M') if a.data_criacao else '' }}</time>
+                    <strong>{{ a.usuario.nome if a.usuario else 'Atendimento' }}</strong>
+                    <span class="mdk-canal">Atendimento</span>
+                    <p>{{ a.o_que_foi_consertado or a.instrucoes or a.status or '—' }}</p>
+                </li>
+                {% endfor %}
+            </ul>
+            {% if not mensagens and not atends %}
+            <p class="mdk-empty">Nenhuma comunicação registrada.</p>
+            {% endif %}
+            <form class="mdk-composer" method="POST" action="{{ url_for('main.mensagem_chamado', id=chamado.id) }}">
+                <textarea name="texto" rows="3" required placeholder="Escreva a mensagem..."></textarea>
+                <div class="mdk-composer-row">
+                    <label>Canal
+                        <select class="mdk-select" name="canal">
+                            {% for c in canais %}
+                            <option value="{{ c }}">{{ c }}{% if c != 'E-mail' %} (nota){% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="mdk-check"><input type="checkbox" name="interno" value="1"> Somente interno</label>
+                    <button type="submit" class="mdk-btn mdk-btn-teal">Enviar</button>
+                </div>
+                <small class="mdk-empty" style="text-align:left;padding:0.3rem 0 0">
+                    E-mail{% if smtp_ok %} envia para o e-mail do cliente, se houver.{% else %}: SMTP não configurado — só registra.{% endif %}
+                    WhatsApp, telefone e chat gravam a nota no ticket (sem API externa).
+                </small>
+            </form>
+        </div>
+    </div>
+
+    <div class="mdk-panel" data-det="hist" hidden>
+        <div class="mdk-card">
+            <h3>Histórico</h3>
+            <ul class="mdk-timeline">
+                {% for h in historico %}
+                <li>
+                    <time>{{ h.quando.strftime('%d/%m/%Y %H:%M') if h.quando else '' }}</time>
+                    <strong>{{ h.titulo }}</strong>
+                    {% if h.autor %}<small> · {{ h.autor }}</small>{% endif %}
+                    <p>{{ h.texto }}</p>
+                </li>
+                {% else %}
+                <li>Sem histórico.</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    function show(name) {
+        document.querySelectorAll('[data-det-tab]').forEach(function (t) {
+            t.classList.toggle('is-active', t.getAttribute('data-det-tab') === name);
+        });
+        document.querySelectorAll('[data-det]').forEach(function (p) {
+            p.hidden = p.getAttribute('data-det') !== name;
+        });
+    }
+    document.querySelectorAll('[data-det-tab]').forEach(function (btn) {
+        btn.addEventListener('click', function () { show(btn.getAttribute('data-det-tab')); });
+    });
+    const tab = {{ tab|tojson }};
+    if (tab === 'com' || tab === 'hist') show(tab);
+})();
+</script>
+{% endblock %}

@@ -1,65 +1,191 @@
 {% extends "base.html" %}
 
-{% block title %}Chamados - São Geraldo Service{% endblock %}
+{% block title %}Tickets - São Geraldo Service{% endblock %}
 
 {% block content %}
-<div class="chamados-page">
-    <div class="header">
-        <div>
-            <h1>Lista de Chamados</h1>
-            <p class="chamados-sub">{{ subtitulo }}</p>
+{% macro ticket_title(c) -%}
+{{ (c.descricao or c.tipo_servico or c.numero_chamado)|replace('\n', ' ') }}
+{%- endmacro %}
+<div class="mdk-tickets-page chamados-page">
+    <div class="mdk-tickets-head">
+        <h1>Tickets</h1>
+        <div class="mdk-view-toggle" role="tablist">
+            <button type="button" class="is-active" data-view="lista">Lista</button>
+            <button type="button" data-view="kanban">Kanban</button>
         </div>
     </div>
-
-    <div class="table-wrap">
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Nº Chamado</th>
-                    <th>Cliente</th>
-                    <th>Status</th>
-                    <th>Setor</th>
-                    <th>Prioridade</th>
-                    <th>Data</th>
-                    <th>Ações</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for chamado in chamados %}
-                <tr>
-                    <td>{{ chamado.numero_chamado }}</td>
-                    <td>{{ chamado.cliente.nome if chamado.cliente else 'N/A' }}</td>
-                    <td>
-                        <span class="status-{{ chamado.status|lower|replace(' ', '-')|replace('í', 'i')|replace('ç', 'c') }}">{{ chamado.status }}</span>
-                    </td>
-                    <td>
-                        {% if chamado.setor_destino %}
-                        <span class="setor-blink">{{ chamado.setor_destino }}</span>
-                        {% else %}
-                        —
-                        {% endif %}
-                    </td>
-                    <td>
-                        <span class="priority-{{ chamado.prioridade|lower|replace('é', 'e') }}">{{ chamado.prioridade }}</span>
-                    </td>
-                    <td>{{ chamado.data_criacao.strftime('%d/%m/%Y %H:%M') if chamado.data_criacao else '' }}</td>
-                    <td class="acoes-cell">
-                        <button type="button" class="btn btn-primary btn-sm btn-atender"
-                            data-id="{{ chamado.id }}">
-                            <i class="fas fa-toolbox"></i> Atender
-                        </button>
-                        <a href="{{ url_for('main.editar_chamado', id=chamado.id) }}" class="btn btn-sm btn-editar-link">
-                            <i class="fas fa-edit"></i> Editar
-                        </a>
-                    </td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="7" class="empty-row">Nenhum chamado encontrado.</td>
-                </tr>
+    <p class="chamados-sub">{{ subtitulo }}</p>
+    <div class="mdk-tickets-toolbar">
+        <div class="mdk-search">
+            <i class="fas fa-search"></i>
+            <input type="search" id="tkSearch" placeholder="Buscar" autocomplete="off">
+        </div>
+        <button type="button" class="mdk-btn" id="tkAdvBtn">Busca avançada</button>
+        <select class="mdk-select" id="tkMesa">
+            <option value="">Mesa: Todas</option>
+            {% for m in mesas %}
+            <option value="{{ m.nome }}">{{ m.nome }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="mdk-adv" id="tkAdvPanel" hidden>
+        <label>Status
+            <select class="mdk-select" id="tkAdvStatus">
+                <option value="">Todos</option>
+                <option>Pendente</option>
+                <option>Em Andamento</option>
+                <option>Aguardar peça</option>
+                <option>Encaminhado</option>
+                <option>Devolvido</option>
+                <option>Atendido</option>
+                <option>Concluído</option>
+            </select>
+        </label>
+        <label>Cliente
+            <select class="mdk-select" id="tkAdvCliente">
+                <option value="">Todos</option>
+                {% for cli in clientes %}
+                <option value="{{ cli.nome }}">{{ cli.nome }}</option>
                 {% endfor %}
-            </tbody>
-        </table>
+            </select>
+        </label>
+    </div>
+    <div class="mdk-chips">
+        <button type="button" class="mdk-chip" data-chip="pre">Pré-tickets</button>
+        <button type="button" class="mdk-chip" data-chip="auth">Autorizações</button>
+        <button type="button" class="mdk-chip" data-chip="revisao">Tickets em revisão</button>
+        <button type="button" class="mdk-chip" data-chip="fechados">Tickets fechados</button>
+        <button type="button" class="mdk-chip mdk-chip-teal" data-mdk-soon>Filtros</button>
+        <select class="mdk-select" id="tkEstagio">
+            <option value="abertos">Estágio: Todos abertos</option>
+            {% for g in grupos %}
+            <option value="{{ g.key }}">{{ g.label }}</option>
+            {% endfor %}
+            <option value="fechado">Fechados</option>
+        </select>
+        <button type="button" class="mdk-btn" data-mdk-soon>Agrupar por</button>
+        <button type="button" class="mdk-btn" data-mdk-soon>Exibir colunas</button>
+    </div>
+    <div id="tkLista">
+        {% for g in grupos %}
+        <section class="mdk-acc" data-group="{{ g.key }}" data-closed="0">
+            <button type="button" class="mdk-acc-h" aria-expanded="false">
+                <i class="fas fa-plus"></i>
+                {{ g.label }} <span class="mdk-acc-n" data-count>{{ g.tickets|length }}</span>
+            </button>
+            <div class="mdk-acc-b" hidden>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Número</th>
+                            <th>Título</th>
+                            <th>Cliente</th>
+                            <th>Setor</th>
+                            <th>Prioridade</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in g.tickets %}
+                        <tr class="tk-row" data-id="{{ c.id }}" data-stage="{{ g.key }}" data-status="{{ c.status }}"
+                            data-setor="{{ c.setor_destino or '' }}" data-mesa="{{ c.mesa.nome if c.mesa else '' }}" data-closed="0"
+                            data-cliente="{{ c.cliente.nome if c.cliente else '' }}"
+                            data-search="{{ c.numero_chamado }} {{ c.cliente.nome if c.cliente else '' }} {{ c.tipo_servico }} {{ c.prioridade }} {{ ticket_title(c) }}">
+                            <td><a class="mdk-num" href="{{ url_for('main.ver_chamado', id=c.id) }}">{{ c.numero_chamado }}</a></td>
+                            <td>{{ ticket_title(c)|truncate(70, True) }}</td>
+                            <td>{{ c.cliente.nome if c.cliente else 'N/A' }}</td>
+                            <td>{% if c.setor_destino %}<span class="setor-blink">{{ c.setor_destino }}</span>{% else %}—{% endif %}</td>
+                            <td><span class="priority-{{ c.prioridade|lower|replace('é', 'e') }}">{{ c.prioridade }}</span></td>
+                            <td class="acoes-cell">
+                                <button type="button" class="btn btn-primary btn-sm btn-atender" data-id="{{ c.id }}"><i class="fas fa-toolbox"></i> Atender</button>
+                                <a href="{{ url_for('main.editar_chamado', id=c.id) }}" class="btn btn-sm btn-editar-link"><i class="fas fa-edit"></i> Editar</a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr class="tk-empty"><td colspan="6" class="empty-row">Nenhum ticket neste estágio.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {% endfor %}
+        <section class="mdk-acc" data-group="fechado" data-closed="1" id="tkFechados" hidden>
+            <button type="button" class="mdk-acc-h" aria-expanded="false">
+                <i class="fas fa-plus"></i>
+                Fechados <span class="mdk-acc-n" data-count>{{ fechados|length }}</span>
+            </button>
+            <div class="mdk-acc-b" hidden>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Número</th>
+                            <th>Título</th>
+                            <th>Cliente</th>
+                            <th>Setor</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in fechados %}
+                        <tr class="tk-row" data-id="{{ c.id }}" data-stage="fechado" data-status="{{ c.status }}"
+                            data-setor="{{ c.setor_destino or '' }}" data-mesa="{{ c.mesa.nome if c.mesa else '' }}" data-closed="1"
+                            data-cliente="{{ c.cliente.nome if c.cliente else '' }}"
+                            data-search="{{ c.numero_chamado }} {{ c.cliente.nome if c.cliente else '' }} {{ c.tipo_servico }} {{ c.prioridade }} {{ ticket_title(c) }}">
+                            <td><a class="mdk-num" href="{{ url_for('main.ver_chamado', id=c.id) }}">{{ c.numero_chamado }}</a></td>
+                            <td>{{ ticket_title(c)|truncate(70, True) }}</td>
+                            <td>{{ c.cliente.nome if c.cliente else 'N/A' }}</td>
+                            <td>{% if c.setor_destino %}<span class="setor-blink">{{ c.setor_destino }}</span>{% else %}—{% endif %}</td>
+                            <td>{{ c.status }}</td>
+                            <td class="acoes-cell">
+                                <button type="button" class="btn btn-primary btn-sm btn-atender" data-id="{{ c.id }}"><i class="fas fa-toolbox"></i> Atender</button>
+                                <a href="{{ url_for('main.editar_chamado', id=c.id) }}" class="btn btn-sm btn-editar-link"><i class="fas fa-edit"></i> Editar</a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" class="empty-row">Nenhum ticket fechado.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <div id="tkKanban" hidden>
+        <div class="mdk-kanban">
+            {% for g in grupos %}
+            <div class="mdk-col" data-kcol="{{ g.key }}">
+                <div class="mdk-col-h">
+                    {{ g.label }} <span data-kcount>{{ g.tickets|length }}</span>
+                    <a class="mdk-col-add" href="{{ url_for('main.novo_chamado', status=('Pendente' if g.key=='pendente' else ('Em Andamento' if g.key=='atendimento' else ('Aguardar peça' if g.key=='aguardando' else 'Encaminhado')))) }}" title="Abrir novo ticket">+</a>
+                </div>
+                {% for c in g.tickets %}
+                <article class="mdk-kcard tk-card" data-stage="{{ g.key }}" data-status="{{ c.status }}"
+                    data-setor="{{ c.setor_destino or '' }}" data-mesa="{{ c.mesa.nome if c.mesa else '' }}" data-closed="0"
+                    data-cliente="{{ c.cliente.nome if c.cliente else '' }}"
+                    data-search="{{ c.numero_chamado }} {{ c.cliente.nome if c.cliente else '' }} {{ c.tipo_servico }} {{ c.prioridade }} {{ ticket_title(c) }}">
+                    <div class="mdk-kcard-top">
+                        <a class="mdk-num" href="{{ url_for('main.ver_chamado', id=c.id) }}">{{ c.numero_chamado }}</a>
+                        <div class="mdk-kmenu mdk-drop" data-mdk-drop>
+                            <button type="button" class="mdk-kdots" data-mdk-drop-btn aria-label="Ações">⋮</button>
+                            <div class="mdk-drop-menu" data-mdk-drop-menu hidden>
+                                <button type="button" class="btn-atender" data-id="{{ c.id }}">Atender</button>
+                                <a href="{{ url_for('main.ver_chamado', id=c.id) }}">Ver</a>
+                                <a href="{{ url_for('main.editar_chamado', id=c.id) }}">Editar</a>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="mdk-ktitle">{{ ticket_title(c)|truncate(90, True) }}</p>
+                    <p class="mdk-kmeta">{{ c.cliente.nome if c.cliente else 'N/A' }}</p>
+                    <div class="mdk-kfoot">
+                        <span class="mdk-aberto">Aberto</span>
+                        <span class="mdk-av">{{ (c.cliente.nome if c.cliente else 'T')[0]|upper }}</span>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
     </div>
 </div>
 
@@ -317,6 +443,107 @@ body.modal-open { overflow: hidden; }
 
 <script>
 (function () {
+    const lista = document.getElementById('tkLista');
+    const kanban = document.getElementById('tkKanban');
+    const search = document.getElementById('tkSearch');
+    const estagio = document.getElementById('tkEstagio');
+    const mesa = document.getElementById('tkMesa');
+    const advStatus = document.getElementById('tkAdvStatus');
+    const advCliente = document.getElementById('tkAdvCliente');
+    const fechadosBox = document.getElementById('tkFechados');
+    function setView(name) {
+        document.querySelectorAll('[data-view]').forEach(function (b) {
+            b.classList.toggle('is-active', b.getAttribute('data-view') === name);
+        });
+        if (lista) lista.hidden = name !== 'lista';
+        if (kanban) kanban.hidden = name !== 'kanban';
+        try { localStorage.setItem('sg-tickets-view', name); } catch (e) {}
+    }
+    document.querySelectorAll('[data-view]').forEach(function (b) {
+        b.addEventListener('click', function () { setView(b.getAttribute('data-view')); });
+    });
+    try {
+        const saved = localStorage.getItem('sg-tickets-view');
+        if (saved === 'kanban') setView('kanban');
+    } catch (e) {}
+    document.querySelectorAll('.mdk-acc-h').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const acc = btn.closest('.mdk-acc');
+            const body = acc.querySelector('.mdk-acc-b');
+            const open = !body.hidden;
+            body.hidden = open;
+            btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+            const ico = btn.querySelector('i');
+            if (ico) ico.className = open ? 'fas fa-plus' : 'fas fa-minus';
+        });
+    });
+    document.getElementById('tkAdvBtn').addEventListener('click', function () {
+        const p = document.getElementById('tkAdvPanel');
+        p.hidden = !p.hidden;
+    });
+    let chip = '';
+    document.querySelectorAll('[data-chip]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            const v = b.getAttribute('data-chip');
+            chip = chip === v ? '' : v;
+            document.querySelectorAll('[data-chip]').forEach(function (x) {
+                x.classList.toggle('is-on', x.getAttribute('data-chip') === chip);
+            });
+            filtrar();
+        });
+    });
+    function matchEl(el) {
+        const q = ((search && search.value) || '').toLowerCase().trim();
+        const hay = (el.getAttribute('data-search') || '').toLowerCase();
+        if (q && hay.indexOf(q) === -1) return false;
+        const st = advStatus && advStatus.value;
+        if (st && el.getAttribute('data-status') !== st) return false;
+        const cli = advCliente && advCliente.value;
+        if (cli && (el.getAttribute('data-cliente') || '') !== cli) return false;
+        const ms = mesa && mesa.value;
+        if (ms && ms !== '__all__' && (el.getAttribute('data-mesa') || el.getAttribute('data-setor') || '') !== ms) return false;
+        const es = estagio && estagio.value;
+        const stage = el.getAttribute('data-stage');
+        const closed = el.getAttribute('data-closed') === '1';
+        if (chip === 'pre' || chip === 'auth') return false;
+        if (chip === 'revisao' && stage !== 'desenvolvimento') return false;
+        if (chip === 'fechados' && !closed) return false;
+        if (!chip && es === 'abertos' && closed) return false;
+        if (!chip && es && es !== 'abertos' && stage !== es) return false;
+        return true;
+    }
+    function filtrar() {
+        if (fechadosBox) {
+            const showClosed = chip === 'fechados' || (estagio && estagio.value === 'fechado');
+            fechadosBox.hidden = !showClosed;
+        }
+        document.querySelectorAll('.tk-row, .tk-card').forEach(function (el) {
+            el.classList.toggle('mdk-hidden', !matchEl(el));
+        });
+        document.querySelectorAll('.mdk-acc').forEach(function (acc) {
+            const vis = acc.querySelectorAll('.tk-row:not(.mdk-hidden)').length;
+            const n = acc.querySelector('[data-count]');
+            if (n) n.textContent = vis;
+        });
+        document.querySelectorAll('[data-kcol]').forEach(function (col) {
+            const vis = col.querySelectorAll('.tk-card:not(.mdk-hidden)').length;
+            const n = col.querySelector('[data-kcount]');
+            if (n) n.textContent = vis;
+        });
+    }
+    [search, estagio, mesa, advStatus, advCliente].forEach(function (el) {
+        if (!el) return;
+        el.addEventListener('input', filtrar);
+        el.addEventListener('change', filtrar);
+    });
+    document.getElementById('tkLista').addEventListener('click', function (e) {
+        const row = e.target.closest('.tk-row');
+        if (!row || e.target.closest('a, button')) return;
+        const id = row.getAttribute('data-id');
+        if (id) location.href = '/chamados/' + id;
+    });
+})();
+(function () {
     const overlay = document.getElementById('modalAtender');
     const form = document.getElementById('formAtender');
     const acaoInput = document.getElementById('at_acao');
@@ -526,10 +753,15 @@ body.modal-open { overflow: hidden; }
         });
     }
 
-    document.querySelectorAll('.btn-atender').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            carregar(btn.getAttribute('data-id'));
-        });
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.btn-atender');
+        if (!btn) return;
+        const id = btn.getAttribute('data-id');
+        if (id) {
+            e.preventDefault();
+            e.stopPropagation();
+            carregar(id);
+        }
     });
     document.getElementById('btnFecharAt').addEventListener('click', fecharModal);
     document.getElementById('btnFecharAtX').addEventListener('click', fecharModal);

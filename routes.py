@@ -17,10 +17,20 @@ from models import (
     Usuario,
     Cliente,
     Equipamento,
+    RecursoGrupo,
+    ChamadoSetor,
+    ChamadoTecnico,
     ConfiguracaoEmail,
     ChamadoAtendimento,
     ChamadoEncaminhamento,
     ChamadoFoto,
+    ChamadoConhecimento,
+    MesaServico,
+    SlaPrioridade,
+    Contrato,
+    ChamadoMensagem,
+    ChamadoAutomacao,
+    ConhecimentoPasta,
     TIPO_FOTO_CONSERTO,
     TIPO_FOTO_ENCAMINHAMENTO,
     TIPO_HOP_ENCAMINHAR,
@@ -34,17 +44,35 @@ from models import (
     STATUS_FECHADOS,
     TIPO_SETOR_CHAMADOS,
     TIPO_SETOR_NUTRICAO,
+    TIPOS_CONTRATO,
+    CANAIS_MENSAGEM,
+    CANAIS_ENVIO_LIVE,
+    PASTA_CONHECIMENTO_PADRAO,
     status_fechado,
     normalizar_setor_chamado,
     normalizar_setor,
     listar_setores,
     adicionar_setor,
+    sla_do_chamado,
+    _bucket_sla,
+    mesas_ativas,
+    mesa_padrao,
+    resolver_mesa_id,
+    aplicar_automacoes,
+    parse_valor_faturamento,
+    normalizar_prioridade,
+    contrato_vigente,
+    sla_horas_tipo_contrato,
+    TICKET_PARADO_HORAS,
+    TIPOS_RECURSO,
+    grupo_recurso_padrao,
 )
 from permissions_sistemas import SISTEMAS, aplicar_permissoes_formulario, conceder_acesso_total
 from sqlalchemy.orm import joinedload
 from sqlalchemy import func, or_, and_
 from sqlalchemy.exc import IntegrityError
 from datetime import date, datetime, timedelta
+from collections import Counter
 from pathlib import Path
 from werkzeug.utils import secure_filename
 import os
@@ -118,19 +146,50 @@ def login_required(f):
 _CHAMADOS_ENDPOINT_MENUS = {
     'main.dashboard': 'dashboard',
     'main.listar_chamados': 'chamados',
+    'main.ver_chamado': 'chamados',
     'main.novo_chamado': 'novo_chamado',
     'main.editar_chamado': 'chamados',
     'main.listar_clientes': 'clientes',
     'main.novo_cliente': 'clientes',
     'main.editar_cliente': 'clientes',
+    'main.tecnicos': 'tecnicos',
+    'main.adicionar_chamado_setor': 'tecnicos',
+    'main.toggle_chamado_setor': 'tecnicos',
+    'main.adicionar_chamado_tecnico': 'tecnicos',
+    'main.editar_chamado_tecnico': 'tecnicos',
+    'main.excluir_chamado_tecnico': 'tecnicos',
     'main.listar_equipamentos': 'equipamentos',
     'main.novo_equipamento': 'equipamentos',
     'main.editar_equipamento': 'equipamentos',
     'main.api_equipamentos': 'equipamentos',
     'main.api_equipamento': 'equipamentos',
+    'main.recursos': 'recursos',
+    'main.ver_recurso': 'recursos',
+    'main.salvar_grupo_recurso': 'recursos',
+    'main.api_recursos_por_cliente': 'novo_chamado',
     'main.relatorios': 'relatorios',
+    'main.relatorio_gestao': 'relatorios',
+    'main.relatorio_item': 'relatorios',
+    'main.contratos': 'contratos',
+    'main.salvar_contrato': 'contratos',
+    'main.excluir_contrato': 'contratos',
+    'main.agenda': 'agenda',
+    'main.conhecimentos': 'conhecimentos',
+    'main.novo_conhecimento': 'conhecimentos',
+    'main.ver_conhecimento': 'conhecimentos',
+    'main.nova_pasta_conhecimento': 'conhecimentos',
+    'main.automacoes': 'automacoes',
     'main.auditoria': 'auditoria',
+    'main.mensagem_chamado': 'chamados',
+    'main.atualizar_mesa_chamado': 'chamados',
 }
+
+ESTAGIOS_TICKET = (
+    ('pendente', 'Pendente', ('Pendente',)),
+    ('aguardando', 'Aguardando Cliente', (STATUS_AGUARDAR_PECA,)),
+    ('atendimento', 'Em Atendimento', ('Em Andamento',)),
+    ('desenvolvimento', 'Em Desenvolvimento', (STATUS_ENCAMINHADO, STATUS_DEVOLVIDO)),
+)
 
 
 @main.before_request
@@ -145,6 +204,14 @@ def _checar_permissao_menu_chamados():
         flash('Você não tem permissão para o Sistema de Gestão de Chamados.', 'error')
         return redirect(url_for('main.inicio'))
     if user.tem_menu('chamados', menu_key):
+        return None
+    if menu_key in ('recursos', 'equipamentos') and (
+        user.tem_menu('chamados', 'recursos') or user.tem_menu('chamados', 'equipamentos')
+    ):
+        return None
+    if request.endpoint == 'main.dashboard' and any(
+        user.tem_menu('chamados', k) for k in ('chats', 'recursos')
+    ):
         return None
     if (request.path or '').startswith('/api/'):
         return jsonify({'ok': False, 'error': 'Você não tem permissão para acessar esta aba.'}), 403
@@ -198,6 +265,253 @@ _UPLOAD_CHAMADOS = Path(__file__).resolve().parent / 'static' / 'uploads' / 'cha
 
 def _setor_usuario(usuario):
     return normalizar_setor_chamado(getattr(usuario, 'setor', None) if usuario else '')
+
+
+def _primeiro_nome(usuario):
+    nome = (getattr(usuario, 'nome', None) or '').strip()
+    return nome.split()[0] if nome else 'olá'
+
+
+def _filtro_chamados_usuario(user):
+    conds = [Chamado.tecnico_id == user.id]
+    setor = _setor_usuario(user)
+    if setor:
+        conds.append(and_(Chamado.setor_destino == setor, ~Chamado.status.in_(STATUS_FECHADOS)))
+    return or_(*conds)
+
+
+def _estagio_do_status(status):
+    for key, label, statuses in ESTAGIOS_TICKET:
+        if status in statuses:
+            return key, label
+    if status_fechado(status):
+        return 'fechado', 'Fechado'
+    return 'pendente', 'Pendente'
+
+
+def _titulo_chamado(chamado):
+    desc = (chamado.descricao or '').strip().replace('\n', ' ')
+    if desc:
+        return desc[:80] + ('…' if len(desc) > 80 else '')
+    return chamado.tipo_servico or chamado.numero_chamado
+
+
+def _url_detalhe_chamado(chamado_id):
+    try:
+        return url_for('main.ver_chamado', id=chamado_id, _external=True)
+    except Exception:
+        host = request.host or '127.0.0.1'
+        scheme = 'https' if request.is_secure else 'http'
+        return f'{scheme}://{host}/chamados/{chamado_id}'
+
+
+def _fmt_dt(valor):
+    if not valor:
+        return '—'
+    return valor.strftime('%d/%m/%Y %H:%M')
+
+
+def _contar_sla_widgets(chamados_abertos):
+    hoje_d = date.today()
+    agora = datetime.utcnow()
+    venc_at = {'hoje': 0, 'amanha': 0, 'depois': 0}
+    venc_sol = {'hoje': 0, 'amanha': 0, 'depois': 0}
+    vencidos = 0
+    for c in chamados_abertos:
+        info = sla_do_chamado(c)
+        if not info:
+            continue
+        b_at = _bucket_sla(info['venc_atendimento'], hoje_d, agora, False)
+        b_sol = _bucket_sla(info['venc_solucao'], hoje_d, agora, False)
+        if b_at == 'vencido' or b_sol == 'vencido':
+            vencidos += 1
+        if b_at in venc_at:
+            venc_at[b_at] += 1
+        if b_sol in venc_sol:
+            venc_sol[b_sol] += 1
+    return venc_at, venc_sol, vencidos
+
+
+def _avisar_abertura_ticket(chamado, opener):
+    """E-mail VISUALIZAÇÃO DE TICKET só para quem abriu. Não derruba a criação."""
+    dest = (getattr(opener, 'email', None) or '').strip()
+    if not dest:
+        flash('Ticket criado. Sem e-mail no seu cadastro; visualização não enviada.', 'info')
+        return
+    try:
+        from email_service import smtp_configurado, enviar_visualizacao_ticket
+        if not smtp_configurado():
+            print('SMTP não configurado; e-mail de visualização de ticket não enviado.')
+            return
+        enviar_visualizacao_ticket(chamado, opener, _url_detalhe_chamado(chamado.id))
+    except Exception as exc:
+        print(f'Falha ao enviar visualização de ticket: {exc}')
+
+
+def _ultima_movimentacao(chamado):
+    stamps = [chamado.data_criacao, chamado.encaminhado_em]
+    try:
+        last_at = (
+            db.session.query(func.max(ChamadoAtendimento.data_criacao))
+            .filter(ChamadoAtendimento.chamado_id == chamado.id)
+            .scalar()
+        )
+        last_msg = (
+            db.session.query(func.max(ChamadoMensagem.data_criacao))
+            .filter(ChamadoMensagem.chamado_id == chamado.id)
+            .scalar()
+        )
+        stamps.extend([last_at, last_msg])
+    except Exception:
+        pass
+    stamps = [s for s in stamps if s]
+    return max(stamps) if stamps else chamado.data_criacao
+
+
+def _alertas_sla_e_parada(chamados_abertos):
+    """Alertas de SLA próximo/vencido e ticket parado — alimentam o sino."""
+    agora = datetime.utcnow()
+    items = []
+    for c in chamados_abertos:
+        info = sla_do_chamado(c)
+        url = url_for('main.ver_chamado', id=c.id)
+        cliente = c.cliente.nome if c.cliente else '—'
+        if info:
+            if info.get('atendimento_vencido') or info.get('solucao_vencida'):
+                qual = 'solução' if info.get('solucao_vencida') else 'atendimento'
+                items.append({
+                    'id': c.id,
+                    'numero_chamado': c.numero_chamado,
+                    'cliente': cliente,
+                    'tipo': f'SLA {qual} vencido',
+                    'setor_destino': c.mesa.nome if c.mesa else (c.setor_destino or ''),
+                    'url_atender': url,
+                })
+            elif info.get('atendimento_proximo') or info.get('solucao_proxima'):
+                qual = 'solução' if info.get('solucao_proxima') else 'atendimento'
+                items.append({
+                    'id': c.id,
+                    'numero_chamado': c.numero_chamado,
+                    'cliente': cliente,
+                    'tipo': f'SLA {qual} vence em breve',
+                    'setor_destino': c.mesa.nome if c.mesa else (c.setor_destino or ''),
+                    'url_atender': url,
+                })
+        ult = _ultima_movimentacao(c)
+        if ult and (agora - ult) >= timedelta(hours=TICKET_PARADO_HORAS):
+            items.append({
+                'id': c.id,
+                'numero_chamado': c.numero_chamado,
+                'cliente': cliente,
+                'tipo': f'Sem atualização há {TICKET_PARADO_HORAS}h',
+                'setor_destino': c.mesa.nome if c.mesa else (c.setor_destino or ''),
+                'url_atender': url,
+            })
+    return items
+
+
+def _status_inicial_novo():
+    allowed = {'Pendente', 'Em Andamento', STATUS_AGUARDAR_PECA, STATUS_ENCAMINHADO, STATUS_DEVOLVIDO}
+    status = (request.args.get('status') or 'Pendente').strip()
+    return status if status in allowed else 'Pendente'
+
+
+RELATORIOS_CATALOGO = (
+    {
+        'key': 'atendentes',
+        'label': 'Atendentes',
+        'icon': 'fa-user-clock',
+        'items': [
+            {'slug': 'atraso-apontamentos', 'label': 'Atraso de apontamentos'},
+            {'slug': 'carga-trabalho', 'label': 'Carga de trabalho'},
+            {'slug': 'chat-detalhado', 'label': 'Chat detalhado'},
+            {'slug': 'deslocamentos', 'label': 'Deslocamentos'},
+            {'slug': 'executivo-atendentes', 'label': 'Executivo de atendentes'},
+            {'slug': 'extrato-apontamentos', 'label': 'Extrato de apontamentos'},
+            {'slug': 'grafico-apontamentos', 'label': 'Gráfico de apontamentos'},
+            {'slug': 'picos-atendimento', 'label': 'Picos de atendimento'},
+        ],
+    },
+    {
+        'key': 'faturamento',
+        'label': 'Faturamento',
+        'icon': 'fa-file-invoice-dollar',
+        'items': [
+            {'slug': 'erros-faturamento', 'label': 'Erros de faturamento'},
+            {'slug': 'extrato-consumo-cliente', 'label': 'Extrato de consumo cliente'},
+            {'slug': 'faturamentos-pendentes', 'label': 'Faturamentos pendentes'},
+            {'slug': 'grafico-consumo-contrato', 'label': 'Gráfico consumo contrato'},
+            {'slug': 'historico-faturamentos', 'label': 'Histórico de faturamentos'},
+            {'slug': 'reajuste-contratos', 'label': 'Reajuste de contratos'},
+            {'slug': 'valores-extras', 'label': 'Valores extras'},
+        ],
+    },
+    {
+        'key': 'administrativo',
+        'label': 'Administrativo',
+        'icon': 'fa-briefcase',
+        'items': [
+            {'slug': 'avaliacoes-atendimento', 'label': 'Avaliações de atendimento'},
+            {'slug': 'avaliacoes-conhecimentos', 'label': 'Avaliações de conhecimentos'},
+            {'slug': 'catalogo-servico', 'label': 'Catálogo de serviço'},
+            {'slug': 'eficiencia-atendimento', 'label': 'Eficiência de atendimento'},
+            {'slug': 'engajamento-clientes', 'label': 'Engajamento clientes'},
+            {'slug': 'executivo', 'label': 'Executivo'},
+            {'slug': 'exportar', 'label': 'Exportar'},
+            {'slug': 'gestao-indicadores', 'label': 'Gestão e indicadores'},
+        ],
+    },
+    {
+        'key': 'recurso',
+        'label': 'Recurso',
+        'icon': 'fa-headset',
+        'items': [
+            {'slug': 'gatilhos-disparados', 'label': 'Gatilhos disparados'},
+            {'slug': 'historico-acoes', 'label': 'Histórico de ações'},
+            {'slug': 'historico-gatilhos', 'label': 'Histórico de gatilhos'},
+            {'slug': 'informacoes-recursos', 'label': 'Informações dos recursos'},
+            {'slug': 'softwares-licencas', 'label': 'Softwares e licenças'},
+        ],
+    },
+    {
+        'key': 'excluidos',
+        'label': 'Excluídos e bloqueados',
+        'icon': 'fa-ban',
+        'items': [
+            {'slug': 'contatos-bloqueados', 'label': 'Contatos bloqueados'},
+            {'slug': 'pre-tickets-excluidos', 'label': 'Pré-tickets excluídos'},
+            {'slug': 'recursos-excluidos', 'label': 'Recursos excluídos'},
+            {'slug': 'senhas-excluidas', 'label': 'Senhas excluídas'},
+        ],
+    },
+)
+
+RELATORIOS_LIVE = {
+    'gestao-indicadores',
+    'carga-trabalho',
+    'executivo-atendentes',
+    'executivo',
+}
+
+
+def _query_chamados_usuario(user):
+    return (
+        Chamado.query.options(joinedload(Chamado.cliente), joinedload(Chamado.mesa), joinedload(Chamado.contrato))
+        .filter(_filtro_chamados_usuario(user))
+        .order_by(Chamado.data_criacao.desc())
+    )
+
+
+def _grupos_tickets(chamados):
+    grupos = []
+    for key, label, statuses in ESTAGIOS_TICKET:
+        grupos.append({
+            'key': key,
+            'label': label,
+            'tickets': [c for c in chamados if c.status in statuses],
+        })
+    fechados = [c for c in chamados if status_fechado(c.status)]
+    return grupos, fechados
 
 
 def _eh_gestor(usuario):
@@ -261,12 +575,28 @@ def _setor_atuacao(usuario, chamado):
     return _setor_usuario(usuario) or normalizar_setor_chamado(chamado.setor_destino) or ''
 
 
+def _setores_tecnico_usuario(usuario):
+    """IDs de chamado_setores onde o usuário está cadastrado como técnico."""
+    try:
+        tec = ChamadoTecnico.query.filter(
+            ChamadoTecnico.ativo == True,  # noqa: E712
+            or_(
+                ChamadoTecnico.usuario_id == usuario.id,
+                ChamadoTecnico.email == usuario.email,
+            ),
+        ).all()
+        return {t.setor_id for t in tec if t.setor_id}
+    except Exception:
+        return set()
+
+
 def _pendencias_chamados(usuario):
     """Pendências do login: encaminhamentos ao setor do usuário e chamados aguardando peça."""
     if not usuario:
         return []
     setor = _setor_usuario(usuario)
     gestor = _eh_gestor(usuario)
+    meus_setores_tecnicos = _setores_tecnico_usuario(usuario)
     seen = set()
     items = []
     rows = (
@@ -281,7 +611,10 @@ def _pendencias_chamados(usuario):
         aguardar_peca = chamado.status == STATUS_AGUARDAR_PECA and (
             gestor or chamado.tecnico_id == usuario.id or dest == setor
         )
-        if not encaminhado_para_mim and not aguardar_peca:
+        ticket_do_meu_setor = bool(
+            meus_setores_tecnicos and chamado.setor_tecnico_id in meus_setores_tecnicos
+        )
+        if not encaminhado_para_mim and not aguardar_peca and not ticket_do_meu_setor:
             continue
         if chamado.id in seen:
             continue
@@ -293,6 +626,9 @@ def _pendencias_chamados(usuario):
             tipo = 'Aguardar peça / Encaminhado'
         elif encaminhado_para_mim:
             tipo = 'Encaminhado'
+        elif ticket_do_meu_setor:
+            nome_setor = chamado.setor_tecnico.nome if chamado.setor_tecnico else 'Setor'
+            tipo = f'Ticket aberto para {nome_setor}'
         else:
             tipo = STATUS_AGUARDAR_PECA
         encaminhado_por = chamado.encaminhado_por
@@ -878,6 +1214,7 @@ def _salvar_acesso_geral(usuario, form, novo=False):
     usuario.email = email
     usuario.setor = normalizar_setor_chamado(form.get('setor')) or None
     usuario.setor_nutricao = normalizar_setor(TIPO_SETOR_NUTRICAO, form.get('setor_nutricao')) or None
+    usuario.telefone = (form.get('telefone') or '').strip() or None
     if senha:
         usuario.senha = generate_password_hash(senha)
     elif novo:
@@ -1013,25 +1350,108 @@ def editar_acesso(id):
 @main.route('/dashboard')
 @login_required
 def dashboard():
-    """Dashboard do sistema de gestão de chamados"""
+    """Dashboard do sistema de gestão de chamados (widgets com dados reais)."""
     user = Usuario.query.get(session['user_id'])
-    # Estatísticas básicas
-    total_chamados = Chamado.query.count()
-    chamados_pendentes = Chamado.query.filter_by(status='Pendente').count()
-    chamados_em_andamento = Chamado.query.filter_by(status='Em Andamento').count()
-    chamados_concluidos = Chamado.query.filter(Chamado.status.in_(STATUS_FECHADOS)).count()
-
-    # Chamados recentes
-    chamados_recentes = Chamado.query.options(joinedload(Chamado.cliente)).order_by(Chamado.data_criacao.desc()).limit(10).all()
-
-    stats = {
-        'total': total_chamados,
-        'pendentes': chamados_pendentes,
-        'em_andamento': chamados_em_andamento,
-        'concluidos': chamados_concluidos
+    visiveis = _query_chamados_usuario(user).all()
+    mesas = mesas_ativas()
+    mesa_filtro = request.args.get('mesa', type=int)
+    if mesa_filtro:
+        visiveis = [c for c in visiveis if c.mesa_id == mesa_filtro]
+    meus = [c for c in visiveis if c.tecnico_id == user.id]
+    abertos = [c for c in visiveis if not status_fechado(c.status)]
+    st_nao = [c for c in visiveis if c.status == 'Pendente']
+    st_and = [c for c in visiveis if c.status in ('Em Andamento', STATUS_ENCAMINHADO, STATUS_DEVOLVIDO, STATUS_AGUARDAR_PECA)]
+    st_pause = [c for c in visiveis if c.status == STATUS_AGUARDAR_PECA]
+    venc_at, venc_sol, vencidos = _contar_sla_widgets(abertos)
+    ids = [c.id for c in visiveis]
+    have_at = set()
+    if ids:
+        have_at = {
+            r[0] for r in db.session.query(ChamadoAtendimento.chamado_id)
+            .filter(ChamadoAtendimento.chamado_id.in_(ids))
+            .distinct()
+        }
+    sem_resp = [c for c in abertos if c.id not in have_at]
+    pie_src = Counter()
+    for c in visiveis:
+        if c.status in ('Em Andamento', STATUS_ENCAMINHADO, STATUS_DEVOLVIDO, STATUS_AGUARDAR_PECA):
+            pie_src[c.setor_destino or user.nome or 'Eu'] += 1
+    pie_total = sum(pie_src.values())
+    colors = ['#1ABC9C', '#3498db', '#9b59b6', '#e67e22', '#e74c3c', '#95a5a6']
+    circ = 339.3
+    pie = []
+    acc = 0.0
+    if pie_total:
+        for i, (label, n) in enumerate(pie_src.most_common()):
+            frac = n / pie_total
+            pie.append({
+                'label': label,
+                'count': n,
+                'pct': round(frac * 100),
+                'color': colors[i % len(colors)],
+                'dash': round(frac * circ, 2),
+                'gap': round(circ - frac * circ, 2),
+                'offset': round(-acc * circ, 2),
+            })
+            acc += frac
+    notificacoes = _pendencias_chamados(user)
+    alertas = _alertas_sla_e_parada(abertos)
+    seen_n = {(n.get('id'), n.get('tipo')) for n in notificacoes}
+    for a in alertas:
+        key = (a.get('id'), a.get('tipo'))
+        if key not in seen_n:
+            notificacoes.append(a)
+            seen_n.add(key)
+    ultimas_respostas = []
+    if ids:
+        at_rows = (
+            ChamadoAtendimento.query.options(joinedload(ChamadoAtendimento.usuario))
+            .filter(ChamadoAtendimento.chamado_id.in_(ids))
+            .order_by(ChamadoAtendimento.data_criacao.desc())
+            .limit(10)
+            .all()
+        )
+        num_by_id = {c.id: c.numero_chamado for c in visiveis}
+        for a in at_rows:
+            ultimas_respostas.append({
+                'chamado_id': a.chamado_id,
+                'numero': num_by_id.get(a.chamado_id, ''),
+                'texto': (a.o_que_foi_consertado or a.instrucoes or a.status or 'Atualização')[:140],
+                'autor': a.usuario.nome if a.usuario else '',
+                'quando': a.data_criacao.strftime('%d/%m %H:%M') if a.data_criacao else '',
+                'url': url_for('main.listar_chamados', atender=a.chamado_id),
+            })
+    tickets_index = [{'id': c.id, 'numero': c.numero_chamado} for c in visiveis]
+    dash = {
+        'todos': len(visiveis),
+        'meus': len(meus),
+        'nao_atendidos': len(st_nao),
+        'em_andamento': len(st_and),
+        'pausados': len(st_pause),
+        'vencidos': vencidos,
+        'venc_at': venc_at,
+        'venc_sol': venc_sol,
+        'sem_respostas': len(sem_resp),
+        'avaliacao': None,
+        'pie': pie,
+        'pie_total': pie_total,
+        'horas': '00:00',
+        'setores_chat': listar_setores(TIPO_SETOR_CHAMADOS),
     }
+    return render_template(
+        'dashboard.html',
+        dash=dash,
+        user_name=user.nome,
+        primeiro_nome=_primeiro_nome(user),
+        notificacoes=notificacoes,
+        ultimas_respostas=ultimas_respostas,
+        tickets_index=tickets_index,
+        user_setor=_setor_usuario(user),
+        sem_resp=sem_resp[:8],
+        mesas=mesas,
+        mesa_filtro=mesa_filtro,
+    )
 
-    return render_template('dashboard.html', stats=stats, user_name=user.nome, chamados=chamados_recentes)
 
 @main.route('/chamados')
 @login_required
@@ -1040,16 +1460,9 @@ def listar_chamados():
     user = Usuario.query.get(session['user_id'])
     user_id = session['user_id']
     setor = _setor_usuario(user)
-    conds = [Chamado.tecnico_id == user_id]
-    if setor:
-        conds.append(and_(Chamado.setor_destino == setor, ~Chamado.status.in_(STATUS_FECHADOS)))
-    chamados = (
-        Chamado.query.options(joinedload(Chamado.cliente))
-        .filter(or_(*conds))
-        .order_by(Chamado.data_criacao.desc())
-        .all()
-    )
+    chamados = _query_chamados_usuario(user).all()
     clientes = Cliente.query.order_by(Cliente.nome.asc()).all()
+    grupos, fechados = _grupos_tickets(chamados)
     if setor:
         subtitulo = f'Chamados que você abriu e encaminhamentos para {setor}'
     else:
@@ -1057,10 +1470,113 @@ def listar_chamados():
     return render_template(
         'chamados.html',
         chamados=chamados,
+        grupos=grupos,
+        fechados=fechados,
         clientes=clientes,
         setores=listar_setores(TIPO_SETOR_CHAMADOS),
         subtitulo=subtitulo,
         atender_id=request.args.get('atender', type=int),
+        user_setor=setor,
+        primeiro_nome=_primeiro_nome(user),
+        tickets_index=[{'id': c.id, 'numero': c.numero_chamado} for c in chamados],
+        mesas=mesas_ativas(),
+    )
+
+
+@main.route('/chamados/<int:id>')
+@login_required
+def ver_chamado(id):
+    """Ficha do ticket (layout 3 colunas)."""
+    user = Usuario.query.get(session['user_id'])
+    chamado = Chamado.query.options(
+        joinedload(Chamado.cliente),
+        joinedload(Chamado.encaminhado_por),
+        joinedload(Chamado.mesa),
+        joinedload(Chamado.contrato),
+    ).get_or_404(id)
+    visivel = Chamado.query.filter(_filtro_chamados_usuario(user), Chamado.id == id).first()
+    if not visivel and not _eh_gestor(user):
+        flash('Você não tem acesso a este ticket.', 'error')
+        return redirect(url_for('main.listar_chamados'))
+    solicitante = Usuario.query.get(chamado.tecnico_id)
+    hops = (
+        ChamadoEncaminhamento.query.options(joinedload(ChamadoEncaminhamento.usuario))
+        .filter_by(chamado_id=chamado.id)
+        .order_by(ChamadoEncaminhamento.id.asc())
+        .all()
+    )
+    atends = (
+        ChamadoAtendimento.query.options(joinedload(ChamadoAtendimento.usuario))
+        .filter_by(chamado_id=chamado.id)
+        .order_by(ChamadoAtendimento.id.asc())
+        .all()
+    )
+    fotos = chamado.fotos.order_by(ChamadoFoto.id.desc()).all()
+    ultimos = (
+        Chamado.query.filter(Chamado.cliente_id == chamado.cliente_id, Chamado.id != chamado.id)
+        .order_by(Chamado.data_criacao.desc())
+        .limit(5)
+        .all()
+    )
+    historico = []
+    historico.append({
+        'quando': chamado.data_criacao,
+        'titulo': 'Ticket aberto',
+        'texto': f'{solicitante.nome if solicitante else "Usuário"} criou {chamado.numero_chamado}',
+    })
+    for a in atends:
+        historico.append({
+            'quando': a.data_criacao,
+            'titulo': a.status or 'Atendimento',
+            'texto': a.o_que_foi_consertado or a.instrucoes or '',
+            'autor': a.usuario.nome if a.usuario else '',
+        })
+    for h in hops:
+        historico.append({
+            'quando': h.data_criacao,
+            'titulo': (h.tipo or 'encaminhar').title(),
+            'texto': f'{(h.de_setor or "—")} → {(h.para_setor or "—")}. {h.instrucoes or h.notas or ""}'.strip(),
+            'autor': h.usuario.nome if h.usuario else '',
+        })
+    historico.sort(key=lambda x: x['quando'] or datetime.min)
+    estagio_key, estagio_label = _estagio_do_status(chamado.status)
+    mensagens = (
+        ChamadoMensagem.query.options(joinedload(ChamadoMensagem.usuario))
+        .filter_by(chamado_id=chamado.id)
+        .order_by(ChamadoMensagem.data_criacao.asc(), ChamadoMensagem.id.asc())
+        .all()
+    )
+    for m in mensagens:
+        historico.append({
+            'quando': m.data_criacao,
+            'titulo': m.canal or 'Comunicação',
+            'texto': m.texto,
+            'autor': m.usuario.nome if m.usuario else '',
+        })
+    historico.sort(key=lambda x: x['quando'] or datetime.min)
+    sla = sla_do_chamado(chamado)
+    from email_service import smtp_configurado
+    return render_template(
+        'chamado_detalhe.html',
+        chamado=chamado,
+        solicitante=solicitante,
+        hops=hops,
+        atends=atends,
+        fotos=fotos,
+        ultimos=ultimos,
+        historico=historico,
+        estagio_label=estagio_label,
+        titulo_ticket=_titulo_chamado(chamado),
+        aberto=not status_fechado(chamado.status),
+        user_setor=_setor_usuario(user),
+        setores=listar_setores(TIPO_SETOR_CHAMADOS),
+        atender_id=None,
+        mensagens=mensagens,
+        sla=sla,
+        mesas=mesas_ativas(),
+        canais=CANAIS_MENSAGEM,
+        smtp_ok=smtp_configurado(),
+        tab=request.args.get('tab') or '',
     )
 
 @main.route('/novo_chamado', methods=['GET', 'POST'])
@@ -1068,8 +1584,10 @@ def listar_chamados():
 def novo_chamado():
     """Criar novo chamado"""
     clientes = Cliente.query.order_by(Cliente.nome.asc()).all()
+    mesas = mesas_ativas()
     if request.method == 'POST':
         try:
+            user = Usuario.query.get(session['user_id'])
             raw_cliente = (request.form.get('cliente_id') or '').strip()
             if raw_cliente.isdigit():
                 cliente_id = int(raw_cliente)
@@ -1080,20 +1598,30 @@ def novo_chamado():
                 raise ValueError('Selecione um cliente válido.')
 
             numero_chamado = gerar_numero_chamado()
+            setor_tecnico_id_raw = (request.form.get('setor_tecnico_id') or '').strip()
+            setor_tecnico_id = int(setor_tecnico_id_raw) if setor_tecnico_id_raw.isdigit() else None
             chamado = Chamado(
                 numero_chamado=numero_chamado,
                 cliente_id=cliente_id,
                 tipo_servico=request.form['tipo_servico'],
                 descricao=request.form['descricao'],
                 status=request.form.get('status') or 'Pendente',
-                prioridade=request.form.get('prioridade') or 'Normal',
+                prioridade=normalizar_prioridade(request.form.get('prioridade') or 'Normal'),
                 observacoes=request.form.get('observacoes'),
-                tecnico_id=session['user_id']
+                tecnico_id=session['user_id'],
+                mesa_id=resolver_mesa_id(request.form.get('mesa_id')),
+                setor_tecnico_id=setor_tecnico_id,
             )
+            vig = contrato_vigente(cliente_id)
+            if vig:
+                chamado.contrato_id = vig.id
             _vincular_equipamento_chamado(chamado, request.form, cliente_id)
 
             db.session.add(chamado)
+            db.session.flush()
+            aplicar_automacoes(chamado, 'criar', user)
             db.session.commit()
+            _avisar_abertura_ticket(chamado, user)
 
             if _wants_json():
                 return jsonify({
@@ -1116,7 +1644,15 @@ def novo_chamado():
                 }), 400
             flash(f'Erro ao criar chamado: {str(e)}', 'error')
 
-    return render_template('novo_chamado.html', clientes=clientes)
+    setores_tecnicos = ChamadoSetor.query.filter_by(ativo=True).order_by(ChamadoSetor.nome).all()
+    return render_template(
+        'novo_chamado.html',
+        clientes=clientes,
+        status_inicial=_status_inicial_novo(),
+        mesas=mesas,
+        mesa_padrao_id=(mesa_padrao().id if mesa_padrao() else None),
+        setores_tecnicos=setores_tecnicos,
+    )
 
 @main.route('/chamados/<int:id>/editar', methods=['GET', 'POST'])
 @login_required
@@ -1127,16 +1663,23 @@ def editar_chamado(id):
 
     if request.method == 'POST':
         try:
+            status_antes = chamado.status
             chamado.cliente_id = int(request.form['cliente_id'])
             _vincular_equipamento_chamado(chamado, request.form, chamado.cliente_id)
             chamado.tipo_servico = request.form['tipo_servico']
             chamado.descricao = request.form['descricao']
             chamado.status = request.form['status']
-            chamado.prioridade = request.form['prioridade']
+            chamado.prioridade = normalizar_prioridade(request.form['prioridade'])
             chamado.observacoes = request.form['observacoes']
+            mesa_id = resolver_mesa_id(request.form.get('mesa_id'))
+            if mesa_id:
+                chamado.mesa_id = mesa_id
 
             if status_fechado(request.form['status']) and not chamado.data_conclusao:
                 chamado.data_conclusao = datetime.utcnow()
+
+            user = Usuario.query.get(session['user_id'])
+            aplicar_automacoes(chamado, 'status', user, status_anterior=status_antes)
 
             db.session.commit()
             flash('Chamado atualizado com sucesso!', 'success')
@@ -1146,7 +1689,12 @@ def editar_chamado(id):
             flash(f'Erro ao atualizar chamado: {str(e)}', 'error')
             db.session.rollback()
 
-    return render_template('editar_chamado.html', chamado=chamado, clientes=clientes)
+    return render_template(
+        'editar_chamado.html',
+        chamado=chamado,
+        clientes=clientes,
+        mesas=mesas_ativas(),
+    )
 
 @main.route('/clientes')
 @login_required
@@ -1165,6 +1713,7 @@ def novo_cliente():
                 nome=request.form['nome'],
                 endereco=request.form['endereco'],
                 telefone=request.form['telefone'],
+                email=(request.form.get('email') or '').strip() or None,
                 responsavel=request.form['responsavel'],
                 telefone_responsavel=request.form['telefone_responsavel']
             )
@@ -1192,6 +1741,7 @@ def editar_cliente(id):
             cliente.nome = request.form['nome']
             cliente.endereco = request.form['endereco']
             cliente.telefone = request.form['telefone']
+            cliente.email = (request.form.get('email') or '').strip() or None
             cliente.responsavel = request.form['responsavel']
             cliente.telefone_responsavel = request.form['telefone_responsavel']
 
@@ -1248,6 +1798,7 @@ def atender_chamado(id):
         return jsonify({'ok': False, 'message': 'Sessão inválida.'}), 401
 
     acao = (request.form.get('acao') or 'salvar').strip().lower()
+    status_antes = chamado.status
     notas = (request.form.get('atendimento_notas') or '').strip()
     instrucoes = (request.form.get('instrucoes') or '').strip()
     setor = normalizar_setor_chamado(request.form.get('setor_destino'))
@@ -1373,6 +1924,7 @@ def atender_chamado(id):
     try:
         _salvar_fotos_chamado(chamado, atendimento, arquivos_conserto, TIPO_FOTO_CONSERTO)
         _salvar_fotos_chamado(chamado, atendimento, arquivos_enc, TIPO_FOTO_ENCAMINHAMENTO)
+        aplicar_automacoes(chamado, 'status', user, status_anterior=status_antes)
         db.session.commit()
     except Exception as exc:
         db.session.rollback()
@@ -1420,6 +1972,121 @@ def editar_usuario(id):
     return _redir_usuarios_portal()
 
 
+@main.route('/tecnicos', methods=['GET'])
+@login_required
+def tecnicos():
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'tecnicos'):
+        flash('Você não tem permissão para acessar Técnicos.', 'error')
+        return redirect(url_for('main.inicio'))
+    setores = ChamadoSetor.query.order_by(ChamadoSetor.nome).all()
+    tecnicos_list = (
+        ChamadoTecnico.query
+        .options(joinedload(ChamadoTecnico.setor))
+        .order_by(ChamadoTecnico.nome)
+        .all()
+    )
+    return render_template('tecnicos.html', setores=setores, tecnicos=tecnicos_list)
+
+
+@main.route('/tecnicos/setor/adicionar', methods=['POST'])
+@login_required
+def adicionar_chamado_setor():
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'tecnicos'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    data = request.get_json(silent=True) or request.form
+    nome = (data.get('nome') or '').strip()
+    if not nome:
+        return jsonify({'ok': False, 'error': 'Informe o nome do setor.'}), 400
+    if ChamadoSetor.query.filter_by(nome=nome).first():
+        return jsonify({'ok': False, 'error': 'Setor já cadastrado.'}), 400
+    s = ChamadoSetor(nome=nome, ativo=True)
+    db.session.add(s)
+    db.session.commit()
+    return jsonify({'ok': True, 'id': s.id, 'nome': s.nome, 'ativo': s.ativo})
+
+
+@main.route('/tecnicos/setor/<int:sid>/toggle', methods=['POST'])
+@login_required
+def toggle_chamado_setor(sid):
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'tecnicos'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    s = ChamadoSetor.query.get_or_404(sid)
+    s.ativo = not s.ativo
+    db.session.commit()
+    return jsonify({'ok': True, 'id': s.id, 'ativo': s.ativo})
+
+
+@main.route('/tecnicos/tecnico/adicionar', methods=['POST'])
+@login_required
+def adicionar_chamado_tecnico():
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'tecnicos'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    data = request.get_json(silent=True) or request.form
+    nome = (data.get('nome') or '').strip()
+    email = (data.get('email') or '').strip().lower()
+    setor_id_raw = (data.get('setor_id') or '').strip()
+    setor_id = int(setor_id_raw) if setor_id_raw.isdigit() else None
+    if not nome:
+        return jsonify({'ok': False, 'error': 'Informe o nome do técnico.'}), 400
+    usuario_vinculado = None
+    if email:
+        usuario_vinculado = Usuario.query.filter_by(email=email).first()
+    t = ChamadoTecnico(
+        nome=nome,
+        email=email or None,
+        setor_id=setor_id,
+        usuario_id=usuario_vinculado.id if usuario_vinculado else None,
+        ativo=True,
+    )
+    db.session.add(t)
+    db.session.commit()
+    setor_nome = t.setor.nome if t.setor else ''
+    return jsonify({'ok': True, 'id': t.id, 'nome': t.nome, 'email': t.email or '', 'setor': setor_nome, 'setor_id': t.setor_id or '', 'ativo': t.ativo})
+
+
+@main.route('/tecnicos/tecnico/<int:tid>/editar', methods=['POST'])
+@login_required
+def editar_chamado_tecnico(tid):
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'tecnicos'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    t = ChamadoTecnico.query.get_or_404(tid)
+    data = request.get_json(silent=True) or request.form
+    nome = (data.get('nome') or '').strip()
+    email = (data.get('email') or '').strip().lower()
+    setor_id_raw = (data.get('setor_id') or '').strip()
+    setor_id = int(setor_id_raw) if setor_id_raw.isdigit() else None
+    if not nome:
+        return jsonify({'ok': False, 'error': 'Informe o nome do técnico.'}), 400
+    t.nome = nome
+    t.email = email or None
+    t.setor_id = setor_id
+    if email:
+        u = Usuario.query.filter_by(email=email).first()
+        t.usuario_id = u.id if u else None
+    else:
+        t.usuario_id = None
+    db.session.commit()
+    setor_nome = t.setor.nome if t.setor else ''
+    return jsonify({'ok': True, 'id': t.id, 'nome': t.nome, 'email': t.email or '', 'setor': setor_nome, 'setor_id': t.setor_id or '', 'ativo': t.ativo})
+
+
+@main.route('/tecnicos/tecnico/<int:tid>/excluir', methods=['POST'])
+@login_required
+def excluir_chamado_tecnico(tid):
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'tecnicos'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    t = ChamadoTecnico.query.get_or_404(tid)
+    db.session.delete(t)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
 @main.route('/equipamentos')
 @login_required
 def listar_equipamentos():
@@ -1459,6 +2126,12 @@ def _dados_equipamento_form(data):
         'data_compra': _parse_data_compra(data.get('data_compra')),
         'cliente_id': cliente_id,
         'ativo': True,
+        'tipo_recurso': tipo,
+        'grupo_id': grupo.id if grupo else None,
+        'usuario_equipamento': usuario or None,
+        'ip': ip or None,
+        'is_agente': data.get('is_agente') in (True, 1, '1', 'on', 'true', 'sim'),
+        'atualizado_em': datetime.utcnow(),
     }
 
 
@@ -1671,16 +2344,18 @@ def _filtro_periodo_chamados():
 
 
 @main.route('/relatorios')
-#@login_required
+@login_required
 def relatorios():
-    """Página de relatórios gerenciais"""
-    periodo, data_de, data_ate, filtros = _filtro_periodo_chamados()
+    """Catálogo accordion de relatórios (estilo Tiflux)."""
+    return render_template('relatorios.html', catalogo=RELATORIOS_CATALOGO)
 
+
+def _pagina_relatorio_gestao():
+    periodo, data_de, data_ate, filtros = _filtro_periodo_chamados()
     total_chamados = Chamado.query.filter(*filtros).count()
     clientes_distintos = (
         db.session.query(func.count(func.distinct(Chamado.cliente_id))).filter(*filtros).scalar() or 0
     )
-
     status_rows = (
         db.session.query(Chamado.status, func.count(Chamado.id))
         .filter(*filtros)
@@ -1688,7 +2363,6 @@ def relatorios():
         .all()
     )
     status_map = {(s or '').strip(): n for s, n in status_rows}
-
     top_clientes_rows = (
         db.session.query(Cliente.nome, func.count(Chamado.id).label('total'))
         .join(Chamado)
@@ -1702,7 +2376,6 @@ def relatorios():
     for nome, total in top_clientes_rows:
         pct = round((total * 100.0 / total_chamados), 1) if total_chamados else 0
         top_clientes.append({'nome': nome or '—', 'total': int(total), 'pct': pct})
-
     top = top_clientes[0] if top_clientes else None
     stats = {
         'total': total_chamados,
@@ -1713,7 +2386,6 @@ def relatorios():
         'em_andamento': int(status_map.get('Em Andamento', 0)),
         'concluidos': int(sum(status_map.get(s, 0) for s in STATUS_FECHADOS)),
     }
-
     top_eq_rows = (
         db.session.query(Chamado.equipamento, func.count(Chamado.id).label('total'))
         .filter(Chamado.equipamento.isnot(None), Chamado.equipamento != '', *filtros)
@@ -1726,7 +2398,6 @@ def relatorios():
     for nome, total in top_eq_rows:
         pct = round((total * 100.0 / total_chamados), 1) if total_chamados else 0
         top_equipamentos.append({'nome': nome, 'total': int(total), 'pct': pct})
-
     equipamentos_problemas = {}
     for eq in top_equipamentos:
         tipos = (
@@ -1739,9 +2410,8 @@ def relatorios():
         equipamentos_problemas[eq['nome']] = [
             {'tipo': t or '—', 'total': int(n)} for t, n in tipos
         ]
-
     return render_template(
-        'relatorios.html',
+        'relatorios_gestao.html',
         stats=stats,
         top_clientes=top_clientes,
         top_equipamentos=top_equipamentos,
@@ -1752,6 +2422,519 @@ def relatorios():
             'data_ate': data_ate.isoformat() if data_ate else '',
         },
     )
+
+
+@main.route('/relatorios/gestao-indicadores')
+@login_required
+def relatorio_gestao():
+    """Relatório gerencial com dados reais de chamados."""
+    return _pagina_relatorio_gestao()
+
+
+@main.route('/relatorios/<slug>')
+@login_required
+def relatorio_item(slug):
+    if slug == 'gestao-indicadores':
+        return _pagina_relatorio_gestao()
+    if slug in ('carga-trabalho', 'executivo-atendentes', 'executivo', 'eficiencia-atendimento'):
+        return _pagina_relatorio_atendentes(slug)
+    titulo = slug.replace('-', ' ').title()
+    for cat in RELATORIOS_CATALOGO:
+        for item in cat['items']:
+            if item['slug'] == slug:
+                titulo = item['label']
+                break
+    return render_template(
+        'relatorios_vazio.html',
+        titulo=titulo,
+        mensagem='Sem dados para este relatório.',
+    )
+
+
+def _pagina_relatorio_atendentes(slug):
+    periodo, data_de, data_ate, filtros = _filtro_periodo_chamados()
+    chamados = Chamado.query.options(
+        joinedload(Chamado.mesa),
+        joinedload(Chamado.contrato),
+    ).filter(*filtros).all()
+    titulos = {
+        'carga-trabalho': 'Carga de trabalho',
+        'executivo-atendentes': 'Executivo de atendentes',
+        'executivo': 'Executivo',
+        'eficiencia-atendimento': 'Eficiência de atendimento',
+    }
+    agrup = 'setor' if slug == 'executivo' else 'usuario'
+    buckets = {}
+    tempos = []
+    sla_ok = sla_nok = 0
+    agora = datetime.utcnow()
+    for c in chamados:
+        user = Usuario.query.get(c.tecnico_id) if c.tecnico_id else None
+        if agrup == 'setor':
+            key = (c.mesa.nome if c.mesa else None) or (user.setor if user else None) or (c.setor_destino or 'Sem área')
+            nome = key
+            setor = key
+        else:
+            key = c.tecnico_id or 0
+            nome = user.nome if user else '—'
+            setor = (user.setor if user else '') or (c.mesa.nome if c.mesa else '') or '—'
+        row = buckets.setdefault(key, {
+            'nome': nome, 'setor': setor, 'pendente': 0, 'andamento': 0,
+            'concluidos': 0, 'total': 0, 'sla_ok': 0, 'sla_nok': 0, 'tempos': [],
+        })
+        row['total'] += 1
+        st = (c.status or '').strip()
+        if st == 'Pendente':
+            row['pendente'] += 1
+        elif status_fechado(st):
+            row['concluidos'] += 1
+        else:
+            row['andamento'] += 1
+        info = sla_do_chamado(c)
+        if c.data_conclusao and c.data_criacao:
+            horas = (c.data_conclusao - c.data_criacao).total_seconds() / 3600.0
+            row['tempos'].append(horas)
+            tempos.append(horas)
+        if info and c.data_conclusao:
+            ok = c.data_conclusao <= info['venc_solucao']
+            if ok:
+                row['sla_ok'] += 1
+                sla_ok += 1
+            else:
+                row['sla_nok'] += 1
+                sla_nok += 1
+        elif info and not status_fechado(st) and info.get('solucao_vencida'):
+            row['sla_nok'] += 1
+            sla_nok += 1
+    linhas = []
+    for row in buckets.values():
+        n_t = len(row['tempos'])
+        media = round(sum(row['tempos']) / n_t, 1) if n_t else None
+        aval = row['sla_ok'] + row['sla_nok']
+        pct = round(row['sla_ok'] * 100.0 / aval, 1) if aval else None
+        linhas.append({
+            'nome': row['nome'],
+            'setor': row['setor'],
+            'pendente': row['pendente'],
+            'andamento': row['andamento'],
+            'concluidos': row['concluidos'],
+            'total': row['total'],
+            'tempo_medio': media,
+            'sla_pct': pct,
+        })
+    linhas.sort(key=lambda r: r['total'], reverse=True)
+    aval_total = sla_ok + sla_nok
+    stats = {
+        'volume': len(chamados),
+        'tempo_medio': round(sum(tempos) / len(tempos), 1) if tempos else None,
+        'sla_pct': round(sla_ok * 100.0 / aval_total, 1) if aval_total else None,
+        'abertos': sum(1 for c in chamados if not status_fechado(c.status)),
+        'concluidos': sum(1 for c in chamados if status_fechado(c.status)),
+        'atendentes': len(linhas),
+    }
+    return render_template(
+        'relatorios_atendentes.html',
+        titulo=titulos.get(slug, 'Indicadores'),
+        slug=slug,
+        agrup=agrup,
+        stats=stats,
+        linhas=linhas,
+        filtros={
+            'periodo': periodo,
+            'data_de': data_de.isoformat() if data_de else '',
+            'data_ate': data_ate.isoformat() if data_ate else '',
+        },
+    )
+
+
+def _parse_data_iso(valor):
+    raw = (valor or '').strip()
+    if not raw:
+        return None
+    for fmt in ('%Y-%m-%d', '%d/%m/%Y'):
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _gravar_contrato(form, row=None):
+    cliente_id = form.get('cliente_id')
+    if not str(cliente_id or '').isdigit():
+        raise ValueError('Selecione um cliente.')
+    cliente_id = int(cliente_id)
+    if not Cliente.query.get(cliente_id):
+        raise ValueError('Cliente inválido.')
+    tipo = (form.get('tipo') or 'Suporte').strip()
+    if tipo not in TIPOS_CONTRATO:
+        tipo = 'Personalizado'
+    padrao = sla_horas_tipo_contrato(tipo)
+    at_h = form.get('sla_atendimento_horas')
+    sol_h = form.get('sla_solucao_horas')
+    at_h = int(at_h) if str(at_h or '').strip().isdigit() else padrao[0]
+    sol_h = int(sol_h) if str(sol_h or '').strip().isdigit() else padrao[1]
+    if row is None:
+        row = Contrato(cliente_id=cliente_id)
+        db.session.add(row)
+    else:
+        row.cliente_id = cliente_id
+    row.tipo = tipo
+    row.inicio = _parse_data_iso(form.get('inicio'))
+    row.vencimento = _parse_data_iso(form.get('vencimento'))
+    row.dados_faturamento = (form.get('dados_faturamento') or '').strip() or None
+    row.valor = parse_valor_faturamento(form.get('valor'))
+    row.observacao = (form.get('observacao') or '').strip() or None
+    row.sla_atendimento_horas = at_h
+    row.sla_solucao_horas = sol_h
+    db.session.commit()
+    return row
+
+
+@main.route('/contratos', methods=['GET', 'POST'])
+@login_required
+def contratos():
+    if request.method == 'POST':
+        try:
+            cid = request.form.get('id')
+            row = Contrato.query.get(int(cid)) if str(cid or '').isdigit() else None
+            _gravar_contrato(request.form, row)
+            flash('Contrato salvo.', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(str(e), 'error')
+        return redirect(url_for('main.contratos', cliente_id=request.form.get('cliente_id') or None))
+    cliente_id = request.args.get('cliente_id', type=int)
+    q = Contrato.query.options(joinedload(Contrato.cliente)).order_by(Contrato.id.desc())
+    if cliente_id:
+        q = q.filter_by(cliente_id=cliente_id)
+    return render_template(
+        'contratos.html',
+        contratos=q.all(),
+        clientes=Cliente.query.order_by(Cliente.nome.asc()).all(),
+        tipos=TIPOS_CONTRATO,
+        cliente_filtro=cliente_id,
+        sla_tipos= {t: sla_horas_tipo_contrato(t) for t in TIPOS_CONTRATO},
+    )
+
+
+@main.route('/contratos/<int:id>/excluir', methods=['POST'])
+@login_required
+def excluir_contrato(id):
+    row = Contrato.query.get_or_404(id)
+    try:
+        Chamado.query.filter_by(contrato_id=row.id).update({Chamado.contrato_id: None})
+        db.session.delete(row)
+        db.session.commit()
+        flash('Contrato excluído.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    return redirect(url_for('main.contratos'))
+
+
+@main.route('/agenda')
+@login_required
+def agenda():
+    user = Usuario.query.get(session['user_id'])
+    visiveis = _query_chamados_usuario(user).all()
+    eventos = []
+    for c in visiveis:
+        if not c.data_criacao:
+            continue
+        eventos.append({
+            'id': c.id,
+            'numero': c.numero_chamado,
+            'titulo': _titulo_chamado(c),
+            'data': c.data_criacao.strftime('%Y-%m-%d'),
+            'hora': c.data_criacao.strftime('%H:%M'),
+            'url': url_for('main.ver_chamado', id=c.id),
+        })
+    return render_template(
+        'agenda.html',
+        user_name=user.nome,
+        eventos=eventos,
+    )
+
+
+_UPLOAD_CONHECIMENTOS = Path(__file__).resolve().parent / 'static' / 'uploads' / 'conhecimentos'
+_CONH_MAX_BYTES = 25 * 1024 * 1024
+_CONH_EXTS = {'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.txt', '.zip'}
+
+
+def _sanitize_html(raw):
+    import re
+    text = raw or ''
+    text = re.sub(r'(?is)<script[^>]*>.*?</script>', '', text)
+    text = re.sub(r'(?is)<iframe[^>]*>.*?</iframe>', '', text)
+    text = re.sub(r'(?i)\son\w+\s*=', ' ', text)
+    return text.strip()
+
+
+@main.route('/conhecimentos')
+@login_required
+def conhecimentos():
+    q = (request.args.get('q') or '').strip()
+    ordem = (request.args.get('ordem') or 'az').strip()
+    query = ChamadoConhecimento.query
+    if q:
+        like = f'%{q}%'
+        query = query.filter(or_(
+            ChamadoConhecimento.titulo.ilike(like),
+            ChamadoConhecimento.tags.ilike(like),
+            ChamadoConhecimento.corpo.ilike(like),
+        ))
+    if ordem == 'za':
+        query = query.order_by(ChamadoConhecimento.titulo.desc())
+    elif ordem == 'novo':
+        query = query.order_by(ChamadoConhecimento.data_criacao.desc())
+    else:
+        query = query.order_by(ChamadoConhecimento.titulo.asc())
+    artigos = query.all()
+    nomes_pasta = [p.nome for p in ConhecimentoPasta.query.order_by(ConhecimentoPasta.nome.asc()).all()]
+    if PASTA_CONHECIMENTO_PADRAO not in nomes_pasta:
+        nomes_pasta.insert(0, PASTA_CONHECIMENTO_PADRAO)
+    grupos = []
+    seen = set()
+    by_pasta = {}
+    for a in artigos:
+        nome = (a.pasta or PASTA_CONHECIMENTO_PADRAO).strip() or PASTA_CONHECIMENTO_PADRAO
+        by_pasta.setdefault(nome, []).append(a)
+        seen.add(nome)
+    for nome in nomes_pasta:
+        grupos.append({'nome': nome, 'artigos': by_pasta.get(nome, [])})
+        seen.discard(nome)
+    for nome in sorted(seen):
+        grupos.append({'nome': nome, 'artigos': by_pasta.get(nome, [])})
+    return render_template(
+        'conhecimentos.html',
+        artigos=artigos,
+        grupos=grupos,
+        q=q,
+        ordem=ordem,
+        pasta_filtro=request.args.get('pasta') or '',
+    )
+
+
+@main.route('/conhecimentos/novo', methods=['GET', 'POST'])
+@login_required
+def novo_conhecimento():
+    if request.method == 'POST':
+        titulo = (request.form.get('titulo') or '').strip()
+        if not titulo:
+            flash('Informe um título.', 'error')
+            return render_template('conhecimento_form.html', pastas=_nomes_pastas())
+        pasta = (request.form.get('pasta') or PASTA_CONHECIMENTO_PADRAO).strip() or PASTA_CONHECIMENTO_PADRAO
+        nova = (request.form.get('pasta_nova') or '').strip()
+        if nova:
+            pasta = nova[:80]
+            if not ConhecimentoPasta.query.filter_by(nome=pasta).first():
+                db.session.add(ConhecimentoPasta(nome=pasta))
+        tags = (request.form.get('tags') or '').strip()
+        catalogo = (request.form.get('catalogo') or 'Todos').strip() or 'Todos'
+        corpo = _sanitize_html(request.form.get('corpo'))
+        arquivo_path = None
+        arquivo_nome = None
+        arq = request.files.get('arquivo')
+        if arq and getattr(arq, 'filename', None):
+            original = secure_filename(arq.filename)
+            ext = Path(original).suffix.lower()
+            if ext not in _CONH_EXTS:
+                flash('Tipo de arquivo não permitido.', 'error')
+                return render_template('conhecimento_form.html', pastas=_nomes_pastas())
+            arq.seek(0, os.SEEK_END)
+            size = arq.tell()
+            arq.seek(0)
+            if size > _CONH_MAX_BYTES:
+                flash('Arquivo excede 25 MB.', 'error')
+                return render_template('conhecimento_form.html', pastas=_nomes_pastas())
+            _UPLOAD_CONHECIMENTOS.mkdir(parents=True, exist_ok=True)
+            fname = f'c_{uuid.uuid4().hex[:12]}{ext}'
+            dest = _UPLOAD_CONHECIMENTOS / fname
+            arq.save(str(dest))
+            arquivo_path = f'uploads/conhecimentos/{fname}'
+            arquivo_nome = original
+        row = ChamadoConhecimento(
+            titulo=titulo[:200],
+            pasta=pasta[:80],
+            tags=tags[:255],
+            catalogo=catalogo[:80],
+            corpo=corpo,
+            arquivo=arquivo_path,
+            arquivo_nome=arquivo_nome,
+            usuario_id=session['user_id'],
+        )
+        db.session.add(row)
+        db.session.commit()
+        flash('Conhecimento criado.', 'success')
+        return redirect(url_for('main.conhecimentos'))
+    return render_template('conhecimento_form.html', pastas=_nomes_pastas())
+
+
+@main.route('/conhecimentos/<int:id>')
+@login_required
+def ver_conhecimento(id):
+    artigo = ChamadoConhecimento.query.get_or_404(id)
+    return render_template('conhecimento_ver.html', artigo=artigo)
+
+
+def _nomes_pastas():
+    nomes = [p.nome for p in ConhecimentoPasta.query.order_by(ConhecimentoPasta.nome.asc()).all()]
+    if PASTA_CONHECIMENTO_PADRAO not in nomes:
+        nomes.insert(0, PASTA_CONHECIMENTO_PADRAO)
+    return nomes
+
+
+@main.route('/conhecimentos/pastas', methods=['POST'])
+@login_required
+def nova_pasta_conhecimento():
+    nome = (request.form.get('nome') or '').strip()[:80]
+    if not nome:
+        flash('Informe o nome da pasta.', 'error')
+        return redirect(url_for('main.conhecimentos'))
+    if not ConhecimentoPasta.query.filter_by(nome=nome).first():
+        db.session.add(ConhecimentoPasta(nome=nome))
+        db.session.commit()
+        flash('Pasta criada.', 'success')
+    else:
+        flash('Essa pasta já existe.', 'info')
+    return redirect(url_for('main.conhecimentos'))
+
+
+@main.route('/chamados/<int:id>/mensagem', methods=['POST'])
+@login_required
+def mensagem_chamado(id):
+    user = Usuario.query.get(session['user_id'])
+    chamado = Chamado.query.options(joinedload(Chamado.cliente)).get_or_404(id)
+    texto = (request.form.get('texto') or '').strip()
+    canal = (request.form.get('canal') or 'Chat').strip()
+    if canal not in CANAIS_MENSAGEM:
+        canal = 'Chat'
+    interno = request.form.get('interno') in ('1', 'on', 'true', 'sim')
+    if not texto:
+        flash('Escreva a mensagem.', 'error')
+        return redirect(url_for('main.ver_chamado', id=id, tab='com'))
+    enviada = False
+    if canal == 'E-mail' and not interno:
+        dest = ((chamado.cliente.email if chamado.cliente else '') or '').strip()
+        try:
+            from email_service import smtp_configurado, enviar_email
+            if dest and smtp_configurado():
+                enviar_email(
+                    dest,
+                    f'Ticket {chamado.numero_chamado} — comunicação',
+                    texto,
+                )
+                enviada = True
+            elif canal == 'E-mail' and not dest:
+                flash('Cliente sem e-mail; mensagem registrada sem envio.', 'info')
+            elif not smtp_configurado():
+                flash('SMTP não configurado; mensagem registrada sem envio.', 'info')
+        except Exception as exc:
+            flash(f'E-mail não enviado ({exc}). Mensagem registrada.', 'error')
+    db.session.add(ChamadoMensagem(
+        chamado_id=chamado.id,
+        usuario_id=user.id if user else None,
+        texto=texto,
+        canal=canal if not interno else 'Interno',
+        visivel_cliente=not interno,
+        enviada=enviada,
+        origem='usuario',
+    ))
+    db.session.commit()
+    flash('Mensagem registrada.' + (' E-mail enviado.' if enviada else ''), 'success')
+    return redirect(url_for('main.ver_chamado', id=id, tab='com'))
+
+
+@main.route('/chamados/<int:id>/mesa', methods=['POST'])
+@login_required
+def atualizar_mesa_chamado(id):
+    chamado = Chamado.query.get_or_404(id)
+    mesa_id = resolver_mesa_id(request.form.get('mesa_id'))
+    if mesa_id:
+        chamado.mesa_id = mesa_id
+        db.session.commit()
+        flash('Mesa atualizada.', 'success')
+    return redirect(url_for('main.ver_chamado', id=id))
+
+
+@main.route('/automacoes', methods=['GET', 'POST'])
+@login_required
+def automacoes():
+    if request.method == 'POST':
+        acao = (request.form.get('acao') or 'regra').strip()
+        try:
+            if acao == 'mesa':
+                nome = (request.form.get('nome') or '').strip()[:80]
+                if not nome:
+                    raise ValueError('Informe o nome da mesa.')
+                if MesaServico.query.filter_by(nome=nome).first():
+                    raise ValueError('Essa mesa já existe.')
+                db.session.add(MesaServico(nome=nome, ativa=True))
+                db.session.commit()
+                flash('Mesa cadastrada.', 'success')
+            elif acao == 'toggle_mesa':
+                mesa = MesaServico.query.get_or_404(int(request.form['id']))
+                mesa.ativa = not bool(mesa.ativa)
+                db.session.commit()
+            elif acao == 'sla':
+                pri = normalizar_prioridade(request.form.get('prioridade'))
+                at_h = int(request.form.get('prazo_atendimento_horas') or 8)
+                sol_h = int(request.form.get('prazo_solucao_horas') or 24)
+                row = SlaPrioridade.query.filter_by(prioridade=pri).first()
+                if not row:
+                    row = SlaPrioridade(prioridade=pri)
+                    db.session.add(row)
+                row.prazo_atendimento_horas = max(1, at_h)
+                row.prazo_solucao_horas = max(1, sol_h)
+                db.session.commit()
+                flash('SLA atualizado.', 'success')
+            elif acao == 'toggle_regra':
+                regra = ChamadoAutomacao.query.get_or_404(int(request.form['id']))
+                regra.ativa = not bool(regra.ativa)
+                db.session.commit()
+            elif acao == 'excluir_regra':
+                regra = ChamadoAutomacao.query.get_or_404(int(request.form['id']))
+                db.session.delete(regra)
+                db.session.commit()
+                flash('Automação excluída.', 'success')
+            elif acao in ('regra', 'editar_regra'):
+                nome = (request.form.get('nome') or '').strip()
+                if not nome:
+                    raise ValueError('Informe o nome da regra.')
+                gatilho_val = (request.form.get('gatilho') or 'criar').strip()
+                gatilhos_validos = ('criar', 'status', 'sla_proximo', 'sla_vencido', 'sem_resposta')
+                dados = dict(
+                    nome=nome[:120],
+                    gatilho=gatilho_val if gatilho_val in gatilhos_validos else 'criar',
+                    prioridade_quando=(request.form.get('prioridade_quando') or '').strip() or None,
+                    status_quando=(request.form.get('status_quando') or '').strip() or None,
+                    acao=(request.form.get('acao_regra') or 'mensagem').strip() or 'mensagem',
+                    mensagem_padrao=(request.form.get('mensagem_padrao') or '').strip() or None,
+                    mesa_id=int(request.form['mesa_id']) if str(request.form.get('mesa_id') or '').isdigit() else None,
+                    ativa='ativa' in request.form,
+                )
+                if acao == 'editar_regra':
+                    regra = ChamadoAutomacao.query.get_or_404(int(request.form['id']))
+                    for k, v in dados.items():
+                        setattr(regra, k, v)
+                else:
+                    dados['ativa'] = True
+                    db.session.add(ChamadoAutomacao(**dados))
+                db.session.commit()
+                flash('Automação salva.', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(str(e), 'error')
+        return redirect(url_for('main.automacoes'))
+    return render_template(
+        'automacoes.html',
+        regras=ChamadoAutomacao.query.order_by(ChamadoAutomacao.id.asc()).all(),
+        mesas=MesaServico.query.order_by(MesaServico.nome.asc()).all(),
+        slas=SlaPrioridade.query.order_by(SlaPrioridade.id.asc()).all(),
+        setores=listar_setores(TIPO_SETOR_CHAMADOS),
+    )
+
 
 @main.route('/api/equipamentos_por_cliente/<cliente_ref>', methods=['GET'])
 @login_required

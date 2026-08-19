@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ artigo.titulo }}{% endblock %}
+{% block content %}
+<div class="mdk-kb-view">
+    <a class="mdk-btn" href="{{ url_for('main.conhecimentos') }}"><i class="fas fa-arrow-left"></i> Conhecimentos</a>
+    <div class="mdk-card" style="margin-top:0.7rem">
+        <h1>{{ artigo.titulo }}</h1>
+        <p class="mdk-kmeta">
+            Pasta: {{ artigo.pasta or 'Conhecimentos' }}
+            · Catálogo: {{ artigo.catalogo or 'Todos' }}
+            {% if artigo.tags %}· Tags: {{ artigo.tags }}{% endif %}
+            · {{ artigo.data_criacao.strftime('%d/%m/%Y %H:%M') if artigo.data_criacao else '' }}
+            {% if artigo.usuario %}· {{ artigo.usuario.nome }}{% endif %}
+        </p>
+        <div class="mdk-desc mdk-kb-html">{{ artigo.corpo|safe }}</div>
+        {% if artigo.arquivo %}
+        <p style="margin-top:0.8rem">
+            <a class="mdk-btn" href="{{ url_for('static', filename=artigo.arquivo) }}" target="_blank" rel="noopener">
+                <i class="fas fa-paperclip"></i> {{ artigo.arquivo_nome or 'Anexo' }}
+            </a>
+        </p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -9,6 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}?v=menu31" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/chamados-mdk.css') }}?v=mdk3" rel="stylesheet">
 </head>
 <body data-sidebar-collapse="sg-chamados-sidebar-collapsed">
     <script>
@@ -42,27 +43,36 @@
                     <span class="menu-label">Sistemas</span>
                 </a>
             </li>
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'novo_chamado') %}
+            <li class="mdk-new-ticket-li">
+                <a href="{{ url_for('main.novo_chamado') }}" class="mdk-new-ticket{% if request.endpoint == 'main.novo_chamado' %} active{% endif %}" title="Abrir novo ticket">
+                    <i class="fas fa-plus menu-icon"></i>
+                    <span class="menu-label mdk-new-ticket-label">Abrir novo ticket</span>
+                    <i class="fas fa-ellipsis-v mdk-new-ticket-more"></i>
+                </a>
+            </li>
+            {% endif %}
             {% if usuario_atual and usuario_atual.tem_menu('chamados', 'dashboard') %}
             <li>
                 <a href="{{ url_for('main.dashboard') }}" class="{% if request.endpoint == 'main.dashboard' %}active{% endif %}" title="Dashboard">
-                    <i class="fas fa-tachometer-alt menu-icon"></i>
+                    <i class="fas fa-th-large menu-icon"></i>
                     <span class="menu-label">Dashboard</span>
                 </a>
             </li>
             {% endif %}
             {% if usuario_atual and usuario_atual.tem_menu('chamados', 'chamados') %}
             <li>
-                <a href="{{ url_for('main.listar_chamados') }}" class="{% if request.endpoint == 'main.listar_chamados' %}active{% endif %}" title="Chamados">
-                    <i class="fas fa-clipboard-list menu-icon"></i>
-                    <span class="menu-label">Chamados</span>
+                <a href="{{ url_for('main.listar_chamados') }}" class="{% if request.endpoint in ('main.listar_chamados', 'main.editar_chamado', 'main.ver_chamado') %}active{% endif %}" title="Tickets">
+                    <i class="fas fa-ticket-alt menu-icon"></i>
+                    <span class="menu-label">Tickets</span>
                 </a>
             </li>
             {% endif %}
-            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'novo_chamado') %}
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'chats') %}
             <li>
-                <a href="{{ url_for('main.novo_chamado') }}" class="{% if request.endpoint == 'main.novo_chamado' %}active{% endif %}" title="Novo Chamado">
-                    <i class="fas fa-plus-circle menu-icon"></i>
-                    <span class="menu-label">Novo Chamado</span>
+                <a href="{{ url_for('main.dashboard', _anchor='chats') }}" title="Chats">
+                    <i class="fas fa-comments menu-icon"></i>
+                    <span class="menu-label">Chats</span>
                 </a>
             </li>
             {% endif %}
@@ -82,11 +92,51 @@
                 </a>
             </li>
             {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'tecnicos') %}
+            <li>
+                <a href="{{ url_for('main.tecnicos') }}" class="{% if request.endpoint == 'main.tecnicos' %}active{% endif %}" title="Técnicos">
+                    <i class="fas fa-user-cog menu-icon"></i>
+                    <span class="menu-label">Técnicos</span>
+                </a>
+            </li>
+            {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'recursos') %}
+            <li>
+                <a href="{{ url_for('main.dashboard', _anchor='recursos') }}" title="Recursos">
+                    <i class="fas fa-headset menu-icon"></i>
+                    <span class="menu-label">Recursos</span>
+                </a>
+            </li>
+            {% endif %}
             {% if usuario_atual and usuario_atual.tem_menu('chamados', 'relatorios') %}
             <li>
-                <a href="{{ url_for('main.relatorios') }}" class="{% if request.endpoint == 'main.relatorios' %}active{% endif %}" title="Relatórios">
+                <a href="{{ url_for('main.relatorios') }}" class="{% if request.endpoint in ('main.relatorios', 'main.relatorio_gestao', 'main.relatorio_item') %}active{% endif %}" title="Relatórios">
                     <i class="fas fa-chart-bar menu-icon"></i>
                     <span class="menu-label">Relatórios</span>
+                </a>
+            </li>
+            {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'agenda') %}
+            <li>
+                <a href="{{ url_for('main.agenda') }}" class="{% if request.endpoint == 'main.agenda' %}active{% endif %}" title="Agenda">
+                    <i class="fas fa-calendar-alt menu-icon"></i>
+                    <span class="menu-label">Agenda</span>
+                </a>
+            </li>
+            {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'conhecimentos') %}
+            <li>
+                <a href="{{ url_for('main.conhecimentos') }}" class="{% if request.endpoint in ('main.conhecimentos', 'main.novo_conhecimento', 'main.ver_conhecimento', 'main.nova_pasta_conhecimento') %}active{% endif %}" title="Conhecimentos">
+                    <i class="fas fa-book menu-icon"></i>
+                    <span class="menu-label">Conhecimentos</span>
+                </a>
+            </li>
+            {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'automacoes') %}
+            <li>
+                <a href="{{ url_for('main.automacoes') }}" class="{% if request.endpoint == 'main.automacoes' %}active{% endif %}" title="Automações">
+                    <i class="fas fa-bolt menu-icon"></i>
+                    <span class="menu-label">Automações</span>
                 </a>
             </li>
             {% endif %}
@@ -122,6 +172,7 @@
     </main>
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/chamados-mdk.js') }}?v=mdk1"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

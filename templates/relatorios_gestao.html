@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+
+{% block title %}Gestão e indicadores - Relatórios{% endblock %}
+
+{% block content %}
+<div class="chamados-page rel-page">
+    <div class="header">
+        <div>
+            <a class="mdk-btn" href="{{ url_for('main.relatorios') }}" style="margin-bottom:0.35rem"><i class="fas fa-arrow-left"></i> Relatórios</a>
+            <h1>Gestão e indicadores</h1>
+            <p class="chamados-sub">Volume de chamados por cliente e equipamento</p>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" onclick="window.print()">
+            <i class="fas fa-print"></i> Imprimir
+        </button>
+    </div>
+
+    <form class="rel-toolbar" method="get" action="{{ url_for('main.relatorio_gestao') }}">
+        <input type="hidden" name="periodo" id="relPeriodo" value="{{ filtros.periodo }}">
+        <div class="rel-presets" role="group" aria-label="Período">
+            <a class="rel-chip{% if filtros.periodo == 'todos' %} active{% endif %}" href="{{ url_for('main.relatorio_gestao', periodo='todos') }}">Todos</a>
+            <a class="rel-chip{% if filtros.periodo == '30' %} active{% endif %}" href="{{ url_for('main.relatorio_gestao', periodo='30') }}">30 dias</a>
+            <a class="rel-chip{% if filtros.periodo == '90' %} active{% endif %}" href="{{ url_for('main.relatorio_gestao', periodo='90') }}">90 dias</a>
+            <a class="rel-chip{% if filtros.periodo == 'ano' %} active{% endif %}" href="{{ url_for('main.relatorio_gestao', periodo='ano') }}">Este ano</a>
+        </div>
+        <div class="form-group fg">
+            <label class="form-label" for="data_de">De</label>
+            <input class="form-control" type="date" id="data_de" name="data_de" value="{{ filtros.data_de }}">
+        </div>
+        <div class="form-group fg">
+            <label class="form-label" for="data_ate">Até</label>
+            <input class="form-control" type="date" id="data_ate" name="data_ate" value="{{ filtros.data_ate }}">
+        </div>
+        <button class="btn btn-primary btn-sm" type="submit">
+            <i class="fas fa-filter"></i> Filtrar
+        </button>
+    </form>
+
+    <div class="rel-stats">
+        <div class="rel-stat">
+            <span class="rel-stat-label">Total de chamados</span>
+            <strong>{{ stats.total }}</strong>
+        </div>
+        <div class="rel-stat">
+            <span class="rel-stat-label">Clientes distintos</span>
+            <strong>{{ stats.clientes }}</strong>
+        </div>
+        <div class="rel-stat rel-stat-top">
+            <span class="rel-stat-label">Top cliente</span>
+            <strong title="{{ stats.top_cliente }}">{{ stats.top_cliente }}</strong>
+            <span class="rel-stat-hint">{% if stats.top_cliente_qtd %}{{ stats.top_cliente_qtd }} chamado{{ 's' if stats.top_cliente_qtd != 1 else '' }}{% else %}—{% endif %}</span>
+        </div>
+        <div class="rel-stat rel-stat-pend">
+            <span class="rel-stat-label">Pendentes</span>
+            <strong>{{ stats.pendentes }}</strong>
+        </div>
+        <div class="rel-stat rel-stat-and">
+            <span class="rel-stat-label">Em andamento</span>
+            <strong>{{ stats.em_andamento }}</strong>
+        </div>
+        <div class="rel-stat rel-stat-ok">
+            <span class="rel-stat-label">Concluídos / atendidos</span>
+            <strong>{{ stats.concluidos }}</strong>
+        </div>
+    </div>
+
+    <section class="rel-card">
+        <h2>Clientes que mais abriram chamados</h2>
+        <p class="rel-card-sub">Top 10 no período selecionado</p>
+        {% if top_clientes %}
+        <div class="rel-split">
+            <div class="rel-chart-box" style="height: {{ [140, top_clientes|length * 36]|max }}px">
+                <canvas id="chartClientes"></canvas>
+            </div>
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Cliente</th>
+                            <th>Qtd</th>
+                            <th>%</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in top_clientes %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ c.nome }}</td>
+                            <td>{{ c.total }}</td>
+                            <td>{{ '%.1f'|format(c.pct) }}%</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% else %}
+        <p class="rel-empty">Nenhum chamado no período. Ajuste as datas ou escolha <strong>Todos</strong>.</p>
+        {% endif %}
+    </section>
+
+    <section class="rel-card">
+        <h2>Equipamentos que mais tiveram chamados</h2>
+        <p class="rel-card-sub">Top 10 no período selecionado</p>
+        {% if top_equipamentos %}
+        <div class="rel-split">
+            <div class="rel-chart-box" style="height: {{ [140, top_equipamentos|length * 36]|max }}px">
+                <canvas id="chartEquipamentos"></canvas>
+            </div>
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Equipamento</th>
+                            <th>Qtd</th>
+                            <th>%</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for e in top_equipamentos %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ e.nome }}</td>
+                            <td>{{ e.total }}</td>
+                            <td>{{ '%.1f'|format(e.pct) }}%</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="rel-tipos">
+            <h3>Tipos de serviço por equipamento</h3>
+            {% for equipamento, tipos in equipamentos_problemas.items() %}
+            <div class="rel-tipo-row">
+                <span class="rel-tipo-eq">{{ equipamento }}</span>
+                <span class="rel-tipo-chips">
+                    {% for t in tipos %}
+                    <span class="rel-chip-tipo">{{ t.tipo }} <strong>{{ t.total }}</strong></span>
+                    {% endfor %}
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="rel-empty">Nenhum equipamento com chamado no período.</p>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+(function () {
+    const navy = '#1D4E89';
+    const navySoft = '#4A7AB5';
+    const lime = '#A8C53A';
+    const palette = [navy, navySoft, '#0D2B5C', lime, '#6B8FBF', '#8FAF28', '#3D6BA8', '#C4D96C', '#1B4F9C', '#7A9BC4'];
+
+    function barraHorizontal(canvasId, items) {
+        const el = document.getElementById(canvasId);
+        if (!el || !items.length) return;
+        function shortLabel(s) {
+            s = String(s || '');
+            return s.length > 32 ? s.slice(0, 31) + '…' : s;
+        }
+        new Chart(el.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: items.map(function (i) { return shortLabel(i.nome); }),
+                datasets: [{
+                    data: items.map(function (i) { return i.total; }),
+                    backgroundColor: items.map(function (_, idx) { return palette[idx % palette.length]; }),
+                    borderRadius: 4,
+                    maxBarThickness: 22
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    title: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: function (arr) {
+                                const idx = arr && arr[0] ? arr[0].dataIndex : 0;
+                                return (items[idx] && items[idx].nome) || '';
+                            },
+                            label: function (ctx) {
+                                const item = items[ctx.dataIndex];
+                                const qtd = item ? item.total : ctx.parsed.x;
+                                const pct = item ? item.pct : '';
+                                return qtd + ' chamado' + (qtd === 1 ? '' : 's') + (pct !== '' ? ' (' + pct + '%)' : '');
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        ticks: { precision: 0, font: { size: 11 } },
+                        grid: { color: 'rgba(29, 78, 137, 0.08)' }
+                    },
+                    y: {
+                        ticks: { autoSkip: false, font: { size: 11 } },
+                        grid: { display: false }
+                    }
+                }
+            }
+        });
+    }
+
+    barraHorizontal('chartClientes', {{ top_clientes|tojson }});
+    barraHorizontal('chartEquipamentos', {{ top_equipamentos|tojson }});
+
+    const periodo = document.getElementById('relPeriodo');
+    ['data_de', 'data_ate'].forEach(function (id) {
+        const input = document.getElementById(id);
+        if (!input) return;
+        input.addEventListener('change', function () {
+            if (periodo) periodo.value = 'custom';
+        });
+    });
+})();
+</script>
+<style>
+.rel-page { padding: 4px 0 1.2rem; }
+.rel-page .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.85rem;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+}
+.rel-page h1 { margin: 0; font-size: 1.6rem; }
+.chamados-sub { margin: 0.2rem 0 0; color: var(--gray-600); font-size: 0.8rem; }
+.rel-page .btn-sm { padding: 0.45rem 0.85rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.rel-toolbar {
+    display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.52rem;
+    margin-bottom: 0.85rem; background: #fff; border: 1px solid var(--brand-soft);
+    border-radius: 0.4rem; padding: 0.65rem 0.8rem; box-shadow: var(--shadow);
+}
+.rel-toolbar .fg { margin: 0; min-width: 132px; }
+.rel-toolbar .form-label { font-size: 0.72rem; margin-bottom: 0.16rem; }
+.rel-toolbar .form-control { padding: 0.42rem 0.55rem; font-size: 0.8rem; border-radius: 0.3rem; min-height: 0; height: auto; }
+.rel-presets { display: flex; flex-wrap: wrap; gap: 0.32rem; margin-right: 0.35rem; }
+.rel-chip {
+    display: inline-flex; align-items: center; padding: 0.38rem 0.7rem; border-radius: 999px;
+    background: var(--brand-soft); color: var(--brand-navy); font-size: 0.72rem; font-weight: 700;
+    text-decoration: none; border: 1px solid transparent;
+}
+.rel-chip:hover { background: #d7e3f4; }
+.rel-chip.active { background: var(--primary-color); color: #fff; }
+.rel-stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.55rem; margin-bottom: 0.85rem; }
+.rel-stat {
+    background: #fff; border: 1px solid var(--brand-soft); border-radius: 0.4rem;
+    padding: 0.7rem 0.8rem; box-shadow: var(--shadow); border-left: 3px solid var(--primary-color); min-width: 0;
+}
+.rel-stat-top { border-left-color: var(--accent-color); }
+.rel-stat-pend { border-left-color: #d39e00; }
+.rel-stat-and { border-left-color: #17a2b8; }
+.rel-stat-ok { border-left-color: #0d9488; }
+.rel-stat-label { display: block; font-size: 0.68rem; color: var(--gray-600); font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
+.rel-stat strong {
+    display: block; margin-top: 0.2rem; font-size: 1.15rem; color: var(--brand-navy);
+    font-family: var(--font-brand); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rel-stat-hint { display: block; font-size: 0.68rem; color: var(--gray-600); margin-top: 0.1rem; }
+.rel-card { background: #fff; border: 1px solid var(--brand-soft); border-radius: 0.4rem; padding: 0.85rem 1rem 1rem; box-shadow: var(--shadow); margin-bottom: 0.85rem; }
+.rel-card h2 { margin: 0; font-size: 1.05rem; }
+.rel-card-sub { margin: 0.15rem 0 0.7rem; color: var(--gray-600); font-size: 0.76rem; }
+.rel-split { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(240px, 0.85fr); gap: 0.8rem; align-items: start; }
+.rel-chart-box { position: relative; min-height: 140px; max-height: 340px; }
+.rel-chart-box canvas { width: 100% !important; }
+.table-wrap { background: #fff; border-radius: 0.35rem; overflow: auto; border: 1px solid var(--gray-200); }
+.rel-page .table { width: 100%; border-collapse: collapse; }
+.rel-page .table th, .rel-page .table td { padding: 0.42rem 0.6rem; text-align: left; border-bottom: 1px solid #e5e7eb; font-size: 0.8rem; }
+.rel-page .table th { background: #1D4E89; color: #fff; font-size: 0.72rem; font-weight: 700; }
+.rel-page .table tbody tr:nth-child(even) { background: #f8fafc; }
+.rel-page .table tbody tr:first-child td { font-weight: 700; }
+.rel-empty { margin: 0; padding: 1.4rem 0.5rem; text-align: center; color: var(--gray-600); font-size: 0.85rem; background: var(--brand-mist); border-radius: 0.35rem; }
+.rel-tipos { margin-top: 0.85rem; }
+.rel-tipos h3 { font-size: 0.82rem; margin: 0 0 0.45rem; }
+.rel-tipo-row { display: flex; gap: 0.5rem; align-items: flex-start; padding: 0.35rem 0; border-top: 1px solid var(--gray-200); font-size: 0.76rem; }
+.rel-tipo-eq { min-width: 140px; font-weight: 700; color: var(--brand-navy); }
+.rel-tipo-chips { display: flex; flex-wrap: wrap; gap: 0.28rem; }
+.rel-chip-tipo { background: var(--brand-soft); border-radius: 999px; padding: 0.12rem 0.5rem; font-size: 0.68rem; }
+.rel-chip-tipo strong { color: var(--brand-navy); }
+@media (max-width: 1100px) { .rel-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 800px) { .rel-split { grid-template-columns: 1fr; } .rel-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media print {
+    .sidebar, .app-topbar, .rel-toolbar, .rel-page .btn { display: none !important; }
+    .rel-page { padding: 0; }
+    .rel-card { break-inside: avoid; box-shadow: none; }
+}
+</style>
+{% endblock %}

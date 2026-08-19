@@ -72,6 +72,10 @@
                     <input type="email" id="email" name="email" value="{{ acesso.email if acesso else '' }}" required {{ 'readonly' if acesso and acesso.is_master else '' }}>
                 </div>
                 <div class="form-group">
+                    <label for="telefone">Telefone</label>
+                    <input type="text" id="telefone" name="telefone" value="{{ acesso.telefone if acesso and acesso.telefone else '' }}">
+                </div>
+                <div class="form-group">
                     <label for="setor">Setor (chamados)</label>
                     <div class="setor-field-row">
                         <select id="setor" name="setor">

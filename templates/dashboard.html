@@ -3,185 +3,322 @@
 {% block title %}Dashboard - São Geraldo Service{% endblock %}
 
 {% block content %}
-<div class="dashboard-container">
-    <div class="dashboard-header">
-        <h1>Bem-vindo, {{ user_name }}!</h1>
-    </div>
-
-    <div class="dashboard-stats">
-        <div class="stat">
-            <h2>Total de Chamados</h2>
-            <p>{{ stats.total }}</p>
-        </div>
-        <div class="stat">
-            <h2>Pendentes</h2>
-            <p>{{ stats.pendentes }}</p>
-        </div>
-        <div class="stat">
-            <h2>Em Andamento</h2>
-            <p>{{ stats.em_andamento }}</p>
-        </div>
-        <div class="stat">
-            <h2>Concluídos</h2>
-            <p>{{ stats.concluidos }}</p>
-        </div>
-    </div>
-
-    <h2>Chamados Recentes</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>Nº Chamado</th>
-                <th>Cliente</th>
-                <th>Status</th>
-                <th>Setor</th>
-                <th>Prioridade</th>
-                <th>Ações</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for chamado in chamados %}
-            <tr>
-                <td>{{ chamado.numero_chamado }}</td>
-                <td>{{ chamado.cliente.nome if chamado.cliente else 'N/A' }}</td>
-                <td>
-                    <span class="status-{{ chamado.status|lower|replace(' ', '-')|replace('í', 'i')|replace('ç', 'c') }}">{{ chamado.status }}</span>
-                </td>
-                <td>
-                    {% if chamado.setor_destino %}
-                    <span class="setor-blink">{{ chamado.setor_destino }}</span>
-                    {% else %}
-                    —
+<div class="mdk-dash">
+    <div class="mdk-dash-top">
+        <h1 class="mdk-hello">Bom te ver de volta, <span>{{ primeiro_nome }}</span></h1>
+        <div class="mdk-top-actions">
+            <button type="button" class="mdk-btn" id="btnModoTv"><i class="fas fa-tv"></i> Modo TV</button>
+            <button type="button" class="mdk-btn mdk-btn-teal mdk-icon-btn" data-mdk-soon title="Ações rápidas"><i class="fas fa-plus"></i></button>
+            <div class="mdk-drop" data-mdk-drop>
+                <button type="button" class="mdk-btn mdk-icon-btn" data-mdk-drop-btn id="btnBell" aria-expanded="false" title="Notificações">
+                    <i class="fas fa-bell"></i>
+                    {% if notificacoes %}
+                    <span class="mdk-badge" id="bellBadge">{{ notificacoes|length }}</span>
                     {% endif %}
-                </td>
-                <td>{{ chamado.prioridade }}</td>
-                <td>
-                    <a href="{{ url_for('main.editar_chamado', id=chamado.id) }}" class="btn btn-primary">
-                        <i class="fas fa-edit"></i> Editar
-                    </a>
-                </td>
-            </tr>
-            {% else %}
-            <tr>
-                <td colspan="6">Nenhum chamado recente encontrado.</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                </button>
+                <div class="mdk-drop-menu mdk-bell-panel" data-mdk-drop-menu hidden>
+                    <div class="mdk-bell-search">
+                        <input type="search" id="bellTicketSearch" placeholder="Número do ticket" autocomplete="off">
+                    </div>
+                    <div class="mdk-bell-tabs">
+                        <button type="button" class="is-active" data-bell-tab="notif">Notificações</button>
+                        <button type="button" data-bell-tab="resp">Últimas respostas</button>
+                    </div>
+                    <div class="mdk-bell-list" id="bellNotif">
+                        {% for n in notificacoes %}
+                        <a href="{{ n.url_atender }}">
+                            <strong>{{ n.numero_chamado }}</strong> · {{ n.tipo }}
+                            <small>{{ n.cliente }}{% if n.setor_destino %} · {{ n.setor_destino }}{% endif %}</small>
+                        </a>
+                        {% else %}
+                        <p class="mdk-empty" style="padding:1rem">Nenhuma pendência.</p>
+                        {% endfor %}
+                    </div>
+                    <div class="mdk-bell-list" id="bellResp" hidden>
+                        {% for r in ultimas_respostas %}
+                        <a href="{{ r.url }}">
+                            <strong>{{ r.numero }}</strong> · {{ r.texto }}
+                            <small>{{ r.autor }} {{ r.quando }}</small>
+                        </a>
+                        {% else %}
+                        <p class="mdk-empty" style="padding:1rem">Sem respostas recentes.</p>
+                        {% endfor %}
+                    </div>
+                    <div class="mdk-bell-foot">
+                        <a class="mdk-btn" href="{{ url_for('main.listar_chamados') }}">Ver</a>
+                        <button type="button" class="mdk-btn" id="btnBellLidas">Marcar como lidas</button>
+                        <button type="button" class="mdk-btn" data-mdk-soon>Configurações</button>
+                    </div>
+                </div>
+            </div>
+            <div class="mdk-drop" data-mdk-drop>
+                <button type="button" class="mdk-btn mdk-btn-teal" data-mdk-drop-btn aria-expanded="false">
+                    Ações <i class="fas fa-chevron-down"></i>
+                </button>
+                <div class="mdk-drop-menu" data-mdk-drop-menu hidden role="menu">
+                    <button type="button" data-mdk-soon><i class="fas fa-plus"></i> Novo dashboard</button>
+                    <button type="button" data-mdk-soon><i class="fas fa-pen"></i> Editar dashboard</button>
+                    <button type="button" data-mdk-soon><i class="fas fa-arrows-alt"></i> Reordenar widgets</button>
+                    <button type="button" class="danger" data-mdk-soon><i class="fas fa-trash"></i> Remover dashboard</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mdk-tabs" role="tablist">
+        <button type="button" class="mdk-tab is-active" data-dash-tab="tickets">Tickets</button>
+        <button type="button" class="mdk-tab" data-dash-tab="chats">Chats</button>
+        <button type="button" class="mdk-tab" data-dash-tab="recursos">Recursos</button>
+    </div>
+
+    <div class="mdk-panel" data-panel="tickets">
+        <div class="mdk-grid">
+            <div class="mdk-card mdk-span-5">
+                <h3>Resumo de tickets</h3>
+                {% if mesas %}
+                <form method="get" action="{{ url_for('main.dashboard') }}" class="mdk-mesa-filter">
+                    <label>Mesa:
+                        <select class="mdk-select" name="mesa" onchange="this.form.submit()">
+                            <option value="">Todas</option>
+                            {% for m in mesas %}
+                            <option value="{{ m.id }}" {% if mesa_filtro == m.id %}selected{% endif %}>{{ m.nome }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                </form>
+                {% endif %}
+                <div class="mdk-metrics">
+                    <a class="mdk-metric" href="{{ url_for('main.listar_chamados') }}"><b>{{ dash.todos }}</b><span>Todos</span></a>
+                    <a class="mdk-metric" href="{{ url_for('main.listar_chamados') }}"><b>{{ dash.meus }}</b><span>Meus</span></a>
+                    <a class="mdk-metric" href="{{ url_for('main.listar_chamados') }}"><b>{{ dash.nao_atendidos }}</b><span>Não atendidos</span></a>
+                    <a class="mdk-metric" href="{{ url_for('main.listar_chamados') }}"><b>{{ dash.em_andamento }}</b><span>Em andamento</span></a>
+                    <a class="mdk-metric" href="{{ url_for('main.listar_chamados') }}"><b>{{ dash.pausados }}</b><span>Pausados</span></a>
+                    <a class="mdk-metric" href="{{ url_for('main.listar_chamados') }}"><b>{{ dash.vencidos }}</b><span>Vencidos</span></a>
+                </div>
+            </div>
+            <div class="mdk-card mdk-span-4">
+                <h3>Vencimento atendimento</h3>
+                <div class="mdk-due">
+                    <div><b>{{ dash.venc_at.hoje }}</b><span>Hoje</span></div>
+                    <div><b>{{ dash.venc_at.amanha }}</b><span>Amanhã</span></div>
+                    <div><b>{{ dash.venc_at.depois }}</b><span>Depois</span></div>
+                </div>
+            </div>
+            <div class="mdk-card mdk-span-3">
+                <h3>Vencimento solução</h3>
+                <div class="mdk-due">
+                    <div><b>{{ dash.venc_sol.hoje }}</b><span>Hoje</span></div>
+                    <div><b>{{ dash.venc_sol.amanha }}</b><span>Amanhã</span></div>
+                    <div><b>{{ dash.venc_sol.depois }}</b><span>Depois</span></div>
+                </div>
+            </div>
+
+            <div class="mdk-card mdk-span-4">
+                <h3>Tickets sem respostas</h3>
+                {% if sem_resp %}
+                <ul class="mdk-note-list">
+                    {% for c in sem_resp %}
+                    <li>
+                        <a href="{{ url_for('main.ver_chamado', id=c.id) }}">{{ c.numero_chamado }}</a>
+                        <small>{{ c.cliente.nome if c.cliente else '—' }} · {{ c.status }}</small>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="mdk-empty">Nenhum ticket sem resposta.</p>
+                {% endif %}
+                <p class="mdk-empty" style="padding-top:0.3rem">{{ dash.sem_respostas }} no total</p>
+            </div>
+            <div class="mdk-card mdk-span-4">
+                <h3>Avaliação 30 dias</h3>
+                <p class="mdk-empty">Sem avaliações neste sistema.</p>
+            </div>
+            <div class="mdk-card mdk-span-4">
+                <h3>Últimas notificações</h3>
+                {% if notificacoes %}
+                <ul class="mdk-note-list">
+                    {% for n in notificacoes[:6] %}
+                    <li>
+                        <a href="{{ n.url_atender }}">{{ n.numero_chamado }}</a>
+                        <small>{{ n.tipo }} · {{ n.cliente }}</small>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="mdk-empty">Nenhuma notificação.</p>
+                {% endif %}
+            </div>
+
+            <div class="mdk-card mdk-span-8">
+                <h3>Minhas horas apontadas</h3>
+                <div class="mdk-chart-empty">
+                    <svg viewBox="0 0 400 80" preserveAspectRatio="none" aria-hidden="true">
+                        <polyline fill="none" stroke="#d5dde3" stroke-width="2" points="0,70 50,70 100,70 150,70 200,70 250,70 300,70 350,70 400,70"/>
+                    </svg>
+                    <strong>{{ dash.horas }}</strong>
+                    <span>Sem apontamento de horas</span>
+                </div>
+            </div>
+            <div class="mdk-card mdk-span-4">
+                <h3>Tickets em andamento</h3>
+                {% if dash.pie %}
+                <div class="mdk-pie-wrap">
+                    <svg width="110" height="110" viewBox="0 0 140 140" aria-hidden="true">
+                        <circle cx="70" cy="70" r="54" fill="none" stroke="#eef1f4" stroke-width="22"></circle>
+                        {% for s in dash.pie %}
+                        <circle cx="70" cy="70" r="54" fill="none" stroke="{{ s.color }}" stroke-width="22"
+                            stroke-dasharray="{{ s.dash }} {{ s.gap }}" stroke-dashoffset="{{ s.offset }}"
+                            transform="rotate(-90 70 70)"></circle>
+                        {% endfor %}
+                    </svg>
+                    <ul class="mdk-legend">
+                        {% for s in dash.pie %}
+                        <li><span class="mdk-dot" style="background:{{ s.color }}"></span>{{ s.label }} ({{ s.count }})</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% else %}
+                <p class="mdk-empty">Nenhum ticket em andamento.</p>
+                {% endif %}
+            </div>
+
+            <div class="mdk-card mdk-span-6">
+                <h3>Meus compromissos</h3>
+                <p class="mdk-empty">Nenhum compromisso.</p>
+            </div>
+            <div class="mdk-card mdk-span-6">
+                <h3>Todos os compromissos</h3>
+                <p class="mdk-empty">Nenhum compromisso.</p>
+            </div>
+
+            <div class="mdk-card mdk-span-12">
+                <h3>Pendentes</h3>
+                <div class="mdk-pend-row"><span>Pré-tickets</span><b>0</b></div>
+                <div class="mdk-pend-row"><span>Autorizações</span><b>0</b></div>
+                <div class="mdk-pend-row"><span>Pré-apontamentos</span><b>0</b></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mdk-panel" data-panel="chats" hidden>
+        <div class="mdk-kpi-row">
+            <div><b>0</b><span>Meus chats</span></div>
+            <div><b>0</b><span>Todos os chats</span></div>
+        </div>
+        <div class="mdk-grid">
+            <div class="mdk-card mdk-span-8">
+                <h3>Chats por departamentos</h3>
+                <table class="mdk-table">
+                    <thead><tr><th>Departamento</th><th>Abertos</th><th>Em atendimento</th></tr></thead>
+                    <tbody>
+                        {% for s in dash.setores_chat %}
+                        <tr><td>{{ s }}</td><td>0</td><td>0</td></tr>
+                        {% else %}
+                        <tr><td colspan="3" class="mdk-empty">Sem departamentos.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="mdk-card mdk-span-4">
+                <h3>Chats por atendentes</h3>
+                <table class="mdk-table">
+                    <thead><tr><th>Atendente</th><th></th><th>Chats</th></tr></thead>
+                    <tbody>
+                        <tr>
+                            <td>{{ user_name }}</td>
+                            <td><span class="mdk-online">online</span></td>
+                            <td>0</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="mdk-panel" data-panel="recursos" hidden>
+        <div class="mdk-kpi-row">
+            <div><b>0</b><span>Todos</span></div>
+            <div><b>0</b><span>Online</span></div>
+            <div><b>0</b><span>Offline</span></div>
+        </div>
+        <div class="mdk-grid">
+            <div class="mdk-card mdk-span-6">
+                <h3>Tipos de recurso</h3>
+                <p class="mdk-empty">Nenhum recurso cadastrado.</p>
+            </div>
+            <div class="mdk-card mdk-span-6">
+                <h3>Gatilhos disparados</h3>
+                <table class="mdk-table">
+                    <thead><tr><th>Gatilho</th><th>Quando</th></tr></thead>
+                    <tbody><tr><td colspan="2" class="mdk-empty">Nenhum gatilho.</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
+{% endblock %}
 
-<style>
-    .dashboard-container {
-        padding: 16px;
+{% block scripts %}
+<script>
+(function () {
+    const tickets = {{ tickets_index|tojson }};
+    function showTab(name) {
+        document.querySelectorAll('.mdk-tab').forEach(function (t) {
+            t.classList.toggle('is-active', t.getAttribute('data-dash-tab') === name);
+        });
+        document.querySelectorAll('.mdk-panel').forEach(function (p) {
+            p.hidden = p.getAttribute('data-panel') !== name;
+        });
     }
-
-    .dashboard-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 16px;
+    function tabFromHash() {
+        const h = (location.hash || '').replace('#', '').toLowerCase();
+        if (h === 'chats' || h === 'recursos' || h === 'tickets') showTab(h);
+        else showTab('tickets');
     }
+    document.querySelectorAll('.mdk-tab').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const name = btn.getAttribute('data-dash-tab');
+            history.replaceState(null, '', '#' + name);
+            showTab(name);
+        });
+    });
+    window.addEventListener('hashchange', tabFromHash);
+    tabFromHash();
 
-    .dashboard-header h1 {
-        color: #333;
-        font-size: 1.6rem;
-        line-height: 1.2;
-    }
+    document.getElementById('btnModoTv').addEventListener('click', function () {
+        document.body.classList.toggle('mdk-tv');
+        this.textContent = document.body.classList.contains('mdk-tv') ? ' Sair do Modo TV' : '';
+        this.innerHTML = document.body.classList.contains('mdk-tv')
+            ? '<i class="fas fa-times"></i> Sair do Modo TV'
+            : '<i class="fas fa-tv"></i> Modo TV';
+    });
 
-    .dashboard-container > h2 {
-        font-size: 1.2rem;
-        margin: 0;
-    }
+    document.querySelectorAll('[data-bell-tab]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.querySelectorAll('[data-bell-tab]').forEach(function (b) { b.classList.remove('is-active'); });
+            btn.classList.add('is-active');
+            const notif = btn.getAttribute('data-bell-tab') === 'notif';
+            document.getElementById('bellNotif').hidden = !notif;
+            document.getElementById('bellResp').hidden = notif;
+        });
+    });
 
-    .dashboard-container .btn {
-        padding: 8px 12px;
-        border: none;
-        border-radius: 4px;
-        font-size: 0.8rem;
-        cursor: pointer;
-        text-decoration: none;
-        transition: background-color 0.3s;
-    }
+    document.getElementById('bellTicketSearch').addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        const q = (this.value || '').trim().toUpperCase();
+        if (!q) return;
+        const found = tickets.find(function (t) {
+            return t.numero.toUpperCase() === q || String(t.id) === q || t.numero.toUpperCase().indexOf(q) !== -1;
+        });
+        if (found) location.href = '{{ url_for("main.listar_chamados") }}?atender=' + found.id;
+        else if (window.mdkToast) window.mdkToast('Ticket não encontrado');
+    });
 
-    .dashboard-container .btn-danger {
-        background-color: #dc3545;
-        color: white;
-    }
-
-    .dashboard-container .btn-danger:hover {
-        background-color: #c82333;
-    }
-
-    .dashboard-container .btn-primary {
-        background-color: #007bff;
-        color: white;
-    }
-
-    .dashboard-container .btn-primary:hover {
-        background-color: #0056b3;
-    }
-
-    .dashboard-stats {
-        display: flex;
-        justify-content: space-between;
-        gap: 8px;
-        margin-bottom: 16px;
-    }
-
-    .dashboard-container .stat {
-        background-color: white;
-        padding: 16px;
-        border-radius: 4px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        flex: 1;
-        margin-right: 0;
-    }
-
-    .dashboard-container .stat h2 {
-        margin: 0;
-        font-size: 0.9rem;
-        color: #666;
-    }
-
-    .dashboard-container .stat p {
-        font-size: 1.2rem;
-        color: #333;
-        margin: 4px 0 0;
-    }
-
-    .dashboard-container table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 16px;
-        background-color: white;
-        border-radius: 4px;
-        overflow: hidden;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        font-size: 0.8rem;
-        line-height: 1.2;
-    }
-
-    .dashboard-container th,
-    .dashboard-container td {
-        padding: 8px;
-        text-align: left;
-        border-bottom: 1px solid #ddd;
-    }
-
-    .dashboard-container th {
-        background-color: #f2f2f2;
-    }
-
-    .dashboard-container tr:hover {
-        background-color: #f1f1f1;
-    }
-    .status-pendente { color: #d39e00; font-weight: 700; }
-    .status-em-andamento { color: #17a2b8; font-weight: 700; }
-    .status-concluido { color: #28a745; font-weight: 700; }
-    .status-atendido { color: #0d9488; font-weight: 700; }
-    .status-aguardar-peca { color: #c05621; font-weight: 700; }
-    .status-encaminhado { color: #6f42c1; font-weight: 700; }
-    .status-devolvido { color: #0369a1; font-weight: 700; }
-</style>
-
+    document.getElementById('btnBellLidas').addEventListener('click', function () {
+        const b = document.getElementById('bellBadge');
+        if (b) b.remove();
+        if (window.mdkToast) window.mdkToast('Notificações marcadas como lidas');
+    });
+})();
+</script>
 {% endblock %}

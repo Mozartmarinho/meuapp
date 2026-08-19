@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% block title %}Agenda{% endblock %}
+{% block content %}
+<div class="mdk-agenda">
+    <aside class="mdk-agenda-side">
+        <div class="mdk-card">
+            <div class="mdk-agenda-side-h">
+                <h3>Agendas</h3>
+                <button type="button" class="mdk-btn mdk-btn-teal mdk-icon-btn" data-mdk-soon title="Nova agenda">+</button>
+            </div>
+            <label class="mdk-check"><input type="checkbox" checked disabled> Minha Agenda</label>
+        </div>
+        <div class="mdk-card">
+            <h3>Filtrar</h3>
+            <label class="mdk-check"><input type="checkbox" id="fComp" checked> Compromissos</label>
+            <label class="mdk-check"><input type="checkbox" id="fApont"> Apontamentos</label>
+            <label class="mdk-check"><input type="checkbox" id="fAus"> Ausências</label>
+        </div>
+        <div class="mdk-card">
+            <h3>Atendentes</h3>
+            <p class="mdk-kmeta">{{ user_name }}</p>
+        </div>
+    </aside>
+    <section class="mdk-agenda-main mdk-card">
+        <div class="mdk-agenda-bar">
+            <button type="button" class="mdk-btn" id="agPrev" aria-label="Anterior"><i class="fas fa-chevron-left"></i></button>
+            <button type="button" class="mdk-btn" id="agNext" aria-label="Próximo"><i class="fas fa-chevron-right"></i></button>
+            <button type="button" class="mdk-btn" id="agToday">Hoje</button>
+            <h2 id="agTitle">Agenda</h2>
+            <div class="mdk-view-toggle" style="margin-left:auto">
+                <button type="button" data-cal="mes" class="is-active">Mês</button>
+                <button type="button" data-cal="semana">Semana</button>
+                <button type="button" data-cal="dia">Dia</button>
+                <button type="button" data-cal="lista">Lista</button>
+            </div>
+        </div>
+        <div id="agCal"></div>
+    </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+    const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+    const DOWS = ['DOM','SEG','TER','QUA','QUI','SEX','SÁB'];
+    const eventos = {{ eventos|tojson }};
+    let view = 'mes';
+    let cursor = new Date();
+    cursor.setHours(12, 0, 0, 0);
+
+    function ymd(d) {
+        const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+        return y + '-' + m + '-' + day;
+    }
+    function startOfWeek(d) {
+        const x = new Date(d); x.setHours(12,0,0,0);
+        x.setDate(x.getDate() - x.getDay());
+        return x;
+    }
+    function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+    function evtsOn(dayStr) {
+        if (!document.getElementById('fComp').checked) return [];
+        return eventos.filter(function (e) { return e.data === dayStr; });
+    }
+    function isToday(d) {
+        const t = new Date();
+        return d.getFullYear()===t.getFullYear() && d.getMonth()===t.getMonth() && d.getDate()===t.getDate();
+    }
+
+    function renderMonth() {
+        const y = cursor.getFullYear(), m = cursor.getMonth();
+        document.getElementById('agTitle').textContent = cap(MESES[m]) + ' de ' + y;
+        const first = new Date(y, m, 1);
+        const start = startOfWeek(first);
+        let html = '<div class="mdk-cal-head">' + DOWS.map(function (d) { return '<span>'+d+'</span>'; }).join('') + '</div><div class="mdk-cal-grid">';
+        for (let i = 0; i < 42; i++) {
+            const d = new Date(start); d.setDate(start.getDate() + i);
+            const out = d.getMonth() !== m;
+            const ds = ymd(d);
+            const ev = evtsOn(ds);
+            html += '<div class="mdk-cal-cell' + (out ? ' is-out' : '') + (isToday(d) ? ' is-today' : '') + '">';
+            html += '<span class="mdk-cal-n">' + d.getDate() + '</span>';
+            ev.slice(0, 3).forEach(function (e) {
+                html += '<a class="mdk-cal-dot" href="' + e.url + '" title="' + e.numero + '">' + e.numero + '</a>';
+            });
+            html += '</div>';
+        }
+        html += '</div>';
+        document.getElementById('agCal').innerHTML = html;
+    }
+
+    function renderWeek() {
+        const start = startOfWeek(cursor);
+        const end = new Date(start); end.setDate(start.getDate() + 6);
+        const sameMonth = start.getMonth() === end.getMonth();
+        let title;
+        if (sameMonth) title = start.getDate() + ' – ' + end.getDate() + ' de ' + MESES[start.getMonth()] + ' de ' + start.getFullYear();
+        else title = start.getDate() + ' de ' + MESES[start.getMonth()] + ' – ' + end.getDate() + ' de ' + MESES[end.getMonth()] + ' de ' + end.getFullYear();
+        document.getElementById('agTitle').textContent = title;
+        const now = new Date();
+        let html = '<div class="mdk-week"><div class="mdk-week-head"><span></span>';
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(start); d.setDate(start.getDate() + i);
+            html += '<span class="' + (isToday(d) ? 'is-today' : '') + '">' + DOWS[i] + ' ' + d.getDate() + '</span>';
+        }
+        html += '</div><div class="mdk-week-body">';
+        for (let h = 4; h <= 20; h++) {
+            html += '<div class="mdk-week-row"><span class="mdk-week-h">' + String(h).padStart(2,'0') + ':00</span>';
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(start); d.setDate(start.getDate() + i);
+                const ds = ymd(d);
+                const ev = evtsOn(ds).filter(function (e) {
+                    const hh = parseInt((e.hora || '00').split(':')[0], 10);
+                    return hh === h;
+                });
+                html += '<div class="mdk-week-cell">';
+                ev.forEach(function (e) {
+                    html += '<a class="mdk-cal-dot" href="' + e.url + '">' + e.numero + '</a>';
+                });
+                html += '</div>';
+            }
+            html += '</div>';
+        }
+        html += '</div></div>';
+        document.getElementById('agCal').innerHTML = html;
+        if (now.getDay() >= 0 && now.getHours() >= 4 && now.getHours() <= 20) {
+            const body = document.querySelector('.mdk-week-body');
+            if (body) {
+                const mins = (now.getHours() - 4) * 60 + now.getMinutes();
+                const line = document.createElement('div');
+                line.className = 'mdk-now-line';
+                line.style.top = (mins / ((17) * 60) * body.scrollHeight) + 'px';
+                const col = 1 + now.getDay();
+                line.style.left = 'calc(52px + ' + now.getDay() + ' * ((100% - 52px) / 7))';
+                line.style.width = 'calc((100% - 52px) / 7)';
+                body.style.position = 'relative';
+                body.appendChild(line);
+            }
+        }
+    }
+
+    function renderDay() {
+        document.getElementById('agTitle').textContent = cursor.getDate() + ' de ' + MESES[cursor.getMonth()] + ' de ' + cursor.getFullYear();
+        const ds = ymd(cursor);
+        const ev = evtsOn(ds);
+        let html = '<div class="mdk-day-list">';
+        if (!ev.length) html += '<p class="mdk-empty">Nenhum compromisso neste dia.</p>';
+        ev.forEach(function (e) {
+            html += '<a class="mdk-day-item" href="' + e.url + '"><strong>' + e.hora + '</strong> ' + e.numero + ' — ' + e.titulo + '</a>';
+        });
+        html += '</div>';
+        document.getElementById('agCal').innerHTML = html;
+    }
+
+    function renderList() {
+        document.getElementById('agTitle').textContent = 'Lista';
+        const show = document.getElementById('fComp').checked ? eventos.slice().sort(function (a,b) { return a.data.localeCompare(b.data); }) : [];
+        let html = '<div class="mdk-day-list">';
+        if (!show.length) html += '<p class="mdk-empty">Nenhum compromisso.</p>';
+        show.forEach(function (e) {
+            html += '<a class="mdk-day-item" href="' + e.url + '"><strong>' + e.data.split('-').reverse().join('/') + ' ' + e.hora + '</strong> ' + e.numero + ' — ' + e.titulo + '</a>';
+        });
+        html += '</div>';
+        document.getElementById('agCal').innerHTML = html;
+    }
+
+    function render() {
+        if (view === 'mes') renderMonth();
+        else if (view === 'semana') renderWeek();
+        else if (view === 'dia') renderDay();
+        else renderList();
+    }
+
+    document.querySelectorAll('[data-cal]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            view = b.getAttribute('data-cal');
+            document.querySelectorAll('[data-cal]').forEach(function (x) {
+                x.classList.toggle('is-active', x === b);
+            });
+            render();
+        });
+    });
+    document.getElementById('agToday').addEventListener('click', function () {
+        cursor = new Date(); cursor.setHours(12,0,0,0); render();
+    });
+    document.getElementById('agPrev').addEventListener('click', function () {
+        if (view === 'mes') cursor.setMonth(cursor.getMonth() - 1);
+        else if (view === 'semana') cursor.setDate(cursor.getDate() - 7);
+        else cursor.setDate(cursor.getDate() - 1);
+        render();
+    });
+    document.getElementById('agNext').addEventListener('click', function () {
+        if (view === 'mes') cursor.setMonth(cursor.getMonth() + 1);
+        else if (view === 'semana') cursor.setDate(cursor.getDate() + 7);
+        else cursor.setDate(cursor.getDate() + 1);
+        render();
+    });
+    ['fComp','fApont','fAus'].forEach(function (id) {
+        document.getElementById(id).addEventListener('change', render);
+    });
+    render();
+})();
+</script>
+{% endblock %}

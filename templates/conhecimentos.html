@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Conhecimentos{% endblock %}
+{% block content %}
+<div class="mdk-kb">
+    <div class="mdk-kb-head">
+        <h1>Conhecimentos</h1>
+        <a class="mdk-btn mdk-btn-teal" href="{{ url_for('main.novo_conhecimento') }}">
+            <i class="fas fa-plus"></i> Conhecimento
+        </a>
+    </div>
+    <form class="mdk-kb-toolbar" method="get" action="{{ url_for('main.conhecimentos') }}">
+        <div class="mdk-search" style="flex:1;max-width:420px">
+            <i class="fas fa-search"></i>
+            <input type="search" name="q" value="{{ q }}" placeholder="Busque por um conhecimento">
+        </div>
+        <label class="mdk-kb-sort">Ordenar por
+            <select class="mdk-select" name="ordem" onchange="this.form.submit()">
+                <option value="az" {% if ordem=='az' %}selected{% endif %}>A-Z</option>
+                <option value="za" {% if ordem=='za' %}selected{% endif %}>Z-A</option>
+                <option value="novo" {% if ordem=='novo' %}selected{% endif %}>Mais recentes</option>
+            </select>
+        </label>
+    </form>
+    <form class="mdk-inline-form" method="POST" action="{{ url_for('main.nova_pasta_conhecimento') }}" style="margin-bottom:0.7rem">
+        <input type="text" name="nome" placeholder="Nova pasta" required maxlength="80">
+        <button type="submit" class="mdk-btn">Criar pasta</button>
+    </form>
+
+    {% for g in grupos %}
+    <div class="mdk-card mdk-kb-folder" style="margin-bottom:0.7rem">
+        <div class="mdk-kb-folder-h">
+            <i class="fas fa-folder"></i>
+            <strong>{{ g.nome }}</strong>
+        </div>
+        {% if g.nome == 'Conhecimentos' %}
+        <p>Essa é uma pasta padrão para que haja o agrupamento de conhecimentos.</p>
+        {% endif %}
+        {% if g.artigos %}
+        <ul class="mdk-kb-list">
+            {% for a in g.artigos %}
+            <li>
+                <a href="{{ url_for('main.ver_conhecimento', id=a.id) }}">
+                    <i class="fas fa-file-alt"></i>
+                    <span>{{ a.titulo }}</span>
+                </a>
+                {% if a.tags %}<small>{{ a.tags }}</small>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="mdk-empty">Não há dados</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
