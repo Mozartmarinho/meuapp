@@ -412,6 +412,7 @@ class Equipamento(db.Model):
     patrimonio = db.Column(db.String(50), unique=True)
     localizacao = db.Column(db.String(100))
     setor = db.Column(db.String(100))
+    local = db.Column(db.String(200))
     ativo = db.Column(db.Boolean, default=True)
     data_compra = db.Column(db.Date)
     data_manutencao = db.Column(db.Date)
@@ -440,6 +441,7 @@ class Equipamento(db.Model):
             'patrimonio': self.patrimonio,
             'localizacao': self.localizacao,
             'setor': self.setor or self.localizacao,
+            'local': self.local or '',
             'ativo': self.ativo,
             'cliente_id': self.cliente_id,
             'cliente_nome': self.cliente.nome if self.cliente else None,
@@ -604,6 +606,42 @@ class ChamadoAutomacao(db.Model):
     ativa = db.Column(db.Boolean, default=True, nullable=False)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     mesa = db.relationship('MesaServico', foreign_keys=[mesa_id])
+
+
+class ChamadoRamal(db.Model):
+    """Telefones e ramais vinculados a setores técnicos."""
+    __tablename__ = 'chamado_ramais'
+
+    id = db.Column(db.Integer, primary_key=True)
+    setor_id = db.Column(db.Integer, db.ForeignKey('chamado_setores.id'), nullable=False, index=True)
+    nome_pessoa = db.Column(db.String(100), nullable=False)
+    numero_ramal = db.Column(db.String(20), nullable=False)
+    nome_equipamento = db.Column(db.String(100))
+    login = db.Column(db.String(100))
+    senha = db.Column(db.String(100))
+    endereco_configuracao = db.Column(db.String(255))
+    ativo = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    setor = db.relationship('ChamadoSetor', foreign_keys=[setor_id])
+
+    def __repr__(self):
+        return f'<ChamadoRamal {self.numero_ramal} {self.nome_pessoa}>'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'setor_id': self.setor_id,
+            'setor_nome': self.setor.nome if self.setor else '',
+            'nome_pessoa': self.nome_pessoa,
+            'numero_ramal': self.numero_ramal,
+            'nome_equipamento': self.nome_equipamento or '',
+            'login': self.login or '',
+            'senha': self.senha or '',
+            'endereco_configuracao': self.endereco_configuracao or '',
+            'ativo': self.ativo,
+            'created_at': self.created_at.strftime('%d/%m/%Y %H:%M') if self.created_at else '',
+        }
 
 
 class ConhecimentoPasta(db.Model):

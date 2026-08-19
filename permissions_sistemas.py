@@ -16,6 +16,7 @@ SISTEMAS = {
             ('chats', 'Chats'),
             ('clientes', 'Clientes'),
             ('equipamentos', 'Equipamentos'),
+            ('telefones_ramais', 'Telefones e Ramais'),
             ('tecnicos', 'Técnicos'),
             ('recursos', 'Recursos'),
             ('relatorios', 'Relatórios'),

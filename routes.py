@@ -30,6 +30,7 @@ from models import (
     Contrato,
     ChamadoMensagem,
     ChamadoAutomacao,
+    ChamadoRamal,
     ConhecimentoPasta,
     TIPO_FOTO_CONSERTO,
     TIPO_FOTO_ENCAMINHAMENTO,
@@ -2087,6 +2088,109 @@ def excluir_chamado_tecnico(tid):
     return jsonify({'ok': True})
 
 
+@main.route('/telefones-ramais')
+@login_required
+def telefones_ramais():
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'telefones_ramais'):
+        flash('Você não tem permissão para acessar Telefones e Ramais.', 'error')
+        return redirect(url_for('main.inicio'))
+    setores = ChamadoSetor.query.order_by(ChamadoSetor.nome).all()
+    ramais = (
+        ChamadoRamal.query
+        .options(joinedload(ChamadoRamal.setor))
+        .order_by(ChamadoRamal.setor_id, ChamadoRamal.nome_pessoa)
+        .all()
+    )
+    return render_template('telefones_ramais.html', setores=setores, ramais=ramais)
+
+
+@main.route('/ramais/adicionar', methods=['POST'])
+@login_required
+def adicionar_ramal():
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'telefones_ramais'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    data = request.get_json(silent=True) or request.form
+    setor_id = (data.get('setor_id') or '').strip()
+    nome_pessoa = (data.get('nome_pessoa') or '').strip()
+    numero_ramal = (data.get('numero_ramal') or '').strip()
+    if not setor_id or not nome_pessoa or not numero_ramal:
+        return jsonify({'ok': False, 'error': 'Setor, nome e ramal são obrigatórios.'}), 400
+    if not setor_id.isdigit():
+        return jsonify({'ok': False, 'error': 'Setor inválido.'}), 400
+    r = ChamadoRamal(
+        setor_id=int(setor_id),
+        nome_pessoa=nome_pessoa,
+        numero_ramal=numero_ramal,
+        nome_equipamento=(data.get('nome_equipamento') or '').strip() or None,
+        login=(data.get('login') or '').strip() or None,
+        senha=(data.get('senha') or '').strip() or None,
+        endereco_configuracao=(data.get('endereco_configuracao') or '').strip() or None,
+        ativo=(data.get('ativo') in (True, 'true', '1', 'on', 1)),
+    )
+    db.session.add(r)
+    db.session.commit()
+    return jsonify({'ok': True, 'ramal': r.to_dict()})
+
+
+@main.route('/ramais/<int:rid>/editar', methods=['POST'])
+@login_required
+def editar_ramal(rid):
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'telefones_ramais'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    r = ChamadoRamal.query.get_or_404(rid)
+    data = request.get_json(silent=True) or request.form
+    setor_id = (data.get('setor_id') or '').strip()
+    nome_pessoa = (data.get('nome_pessoa') or '').strip()
+    numero_ramal = (data.get('numero_ramal') or '').strip()
+    if not setor_id or not nome_pessoa or not numero_ramal:
+        return jsonify({'ok': False, 'error': 'Setor, nome e ramal são obrigatórios.'}), 400
+    if not setor_id.isdigit():
+        return jsonify({'ok': False, 'error': 'Setor inválido.'}), 400
+    r.setor_id = int(setor_id)
+    r.nome_pessoa = nome_pessoa
+    r.numero_ramal = numero_ramal
+    r.nome_equipamento = (data.get('nome_equipamento') or '').strip() or None
+    r.login = (data.get('login') or '').strip() or None
+    r.senha = (data.get('senha') or '').strip() or None
+    r.endereco_configuracao = (data.get('endereco_configuracao') or '').strip() or None
+    r.ativo = (data.get('ativo') in (True, 'true', '1', 'on', 1))
+    db.session.commit()
+    return jsonify({'ok': True, 'ramal': r.to_dict()})
+
+
+@main.route('/ramais/<int:rid>/excluir', methods=['POST'])
+@login_required
+def excluir_ramal(rid):
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'telefones_ramais'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    r = ChamadoRamal.query.get_or_404(rid)
+    db.session.delete(r)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@main.route('/ramais/setor/adicionar', methods=['POST'])
+@login_required
+def adicionar_setor_ramal():
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'telefones_ramais'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    data = request.get_json(silent=True) or request.form
+    nome = (data.get('nome') or '').strip()
+    if not nome:
+        return jsonify({'ok': False, 'error': 'Informe o nome do setor.'}), 400
+    if ChamadoSetor.query.filter_by(nome=nome).first():
+        return jsonify({'ok': False, 'error': 'Setor já cadastrado.'}), 400
+    s = ChamadoSetor(nome=nome, ativo=True)
+    db.session.add(s)
+    db.session.commit()
+    return jsonify({'ok': True, 'id': s.id, 'nome': s.nome})
+
+
 @main.route('/equipamentos')
 @login_required
 def listar_equipamentos():
@@ -2108,6 +2212,7 @@ def _dados_equipamento_form(data):
     codigo = (data.get('codigo') or data.get('patrimonio') or '').strip()
     nome = (data.get('nome') or data.get('nome_equipamento') or '').strip()
     setor = (data.get('setor') or data.get('localizacao') or '').strip()
+    local = (data.get('local') or '').strip()
     cliente_raw = data.get('cliente_id')
     cliente_id = int(cliente_raw) if str(cliente_raw or '').isdigit() else None
     if not codigo:
@@ -2123,6 +2228,7 @@ def _dados_equipamento_form(data):
         'nome_equipamento': nome,
         'setor': setor or None,
         'localizacao': setor or None,
+        'local': local or None,
         'data_compra': _parse_data_compra(data.get('data_compra')),
         'cliente_id': cliente_id,
         'ativo': True,
@@ -2195,6 +2301,7 @@ def api_equipamento(id):
         equipamento.nome_equipamento = campos['nome_equipamento']
         equipamento.setor = campos['setor']
         equipamento.localizacao = campos['localizacao']
+        equipamento.local = campos['local']
         equipamento.data_compra = campos['data_compra']
         equipamento.cliente_id = campos['cliente_id']
         db.session.commit()

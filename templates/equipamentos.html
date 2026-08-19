@@ -14,12 +14,21 @@
         </button>
     </div>
 
+    <div class="eq-filters">
+        <input type="text" id="filtroCodigo" placeholder="Buscar por código..." autocomplete="off">
+        <select id="filtroSetor">
+            <option value="">Todos os setores</option>
+        </select>
+        <button type="button" class="btn btn-sm nc-btn-muted" id="btnLimparFiltros">Limpar filtros</button>
+    </div>
+
     <div class="table-wrap">
         <table class="table" id="tabelaEquipamentos">
             <thead>
                 <tr>
                     <th>Código</th>
                     <th>Nome</th>
+                    <th>Local</th>
                     <th>Setor</th>
                     <th>Data compra</th>
                     <th>Cliente</th>
@@ -31,11 +40,13 @@
                 <tr data-id="{{ eq.id }}"
                     data-codigo="{{ eq.patrimonio or '' }}"
                     data-nome="{{ eq.nome_equipamento or '' }}"
+                    data-local="{{ eq.local or '' }}"
                     data-setor="{{ eq.setor or eq.localizacao or '' }}"
                     data-compra="{{ eq.data_compra.strftime('%Y-%m-%d') if eq.data_compra else '' }}"
                     data-cliente="{{ eq.cliente_id or '' }}">
                     <td><strong>{{ eq.patrimonio or '—' }}</strong></td>
                     <td>{{ eq.nome_equipamento }}</td>
+                    <td>{{ eq.local or '—' }}</td>
                     <td>{{ eq.setor or eq.localizacao or '—' }}</td>
                     <td>{{ eq.data_compra.strftime('%d/%m/%Y') if eq.data_compra else '—' }}</td>
                     <td>{{ eq.cliente.nome if eq.cliente else '—' }}</td>
@@ -50,7 +61,7 @@
                 </tr>
                 {% else %}
                 <tr id="linhaVazia">
-                    <td colspan="6" class="empty-row">Nenhum equipamento cadastrado.</td>
+                    <td colspan="7" class="empty-row">Nenhum equipamento cadastrado.</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -76,6 +87,10 @@
                     <input type="text" id="eq_nome" name="nome" required maxlength="100">
                 </div>
                 <div class="form-group">
+                    <label for="eq_local">Local</label>
+                    <input type="text" id="eq_local" name="local" maxlength="200" placeholder="Local (preenchido pelo cliente)">
+                </div>
+                <div class="form-group">
                     <label for="eq_setor">Setor</label>
                     <input type="text" id="eq_setor" name="setor" maxlength="100" placeholder="Setor onde o equipamento está">
                 </div>
@@ -88,7 +103,7 @@
                     <select id="eq_cliente" name="cliente_id" required>
                         <option value="">Selecione um cliente...</option>
                         {% for cliente in clientes %}
-                        <option value="{{ cliente.id }}">{{ cliente.nome }}</option>
+                        <option value="{{ cliente.id }}" data-endereco="{{ cliente.endereco or '' }}">{{ cliente.nome }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -179,6 +194,23 @@
 }
 .nc-btn-muted { background-color: var(--gray-300); color: var(--gray-800); }
 body.modal-open { overflow: hidden; }
+.eq-filters {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.8rem;
+    flex-wrap: wrap;
+}
+.eq-filters input[type="text"],
+.eq-filters select {
+    padding: 0.42rem 0.6rem;
+    font-size: 0.82rem;
+    border: 1px solid #ccc;
+    border-radius: 0.3rem;
+    line-height: 1.35;
+}
+.eq-filters input[type="text"] { width: 200px; }
+.eq-filters select { width: 200px; }
 </style>
 
 <script>
@@ -212,11 +244,20 @@ body.modal-open { overflow: hidden; }
         document.getElementById('eq_id').value = tr.getAttribute('data-id') || '';
         document.getElementById('eq_codigo').value = tr.getAttribute('data-codigo') || '';
         document.getElementById('eq_nome').value = tr.getAttribute('data-nome') || '';
+        document.getElementById('eq_local').value = tr.getAttribute('data-local') || '';
         document.getElementById('eq_setor').value = tr.getAttribute('data-setor') || '';
         document.getElementById('eq_compra').value = tr.getAttribute('data-compra') || '';
         document.getElementById('eq_cliente').value = tr.getAttribute('data-cliente') || '';
         abrirModal();
     }
+
+    document.getElementById('eq_cliente').addEventListener('change', function () {
+        const sel = this.options[this.selectedIndex];
+        const localField = document.getElementById('eq_local');
+        if (sel && sel.value && !localField.value) {
+            localField.value = sel.getAttribute('data-endereco') || '';
+        }
+    });
 
     document.getElementById('btnNovoEq').addEventListener('click', abrirNovo);
     document.getElementById('btnFecharEq').addEventListener('click', fecharModal);
@@ -261,6 +302,7 @@ body.modal-open { overflow: hidden; }
         const body = {
             codigo: (document.getElementById('eq_codigo').value || '').trim(),
             nome: (document.getElementById('eq_nome').value || '').trim(),
+            local: (document.getElementById('eq_local').value || '').trim(),
             setor: (document.getElementById('eq_setor').value || '').trim(),
             data_compra: document.getElementById('eq_compra').value || '',
             cliente_id: document.getElementById('eq_cliente').value || ''
@@ -295,6 +337,51 @@ body.modal-open { overflow: hidden; }
             btnGravar.disabled = false;
         });
     });
+    // ── Filters ──────────────────────────────────────────────
+    (function () {
+        const tbody = document.querySelector('#tabelaEquipamentos tbody');
+        const rows = Array.from(tbody.querySelectorAll('tr[data-id]'));
+        const inputCodigo = document.getElementById('filtroCodigo');
+        const selectSetor = document.getElementById('filtroSetor');
+        const btnLimpar = document.getElementById('btnLimparFiltros');
+
+        // Populate setor dropdown from distinct values already in the DOM
+        const setores = [...new Set(
+            rows.map(function (tr) { return (tr.getAttribute('data-setor') || '').trim(); })
+                .filter(Boolean)
+        )].sort(function (a, b) { return a.localeCompare(b, 'pt'); });
+
+        setores.forEach(function (s) {
+            const opt = document.createElement('option');
+            opt.value = s;
+            opt.textContent = s;
+            selectSetor.appendChild(opt);
+        });
+
+        function applyFilters() {
+            const cod = inputCodigo.value.trim().toLowerCase();
+            const setor = selectSetor.value;
+            let visible = 0;
+            rows.forEach(function (tr) {
+                const matchCod = !cod || (tr.getAttribute('data-codigo') || '').toLowerCase().includes(cod);
+                const matchSetor = !setor || (tr.getAttribute('data-setor') || '') === setor;
+                const show = matchCod && matchSetor;
+                tr.style.display = show ? '' : 'none';
+                if (show) visible++;
+            });
+            // Show/hide the "empty" placeholder row if it exists
+            const linhaVazia = document.getElementById('linhaVazia');
+            if (linhaVazia) linhaVazia.style.display = visible === 0 && rows.length === 0 ? '' : 'none';
+        }
+
+        inputCodigo.addEventListener('input', applyFilters);
+        selectSetor.addEventListener('change', applyFilters);
+        btnLimpar.addEventListener('click', function () {
+            inputCodigo.value = '';
+            selectSetor.value = '';
+            applyFilters();
+        });
+    })();
 })();
 </script>
 {% endblock %}

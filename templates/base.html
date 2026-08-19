@@ -92,6 +92,14 @@
                 </a>
             </li>
             {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'telefones_ramais') %}
+            <li>
+                <a href="{{ url_for('main.telefones_ramais') }}" class="{% if request.endpoint == 'main.telefones_ramais' %}active{% endif %}" title="Telefones e Ramais">
+                    <i class="fas fa-phone-alt menu-icon"></i>
+                    <span class="menu-label">Telefones e Ramais</span>
+                </a>
+            </li>
+            {% endif %}
             {% if usuario_atual and usuario_atual.tem_menu('chamados', 'tecnicos') %}
             <li>
                 <a href="{{ url_for('main.tecnicos') }}" class="{% if request.endpoint == 'main.tecnicos' %}active{% endif %}" title="Técnicos">
