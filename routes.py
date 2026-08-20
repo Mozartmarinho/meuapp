@@ -2220,15 +2220,22 @@ def _dados_equipamento_form(data):
     if not nome:
         raise ValueError('Informe o nome do equipamento.')
     if not cliente_id:
-        raise ValueError('Selecione o cliente.')
-    if not Cliente.query.get(cliente_id):
+        raise ValueError('Selecione o local (cliente).')
+    cliente = Cliente.query.get(cliente_id)
+    if not cliente:
         raise ValueError('Cliente inválido.')
+    # Local = vínculo ao cliente: grava o nome para exibição na listagem
+    local = local or (cliente.nome or '').strip() or None
+    tipo = (data.get('tipo_recurso') or 'Estação').strip() or 'Estação'
+    usuario = (data.get('usuario_equipamento') or data.get('usuario') or '').strip()
+    ip = (data.get('ip') or '').strip()
+    grupo = grupo_recurso_padrao(cliente_id)
     return {
         'patrimonio': codigo,
         'nome_equipamento': nome,
         'setor': setor or None,
         'localizacao': setor or None,
-        'local': local or None,
+        'local': local,
         'data_compra': _parse_data_compra(data.get('data_compra')),
         'cliente_id': cliente_id,
         'ativo': True,
@@ -2358,6 +2365,7 @@ def editar_equipamento(id):
         equipamento.nome_equipamento = campos['nome_equipamento']
         equipamento.setor = campos['setor']
         equipamento.localizacao = campos['localizacao']
+        equipamento.local = campos['local']
         equipamento.data_compra = campos['data_compra']
         equipamento.cliente_id = campos['cliente_id']
         db.session.commit()

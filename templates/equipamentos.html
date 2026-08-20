@@ -40,13 +40,13 @@
                 <tr data-id="{{ eq.id }}"
                     data-codigo="{{ eq.patrimonio or '' }}"
                     data-nome="{{ eq.nome_equipamento or '' }}"
-                    data-local="{{ eq.local or '' }}"
+                    data-local="{{ eq.cliente.nome if eq.cliente else (eq.local or '') }}"
                     data-setor="{{ eq.setor or eq.localizacao or '' }}"
                     data-compra="{{ eq.data_compra.strftime('%Y-%m-%d') if eq.data_compra else '' }}"
                     data-cliente="{{ eq.cliente_id or '' }}">
                     <td><strong>{{ eq.patrimonio or '—' }}</strong></td>
                     <td>{{ eq.nome_equipamento }}</td>
-                    <td>{{ eq.local or '—' }}</td>
+                    <td>{{ eq.cliente.nome if eq.cliente else (eq.local or '—') }}</td>
                     <td>{{ eq.setor or eq.localizacao or '—' }}</td>
                     <td>{{ eq.data_compra.strftime('%d/%m/%Y') if eq.data_compra else '—' }}</td>
                     <td>{{ eq.cliente.nome if eq.cliente else '—' }}</td>
@@ -87,8 +87,13 @@
                     <input type="text" id="eq_nome" name="nome" required maxlength="100">
                 </div>
                 <div class="form-group">
-                    <label for="eq_local">Local</label>
-                    <input type="text" id="eq_local" name="local" maxlength="200" placeholder="Local (preenchido pelo cliente)">
+                    <label for="eq_local">Local / Cliente *</label>
+                    <select id="eq_local" name="cliente_id" required>
+                        <option value="">Selecione o cliente (local)...</option>
+                        {% for cliente in clientes %}
+                        <option value="{{ cliente.id }}" data-nome="{{ cliente.nome }}">{{ cliente.nome }}</option>
+                        {% endfor %}
+                    </select>
                 </div>
                 <div class="form-group">
                     <label for="eq_setor">Setor</label>
@@ -97,15 +102,6 @@
                 <div class="form-group">
                     <label for="eq_compra">Data compra</label>
                     <input type="date" id="eq_compra" name="data_compra">
-                </div>
-                <div class="form-group">
-                    <label for="eq_cliente">Cliente *</label>
-                    <select id="eq_cliente" name="cliente_id" required>
-                        <option value="">Selecione um cliente...</option>
-                        {% for cliente in clientes %}
-                        <option value="{{ cliente.id }}" data-endereco="{{ cliente.endereco or '' }}">{{ cliente.nome }}</option>
-                        {% endfor %}
-                    </select>
                 </div>
             </div>
             <div class="nc-footer">
@@ -244,20 +240,11 @@ body.modal-open { overflow: hidden; }
         document.getElementById('eq_id').value = tr.getAttribute('data-id') || '';
         document.getElementById('eq_codigo').value = tr.getAttribute('data-codigo') || '';
         document.getElementById('eq_nome').value = tr.getAttribute('data-nome') || '';
-        document.getElementById('eq_local').value = tr.getAttribute('data-local') || '';
+        document.getElementById('eq_local').value = tr.getAttribute('data-cliente') || '';
         document.getElementById('eq_setor').value = tr.getAttribute('data-setor') || '';
         document.getElementById('eq_compra').value = tr.getAttribute('data-compra') || '';
-        document.getElementById('eq_cliente').value = tr.getAttribute('data-cliente') || '';
         abrirModal();
     }
-
-    document.getElementById('eq_cliente').addEventListener('change', function () {
-        const sel = this.options[this.selectedIndex];
-        const localField = document.getElementById('eq_local');
-        if (sel && sel.value && !localField.value) {
-            localField.value = sel.getAttribute('data-endereco') || '';
-        }
-    });
 
     document.getElementById('btnNovoEq').addEventListener('click', abrirNovo);
     document.getElementById('btnFecharEq').addEventListener('click', fecharModal);
@@ -299,16 +286,19 @@ body.modal-open { overflow: hidden; }
     form.addEventListener('submit', function (e) {
         e.preventDefault();
         const id = document.getElementById('eq_id').value;
+        const localSel = document.getElementById('eq_local');
+        const localOpt = localSel.options[localSel.selectedIndex];
+        const clienteNome = (localOpt && localOpt.getAttribute('data-nome')) || (localOpt && localOpt.textContent) || '';
         const body = {
             codigo: (document.getElementById('eq_codigo').value || '').trim(),
             nome: (document.getElementById('eq_nome').value || '').trim(),
-            local: (document.getElementById('eq_local').value || '').trim(),
+            local: (clienteNome || '').trim(),
             setor: (document.getElementById('eq_setor').value || '').trim(),
             data_compra: document.getElementById('eq_compra').value || '',
-            cliente_id: document.getElementById('eq_cliente').value || ''
+            cliente_id: localSel.value || ''
         };
         if (!body.codigo || !body.nome || !body.cliente_id) {
-            alert('Preencha código, nome e cliente.');
+            alert('Preencha código, nome e local (cliente).');
             return;
         }
         btnGravar.disabled = true;
