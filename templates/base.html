@@ -100,6 +100,22 @@
                 </a>
             </li>
             {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'cameras') %}
+            <li>
+                <a href="{{ url_for('main.cameras') }}" class="{% if request.endpoint == 'main.cameras' %}active{% endif %}" title="Cadastro de Câmeras">
+                    <i class="fas fa-video menu-icon"></i>
+                    <span class="menu-label">Cadastro de Câmeras</span>
+                </a>
+            </li>
+            {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'portoes') %}
+            <li>
+                <a href="{{ url_for('main.portoes') }}" class="{% if request.endpoint == 'main.portoes' %}active{% endif %}" title="Cadastro de Portões">
+                    <i class="fas fa-door-closed menu-icon"></i>
+                    <span class="menu-label">Cadastro de Portões</span>
+                </a>
+            </li>
+            {% endif %}
             {% if usuario_atual and usuario_atual.tem_menu('chamados', 'tecnicos') %}
             <li>
                 <a href="{{ url_for('main.tecnicos') }}" class="{% if request.endpoint == 'main.tecnicos' %}active{% endif %}" title="Técnicos">

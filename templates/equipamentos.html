@@ -19,7 +19,17 @@
         <select id="filtroSetor">
             <option value="">Todos os setores</option>
         </select>
+        <select id="filtroLocal">
+            <option value="">Todos os locais/clientes</option>
+        </select>
         <button type="button" class="btn btn-sm nc-btn-muted" id="btnLimparFiltros">Limpar filtros</button>
+        <button type="button" class="btn btn-sm btn-primary" id="btnImprimirEq">
+            <i class="fas fa-print"></i> Imprimir
+        </button>
+    </div>
+
+    <div class="eq-print-header" aria-hidden="true">
+        <h1 id="eqPrintTitle">Relatório de Equipamento</h1>
     </div>
 
     <div class="table-wrap">
@@ -32,7 +42,7 @@
                     <th>Setor</th>
                     <th>Data compra</th>
                     <th>Cliente</th>
-                    <th>Ações</th>
+                    <th class="no-print">Ações</th>
                 </tr>
             </thead>
             <tbody>
@@ -50,7 +60,7 @@
                     <td>{{ eq.setor or eq.localizacao or '—' }}</td>
                     <td>{{ eq.data_compra.strftime('%d/%m/%Y') if eq.data_compra else '—' }}</td>
                     <td>{{ eq.cliente.nome if eq.cliente else '—' }}</td>
-                    <td class="acoes-cell">
+                    <td class="acoes-cell no-print">
                         <button type="button" class="btn btn-sm btn-editar-link btn-editar-eq" title="Editar">
                             <i class="fas fa-edit"></i>
                         </button>
@@ -207,6 +217,36 @@ body.modal-open { overflow: hidden; }
 }
 .eq-filters input[type="text"] { width: 200px; }
 .eq-filters select { width: 200px; }
+.eq-print-header { display: none; }
+@media print {
+    .sidebar,
+    .sidebar-overlay,
+    .app-topbar,
+    .eq-filters,
+    .eq-page > .header,
+    .modal-overlay,
+    .no-print { display: none !important; }
+    .eq-print-header {
+        display: block !important;
+        margin: 0 0 1rem;
+    }
+    .eq-print-header h1 {
+        margin: 0 0 0.35rem;
+        font-size: 1.35rem;
+    }
+    .eq-page { padding: 0; }
+    .table-wrap {
+        box-shadow: none;
+        border-radius: 0;
+        overflow: visible;
+    }
+    .chamados-page .table th,
+    .chamados-page .table td {
+        border-bottom: 1px solid #999;
+        font-size: 0.8rem;
+    }
+    .chamados-page .table tr:hover { background: transparent; }
+}
 </style>
 
 <script>
@@ -327,35 +367,71 @@ body.modal-open { overflow: hidden; }
             btnGravar.disabled = false;
         });
     });
-    // ── Filters ──────────────────────────────────────────────
+    // ── Filters + print ──────────────────────────────────────
     (function () {
         const tbody = document.querySelector('#tabelaEquipamentos tbody');
         const rows = Array.from(tbody.querySelectorAll('tr[data-id]'));
         const inputCodigo = document.getElementById('filtroCodigo');
         const selectSetor = document.getElementById('filtroSetor');
+        const selectLocal = document.getElementById('filtroLocal');
         const btnLimpar = document.getElementById('btnLimparFiltros');
+        const btnImprimir = document.getElementById('btnImprimirEq');
+        const printTitle = document.getElementById('eqPrintTitle');
+
+        function fillSelect(selectEl, values) {
+            values.forEach(function (v) {
+                const opt = document.createElement('option');
+                opt.value = v;
+                opt.textContent = v;
+                selectEl.appendChild(opt);
+            });
+        }
+
+        const sortPt = function (a, b) { return a.localeCompare(b, 'pt'); };
 
         // Populate setor dropdown from distinct values already in the DOM
         const setores = [...new Set(
             rows.map(function (tr) { return (tr.getAttribute('data-setor') || '').trim(); })
                 .filter(Boolean)
-        )].sort(function (a, b) { return a.localeCompare(b, 'pt'); });
+        )].sort(sortPt);
+        fillSelect(selectSetor, setores);
 
-        setores.forEach(function (s) {
-            const opt = document.createElement('option');
-            opt.value = s;
-            opt.textContent = s;
-            selectSetor.appendChild(opt);
-        });
+        // Local/Cliente: unique names from rows + clients used for linking on the page
+        const locaisFromRows = rows.map(function (tr) {
+            return (tr.getAttribute('data-local') || '').trim();
+        }).filter(Boolean);
+        const locaisFromClientes = Array.from(
+            document.querySelectorAll('#eq_local option[data-nome]')
+        ).map(function (opt) {
+            return (opt.getAttribute('data-nome') || opt.textContent || '').trim();
+        }).filter(Boolean);
+        const locais = [...new Set(locaisFromRows.concat(locaisFromClientes))].sort(sortPt);
+        fillSelect(selectLocal, locais);
+
+        function buildPrintTitle() {
+            const setor = (selectSetor.value || '').trim();
+            const local = (selectLocal.value || '').trim();
+            let title = 'Relatório de Equipamento';
+            if (setor && local) {
+                title += ' (' + setor + ' / ' + local + ')';
+            } else if (setor) {
+                title += ' (' + setor + ')';
+            } else if (local) {
+                title += ' (' + local + ')';
+            }
+            return title;
+        }
 
         function applyFilters() {
             const cod = inputCodigo.value.trim().toLowerCase();
             const setor = selectSetor.value;
+            const local = selectLocal.value;
             let visible = 0;
             rows.forEach(function (tr) {
                 const matchCod = !cod || (tr.getAttribute('data-codigo') || '').toLowerCase().includes(cod);
                 const matchSetor = !setor || (tr.getAttribute('data-setor') || '') === setor;
-                const show = matchCod && matchSetor;
+                const matchLocal = !local || (tr.getAttribute('data-local') || '') === local;
+                const show = matchCod && matchSetor && matchLocal;
                 tr.style.display = show ? '' : 'none';
                 if (show) visible++;
             });
@@ -364,13 +440,22 @@ body.modal-open { overflow: hidden; }
             if (linhaVazia) linhaVazia.style.display = visible === 0 && rows.length === 0 ? '' : 'none';
         }
 
+        function imprimirVisiveis() {
+            applyFilters();
+            printTitle.textContent = buildPrintTitle();
+            window.print();
+        }
+
         inputCodigo.addEventListener('input', applyFilters);
         selectSetor.addEventListener('change', applyFilters);
+        selectLocal.addEventListener('change', applyFilters);
         btnLimpar.addEventListener('click', function () {
             inputCodigo.value = '';
             selectSetor.value = '';
+            selectLocal.value = '';
             applyFilters();
         });
+        btnImprimir.addEventListener('click', imprimirVisiveis);
     })();
 })();
 </script>

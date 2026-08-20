@@ -456,6 +456,36 @@ def ensure_tecnicos_schema():
         db.session.rollback()
 
 
+def ensure_cameras_schema():
+    """Garante tabela chamado_cameras (cadastro de câmeras)."""
+    from sqlalchemy import inspect
+    from models import ChamadoCamera, ChamadoSetor
+    try:
+        insp = inspect(db.engine)
+        tables = set(insp.get_table_names())
+        if 'chamado_setores' not in tables:
+            ChamadoSetor.__table__.create(db.engine, checkfirst=True)
+        if 'chamado_cameras' not in tables:
+            ChamadoCamera.__table__.create(db.engine, checkfirst=True)
+    except Exception:
+        db.session.rollback()
+
+
+def ensure_portoes_schema():
+    """Garante tabela chamado_portoes (cadastro de portões)."""
+    from sqlalchemy import inspect
+    from models import ChamadoPortao, ChamadoSetor
+    try:
+        insp = inspect(db.engine)
+        tables = set(insp.get_table_names())
+        if 'chamado_setores' not in tables:
+            ChamadoSetor.__table__.create(db.engine, checkfirst=True)
+        if 'chamado_portoes' not in tables:
+            ChamadoPortao.__table__.create(db.engine, checkfirst=True)
+    except Exception:
+        db.session.rollback()
+
+
 def ensure_operacao_chamados_schema():
     """Tabelas e sementes: mesas, SLA, contratos, mensagens, automações, pastas."""
     from sqlalchemy import inspect, text
@@ -577,6 +607,8 @@ if __name__ == '__main__':
         ensure_setores_funcao_schema()
         ensure_operacao_chamados_schema()
         ensure_tecnicos_schema()
+        ensure_cameras_schema()
+        ensure_portoes_schema()
         from nutricao_service import seed_nutricao
         from routes_pesagem import seed_pesagem
         from routes_acesso import seed_acesso

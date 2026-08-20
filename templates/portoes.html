@@ -1,0 +1,534 @@
+{% extends "base.html" %}
+
+{% block title %}Cadastro de Portões - São Geraldo Service{% endblock %}
+
+{% block content %}
+<div class="chamados-page port-page">
+    <div class="header">
+        <div>
+            <h1>Cadastro de Portões</h1>
+            <p class="chamados-sub">Registre portões por local e setor</p>
+        </div>
+        <button type="button" class="btn btn-success" id="btnNovoPortao">
+            <i class="fas fa-plus"></i> Adicionar
+        </button>
+    </div>
+
+    <div class="eq-filters">
+        <select id="filtroSetor">
+            <option value="">Todos os setores</option>
+            {% for s in setores %}
+            <option value="{{ s.id }}">{{ s.nome }}</option>
+            {% endfor %}
+        </select>
+        <select id="filtroLocal">
+            <option value="">Todos os locais</option>
+            {% for loc in locais %}
+            <option value="{{ loc }}">{{ loc }}</option>
+            {% endfor %}
+        </select>
+        <button type="button" class="btn btn-sm nc-btn-muted" id="btnLimparFiltros">Limpar filtros</button>
+        <button type="button" class="btn btn-sm btn-primary" id="btnImprimirPort">
+            <i class="fas fa-print"></i> Imprimir
+        </button>
+    </div>
+
+    <div class="eq-print-header" aria-hidden="true">
+        <h1 id="portPrintTitle">Relatório de Portões</h1>
+    </div>
+
+    <div class="table-wrap">
+        <table class="table" id="tabelaPortoes">
+            <thead>
+                <tr>
+                    <th>Local</th>
+                    <th>Setor</th>
+                    <th>Foto</th>
+                    <th>Observações</th>
+                    <th class="no-print">Ações</th>
+                </tr>
+            </thead>
+            <tbody id="tbodyPortoes">
+                {% for p in portoes %}
+                <tr data-id="{{ p.id }}"
+                    data-local="{{ p.local }}"
+                    data-setor-id="{{ p.setor_id }}"
+                    data-setor-nome="{{ p.setor.nome if p.setor else '' }}"
+                    data-foto="{{ p.foto_path or '' }}"
+                    data-observacoes="{{ p.observacoes or '' }}">
+                    <td><strong>{{ p.local }}</strong></td>
+                    <td>{{ p.setor.nome if p.setor else '—' }}</td>
+                    <td class="cam-thumb-cell">
+                        {% if p.foto_path %}
+                        <img src="{{ url_for('static', filename=p.foto_path) }}" alt="{{ p.local }}" class="cam-thumb">
+                        {% else %}
+                        <span class="cam-no-img">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="port-obs-cell">{{ p.observacoes or '—' }}</td>
+                    <td class="acoes-cell no-print">
+                        <button type="button" class="btn btn-sm btn-editar-link btn-editar-port" title="Editar">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-excluir-port" title="Excluir">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr id="linhaVazia">
+                    <td colspan="5" class="empty-row">Nenhum portão cadastrado.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div id="modalPortao" class="modal-overlay nc-modal" hidden>
+    <div class="modal-dialog nc-dialog" role="dialog" aria-modal="true" aria-labelledby="portModalTitle">
+        <div class="modal-header">
+            <h2 id="portModalTitle">Novo Portão</h2>
+            <button type="button" class="modal-close" id="btnFecharPortX" aria-label="Fechar">&times;</button>
+        </div>
+        <form id="formPortao" enctype="multipart/form-data">
+            <input type="hidden" id="port_id" value="">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="port_local">Local *</label>
+                    <input type="text" id="port_local" name="local" required maxlength="150" placeholder="Ex: Portaria Principal">
+                </div>
+                <div class="form-group">
+                    <label for="port_setor">Setor *</label>
+                    <select id="port_setor" name="setor_id" required>
+                        <option value="">Selecione...</option>
+                        {% for s in setores %}
+                        {% if s.ativo %}
+                        <option value="{{ s.id }}">{{ s.nome }}</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="port_foto">Foto</label>
+                    <input type="file" id="port_foto" name="foto" accept="image/jpeg,image/png,image/webp,image/gif">
+                    <div id="portPreviewWrap" class="cam-preview-wrap" hidden>
+                        <img id="portPreview" class="cam-preview" alt="Pré-visualização">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="port_obs">Observações</label>
+                    <textarea id="port_obs" name="observacoes" rows="3" maxlength="2000" placeholder="Observações opcionais"></textarea>
+                </div>
+                <div id="portErro" class="tec-erro" style="display:none"></div>
+            </div>
+            <div class="nc-footer">
+                <button type="button" class="btn nc-btn-muted" id="btnFecharPort">
+                    <i class="fas fa-times"></i> Fechar
+                </button>
+                <button type="submit" class="btn btn-success" id="btnSalvarPort">
+                    <i class="fas fa-save"></i> Salvar
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.chamados-page { padding: 4px 0; }
+.chamados-page .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+}
+.chamados-page h1 { margin: 0; font-size: 1.6rem; }
+.chamados-sub { margin: 0.2rem 0 0; color: var(--gray-600); font-size: 0.8rem; }
+.table-wrap {
+    background: white;
+    border-radius: 0.4rem;
+    overflow: auto;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+}
+.chamados-page .table { width: 100%; border-collapse: collapse; background: white; }
+.chamados-page .table th, .chamados-page .table td {
+    padding: 0.6rem 0.7rem;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+    font-size: 0.85rem;
+}
+.chamados-page .table th { background: #f2f2f2; }
+.chamados-page .table tr:hover { background: #f1f1f1; }
+.empty-row { text-align: center; color: var(--gray-600); padding: 1.4rem !important; }
+.acoes-cell { white-space: nowrap; }
+.acoes-cell .btn { margin-right: 0.25rem; }
+.btn-editar-link { background-color: var(--gray-300); color: var(--gray-800); }
+.btn-excluir-port { background-color: #f8d7da; color: #842029; }
+.cam-thumb {
+    width: 56px;
+    height: 42px;
+    object-fit: cover;
+    border-radius: 0.25rem;
+    border: 1px solid #ddd;
+    vertical-align: middle;
+}
+.cam-no-img { color: var(--gray-500); }
+.cam-preview-wrap { margin-top: 0.45rem; }
+.cam-preview {
+    max-width: 100%;
+    max-height: 140px;
+    border-radius: 0.3rem;
+    border: 1px solid #ddd;
+    object-fit: contain;
+}
+.port-obs-cell {
+    max-width: 280px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.nc-modal { padding: 0.8rem; align-items: center; justify-content: center; }
+.nc-modal:not([hidden]) { display: flex; }
+.nc-dialog {
+    max-width: 420px;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    font-size: 0.8rem;
+}
+.nc-dialog .modal-header { padding: 0.92rem 1rem 0; gap: 0.6rem; }
+.nc-dialog .modal-header h2 { font-size: 0.96rem; margin: 0; }
+.nc-dialog .modal-close { font-size: 1.2rem; }
+.nc-dialog .modal-body { padding: 0.72rem 1rem 0.4rem; overflow-y: auto; }
+.nc-dialog .form-group { margin-bottom: 0.56rem; }
+.nc-dialog label { font-size: 0.72rem; margin-bottom: 0.16rem; }
+.nc-dialog input[type="text"],
+.nc-dialog input[type="file"],
+.nc-dialog select,
+.nc-dialog textarea {
+    padding: 0.48rem 0.6rem;
+    font-size: 0.8rem;
+    border-radius: 0.3rem;
+    line-height: 1.35;
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    font-family: inherit;
+}
+.nc-dialog textarea { resize: vertical; min-height: 72px; }
+.nc-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.64rem 1rem 0.8rem;
+    flex-wrap: wrap;
+    border-top: 1px solid var(--gray-200);
+}
+.nc-dialog .btn {
+    gap: 0.32rem;
+    padding: 0.45rem 0.8rem;
+    font-size: 0.76rem;
+    border-radius: 0.3rem;
+}
+.nc-btn-muted { background-color: var(--gray-300); color: var(--gray-800); }
+.tec-erro { color: #842029; font-size: 0.75rem; margin-top: 0.4rem; }
+body.modal-open { overflow: hidden; }
+.eq-filters {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.8rem;
+    flex-wrap: wrap;
+}
+.eq-filters select {
+    padding: 0.42rem 0.6rem;
+    font-size: 0.82rem;
+    border: 1px solid #ccc;
+    border-radius: 0.3rem;
+    line-height: 1.35;
+    width: 200px;
+}
+.eq-print-header { display: none; }
+@media print {
+    .sidebar,
+    .sidebar-overlay,
+    .app-topbar,
+    .eq-filters,
+    .port-page > .header,
+    .modal-overlay,
+    .no-print { display: none !important; }
+    .eq-print-header {
+        display: block !important;
+        margin: 0 0 1rem;
+    }
+    .eq-print-header h1 {
+        margin: 0 0 0.35rem;
+        font-size: 1.35rem;
+    }
+    .port-page { padding: 0; }
+    .table-wrap {
+        box-shadow: none;
+        border-radius: 0;
+        overflow: visible;
+    }
+    .chamados-page .table th,
+    .chamados-page .table td {
+        border-bottom: 1px solid #999;
+        font-size: 0.8rem;
+    }
+    .chamados-page .table tr:hover { background: transparent; }
+    .cam-thumb { width: 72px; height: 54px; }
+}
+</style>
+
+<script>
+(function () {
+    const overlay = document.getElementById('modalPortao');
+    const form = document.getElementById('formPortao');
+    const btnSalvar = document.getElementById('btnSalvarPort');
+    const errEl = document.getElementById('portErro');
+    const previewWrap = document.getElementById('portPreviewWrap');
+    const preview = document.getElementById('portPreview');
+    const tbody = document.getElementById('tbodyPortoes');
+    const selectSetor = document.getElementById('filtroSetor');
+    const selectLocal = document.getElementById('filtroLocal');
+    const printTitle = document.getElementById('portPrintTitle');
+
+    function showErro(msg) {
+        errEl.textContent = msg || '';
+        errEl.style.display = msg ? '' : 'none';
+    }
+
+    function abrirModal() {
+        overlay.hidden = false;
+        document.body.classList.add('modal-open');
+        showErro('');
+    }
+    function fecharModal() {
+        overlay.hidden = true;
+        document.body.classList.remove('modal-open');
+        form.reset();
+        document.getElementById('port_id').value = '';
+        previewWrap.hidden = true;
+        preview.removeAttribute('src');
+        btnSalvar.disabled = false;
+        showErro('');
+    }
+
+    function setPreview(url) {
+        if (url) {
+            preview.src = url;
+            previewWrap.hidden = false;
+        } else {
+            preview.removeAttribute('src');
+            previewWrap.hidden = true;
+        }
+    }
+
+    function abrirNovo() {
+        document.getElementById('portModalTitle').textContent = 'Novo Portão';
+        form.reset();
+        document.getElementById('port_id').value = '';
+        setPreview(null);
+        abrirModal();
+        setTimeout(function () { document.getElementById('port_local').focus(); }, 30);
+    }
+
+    function abrirEditar(tr) {
+        document.getElementById('portModalTitle').textContent = 'Editar Portão';
+        document.getElementById('port_id').value = tr.getAttribute('data-id') || '';
+        document.getElementById('port_local').value = tr.getAttribute('data-local') || '';
+        document.getElementById('port_setor').value = tr.getAttribute('data-setor-id') || '';
+        document.getElementById('port_obs').value = tr.getAttribute('data-observacoes') || '';
+        document.getElementById('port_foto').value = '';
+        const foto = tr.getAttribute('data-foto') || '';
+        setPreview(foto ? ('/static/' + foto) : null);
+        abrirModal();
+    }
+
+    document.getElementById('btnNovoPortao').addEventListener('click', abrirNovo);
+    document.getElementById('btnFecharPort').addEventListener('click', fecharModal);
+    document.getElementById('btnFecharPortX').addEventListener('click', fecharModal);
+    overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) fecharModal();
+    });
+
+    document.getElementById('port_foto').addEventListener('change', function () {
+        const file = this.files && this.files[0];
+        if (!file) return;
+        setPreview(URL.createObjectURL(file));
+    });
+
+    tbody.addEventListener('click', function (e) {
+        const btnEdit = e.target.closest('.btn-editar-port');
+        const btnDel = e.target.closest('.btn-excluir-port');
+        const tr = e.target.closest('tr[data-id]');
+        if (!tr) return;
+        if (btnEdit) {
+            abrirEditar(tr);
+            return;
+        }
+        if (btnDel) {
+            if (!confirm('Excluir este portão?')) return;
+            const id = tr.getAttribute('data-id');
+            fetch('/portoes/' + id + '/excluir', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data.ok) {
+                    alert(data.error || 'Erro ao excluir.');
+                    return;
+                }
+                tr.remove();
+                rebuildLocalFilter();
+                applyFilters();
+                if (!tbody.querySelector('tr[data-id]')) {
+                    tbody.innerHTML = '<tr id="linhaVazia"><td colspan="5" class="empty-row">Nenhum portão cadastrado.</td></tr>';
+                }
+            })
+            .catch(function () { alert('Erro ao excluir.'); });
+        }
+    });
+
+    function escapeHtml(s) {
+        return String(s || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function escapeAttr(s) {
+        return escapeHtml(s).replace(/\n/g, '&#10;');
+    }
+
+    function rowHtml(p) {
+        const img = p.foto_path
+            ? '<img src="/static/' + escapeHtml(p.foto_path) + '" alt="" class="cam-thumb">'
+            : '<span class="cam-no-img">—</span>';
+        const obs = (p.observacoes || '').trim();
+        return (
+            '<tr data-id="' + p.id + '"' +
+            ' data-local="' + escapeAttr(p.local) + '"' +
+            ' data-setor-id="' + p.setor_id + '"' +
+            ' data-setor-nome="' + escapeAttr(p.setor_nome) + '"' +
+            ' data-foto="' + escapeAttr(p.foto_path || '') + '"' +
+            ' data-observacoes="' + escapeAttr(obs) + '">' +
+            '<td><strong>' + escapeHtml(p.local) + '</strong></td>' +
+            '<td>' + escapeHtml(p.setor_nome || '—') + '</td>' +
+            '<td class="cam-thumb-cell">' + img + '</td>' +
+            '<td class="port-obs-cell">' + (obs ? escapeHtml(obs) : '—') + '</td>' +
+            '<td class="acoes-cell no-print">' +
+            '<button type="button" class="btn btn-sm btn-editar-link btn-editar-port" title="Editar"><i class="fas fa-edit"></i></button> ' +
+            '<button type="button" class="btn btn-sm btn-excluir-port" title="Excluir"><i class="fas fa-trash"></i></button>' +
+            '</td></tr>'
+        );
+    }
+
+    function rebuildLocalFilter() {
+        const current = selectLocal.value;
+        const values = [...new Set(
+            Array.from(tbody.querySelectorAll('tr[data-id]')).map(function (tr) {
+                return (tr.getAttribute('data-local') || '').trim();
+            }).filter(Boolean)
+        )].sort(function (a, b) { return a.localeCompare(b, 'pt-BR'); });
+        selectLocal.innerHTML = '<option value="">Todos os locais</option>';
+        values.forEach(function (loc) {
+            const opt = document.createElement('option');
+            opt.value = loc;
+            opt.textContent = loc;
+            selectLocal.appendChild(opt);
+        });
+        if (values.indexOf(current) >= 0) selectLocal.value = current;
+    }
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        showErro('');
+        const id = document.getElementById('port_id').value;
+        const fd = new FormData(form);
+        const url = id ? ('/portoes/' + id + '/editar') : '/portoes/adicionar';
+        btnSalvar.disabled = true;
+        fetch(url, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+            .then(function (res) {
+                btnSalvar.disabled = false;
+                if (!res.ok || !res.data.ok) {
+                    showErro((res.data && res.data.error) || 'Erro ao salvar.');
+                    return;
+                }
+                const portao = res.data.portao;
+                const vazia = document.getElementById('linhaVazia');
+                if (vazia) vazia.remove();
+                const existing = tbody.querySelector('tr[data-id="' + portao.id + '"]');
+                if (existing) {
+                    existing.outerHTML = rowHtml(portao);
+                } else {
+                    tbody.insertAdjacentHTML('beforeend', rowHtml(portao));
+                }
+                rebuildLocalFilter();
+                applyFilters();
+                fecharModal();
+            })
+            .catch(function () {
+                btnSalvar.disabled = false;
+                showErro('Erro de comunicação.');
+            });
+    });
+
+    function dataRows() {
+        return Array.from(tbody.querySelectorAll('tr[data-id]'));
+    }
+
+    function buildPrintTitle() {
+        const setorOpt = selectSetor.options[selectSetor.selectedIndex];
+        const setor = selectSetor.value ? (setorOpt ? setorOpt.textContent.trim() : '') : '';
+        const local = (selectLocal.value || '').trim();
+        let title = 'Relatório de Portões';
+        if (setor && local) {
+            title += ' (' + setor + ' / ' + local + ')';
+        } else if (setor) {
+            title += ' (' + setor + ')';
+        } else if (local) {
+            title += ' (' + local + ')';
+        }
+        return title;
+    }
+
+    function applyFilters() {
+        const setor = selectSetor.value;
+        const local = selectLocal.value;
+        let visible = 0;
+        dataRows().forEach(function (tr) {
+            const matchSetor = !setor || (tr.getAttribute('data-setor-id') || '') === setor;
+            const matchLocal = !local || (tr.getAttribute('data-local') || '') === local;
+            const show = matchSetor && matchLocal;
+            tr.style.display = show ? '' : 'none';
+            if (show) visible++;
+        });
+        const linhaVazia = document.getElementById('linhaVazia');
+        if (linhaVazia) linhaVazia.style.display = visible === 0 && dataRows().length === 0 ? '' : 'none';
+    }
+
+    function imprimirVisiveis() {
+        applyFilters();
+        printTitle.textContent = buildPrintTitle();
+        window.print();
+    }
+
+    selectSetor.addEventListener('change', applyFilters);
+    selectLocal.addEventListener('change', applyFilters);
+    document.getElementById('btnLimparFiltros').addEventListener('click', function () {
+        selectSetor.value = '';
+        selectLocal.value = '';
+        applyFilters();
+    });
+    document.getElementById('btnImprimirPort').addEventListener('click', imprimirVisiveis);
+})();
+</script>
+{% endblock %}

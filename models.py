@@ -644,6 +644,68 @@ class ChamadoRamal(db.Model):
         }
 
 
+class ChamadoCamera(db.Model):
+    """Cadastro de câmeras (nome, DVR, setor e imagem)."""
+    __tablename__ = 'chamado_cameras'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(100), nullable=False)
+    dvr = db.Column(db.String(100), nullable=False)
+    setor_id = db.Column(db.Integer, db.ForeignKey('chamado_setores.id'), nullable=False, index=True)
+    imagem_path = db.Column(db.String(255))
+    ativo = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    setor = db.relationship('ChamadoSetor', foreign_keys=[setor_id])
+
+    def __repr__(self):
+        return f'<ChamadoCamera {self.nome}>'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'nome': self.nome,
+            'dvr': self.dvr or '',
+            'setor_id': self.setor_id,
+            'setor_nome': self.setor.nome if self.setor else '',
+            'imagem_path': self.imagem_path or '',
+            'imagem_url': f'/static/{self.imagem_path}' if self.imagem_path else '',
+            'ativo': self.ativo,
+            'created_at': self.created_at.strftime('%d/%m/%Y %H:%M') if self.created_at else '',
+        }
+
+
+class ChamadoPortao(db.Model):
+    """Cadastro de portões (local, setor, foto e observações)."""
+    __tablename__ = 'chamado_portoes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    local = db.Column(db.String(150), nullable=False)
+    setor_id = db.Column(db.Integer, db.ForeignKey('chamado_setores.id'), nullable=False, index=True)
+    foto_path = db.Column(db.String(255))
+    observacoes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    setor = db.relationship('ChamadoSetor', foreign_keys=[setor_id])
+
+    def __repr__(self):
+        return f'<ChamadoPortao {self.local}>'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'local': self.local,
+            'setor_id': self.setor_id,
+            'setor_nome': self.setor.nome if self.setor else '',
+            'foto_path': self.foto_path or '',
+            'foto_url': f'/static/{self.foto_path}' if self.foto_path else '',
+            'observacoes': self.observacoes or '',
+            'created_at': self.created_at.strftime('%d/%m/%Y %H:%M') if self.created_at else '',
+        }
+
+
 class ConhecimentoPasta(db.Model):
     __tablename__ = 'conhecimento_pastas'
 

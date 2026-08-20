@@ -17,6 +17,8 @@ SISTEMAS = {
             ('clientes', 'Clientes'),
             ('equipamentos', 'Equipamentos'),
             ('telefones_ramais', 'Telefones e Ramais'),
+            ('cameras', 'Cadastro de Câmeras'),
+            ('portoes', 'Cadastro de Portões'),
             ('tecnicos', 'Técnicos'),
             ('recursos', 'Recursos'),
             ('relatorios', 'Relatórios'),

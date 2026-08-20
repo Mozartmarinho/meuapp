@@ -31,6 +31,8 @@ from models import (
     ChamadoMensagem,
     ChamadoAutomacao,
     ChamadoRamal,
+    ChamadoCamera,
+    ChamadoPortao,
     ConhecimentoPasta,
     TIPO_FOTO_CONSERTO,
     TIPO_FOTO_ENCAMINHAMENTO,
@@ -164,6 +166,16 @@ _CHAMADOS_ENDPOINT_MENUS = {
     'main.editar_equipamento': 'equipamentos',
     'main.api_equipamentos': 'equipamentos',
     'main.api_equipamento': 'equipamentos',
+    'main.cameras': 'cameras',
+    'main.adicionar_camera': 'cameras',
+    'main.editar_camera': 'cameras',
+    'main.excluir_camera': 'cameras',
+    'main.adicionar_setor_camera': 'cameras',
+    'main.toggle_setor_camera': 'cameras',
+    'main.portoes': 'portoes',
+    'main.adicionar_portao': 'portoes',
+    'main.editar_portao': 'portoes',
+    'main.excluir_portao': 'portoes',
     'main.recursos': 'recursos',
     'main.ver_recurso': 'recursos',
     'main.salvar_grupo_recurso': 'recursos',
@@ -2189,6 +2201,299 @@ def adicionar_setor_ramal():
     db.session.add(s)
     db.session.commit()
     return jsonify({'ok': True, 'id': s.id, 'nome': s.nome})
+
+
+_UPLOAD_CAMERAS = Path(__file__).resolve().parent / 'static' / 'uploads' / 'cameras'
+
+
+def _salvar_imagem_camera(arquivo, camera_id=None):
+    """Salva imagem de câmera em static/uploads/cameras e retorna caminho relativo."""
+    if not arquivo or not getattr(arquivo, 'filename', None):
+        return None
+    original = secure_filename(arquivo.filename)
+    if not original:
+        return None
+    ext = Path(original).suffix.lower()
+    if ext not in _FOTO_EXTS:
+        return None
+    _UPLOAD_CAMERAS.mkdir(parents=True, exist_ok=True)
+    prefix = f'cam_{camera_id}_' if camera_id else 'cam_'
+    fname = f'{prefix}{uuid.uuid4().hex[:10]}{ext}'
+    dest = _UPLOAD_CAMERAS / fname
+    arquivo.save(str(dest))
+    return f'uploads/cameras/{fname}'
+
+
+def _remover_imagem_camera(caminho):
+    if not caminho:
+        return
+    try:
+        path = Path(__file__).resolve().parent / 'static' / caminho
+        if path.is_file():
+            path.unlink()
+    except OSError:
+        pass
+
+
+@main.route('/cameras')
+@login_required
+def cameras():
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'cameras'):
+        flash('Você não tem permissão para acessar Cadastro de Câmeras.', 'error')
+        return redirect(url_for('main.inicio'))
+    setores = ChamadoSetor.query.order_by(ChamadoSetor.nome).all()
+    cameras_list = (
+        ChamadoCamera.query
+        .options(joinedload(ChamadoCamera.setor))
+        .order_by(ChamadoCamera.nome)
+        .all()
+    )
+    dvrs = sorted({
+        (c.dvr or '').strip()
+        for c in cameras_list
+        if (c.dvr or '').strip()
+    }, key=lambda s: s.lower())
+    return render_template(
+        'cameras.html',
+        setores=setores,
+        cameras=cameras_list,
+        dvrs=dvrs,
+    )
+
+
+@main.route('/cameras/setor/adicionar', methods=['POST'])
+@login_required
+def adicionar_setor_camera():
+    """Cadastro de setor (ChamadoSetor) a partir da página de câmeras."""
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'cameras'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    data = request.get_json(silent=True) or request.form
+    nome = (data.get('nome') or '').strip()
+    if not nome:
+        return jsonify({'ok': False, 'error': 'Informe o nome do setor.'}), 400
+    if ChamadoSetor.query.filter_by(nome=nome).first():
+        return jsonify({'ok': False, 'error': 'Setor já cadastrado.'}), 400
+    s = ChamadoSetor(nome=nome, ativo=True)
+    db.session.add(s)
+    db.session.commit()
+    return jsonify({'ok': True, 'id': s.id, 'nome': s.nome, 'ativo': s.ativo})
+
+
+@main.route('/cameras/setor/<int:sid>/toggle', methods=['POST'])
+@login_required
+def toggle_setor_camera(sid):
+    """Alterna ativo/inativo do setor (mesmo ChamadoSetor dos técnicos)."""
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'cameras'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    s = ChamadoSetor.query.get_or_404(sid)
+    s.ativo = not s.ativo
+    db.session.commit()
+    return jsonify({'ok': True, 'id': s.id, 'ativo': s.ativo})
+
+
+@main.route('/cameras/adicionar', methods=['POST'])
+@login_required
+def adicionar_camera():
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'cameras'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    data = request.form
+    nome = (data.get('nome') or '').strip()
+    dvr = (data.get('dvr') or '').strip()
+    setor_id = (data.get('setor_id') or '').strip()
+    if not nome or not dvr or not setor_id:
+        return jsonify({'ok': False, 'error': 'Nome, DVR e setor são obrigatórios.'}), 400
+    if not setor_id.isdigit():
+        return jsonify({'ok': False, 'error': 'Setor inválido.'}), 400
+    if not ChamadoSetor.query.get(int(setor_id)):
+        return jsonify({'ok': False, 'error': 'Setor não encontrado.'}), 400
+    cam = ChamadoCamera(
+        nome=nome,
+        dvr=dvr,
+        setor_id=int(setor_id),
+        ativo=True,
+    )
+    db.session.add(cam)
+    db.session.flush()
+    imagem = _salvar_imagem_camera(request.files.get('imagem'), cam.id)
+    if imagem:
+        cam.imagem_path = imagem
+    db.session.commit()
+    return jsonify({'ok': True, 'camera': cam.to_dict()})
+
+
+@main.route('/cameras/<int:cid>/editar', methods=['POST'])
+@login_required
+def editar_camera(cid):
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'cameras'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    cam = ChamadoCamera.query.get_or_404(cid)
+    data = request.form
+    nome = (data.get('nome') or '').strip()
+    dvr = (data.get('dvr') or '').strip()
+    setor_id = (data.get('setor_id') or '').strip()
+    if not nome or not dvr or not setor_id:
+        return jsonify({'ok': False, 'error': 'Nome, DVR e setor são obrigatórios.'}), 400
+    if not setor_id.isdigit():
+        return jsonify({'ok': False, 'error': 'Setor inválido.'}), 400
+    if not ChamadoSetor.query.get(int(setor_id)):
+        return jsonify({'ok': False, 'error': 'Setor não encontrado.'}), 400
+    cam.nome = nome
+    cam.dvr = dvr
+    cam.setor_id = int(setor_id)
+    nova = _salvar_imagem_camera(request.files.get('imagem'), cam.id)
+    if nova:
+        _remover_imagem_camera(cam.imagem_path)
+        cam.imagem_path = nova
+    db.session.commit()
+    return jsonify({'ok': True, 'camera': cam.to_dict()})
+
+
+@main.route('/cameras/<int:cid>/excluir', methods=['POST'])
+@login_required
+def excluir_camera(cid):
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'cameras'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    cam = ChamadoCamera.query.get_or_404(cid)
+    _remover_imagem_camera(cam.imagem_path)
+    db.session.delete(cam)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+_UPLOAD_PORTOES = Path(__file__).resolve().parent / 'static' / 'uploads' / 'portoes'
+
+
+def _salvar_foto_portao(arquivo, portao_id=None):
+    """Salva foto de portão em static/uploads/portoes e retorna caminho relativo."""
+    if not arquivo or not getattr(arquivo, 'filename', None):
+        return None
+    original = secure_filename(arquivo.filename)
+    if not original:
+        return None
+    ext = Path(original).suffix.lower()
+    if ext not in _FOTO_EXTS:
+        return None
+    _UPLOAD_PORTOES.mkdir(parents=True, exist_ok=True)
+    prefix = f'port_{portao_id}_' if portao_id else 'port_'
+    fname = f'{prefix}{uuid.uuid4().hex[:10]}{ext}'
+    dest = _UPLOAD_PORTOES / fname
+    arquivo.save(str(dest))
+    return f'uploads/portoes/{fname}'
+
+
+def _remover_foto_portao(caminho):
+    if not caminho:
+        return
+    try:
+        path = Path(__file__).resolve().parent / 'static' / caminho
+        if path.is_file():
+            path.unlink()
+    except OSError:
+        pass
+
+
+@main.route('/portoes')
+@login_required
+def portoes():
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'portoes'):
+        flash('Você não tem permissão para acessar Cadastro de Portões.', 'error')
+        return redirect(url_for('main.inicio'))
+    setores = ChamadoSetor.query.order_by(ChamadoSetor.nome).all()
+    portoes_list = (
+        ChamadoPortao.query
+        .options(joinedload(ChamadoPortao.setor))
+        .order_by(ChamadoPortao.local)
+        .all()
+    )
+    locais = sorted({
+        (p.local or '').strip()
+        for p in portoes_list
+        if (p.local or '').strip()
+    }, key=lambda s: s.lower())
+    return render_template(
+        'portoes.html',
+        setores=setores,
+        portoes=portoes_list,
+        locais=locais,
+    )
+
+
+@main.route('/portoes/adicionar', methods=['POST'])
+@login_required
+def adicionar_portao():
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'portoes'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    data = request.form
+    local = (data.get('local') or '').strip()
+    setor_id = (data.get('setor_id') or '').strip()
+    observacoes = (data.get('observacoes') or '').strip()
+    if not local or not setor_id:
+        return jsonify({'ok': False, 'error': 'Local e setor são obrigatórios.'}), 400
+    if not setor_id.isdigit():
+        return jsonify({'ok': False, 'error': 'Setor inválido.'}), 400
+    if not ChamadoSetor.query.get(int(setor_id)):
+        return jsonify({'ok': False, 'error': 'Setor não encontrado.'}), 400
+    portao = ChamadoPortao(
+        local=local,
+        setor_id=int(setor_id),
+        observacoes=observacoes or None,
+    )
+    db.session.add(portao)
+    db.session.flush()
+    foto = _salvar_foto_portao(request.files.get('foto'), portao.id)
+    if foto:
+        portao.foto_path = foto
+    db.session.commit()
+    return jsonify({'ok': True, 'portao': portao.to_dict()})
+
+
+@main.route('/portoes/<int:pid>/editar', methods=['POST'])
+@login_required
+def editar_portao(pid):
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'portoes'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    portao = ChamadoPortao.query.get_or_404(pid)
+    data = request.form
+    local = (data.get('local') or '').strip()
+    setor_id = (data.get('setor_id') or '').strip()
+    observacoes = (data.get('observacoes') or '').strip()
+    if not local or not setor_id:
+        return jsonify({'ok': False, 'error': 'Local e setor são obrigatórios.'}), 400
+    if not setor_id.isdigit():
+        return jsonify({'ok': False, 'error': 'Setor inválido.'}), 400
+    if not ChamadoSetor.query.get(int(setor_id)):
+        return jsonify({'ok': False, 'error': 'Setor não encontrado.'}), 400
+    portao.local = local
+    portao.setor_id = int(setor_id)
+    portao.observacoes = observacoes or None
+    nova = _salvar_foto_portao(request.files.get('foto'), portao.id)
+    if nova:
+        _remover_foto_portao(portao.foto_path)
+        portao.foto_path = nova
+    db.session.commit()
+    return jsonify({'ok': True, 'portao': portao.to_dict()})
+
+
+@main.route('/portoes/<int:pid>/excluir', methods=['POST'])
+@login_required
+def excluir_portao(pid):
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'portoes'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    portao = ChamadoPortao.query.get_or_404(pid)
+    _remover_foto_portao(portao.foto_path)
+    db.session.delete(portao)
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 @main.route('/equipamentos')
