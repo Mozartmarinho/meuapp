@@ -533,14 +533,16 @@ def ensure_portoes_schema():
 
 
 def ensure_estoque_schema():
-    """Garante tabela chamado_estoque (produtos / itens de estoque)."""
+    """Garante tabelas chamado_estoque e chamado_estoque_usos."""
     from sqlalchemy import inspect
-    from models import ChamadoEstoque
+    from models import ChamadoEstoque, ChamadoEstoqueUso
     try:
         insp = inspect(db.engine)
         tables = set(insp.get_table_names())
         if 'chamado_estoque' not in tables:
             ChamadoEstoque.__table__.create(db.engine, checkfirst=True)
+        if 'chamado_estoque_usos' not in tables:
+            ChamadoEstoqueUso.__table__.create(db.engine, checkfirst=True)
     except Exception:
         db.session.rollback()
 

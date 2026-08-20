@@ -209,9 +209,23 @@
                     <textarea id="at_notas" name="atendimento_notas" rows="3" placeholder="Descreva o serviço realizado"></textarea>
                 </div>
                 <div class="form-group">
-                    <label for="at_fotos">Foto do serviço</label>
-                    <input type="file" id="at_fotos" name="fotos" accept="image/*" multiple>
+                    <div class="at-foto-row">
+                        <div class="at-foto-col">
+                            <label for="at_fotos">Foto do serviço</label>
+                            <input type="file" id="at_fotos" name="fotos" accept="image/*" multiple>
+                        </div>
+                        <button type="button" class="btn btn-secondary" id="btnConsultarEstoque" title="Consultar estoque">
+                            <i class="fas fa-boxes"></i> Consultar estoque
+                        </button>
+                    </div>
                     <div class="at-fotos" id="atFotosExistentes"></div>
+                </div>
+                <div class="form-group" id="atEstoqueUsosBox">
+                    <label>Produtos adicionados</label>
+                    <ul class="at-estoque-lista" id="atEstoqueUsosLista">
+                        <li class="at-estoque-vazio" id="atEstoqueVazio">Nenhum produto selecionado.</li>
+                    </ul>
+                    <input type="hidden" name="estoque_usos" id="at_estoque_usos" value="[]">
                 </div>
                 <div class="form-group at-check">
                     <label>
@@ -276,6 +290,68 @@
                 </div>
             </div>
         </form>
+    </div>
+</div>
+
+<div id="modalConsultarEstoque" class="modal-overlay nc-modal at-est-modal" hidden>
+    <div class="modal-dialog nc-dialog at-est-dialog" role="dialog" aria-modal="true" aria-labelledby="estConsultaTitle">
+        <div class="modal-header">
+            <h2 id="estConsultaTitle">Consultar estoque</h2>
+            <button type="button" class="modal-close" id="btnFecharEstConsultaX" aria-label="Fechar">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="estConsultaFiltro">Filtrar</label>
+                <input type="text" id="estConsultaFiltro" placeholder="Produto, marca ou modelo…" autocomplete="off">
+            </div>
+            <div class="at-est-table-wrap">
+                <table class="table at-est-table" id="estConsultaTabela">
+                    <thead>
+                        <tr>
+                            <th>Produto</th>
+                            <th>Marca</th>
+                            <th>Modelo</th>
+                            <th>Qtd</th>
+                            <th>Aquisição</th>
+                            <th class="at-est-col-acoes">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="estConsultaBody">
+                        <tr><td colspan="6" class="empty-row">Carregando…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="nc-footer">
+            <button type="button" class="btn nc-btn-muted" id="btnFecharEstConsulta">
+                <i class="fas fa-times"></i> Fechar
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="modalEstoqueQtd" class="modal-overlay nc-modal at-est-qtd-modal" hidden>
+    <div class="modal-dialog nc-dialog at-est-qtd-dialog" role="dialog" aria-modal="true" aria-labelledby="estQtdTitle">
+        <div class="modal-header">
+            <h2 id="estQtdTitle">Quantidade</h2>
+            <button type="button" class="modal-close" id="btnFecharEstQtdX" aria-label="Fechar">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p class="at-est-qtd-nome" id="estQtdProdutoNome">—</p>
+            <p class="at-est-qtd-disp" id="estQtdDisponivel">Disponível: 0</p>
+            <div class="form-group">
+                <label for="estQtdInput">Quantidade a usar</label>
+                <input type="number" id="estQtdInput" min="1" value="1" autocomplete="off">
+            </div>
+        </div>
+        <div class="nc-footer">
+            <button type="button" class="btn nc-btn-muted" id="btnEstQtdCancel">
+                <i class="fas fa-times"></i> Cancelar
+            </button>
+            <button type="button" class="btn btn-success" id="btnEstQtdOk">
+                <i class="fas fa-check"></i> OK
+            </button>
+        </div>
     </div>
 </div>
 
@@ -422,6 +498,108 @@
     flex-shrink: 0;
     white-space: nowrap;
 }
+.at-foto-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.at-foto-col {
+    flex: 1;
+    min-width: 0;
+}
+.at-foto-row > .btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+    margin-bottom: 0.05rem;
+}
+.at-estoque-lista {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--gray-200);
+    border-radius: 0.3rem;
+    background: #f8fafc;
+    max-height: 140px;
+    overflow-y: auto;
+}
+.at-estoque-lista li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid var(--gray-200);
+    font-size: 0.74rem;
+}
+.at-estoque-lista li:last-child { border-bottom: 0; }
+.at-estoque-vazio { color: var(--gray-600); justify-content: center !important; }
+.at-estoque-item-meta { min-width: 0; }
+.at-estoque-item-meta strong { display: block; }
+.at-estoque-item-meta span { color: var(--gray-600); font-size: 0.68rem; }
+.at-estoque-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-shrink: 0;
+}
+.at-estoque-item-actions input[type="number"] {
+    width: 3.2rem;
+    padding: 0.2rem 0.3rem;
+    font-size: 0.72rem;
+}
+.at-est-modal { z-index: 1300; }
+.at-est-dialog {
+    max-width: 720px;
+    width: 100%;
+}
+.at-est-table-wrap {
+    max-height: 320px;
+    overflow: auto;
+    border: 1px solid var(--gray-200);
+    border-radius: 0.3rem;
+}
+.at-est-table { margin: 0; font-size: 0.74rem; }
+.at-est-table th, .at-est-table td {
+    padding: 0.35rem 0.45rem;
+    white-space: nowrap;
+}
+.at-est-col-acoes {
+    width: 3.2rem;
+    text-align: center;
+}
+.at-est-btn-sel {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2rem;
+    padding: 0.28rem 0.45rem;
+    font-size: 0.82rem;
+    line-height: 1;
+}
+.at-est-btn-sel:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+.at-est-qtd-modal { z-index: 1400; }
+.at-est-qtd-dialog {
+    max-width: 360px;
+    width: 100%;
+}
+.at-est-qtd-nome {
+    margin: 0 0 0.25rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+.at-est-qtd-disp {
+    margin: 0 0 0.85rem;
+    color: var(--gray-600);
+    font-size: 0.74rem;
+}
+.at-est-qtd-dialog #estQtdInput {
+    width: 100%;
+    max-width: 8rem;
+}
 .at-foto-item { position: relative; }
 .at-foto-item button {
     position: absolute;
@@ -550,6 +728,9 @@ body.modal-open { overflow: hidden; }
     const btnGravar = document.getElementById('btnGravarAt');
     const btnEncaminhar = document.getElementById('btnEncaminharAt');
     const btnFinalizar = document.getElementById('btnFinalizarAt');
+    const estOverlay = document.getElementById('modalConsultarEstoque');
+    const estFiltro = document.getElementById('estConsultaFiltro');
+    const estBody = document.getElementById('estConsultaBody');
     const abrirId = {{ atender_id|tojson }};
     let chamadoId = null;
     let fotosEncPendentes = [];
@@ -558,10 +739,272 @@ body.modal-open { overflow: hidden; }
     let podeDevolver = false;
     let setorDevolver = '';
     let instrucoesOrigem = '';
+    let estoqueItensCache = {{ (estoque_itens or [])|tojson }};
+    let estoqueUsos = []; // [{estoque_id, produto, marca, modelo, quantidade, disponivel}]
+    let estoqueQtdItem = null; // item sendo selecionado no mini-dialog de qtd
+    const estQtdOverlay = document.getElementById('modalEstoqueQtd');
+    const estQtdInput = document.getElementById('estQtdInput');
+    const estQtdNome = document.getElementById('estQtdProdutoNome');
+    const estQtdDisp = document.getElementById('estQtdDisponivel');
 
     function abrirModal() {
         overlay.hidden = false;
         document.body.classList.add('modal-open');
+    }
+    function syncEstoqueHidden() {
+        const el = document.getElementById('at_estoque_usos');
+        if (!el) return;
+        el.value = JSON.stringify(estoqueUsos.map(function (u) {
+            return { estoque_id: u.estoque_id, quantidade: u.quantidade };
+        }));
+    }
+    function renderEstoqueUsos() {
+        const lista = document.getElementById('atEstoqueUsosLista');
+        if (!lista) return;
+        lista.innerHTML = '';
+        if (!estoqueUsos.length) {
+            const li = document.createElement('li');
+            li.className = 'at-estoque-vazio';
+            li.id = 'atEstoqueVazio';
+            li.textContent = 'Nenhum produto selecionado.';
+            lista.appendChild(li);
+            syncEstoqueHidden();
+            return;
+        }
+        estoqueUsos.forEach(function (uso, idx) {
+            const li = document.createElement('li');
+            const meta = document.createElement('div');
+            meta.className = 'at-estoque-item-meta';
+            const strong = document.createElement('strong');
+            strong.textContent = uso.produto;
+            const span = document.createElement('span');
+            const partes = [];
+            if (uso.marca) partes.push(uso.marca);
+            if (uso.modelo) partes.push(uso.modelo);
+            span.textContent = (partes.length ? partes.join(' · ') + ' · ' : '') + 'Qtd: ' + uso.quantidade;
+            meta.appendChild(strong);
+            meta.appendChild(span);
+            const actions = document.createElement('div');
+            actions.className = 'at-estoque-item-actions';
+            const qtdInput = document.createElement('input');
+            qtdInput.type = 'number';
+            qtdInput.min = '1';
+            qtdInput.max = String(uso.disponivel || uso.quantidade);
+            qtdInput.value = String(uso.quantidade);
+            qtdInput.title = 'Quantidade a usar';
+            qtdInput.addEventListener('change', function () {
+                let v = parseInt(qtdInput.value, 10);
+                if (isNaN(v) || v < 1) v = 1;
+                const max = Math.max(1, parseInt(uso.disponivel, 10) || v);
+                if (v > max) v = max;
+                uso.quantidade = v;
+                qtdInput.value = String(v);
+                renderEstoqueUsos();
+            });
+            const btnRem = document.createElement('button');
+            btnRem.type = 'button';
+            btnRem.className = 'btn btn-sm btn-excluir-est';
+            btnRem.title = 'Remover';
+            btnRem.innerHTML = '<i class="fas fa-trash"></i>';
+            btnRem.addEventListener('click', function () {
+                estoqueUsos.splice(idx, 1);
+                renderEstoqueUsos();
+            });
+            actions.appendChild(qtdInput);
+            actions.appendChild(btnRem);
+            li.appendChild(meta);
+            li.appendChild(actions);
+            lista.appendChild(li);
+        });
+        syncEstoqueHidden();
+    }
+    function limparEstoqueUsos() {
+        estoqueUsos = [];
+        renderEstoqueUsos();
+    }
+    function adicionarEstoqueUso(item, qtd) {
+        const disponivel = parseInt(item.quantidade, 10) || 0;
+        if (disponivel < 1) {
+            alert('Produto sem estoque disponível.');
+            return false;
+        }
+        let usar = parseInt(qtd, 10);
+        if (isNaN(usar) || usar < 1) usar = 1;
+        if (usar > disponivel) {
+            alert('Quantidade maior que o estoque disponível (' + disponivel + ').');
+            return false;
+        }
+        const existente = estoqueUsos.find(function (u) { return u.estoque_id === item.id; });
+        if (existente) {
+            const nova = existente.quantidade + usar;
+            if (nova > disponivel) {
+                alert('Total solicitado (' + nova + ') ultrapassa o estoque (' + disponivel + ').');
+                return false;
+            }
+            existente.quantidade = nova;
+            existente.disponivel = disponivel;
+        } else {
+            estoqueUsos.push({
+                estoque_id: item.id,
+                produto: item.produto,
+                marca: item.marca || '',
+                modelo: item.modelo || '',
+                quantidade: usar,
+                disponivel: disponivel,
+            });
+        }
+        renderEstoqueUsos();
+        return true;
+    }
+    function renderEstoqueGrid(itens) {
+        if (!estBody) return;
+        estBody.innerHTML = '';
+        if (!itens.length) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = '<td colspan="6" class="empty-row">Nenhum produto encontrado.</td>';
+            estBody.appendChild(tr);
+            return;
+        }
+        itens.forEach(function (item) {
+            const tr = document.createElement('tr');
+            const qtdDisp = parseInt(item.quantidade, 10) || 0;
+            const tdProd = document.createElement('td');
+            const strong = document.createElement('strong');
+            strong.textContent = item.produto || '';
+            tdProd.appendChild(strong);
+            const tdMarca = document.createElement('td');
+            tdMarca.textContent = item.marca || '—';
+            const tdModelo = document.createElement('td');
+            tdModelo.textContent = item.modelo || '—';
+            const tdQtd = document.createElement('td');
+            tdQtd.textContent = String(qtdDisp);
+            const tdAq = document.createElement('td');
+            tdAq.textContent = item.data_aquisicao_fmt || '—';
+            const tdAcao = document.createElement('td');
+            tdAcao.className = 'at-est-col-acoes';
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn btn-primary btn-sm at-est-btn-sel';
+            btn.title = qtdDisp < 1 ? 'Sem estoque' : 'Selecionar produto';
+            btn.setAttribute('aria-label', 'Selecionar ' + (item.produto || 'produto'));
+            btn.innerHTML = '<i class="fas fa-arrow-right" aria-hidden="true"></i>';
+            btn.disabled = qtdDisp < 1;
+            btn.addEventListener('click', function () {
+                abrirEstoqueQtd(item);
+            });
+            tdAcao.appendChild(btn);
+            tr.appendChild(tdProd);
+            tr.appendChild(tdMarca);
+            tr.appendChild(tdModelo);
+            tr.appendChild(tdQtd);
+            tr.appendChild(tdAq);
+            tr.appendChild(tdAcao);
+            estBody.appendChild(tr);
+        });
+    }
+    function filtrarEstoqueLocal() {
+        const q = ((estFiltro && estFiltro.value) || '').trim().toLowerCase();
+        if (!q) {
+            renderEstoqueGrid(estoqueItensCache);
+            return;
+        }
+        const filtrados = estoqueItensCache.filter(function (item) {
+            const blob = [
+                item.produto || '',
+                item.marca || '',
+                item.modelo || '',
+            ].join(' ').toLowerCase();
+            return blob.indexOf(q) !== -1;
+        });
+        renderEstoqueGrid(filtrados);
+    }
+    function abrirEstoqueQtd(item) {
+        const disponivel = parseInt(item.quantidade, 10) || 0;
+        if (disponivel < 1) {
+            alert('Produto sem estoque disponível.');
+            return;
+        }
+        estoqueQtdItem = item;
+        if (estQtdNome) {
+            const partes = [item.produto || ''];
+            if (item.marca) partes.push(item.marca);
+            if (item.modelo) partes.push(item.modelo);
+            estQtdNome.textContent = partes.join(' · ');
+        }
+        if (estQtdDisp) estQtdDisp.textContent = 'Disponível: ' + disponivel;
+        if (estQtdInput) {
+            estQtdInput.min = '1';
+            estQtdInput.max = String(disponivel);
+            estQtdInput.value = '1';
+        }
+        if (estQtdOverlay) estQtdOverlay.hidden = false;
+        if (estQtdInput) setTimeout(function () { estQtdInput.focus(); estQtdInput.select(); }, 40);
+    }
+    function fecharEstoqueQtd() {
+        estoqueQtdItem = null;
+        if (estQtdOverlay) estQtdOverlay.hidden = true;
+    }
+    function confirmarEstoqueQtd() {
+        if (!estoqueQtdItem) return;
+        const item = estoqueQtdItem;
+        const qtd = estQtdInput ? estQtdInput.value : '1';
+        if (adicionarEstoqueUso(item, qtd)) {
+            fecharEstoqueQtd();
+        }
+    }
+    function abrirConsultaEstoque() {
+        if (!estOverlay) return;
+        estOverlay.hidden = false;
+        if (estFiltro) estFiltro.value = '';
+        // Mostra lista já embutida na página imediatamente (não começa vazio).
+        if (estoqueItensCache && estoqueItensCache.length) {
+            renderEstoqueGrid(estoqueItensCache);
+        } else if (estBody) {
+            estBody.innerHTML = '<tr><td colspan="6" class="empty-row">Carregando…</td></tr>';
+        }
+        fetch('/api/estoque', {
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            sgSkipLoading: true
+        })
+        .then(function (r) {
+            const ct = (r.headers.get('content-type') || '');
+            if (!r.ok || ct.indexOf('application/json') === -1) {
+                throw new Error('Resposta inválida do estoque (' + r.status + ').');
+            }
+            return r.json();
+        })
+        .then(function (data) {
+            if (!data || !data.ok) {
+                if (estBody && !(estoqueItensCache && estoqueItensCache.length)) {
+                    estBody.innerHTML = '<tr><td colspan="6" class="empty-row">' +
+                        ((data && (data.message || data.error)) || 'Falha ao carregar estoque.') +
+                        '</td></tr>';
+                }
+                return;
+            }
+            estoqueItensCache = Array.isArray(data.itens) ? data.itens : [];
+            filtrarEstoqueLocal();
+        })
+        .catch(function (err) {
+            if (estoqueItensCache && estoqueItensCache.length) {
+                filtrarEstoqueLocal();
+                return;
+            }
+            if (estBody) {
+                estBody.innerHTML = '<tr><td colspan="6" class="empty-row">' +
+                    (err && err.message ? err.message : 'Erro ao carregar estoque.') +
+                    '</td></tr>';
+            }
+        });
+        if (estFiltro) setTimeout(function () { estFiltro.focus(); }, 50);
+    }
+    function fecharConsultaEstoque() {
+        fecharEstoqueQtd();
+        if (estOverlay) estOverlay.hidden = true;
     }
     function limparFotosEnc() {
         fotosEncUrls.forEach(function (u) {
@@ -587,6 +1030,8 @@ body.modal-open { overflow: hidden; }
         const origemBox = document.getElementById('atOrigemBox');
         if (origemBox) origemBox.hidden = true;
         limparFotosEnc();
+        limparEstoqueUsos();
+        fecharConsultaEstoque();
         if (btnEncaminhar) btnEncaminhar.innerHTML = '<i class="fas fa-share"></i> Encaminhar';
         if (btnFinalizar) btnFinalizar.innerHTML = '<i class="fas fa-check-circle"></i> Finalizar chamado';
     }
@@ -732,6 +1177,7 @@ body.modal-open { overflow: hidden; }
         fotosEncPendentes = [];
         fotosEncSalvas = data.fotos_encaminhamento || [];
         renderFotosEnc();
+        limparEstoqueUsos();
         atualizarAcoes();
     }
 
@@ -769,7 +1215,12 @@ body.modal-open { overflow: hidden; }
         if (ev.target === overlay) fecharModal();
     });
     document.addEventListener('keydown', function (ev) {
-        if (ev.key === 'Escape' && !overlay.hidden) fecharModal();
+        if (ev.key !== 'Escape') return;
+        if (estOverlay && !estOverlay.hidden) {
+            fecharConsultaEstoque();
+            return;
+        }
+        if (!overlay.hidden) fecharModal();
     });
 
     document.getElementById('at_aguardar_peca').addEventListener('change', function () {
@@ -780,6 +1231,45 @@ body.modal-open { overflow: hidden; }
         atualizarAcoes();
     });
     document.getElementById('btnVincularFotoEnc').addEventListener('click', vincularFotosEnc);
+
+    const btnConsultarEstoque = document.getElementById('btnConsultarEstoque');
+    if (btnConsultarEstoque) {
+        btnConsultarEstoque.addEventListener('click', abrirConsultaEstoque);
+    }
+    const btnFecharEstConsulta = document.getElementById('btnFecharEstConsulta');
+    const btnFecharEstConsultaX = document.getElementById('btnFecharEstConsultaX');
+    if (btnFecharEstConsulta) btnFecharEstConsulta.addEventListener('click', fecharConsultaEstoque);
+    if (btnFecharEstConsultaX) btnFecharEstConsultaX.addEventListener('click', fecharConsultaEstoque);
+    if (estOverlay) {
+        estOverlay.addEventListener('click', function (ev) {
+            if (ev.target === estOverlay) fecharConsultaEstoque();
+        });
+    }
+    if (estFiltro) {
+        estFiltro.addEventListener('input', filtrarEstoqueLocal);
+    }
+    const btnEstQtdOk = document.getElementById('btnEstQtdOk');
+    const btnEstQtdCancel = document.getElementById('btnEstQtdCancel');
+    const btnFecharEstQtdX = document.getElementById('btnFecharEstQtdX');
+    if (btnEstQtdOk) btnEstQtdOk.addEventListener('click', confirmarEstoqueQtd);
+    if (btnEstQtdCancel) btnEstQtdCancel.addEventListener('click', fecharEstoqueQtd);
+    if (btnFecharEstQtdX) btnFecharEstQtdX.addEventListener('click', fecharEstoqueQtd);
+    if (estQtdOverlay) {
+        estQtdOverlay.addEventListener('click', function (ev) {
+            if (ev.target === estQtdOverlay) fecharEstoqueQtd();
+        });
+    }
+    if (estQtdInput) {
+        estQtdInput.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Enter') {
+                ev.preventDefault();
+                confirmarEstoqueQtd();
+            } else if (ev.key === 'Escape') {
+                ev.preventDefault();
+                fecharEstoqueQtd();
+            }
+        });
+    }
 
     form.addEventListener('submit', function (e) {
         e.preventDefault();
@@ -819,6 +1309,15 @@ body.modal-open { overflow: hidden; }
                 return;
             }
         }
+        if (acao === 'finalizar' && estoqueUsos.length) {
+            for (let i = 0; i < estoqueUsos.length; i++) {
+                const u = estoqueUsos[i];
+                if (u.quantidade > (u.disponivel || 0)) {
+                    alert('Quantidade de "' + u.produto + '" ultrapassa o estoque disponível.');
+                    return;
+                }
+            }
+        }
         acaoInput.value = acao;
         btnGravar.disabled = true;
         btnEncaminhar.disabled = true;
@@ -827,8 +1326,10 @@ body.modal-open { overflow: hidden; }
             document.getElementById('at_status').value = 'Atendido';
             document.getElementById('at_aguardar_peca').checked = false;
         }
+        syncEstoqueHidden();
         const fd = new FormData(form);
         fd.set('acao', acao);
+        fd.set('estoque_usos', document.getElementById('at_estoque_usos').value || '[]');
         if (peca && acao === 'encaminhar') fd.set('setor_destino', 'Compras');
         if (acao === 'finalizar' && !podeDevolver) fd.set('status', 'Atendido');
         fd.delete('fotos_encaminhar');
@@ -863,6 +1364,7 @@ body.modal-open { overflow: hidden; }
         });
     });
 
+    limparEstoqueUsos();
     if (abrirId) carregar(abrirId);
 })();
 </script>

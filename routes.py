@@ -34,6 +34,7 @@ from models import (
     ChamadoCamera,
     ChamadoPortao,
     ChamadoEstoque,
+    ChamadoEstoqueUso,
     ConhecimentoPasta,
     TIPO_FOTO_CONSERTO,
     TIPO_FOTO_ENCAMINHAMENTO,
@@ -81,6 +82,7 @@ from datetime import date, datetime, timedelta
 from collections import Counter
 from pathlib import Path
 from werkzeug.utils import secure_filename
+import json
 import os
 import random
 import secrets
@@ -1603,6 +1605,10 @@ def listar_chamados():
         subtitulo = f'Chamados que você abriu e encaminhamentos para {setor}'
     else:
         subtitulo = 'Chamados que você abriu — todos os status'
+    estoque_itens = [
+        i.to_dict()
+        for i in ChamadoEstoque.query.order_by(ChamadoEstoque.produto.asc()).all()
+    ]
     return render_template(
         'chamados.html',
         chamados=chamados,
@@ -1616,6 +1622,7 @@ def listar_chamados():
         primeiro_nome=_primeiro_nome(user),
         tickets_index=[{'id': c.id, 'numero': c.numero_chamado} for c in chamados],
         mesas=mesas_ativas(),
+        estoque_itens=estoque_itens,
     )
 
 
@@ -2098,8 +2105,19 @@ def atender_chamado(id):
     try:
         _salvar_fotos_chamado(chamado, atendimento, arquivos_conserto, TIPO_FOTO_CONSERTO)
         _salvar_fotos_chamado(chamado, atendimento, arquivos_enc, TIPO_FOTO_ENCAMINHAMENTO)
+        # Debita estoque somente ao Finalizar (não em Gravar/Encaminhar).
+        if acao == 'finalizar':
+            _debitar_estoque_finalizar(
+                chamado,
+                atendimento,
+                user,
+                request.form.get('estoque_usos'),
+            )
         aplicar_automacoes(chamado, 'status', user, status_anterior=status_antes)
         db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'ok': False, 'message': str(exc)}), 400
     except Exception as exc:
         db.session.rollback()
         return jsonify({'ok': False, 'message': f'Erro ao gravar atendimento: {exc}'}), 400
@@ -2118,6 +2136,65 @@ def atender_chamado(id):
         'message': msg,
         'chamado': _chamado_atender_payload(chamado, user),
     })
+
+
+def _parse_estoque_usos(raw):
+    """Normaliza lista [{estoque_id, quantidade}] a partir de JSON do formulário."""
+    if raw is None or raw == '':
+        return []
+    if isinstance(raw, (list, tuple)):
+        data = raw
+    else:
+        try:
+            data = json.loads(raw)
+        except (TypeError, ValueError):
+            raise ValueError('Lista de produtos do estoque inválida.')
+    if not isinstance(data, list):
+        raise ValueError('Lista de produtos do estoque inválida.')
+    agregados = {}
+    for item in data:
+        if not isinstance(item, dict):
+            raise ValueError('Item de estoque inválido.')
+        try:
+            eid = int(item.get('estoque_id') or item.get('id'))
+            qtd = int(item.get('quantidade'))
+        except (TypeError, ValueError):
+            raise ValueError('Produto ou quantidade de estoque inválidos.')
+        if eid <= 0 or qtd <= 0:
+            raise ValueError('Quantidade de estoque deve ser maior que zero.')
+        agregados[eid] = agregados.get(eid, 0) + qtd
+    return [{'estoque_id': eid, 'quantidade': qtd} for eid, qtd in agregados.items()]
+
+
+def _debitar_estoque_finalizar(chamado, atendimento, user, raw_usos):
+    """Persiste usos e debita ChamadoEstoque.quantidade na mesma transação."""
+    usos = _parse_estoque_usos(raw_usos)
+    if not usos:
+        return
+    for uso in usos:
+        item = (
+            ChamadoEstoque.query
+            .filter_by(id=uso['estoque_id'])
+            .with_for_update()
+            .first()
+        )
+        if not item:
+            raise ValueError(f'Produto de estoque #{uso["estoque_id"]} não encontrado.')
+        disponivel = int(item.quantidade or 0)
+        qtd = int(uso['quantidade'])
+        if qtd > disponivel:
+            raise ValueError(
+                f'Estoque insuficiente para "{item.produto}": '
+                f'solicitado {qtd}, disponível {disponivel}.'
+            )
+        item.quantidade = disponivel - qtd
+        db.session.add(ChamadoEstoqueUso(
+            chamado_id=chamado.id,
+            atendimento_id=atendimento.id if atendimento else None,
+            estoque_id=item.id,
+            quantidade=qtd,
+            usuario_id=user.id if user else None,
+        ))
 
 
 def _redir_usuarios_portal():
@@ -2754,7 +2831,79 @@ def estoque():
         flash('Você não tem permissão para acessar Estoque.', 'error')
         return redirect(url_for('main.inicio'))
     itens = ChamadoEstoque.query.order_by(ChamadoEstoque.produto.asc()).all()
-    return render_template('estoque.html', itens=itens)
+
+    setor_filtro = (request.args.get('setor') or '').strip()
+    data_de = (request.args.get('data_de') or '').strip()
+    data_ate = (request.args.get('data_ate') or '').strip()
+
+    saidas_q = (
+        ChamadoEstoqueUso.query
+        .options(
+            joinedload(ChamadoEstoqueUso.estoque),
+            joinedload(ChamadoEstoqueUso.usuario),
+            joinedload(ChamadoEstoqueUso.chamado).joinedload(Chamado.setor_tecnico),
+            joinedload(ChamadoEstoqueUso.chamado).joinedload(Chamado.tecnico),
+        )
+        .order_by(ChamadoEstoqueUso.created_at.desc())
+    )
+    if setor_filtro:
+        saidas_q = (
+            saidas_q
+            .join(ChamadoEstoqueUso.chamado)
+            .outerjoin(Chamado.setor_tecnico)
+            .filter(or_(
+                ChamadoSetor.nome == setor_filtro,
+                Chamado.setor_destino == setor_filtro,
+                Chamado.setor_origem == setor_filtro,
+            ))
+        )
+    if data_de:
+        try:
+            dt_de = datetime.strptime(data_de, '%Y-%m-%d')
+            saidas_q = saidas_q.filter(ChamadoEstoqueUso.created_at >= dt_de)
+        except ValueError:
+            pass
+    if data_ate:
+        try:
+            dt_ate = datetime.strptime(data_ate, '%Y-%m-%d') + timedelta(days=1)
+            saidas_q = saidas_q.filter(ChamadoEstoqueUso.created_at < dt_ate)
+        except ValueError:
+            pass
+
+    saidas = saidas_q.limit(500).all()
+    setores = ChamadoSetor.query.order_by(ChamadoSetor.nome.asc()).all()
+    setores_nomes = listar_setores(TIPO_SETOR_CHAMADOS)
+    # Unifica catálogo ChamadoSetor + setores de encaminhamento
+    nomes_extra = {s.nome for s in setores}
+    for n in setores_nomes:
+        if n not in nomes_extra:
+            nomes_extra.add(n)
+    setores_filtro = sorted(nomes_extra)
+
+    return render_template(
+        'estoque.html',
+        itens=itens,
+        saidas=saidas,
+        setores_filtro=setores_filtro,
+        filtro_setor=setor_filtro,
+        filtro_data_de=data_de,
+        filtro_data_ate=data_ate,
+    )
+
+
+@main.route('/api/estoque')
+@login_required
+def api_estoque():
+    """JSON de produtos do estoque para o popup Consultar estoque no atendimento.
+
+    Sempre devolve a lista completa; o filtro é feito no cliente.
+    """
+    itens = ChamadoEstoque.query.order_by(ChamadoEstoque.produto.asc()).all()
+    return jsonify({
+        'ok': True,
+        'itens': [i.to_dict() for i in itens],
+        'total': len(itens),
+    })
 
 
 @main.route('/estoque/adicionar', methods=['POST'])

@@ -205,6 +205,7 @@ class Chamado(db.Model):
     equipamento_cadastro = db.relationship('Equipamento', foreign_keys=[equipamento_id])
     # Obrigatório no MySQL deste servidor
     tecnico_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
+    tecnico = db.relationship('Usuario', foreign_keys=[tecnico_id], backref='chamados_tecnico')
     atendimento_notas = db.Column(db.Text)
     setor_destino = db.Column(db.String(80))
     setor_origem = db.Column(db.String(80))
@@ -758,6 +759,53 @@ class ChamadoEstoque(db.Model):
             'data_aquisicao': self.data_aquisicao.strftime('%Y-%m-%d') if self.data_aquisicao else '',
             'data_aquisicao_fmt': self.data_aquisicao.strftime('%d/%m/%Y') if self.data_aquisicao else '',
             'created_at': self.created_at.strftime('%d/%m/%Y %H:%M') if self.created_at else '',
+        }
+
+
+class ChamadoEstoqueUso(db.Model):
+    """Produtos de estoque debitados ao finalizar um atendimento."""
+    __tablename__ = 'chamado_estoque_usos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    chamado_id = db.Column(db.Integer, db.ForeignKey('chamados.id'), nullable=False, index=True)
+    atendimento_id = db.Column(db.Integer, db.ForeignKey('chamado_atendimentos.id'), index=True)
+    estoque_id = db.Column(db.Integer, db.ForeignKey('chamado_estoque.id'), nullable=False, index=True)
+    quantidade = db.Column(db.Integer, nullable=False)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    chamado = db.relationship('Chamado', foreign_keys=[chamado_id])
+    atendimento = db.relationship('ChamadoAtendimento', foreign_keys=[atendimento_id])
+    estoque = db.relationship('ChamadoEstoque', foreign_keys=[estoque_id])
+    usuario = db.relationship('Usuario', foreign_keys=[usuario_id])
+
+    def __repr__(self):
+        return f'<ChamadoEstoqueUso chamado={self.chamado_id} estoque={self.estoque_id} qtd={self.quantidade}>'
+
+    def to_saida_dict(self):
+        est = self.estoque
+        ch = self.chamado
+        atendente = self.usuario
+        abridor = ch.tecnico if ch else None
+        setor_nome = ''
+        if ch:
+            if ch.setor_tecnico and ch.setor_tecnico.nome:
+                setor_nome = ch.setor_tecnico.nome
+            else:
+                setor_nome = ch.setor_destino or ch.setor_origem or ''
+        return {
+            'id': self.id,
+            'produto': est.produto if est else '',
+            'marca': (est.marca or '') if est else '',
+            'modelo': (est.modelo or '') if est else '',
+            'quantidade': int(self.quantidade or 0),
+            'data_saida': self.created_at.strftime('%Y-%m-%d') if self.created_at else '',
+            'data_saida_fmt': self.created_at.strftime('%d/%m/%Y %H:%M') if self.created_at else '',
+            'numero_chamado': ch.numero_chamado if ch else '',
+            'chamado_id': self.chamado_id,
+            'usuario_atendimento': atendente.nome if atendente else '',
+            'usuario_abertura': abridor.nome if abridor else '',
+            'setor': setor_nome,
         }
 
 
