@@ -112,6 +112,14 @@
             -webkit-appearance: none;
         }
 
+        a.btn-opcao {
+            text-decoration: none;
+            color: inherit;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
         .btn-opcao:hover { background: #eef4ff; }
 
         .portal-overlay {
@@ -283,49 +291,76 @@
         #modal-setor-funcao { z-index: 95; }
         #modal-setor-funcao .portal-card { width: min(400px, 100%); }
 
-        /* Modal Acessos (lista + Novo/Editar): ~30% menor. Não afeta Configurações / Alterar senha. */
-        #modal-acessos { padding: 0.7rem; }
-        #modal-acessos .portal-card {
+        /* Modal Acessos / Clientes (lista + Novo/Editar): ~30% menor. Não afeta Configurações / Alterar senha. */
+        #modal-acessos,
+        #modal-clientes { padding: 0.7rem; }
+        #modal-acessos .portal-card,
+        #modal-clientes .portal-card {
             padding: 0.98rem 0.98rem 0.84rem;
             border-radius: 13px;
             box-shadow: 0 17px 42px rgba(13, 43, 92, 0.28);
         }
-        #modal-acessos .portal-close {
+        #modal-acessos .portal-close,
+        #modal-clientes .portal-close {
             width: 25px;
             height: 25px;
             margin: -0.14rem -0.14rem 0.28rem 0.42rem;
             font-size: 0.88rem;
         }
-        #modal-acessos .portal-head { gap: 0.7rem; margin: 0 0 0.7rem; }
-        #modal-acessos .portal-head h2 { font-size: 1.19rem; }
-        #modal-acessos .portal-head p { font-size: 0.64rem; margin-top: 3px; }
-        #modal-acessos .portal-btn {
+        #modal-acessos .portal-head,
+        #modal-clientes .portal-head { gap: 0.7rem; margin: 0 0 0.7rem; }
+        #modal-acessos .portal-head h2,
+        #modal-clientes .portal-head h2 { font-size: 1.19rem; }
+        #modal-acessos .portal-head p,
+        #modal-clientes .portal-head p { font-size: 0.64rem; margin-top: 3px; }
+        #modal-acessos .portal-btn,
+        #modal-clientes .portal-btn {
             gap: 0.32rem;
             padding: 0.45rem 0.7rem;
             font-size: 0.63rem;
         }
-        #modal-acessos .portal-btn i { font-size: 0.63rem; }
-        #modal-acessos .portal-alert { margin: 0 0 0.7rem; padding: 8px 10px; border-radius: 7px; font-size: 0.64rem; }
-        #modal-acessos .acessos-table-wrap { border-radius: 10px; }
+        #modal-acessos .portal-btn i,
+        #modal-clientes .portal-btn i { font-size: 0.63rem; }
+        #modal-acessos .portal-alert,
+        #modal-clientes .portal-alert { margin: 0 0 0.7rem; padding: 8px 10px; border-radius: 7px; font-size: 0.64rem; }
+        #modal-acessos .acessos-table-wrap,
+        #modal-clientes .acessos-table-wrap { border-radius: 10px; }
         #modal-acessos .acessos-table th,
-        #modal-acessos .acessos-table td { padding: 8px 10px; font-size: 0.63rem; }
-        #modal-acessos .acessos-table th { font-size: 9px; }
-        #modal-acessos .badge { padding: 3px 7px; font-size: 8px; }
-        #modal-acessos .portal-form .grid { gap: 10px; }
-        #modal-acessos .portal-form label { margin-bottom: 4px; font-size: 0.63rem; }
+        #modal-acessos .acessos-table td,
+        #modal-clientes .acessos-table th,
+        #modal-clientes .acessos-table td { padding: 8px 10px; font-size: 0.63rem; }
+        #modal-acessos .acessos-table th,
+        #modal-clientes .acessos-table th { font-size: 9px; }
+        #modal-acessos .badge,
+        #modal-clientes .badge { padding: 3px 7px; font-size: 8px; }
+        #modal-acessos .portal-form .grid,
+        #modal-clientes .portal-form .grid { gap: 10px; }
+        #modal-acessos .portal-form label,
+        #modal-clientes .portal-form label { margin-bottom: 4px; font-size: 0.63rem; }
         #modal-acessos .portal-form input[type=text],
         #modal-acessos .portal-form input[type=email],
         #modal-acessos .portal-form input[type=password],
         #modal-acessos .portal-form input[type=number],
-        #modal-acessos .portal-form select {
+        #modal-acessos .portal-form input[type=tel],
+        #modal-acessos .portal-form select,
+        #modal-clientes .portal-form input[type=text],
+        #modal-clientes .portal-form input[type=email],
+        #modal-clientes .portal-form input[type=password],
+        #modal-clientes .portal-form input[type=number],
+        #modal-clientes .portal-form input[type=tel],
+        #modal-clientes .portal-form select {
             padding: 8px;
             border-radius: 7px;
             font-size: 11px;
         }
         #modal-acessos .portal-form input:focus,
-        #modal-acessos .portal-form select:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.14); }
-        #modal-acessos .check { gap: 6px; font-size: 0.7rem; font-weight: 600; }
-        #modal-acessos input[type=checkbox] {
+        #modal-acessos .portal-form select:focus,
+        #modal-clientes .portal-form input:focus,
+        #modal-clientes .portal-form select:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.14); }
+        #modal-acessos .check,
+        #modal-clientes .check { gap: 6px; font-size: 0.7rem; font-weight: 600; }
+        #modal-acessos input[type=checkbox],
+        #modal-clientes input[type=checkbox] {
             width: 11px;
             height: 11px;
             accent-color: var(--brand-blue);
@@ -338,7 +373,8 @@
             padding-left: 6px;
             margin-top: 6px;
         }
-        #modal-acessos .portal-actions { gap: 7px; margin-top: 13px; }
+        #modal-acessos .portal-actions,
+        #modal-clientes .portal-actions { gap: 7px; margin-top: 13px; }
         #modal-acessos .perm-title { margin: 8px 0; font-size: 14px; }
         #modal-acessos .btn-setor-plus {
             flex-basis: 28px;
@@ -346,6 +382,7 @@
             border-radius: 7px;
             font-size: 0.95rem;
         }
+        #modal-clientes .portal-card { width: min(1100px, 100%); }
 
         #modal-pendencias { padding: 0.7rem; }
         #modal-pendencias .portal-card { width: min(640px, 100%); padding: 1.12rem 1.12rem 0.96rem; }
@@ -536,6 +573,7 @@
             .brand-logo { width: min(100%, 280px); }
         }
     </style>
+    <link href="{{ url_for('static', filename='css/loading-overlay.css') }}?v=1" rel="stylesheet">
 </head>
 <body>
     <header class="topbar">
@@ -557,6 +595,9 @@
                 {% if usuario and usuario.pode_gerenciar_acessos() %}
                 <button type="button" class="btn-opcao" data-open-modal="modal-acessos">
                     <i class="fas fa-user-shield"></i> Acessos
+                </button>
+                <button type="button" class="btn-opcao" data-open-modal="modal-clientes">
+                    <i class="fas fa-building"></i> Clientes
                 </button>
                 <button type="button" class="btn-opcao" data-open-modal="modal-config">
                     <i class="fas fa-cog"></i> Configurações
@@ -587,6 +628,13 @@
                 <div class="icon-wrap"><i class="fas fa-apple-whole"></i></div>
                 <h2>Sistema Nutrição Hospitalar</h2>
                 <p>Pacientes, dietas, mapa de refeições, estoque e gestão nutricional.</p>
+                {% if usuario and usuario.cliente_todos %}
+                <p style="margin-top:.4rem;font-size:.9rem;font-weight:700;opacity:.9">Todos os clientes</p>
+                {% elif usuario and usuario.cliente %}
+                <p style="margin-top:.4rem;font-size:.9rem;font-weight:700;opacity:.9">{{ usuario.cliente.nome }}</p>
+                {% elif usuario and (usuario.is_master or usuario.tipo == 'admin') %}
+                <p style="margin-top:.4rem;font-size:.9rem;font-weight:700;opacity:.9">Todos os clientes</p>
+                {% endif %}
                 <span class="go">Acessar <i class="fas fa-arrow-right"></i></span>
             </a>
             {% endif %}
@@ -713,6 +761,16 @@
                                 <button type="button" class="btn-setor-plus" data-setor-tipo="nutricao" title="Adicionar função ou setor" aria-label="Adicionar setor de nutrição">+</button>
                             </div>
                         </div>
+                        <div class="form-group" style="grid-column:1/-1">
+                            <label for="acesso-cliente">Cliente</label>
+                            <select id="acesso-cliente" name="cliente_id">
+                                <option value="">— Nenhum —</option>
+                                <option value="todos">Todos os clientes</option>
+                                {% for c in clientes_acesso or [] %}
+                                <option value="{{ c.id }}">{{ c.nome }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
                         <div class="form-group" style="display:flex;align-items:flex-end">
                             <label class="check">
                                 <input type="checkbox" name="ativo" id="acesso-ativo" checked>
@@ -741,6 +799,117 @@
                     <div class="portal-actions">
                         <button type="button" class="portal-btn sec" id="btn-cancelar-acesso">Cancelar</button>
                         <button type="submit" class="portal-btn pri"><i class="fas fa-save"></i> Salvar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="portal-overlay" id="modal-clientes" role="presentation">
+        <div class="portal-card" role="dialog" aria-modal="true" aria-labelledby="clientes-title">
+            <button type="button" class="portal-close" data-close-modal aria-label="Fechar">&times;</button>
+
+            <div id="clientes-lista">
+                <div class="portal-head">
+                    <div>
+                        <h2 id="clientes-title">Cadastro de Clientes</h2>
+                        <p>Gerencie clientes do portal, chamados e nutrição.</p>
+                    </div>
+                    <button type="button" class="portal-btn pri" id="btn-novo-cliente">
+                        <i class="fas fa-plus"></i> Novo Cliente
+                    </button>
+                </div>
+                <div class="portal-alert" id="clientes-lista-msg" hidden></div>
+                <div class="acessos-table-wrap">
+                    <table class="acessos-table">
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th>Endereço</th>
+                                <th>Telefone</th>
+                                <th>E-mail</th>
+                                <th>Responsável</th>
+                                <th>Tel. Responsável</th>
+                                <th>Chamados</th>
+                                <th>Nutrição</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="clientes-tbody">
+                            {% for item in clientes_portal or [] %}
+                            <tr data-id="{{ item.id }}">
+                                <td><strong>{{ item.nome }}</strong></td>
+                                <td>{{ item.endereco or '-' }}</td>
+                                <td>{{ item.telefone or '-' }}</td>
+                                <td>{{ item.email or '-' }}</td>
+                                <td>{{ item.responsavel or '-' }}</td>
+                                <td>{{ item.telefone_responsavel or '-' }}</td>
+                                <td><span class="badge {{ 'on' if item.habilitado_chamados is none or item.habilitado_chamados else 'off' }}">{{ 'Sim' if item.habilitado_chamados is none or item.habilitado_chamados else 'Não' }}</span></td>
+                                <td><span class="badge {{ 'on' if item.habilitado_nutricao else 'off' }}">{{ 'Sim' if item.habilitado_nutricao else 'Não' }}</span></td>
+                                <td><button type="button" class="portal-btn pri" data-editar-cliente="{{ item.id }}">Editar</button></td>
+                            </tr>
+                            {% else %}
+                            <tr class="clientes-empty"><td colspan="9">Nenhum cliente cadastrado.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="portal-actions">
+                    <button type="button" class="portal-btn sec" data-close-modal>Fechar</button>
+                </div>
+            </div>
+
+            <div id="clientes-form-wrap" hidden>
+                <div class="portal-head">
+                    <div>
+                        <h2 id="cliente-form-title">Novo Cliente</h2>
+                        <p>Preencha os dados e as habilitações por sistema.</p>
+                    </div>
+                </div>
+                <div class="portal-alert" id="clientes-form-msg" hidden></div>
+                <form class="portal-form" id="form-cliente" autocomplete="off">
+                    <input type="hidden" name="cliente_id" id="cliente-id" value="">
+                    <div class="grid">
+                        <div class="form-group full">
+                            <label for="cliente-nome">Nome *</label>
+                            <input type="text" id="cliente-nome" name="nome" required>
+                        </div>
+                        <div class="form-group full">
+                            <label for="cliente-endereco">Endereço</label>
+                            <input type="text" id="cliente-endereco" name="endereco">
+                        </div>
+                        <div class="form-group">
+                            <label for="cliente-telefone">Telefone</label>
+                            <input type="tel" id="cliente-telefone" name="telefone">
+                        </div>
+                        <div class="form-group">
+                            <label for="cliente-email">E-mail</label>
+                            <input type="email" id="cliente-email" name="email">
+                        </div>
+                        <div class="form-group">
+                            <label for="cliente-responsavel">Responsável</label>
+                            <input type="text" id="cliente-responsavel" name="responsavel">
+                        </div>
+                        <div class="form-group">
+                            <label for="cliente-tel-resp">Telefone Responsável</label>
+                            <input type="tel" id="cliente-tel-resp" name="telefone_responsavel">
+                        </div>
+                        <div class="form-group">
+                            <label class="check">
+                                <input type="checkbox" name="habilitado_chamados" id="cliente-hab-chamados" checked>
+                                Habilitar para Chamados
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label class="check">
+                                <input type="checkbox" name="habilitado_nutricao" id="cliente-hab-nutricao">
+                                Habilitar para Nutrição
+                            </label>
+                        </div>
+                    </div>
+                    <div class="portal-actions">
+                        <button type="button" class="portal-btn sec" id="btn-cancelar-cliente">Cancelar</button>
+                        <button type="submit" class="portal-btn pri"><i class="fas fa-save"></i> Gravar</button>
                     </div>
                 </form>
             </div>
@@ -921,6 +1090,13 @@
                 if (formWrap) formWrap.hidden = true;
                 showMsg(document.getElementById('acessos-lista-msg'), true, '');
             }
+            if (id === 'modal-clientes') {
+                var clista = document.getElementById('clientes-lista');
+                var cform = document.getElementById('clientes-form-wrap');
+                if (clista) clista.hidden = false;
+                if (cform) cform.hidden = true;
+                showMsg(document.getElementById('clientes-lista-msg'), true, '');
+            }
             if (id === 'modal-config') {
                 showMsg(document.getElementById('config-msg'), true, '');
             }
@@ -1012,10 +1188,13 @@
         });
 
         {% if usuario and usuario.pode_gerenciar_acessos() %}
-        var ACESSOS = {{ acessos_js | tojson }};
+        var ACESSOS = {{ (acessos_js|default([], true)) | tojson }};
+        var CLIENTES = {{ (clientes_js|default([], true)) | tojson }};
         var SISTEMAS_MENUS = {{ sistemas | tojson }};
         var URL_NOVO = {{ url_for('main.novo_acesso') | tojson }};
         var URL_EDITAR_TPL = {{ url_for('main.editar_acesso', id=0) | tojson }};
+        var URL_NOVO_CLIENTE = {{ url_for('main.novo_cliente') | tojson }};
+        var URL_EDITAR_CLIENTE_TPL = {{ url_for('main.editar_cliente', id=0) | tojson }};
         var URL_CONFIG = {{ url_for('main.configuracoes') | tojson }};
         var URL_SETOR = {{ url_for('main.criar_setor_funcao') | tojson }};
         var SETORES = {
@@ -1025,6 +1204,10 @@
 
         function urlEditar(id) {
             return URL_EDITAR_TPL.replace('/0/', '/' + id + '/');
+        }
+
+        function urlEditarCliente(id) {
+            return URL_EDITAR_CLIENTE_TPL.replace('/0/', '/' + id + '/');
         }
 
         function badge(on) {
@@ -1135,6 +1318,8 @@
             document.getElementById('acesso-senha').placeholder = '';
             document.querySelector('label[for="acesso-senha"]').innerHTML = 'Senha *';
             document.getElementById('acesso-master-note').hidden = true;
+            var cli = document.getElementById('acesso-cliente');
+            if (cli) cli.value = '';
             document.querySelectorAll('#form-acesso .sistema-check').forEach(function (check) {
                 check.disabled = false;
                 check.checked = false;
@@ -1157,6 +1342,11 @@
             document.getElementById('acesso-email').value = item.email || '';
             fillSetorSelect('acesso-setor', SETORES.chamados, item.setor || '');
             fillSetorSelect('acesso-setor-nutricao', SETORES.nutricao, item.setor_nutricao || '');
+            var cli = document.getElementById('acesso-cliente');
+            if (cli) {
+                if (item.cliente_todos) cli.value = 'todos';
+                else cli.value = item.cliente_id ? String(item.cliente_id) : '';
+            }
             document.getElementById('acesso-email').readOnly = !!item.is_master;
             document.getElementById('acesso-ativo').checked = !!item.ativo;
             document.getElementById('acesso-ativo').disabled = !!item.is_master;
@@ -1309,6 +1499,126 @@
                 btn.disabled = false;
             }
         });
+
+        function dash(v) { return (v && String(v).trim()) ? escapeHtml(v) : '-'; }
+
+        function clienteRowHtml(item) {
+            return '<tr data-id="' + item.id + '">' +
+                '<td><strong>' + escapeHtml(item.nome) + '</strong></td>' +
+                '<td>' + dash(item.endereco) + '</td>' +
+                '<td>' + dash(item.telefone) + '</td>' +
+                '<td>' + dash(item.email) + '</td>' +
+                '<td>' + dash(item.responsavel) + '</td>' +
+                '<td>' + dash(item.telefone_responsavel) + '</td>' +
+                '<td>' + badge(!!item.habilitado_chamados) + '</td>' +
+                '<td>' + badge(!!item.habilitado_nutricao) + '</td>' +
+                '<td><button type="button" class="portal-btn pri" data-editar-cliente="' + item.id + '">Editar</button></td>' +
+                '</tr>';
+        }
+
+        function syncAcessoClienteSelect(item) {
+            var select = document.getElementById('acesso-cliente');
+            if (!select || !item) return;
+            var opt = select.querySelector('option[value="' + item.id + '"]');
+            if (opt) {
+                opt.textContent = item.nome || '';
+            } else {
+                opt = document.createElement('option');
+                opt.value = String(item.id);
+                opt.textContent = item.nome || '';
+                select.appendChild(opt);
+            }
+        }
+
+        function upsertCliente(item) {
+            var idx = CLIENTES.findIndex(function (c) { return c.id === item.id; });
+            if (idx >= 0) CLIENTES[idx] = item;
+            else CLIENTES.unshift(item);
+            var tbody = document.getElementById('clientes-tbody');
+            var existing = tbody.querySelector('tr[data-id="' + item.id + '"]');
+            var empty = tbody.querySelector('.clientes-empty');
+            if (empty) empty.remove();
+            if (existing) existing.outerHTML = clienteRowHtml(item);
+            else tbody.insertAdjacentHTML('afterbegin', clienteRowHtml(item));
+            syncAcessoClienteSelect(item);
+        }
+
+        function showClienteLista() {
+            document.getElementById('clientes-lista').hidden = false;
+            document.getElementById('clientes-form-wrap').hidden = true;
+        }
+
+        function resetClienteForm() {
+            var form = document.getElementById('form-cliente');
+            form.reset();
+            document.getElementById('cliente-id').value = '';
+            document.getElementById('cliente-hab-chamados').checked = true;
+            document.getElementById('cliente-hab-nutricao').checked = false;
+        }
+
+        function fillClienteForm(item) {
+            resetClienteForm();
+            if (!item) {
+                document.getElementById('cliente-form-title').textContent = 'Novo Cliente';
+                return;
+            }
+            document.getElementById('cliente-form-title').textContent = 'Editar Cliente';
+            document.getElementById('cliente-id').value = item.id;
+            document.getElementById('cliente-nome').value = item.nome || '';
+            document.getElementById('cliente-endereco').value = item.endereco || '';
+            document.getElementById('cliente-telefone').value = item.telefone || '';
+            document.getElementById('cliente-email').value = item.email || '';
+            document.getElementById('cliente-responsavel').value = item.responsavel || '';
+            document.getElementById('cliente-tel-resp').value = item.telefone_responsavel || '';
+            document.getElementById('cliente-hab-chamados').checked = !!item.habilitado_chamados;
+            document.getElementById('cliente-hab-nutricao').checked = !!item.habilitado_nutricao;
+        }
+
+        function showClienteForm(item) {
+            showMsg(document.getElementById('clientes-form-msg'), true, '');
+            fillClienteForm(item || null);
+            document.getElementById('clientes-lista').hidden = true;
+            document.getElementById('clientes-form-wrap').hidden = false;
+        }
+
+        document.getElementById('btn-novo-cliente').addEventListener('click', function () {
+            showClienteForm(null);
+        });
+        document.getElementById('btn-cancelar-cliente').addEventListener('click', function () {
+            showClienteLista();
+        });
+        document.getElementById('clientes-tbody').addEventListener('click', function (ev) {
+            var btn = ev.target.closest('[data-editar-cliente]');
+            if (!btn) return;
+            var id = parseInt(btn.getAttribute('data-editar-cliente'), 10);
+            var item = CLIENTES.find(function (c) { return c.id === id; });
+            showClienteForm(item || { id: id });
+        });
+
+        document.getElementById('form-cliente').addEventListener('submit', async function (ev) {
+            ev.preventDefault();
+            var form = ev.currentTarget;
+            var id = document.getElementById('cliente-id').value;
+            var msg = document.getElementById('clientes-form-msg');
+            var btn = form.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            try {
+                var data = await postForm(id ? urlEditarCliente(id) : URL_NOVO_CLIENTE, form);
+                showMsg(msg, !!data.ok, data.message || (data.ok ? 'Salvo.' : 'Não foi possível salvar.'));
+                if (data.ok && data.cliente) {
+                    upsertCliente(data.cliente);
+                    showClienteLista();
+                    showMsg(document.getElementById('clientes-lista-msg'), true, data.message);
+                } else if (data.ok) {
+                    showClienteLista();
+                    showMsg(document.getElementById('clientes-lista-msg'), true, data.message || 'Salvo com sucesso.');
+                }
+            } catch (err) {
+                showMsg(msg, false, 'Não foi possível salvar. Tente de novo.');
+            } finally {
+                btn.disabled = false;
+            }
+        });
         {% endif %}
 
         var MOSTRAR_PENDENCIAS = {{ 'true' if mostrar_pendencias else 'false' }};
@@ -1317,5 +1627,6 @@
         }
     })();
     </script>
+    <script src="{{ url_for('static', filename='js/loading-overlay.js') }}?v=1"></script>
 </body>
 </html>

@@ -20,6 +20,7 @@ SISTEMAS = {
             ('cameras', 'Cadastro de Câmeras'),
             ('portoes', 'Cadastro de Portões'),
             ('tecnicos', 'Técnicos'),
+            ('estoque', 'Estoque'),
             ('recursos', 'Recursos'),
             ('relatorios', 'Relatórios'),
             ('agenda', 'Agenda'),

@@ -1,0 +1,71 @@
+/* São Geraldo — shared processing overlay */
+#sg-app-loading {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(13, 43, 92, 0.45);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.15s ease, visibility 0.15s ease;
+}
+
+#sg-app-loading.is-visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.sg-app-loading-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.9rem;
+    min-width: min(280px, 100%);
+    max-width: 360px;
+    padding: 1.35rem 1.5rem;
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 18px 48px rgba(13, 43, 92, 0.28);
+    text-align: center;
+}
+
+.sg-app-loading-spinner {
+    width: 2.4rem;
+    height: 2.4rem;
+    border: 3px solid rgba(27, 79, 156, 0.18);
+    border-top-color: #1B4F9C;
+    border-radius: 50%;
+    animation: sg-app-spin 0.7s linear infinite;
+}
+
+.sg-app-loading-text {
+    margin: 0;
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-size: 0.98rem;
+    font-weight: 700;
+    color: #0D2B5C;
+    letter-spacing: 0.01em;
+}
+
+.sg-app-loading-sub {
+    margin: -0.35rem 0 0;
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: #5a6b85;
+}
+
+@keyframes sg-app-spin {
+    to { transform: rotate(360deg); }
+}
+
+@media print {
+    #sg-app-loading {
+        display: none !important;
+    }
+}

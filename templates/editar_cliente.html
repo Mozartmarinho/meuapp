@@ -43,6 +43,19 @@
                 <input type="tel" id="telefone_responsavel" name="telefone_responsavel" value="{{ cliente.telefone_responsavel }}">
             </div>
 
+            <div class="form-group">
+                <label class="check" style="display:flex;align-items:center;gap:8px;font-weight:600">
+                    <input type="checkbox" name="habilitado_chamados" {% if cliente.habilitado_chamados is none or cliente.habilitado_chamados %}checked{% endif %}>
+                    Habilitar para Chamados
+                </label>
+            </div>
+            <div class="form-group">
+                <label class="check" style="display:flex;align-items:center;gap:8px;font-weight:600">
+                    <input type="checkbox" name="habilitado_nutricao" {% if cliente.habilitado_nutricao %}checked{% endif %}>
+                    Habilitar para Nutrição
+                </label>
+            </div>
+
             <div class="form-actions">
                 <a href="{{ url_for('main.listar_clientes') }}" class="btn btn-secondary">
                     <i class="fas fa-times"></i> Fechar

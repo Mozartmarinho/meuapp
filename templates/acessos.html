@@ -34,6 +34,7 @@
         .alert-success { background:#d1fae5; color:#065f46; }
         .alert-error { background:#fee2e2; color:#991b1b; }
     </style>
+    <link href="{{ url_for('static', filename='css/loading-overlay.css') }}?v=1" rel="stylesheet">
 </head>
 <body>
     <header class="topbar">
@@ -91,5 +92,6 @@
             </table>
         </div>
     </main>
+    <script src="{{ url_for('static', filename='js/loading-overlay.js') }}?v=1"></script>
 </body>
 </html>

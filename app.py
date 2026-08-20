@@ -156,6 +156,16 @@ def ensure_usuarios_schema():
             db.session.execute(text('ALTER TABLE usuarios ADD COLUMN telefone VARCHAR(20) NULL'))
             db.session.commit()
             cols.add('telefone')
+        if 'cliente_id' not in cols:
+            db.session.execute(text('ALTER TABLE usuarios ADD COLUMN cliente_id INT NULL'))
+            db.session.commit()
+            cols.add('cliente_id')
+        if 'cliente_todos' not in cols:
+            db.session.execute(text(
+                'ALTER TABLE usuarios ADD COLUMN cliente_todos TINYINT(1) NOT NULL DEFAULT 0'
+            ))
+            db.session.commit()
+            cols.add('cliente_todos')
         try:
             db.session.execute(text('ALTER TABLE usuarios MODIFY COLUMN setor VARCHAR(80) NULL'))
             db.session.commit()
@@ -165,6 +175,22 @@ def ensure_usuarios_schema():
         try:
             db.session.execute(text('CREATE UNIQUE INDEX uq_usuarios_usuario ON usuarios (usuario)'))
             db.session.commit()
+        except Exception:
+            db.session.rollback()
+        try:
+            fks = insp.get_foreign_keys('usuarios')
+            has_fk = any(
+                'cliente_id' in (fk.get('constrained_columns') or [])
+                and fk.get('referred_table') == 'clientes'
+                for fk in fks
+            )
+            if not has_fk and 'cliente_id' in cols and 'clientes' in set(insp.get_table_names()):
+                db.session.execute(text(
+                    'ALTER TABLE usuarios '
+                    'ADD CONSTRAINT fk_usuarios_cliente '
+                    'FOREIGN KEY (cliente_id) REFERENCES clientes(id)'
+                ))
+                db.session.commit()
         except Exception:
             db.session.rollback()
     except Exception:
@@ -360,6 +386,10 @@ def ensure_clientes_schema():
             alters.append('ADD COLUMN data_criacao DATETIME NULL')
         if 'email' not in cols:
             alters.append('ADD COLUMN email VARCHAR(120) NULL')
+        if 'habilitado_chamados' not in cols:
+            alters.append('ADD COLUMN habilitado_chamados TINYINT(1) NOT NULL DEFAULT 1')
+        if 'habilitado_nutricao' not in cols:
+            alters.append('ADD COLUMN habilitado_nutricao TINYINT(1) NOT NULL DEFAULT 0')
         for clause in alters:
             db.session.execute(text(f'ALTER TABLE clientes {clause}'))
             db.session.commit()
@@ -433,6 +463,22 @@ def ensure_tecnicos_schema():
             ChamadoSetor.__table__.create(db.engine, checkfirst=True)
         if 'chamado_tecnicos' not in tables:
             ChamadoTecnico.__table__.create(db.engine, checkfirst=True)
+        else:
+            tec_cols = {c['name'] for c in insp.get_columns('chamado_tecnicos')}
+            if 'usuario_id' not in tec_cols:
+                db.session.execute(text('ALTER TABLE chamado_tecnicos ADD COLUMN usuario_id INT NULL'))
+                db.session.commit()
+                try:
+                    db.session.execute(text(
+                        'ALTER TABLE chamado_tecnicos ADD CONSTRAINT fk_chamado_tecnicos_usuario '
+                        'FOREIGN KEY (usuario_id) REFERENCES usuarios(id)'
+                    ))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+            if 'funcao' not in tec_cols:
+                db.session.execute(text('ALTER TABLE chamado_tecnicos ADD COLUMN funcao VARCHAR(20) NULL'))
+                db.session.commit()
         # Add setor_tecnico_id to chamados if missing
         if 'chamados' in tables:
             cols = {c['name'] for c in insp.get_columns('chamados')}
@@ -482,6 +528,19 @@ def ensure_portoes_schema():
             ChamadoSetor.__table__.create(db.engine, checkfirst=True)
         if 'chamado_portoes' not in tables:
             ChamadoPortao.__table__.create(db.engine, checkfirst=True)
+    except Exception:
+        db.session.rollback()
+
+
+def ensure_estoque_schema():
+    """Garante tabela chamado_estoque (produtos / itens de estoque)."""
+    from sqlalchemy import inspect
+    from models import ChamadoEstoque
+    try:
+        insp = inspect(db.engine)
+        tables = set(insp.get_table_names())
+        if 'chamado_estoque' not in tables:
+            ChamadoEstoque.__table__.create(db.engine, checkfirst=True)
     except Exception:
         db.session.rollback()
 
@@ -609,6 +668,9 @@ if __name__ == '__main__':
         ensure_tecnicos_schema()
         ensure_cameras_schema()
         ensure_portoes_schema()
+        ensure_estoque_schema()
+        from nutricao_tenant import ensure_nutricao_cliente_schema
+        ensure_nutricao_cliente_schema()
         from nutricao_service import seed_nutricao
         from routes_pesagem import seed_pesagem
         from routes_acesso import seed_acesso

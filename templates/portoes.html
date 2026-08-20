@@ -203,6 +203,10 @@
     </div>
 </div>
 
+<div id="thumbLightbox" class="thumb-lightbox" hidden aria-hidden="true">
+    <img id="thumbLightboxImg" class="thumb-lightbox-img" alt="Foto ampliada">
+</div>
+
 <style>
 .chamados-page { padding: 4px 0; }
 .chamados-page .header {
@@ -242,8 +246,32 @@
     border-radius: 0.25rem;
     border: 1px solid #ddd;
     vertical-align: middle;
+    cursor: zoom-in;
 }
 .cam-no-img { color: var(--gray-500); }
+.thumb-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.72);
+    cursor: zoom-out;
+}
+.thumb-lightbox[hidden] { display: none !important; }
+.thumb-lightbox-img {
+    max-width: 80vw;
+    max-height: 80vh;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border-radius: 0.35rem;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+    background: #111;
+    cursor: default;
+}
 .cam-preview-wrap { margin-top: 0.45rem; }
 .cam-preview {
     max-width: 100%;
@@ -369,6 +397,7 @@ body.modal-open { overflow: hidden; }
     .modal-overlay,
     .tec-overlay,
     .tec-modal,
+    .thumb-lightbox,
     .no-print { display: none !important; }
     .eq-print-header {
         display: block !important;
@@ -496,6 +525,48 @@ function toggleSetor(sid) {
     const selectSetor = document.getElementById('filtroSetor');
     const selectLocal = document.getElementById('filtroLocal');
     const printTitle = document.getElementById('portPrintTitle');
+    const thumbLb = document.getElementById('thumbLightbox');
+    const thumbLbImg = document.getElementById('thumbLightboxImg');
+
+    function abrirThumbLightbox(src) {
+        if (!src || !thumbLb || !thumbLbImg) return;
+        thumbLbImg.src = src;
+        thumbLb.hidden = false;
+        thumbLb.setAttribute('aria-hidden', 'false');
+    }
+    function fecharThumbLightbox() {
+        if (!thumbLb || !thumbLbImg) return;
+        thumbLb.hidden = true;
+        thumbLb.setAttribute('aria-hidden', 'true');
+        thumbLbImg.removeAttribute('src');
+    }
+
+    tbody.addEventListener('mouseover', function (e) {
+        const thumb = e.target.closest('.cam-thumb');
+        if (!thumb || !tbody.contains(thumb)) return;
+        abrirThumbLightbox(thumb.currentSrc || thumb.src);
+    });
+    tbody.addEventListener('click', function (e) {
+        const thumb = e.target.closest('.cam-thumb');
+        if (!thumb || !tbody.contains(thumb)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        abrirThumbLightbox(thumb.currentSrc || thumb.src);
+    }, true);
+    if (thumbLbImg) {
+        thumbLbImg.addEventListener('mouseleave', fecharThumbLightbox);
+    }
+    if (thumbLb) {
+        thumbLb.addEventListener('click', function (e) {
+            if (e.target === thumbLb) fecharThumbLightbox();
+        });
+    }
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && thumbLb && !thumbLb.hidden) {
+            e.preventDefault();
+            fecharThumbLightbox();
+        }
+    });
 
     document.getElementById('btnAdicionarSetorPort').addEventListener('click', abrirModalSetores);
     document.getElementById('btnNovoSetorPort').addEventListener('click', abrirModalSetor);

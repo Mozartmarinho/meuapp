@@ -393,7 +393,7 @@ async function refreshDash(){
   const params = new URLSearchParams({ range: RANGE, status: STATUS || '', q: document.getElementById('eventSearch')?.value || '' });
   if (DATE) params.set('date', DATE);
   try {
-    const r = await fetch(`/acesso/api/dashboard?${params}`);
+    const r = await fetch(`/acesso/api/dashboard?${params}`, { sgSkipLoading: true });
     const data = await r.json();
     if (!data.ok) return;
     document.getElementById('kpiTotal').textContent = fmt(data.stats.total);

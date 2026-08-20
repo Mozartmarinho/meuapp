@@ -150,6 +150,21 @@ h1, h2, h3, h4, .brand-title {
     opacity: 0.8;
 }
 
+.sidebar-logo .module-cliente {
+    margin-top: 0.35rem;
+    padding: 0.35rem 0.45rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: 0.02em;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 0.35rem;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .sidebar-menu {
     list-style: none;
 }

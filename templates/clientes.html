@@ -22,6 +22,8 @@
                     <th>E-mail</th>
                     <th>Responsável</th>
                     <th>Telefone Responsável</th>
+                    <th>Chamados</th>
+                    <th>Nutrição</th>
                     <th>Ações</th>
                 </tr>
             </thead>
@@ -34,6 +36,8 @@
                     <td>{{ cliente.email or '-' }}</td>
                     <td>{{ cliente.responsavel or '-' }}</td>
                     <td>{{ cliente.telefone_responsavel or '-' }}</td>
+                    <td>{{ 'Sim' if cliente.habilitado_chamados is none or cliente.habilitado_chamados else 'Não' }}</td>
+                    <td>{{ 'Sim' if cliente.habilitado_nutricao else 'Não' }}</td>
                     <td>
                         <a href="{{ url_for('main.editar_cliente', id=cliente.id) }}" class="btn btn-primary btn-sm">
                             <i class="fas fa-edit"></i> Editar

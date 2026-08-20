@@ -13,9 +13,13 @@ nut_clinica_enfermarias = db.Table(
 class NutClinica(db.Model):
     """Clínica (unidade/setor) usada no mapa e nos cadastros."""
     __tablename__ = 'nut_clinicas'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'nome', name='uq_nut_clinicas_cliente_nome'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    nome = db.Column(db.String(160), nullable=False, unique=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    nome = db.Column(db.String(160), nullable=False)
     centro_custo = db.Column(db.String(50))
     ativo = db.Column(db.Boolean, default=True)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
@@ -43,9 +47,13 @@ class NutClinica(db.Model):
 class NutEnfermaria(db.Model):
     """Enfermaria/unidade física vinculável a uma ou mais clínicas."""
     __tablename__ = 'nut_enfermarias'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'nome', name='uq_nut_enfermarias_cliente_nome'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    nome = db.Column(db.String(200), nullable=False, unique=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    nome = db.Column(db.String(200), nullable=False)
     nutriz = db.Column(db.Boolean, default=False)
     ativo = db.Column(db.Boolean, default=True)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
@@ -104,9 +112,13 @@ class NutLeito(db.Model):
 
 class NutDieta(db.Model):
     __tablename__ = 'nut_dietas'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'nome', name='uq_nut_dietas_cliente_nome'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    nome = db.Column(db.String(200), nullable=False, unique=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    nome = db.Column(db.String(200), nullable=False)
     # basica | enteral | formula | lve | suplemento | outro
     categoria = db.Column(db.String(40), default='basica')
     # Agrupamento visual (ex.: DIETAS ORAIS, NUTRICAO ENTERAL) — nome de NutGrupoDieta
@@ -127,9 +139,13 @@ class NutDieta(db.Model):
 class NutGrupoDieta(db.Model):
     """Grupo visual de dietas (ex.: DIETAS ORAIS, LACTÁRIO)."""
     __tablename__ = 'nut_grupos_dieta'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'nome', name='uq_nut_grupos_dieta_cliente_nome'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    nome = db.Column(db.String(80), nullable=False, unique=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    nome = db.Column(db.String(80), nullable=False)
     ordem = db.Column(db.Integer, default=0)
     ativo = db.Column(db.Boolean, default=True)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
@@ -147,6 +163,7 @@ class NutPaciente(db.Model):
     __tablename__ = 'nut_pacientes'
 
     id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
     nome = db.Column(db.String(150), nullable=False)
     sexo = db.Column(db.String(1))
     nascimento = db.Column(db.Date)
@@ -209,6 +226,7 @@ class NutMapaRefeicao(db.Model):
     __tablename__ = 'nut_mapa_refeicoes'
 
     id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
     data_refeicao = db.Column(db.Date, nullable=False, index=True)
     paciente_id = db.Column(db.Integer, db.ForeignKey('nut_pacientes.id'), nullable=True)
     paciente = db.relationship('NutPaciente', backref='mapas')
@@ -321,6 +339,7 @@ class NutCardapio(db.Model):
     __tablename__ = 'nut_cardapios'
 
     id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
     # grandes | pequenas | liquidas
     tipo = db.Column(db.String(20), nullable=False, index=True)
     grupo_cardapio = db.Column(db.String(80), default='PRINCIPAL')
@@ -394,9 +413,13 @@ class NutCardapio(db.Model):
 class NutTabelaNutrientes(db.Model):
     """Tabela de nutrientes (ex.: Tabela Padrão / TACO)."""
     __tablename__ = 'nut_tabelas_nutrientes'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'nome', name='uq_nut_tabelas_nutrientes_cliente_nome'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    nome = db.Column(db.String(160), nullable=False, unique=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    nome = db.Column(db.String(160), nullable=False)
     ativo = db.Column(db.Boolean, default=True)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     alimentos = db.relationship(
@@ -506,9 +529,13 @@ class NutAlimentoNutriente(db.Model):
 class NutPratoLiquido(db.Model):
     """Prato do cadastro de dietas líquidas."""
     __tablename__ = 'nut_pratos_liquidos'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'nome', name='uq_nut_pratos_liquidos_cliente_nome'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    nome = db.Column(db.String(200), nullable=False, unique=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    nome = db.Column(db.String(200), nullable=False)
 
     grupo_principal = db.Column(db.Boolean, default=False)
     grupo_sobremesa = db.Column(db.Boolean, default=False)
@@ -540,9 +567,13 @@ class NutPratoLiquido(db.Model):
 class NutEstoqueLocal(db.Model):
     """Local de estoque (ex.: MATRIZ)."""
     __tablename__ = 'nut_estoques'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'nome', name='uq_nut_estoques_cliente_nome'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    nome = db.Column(db.String(80), nullable=False, unique=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    nome = db.Column(db.String(80), nullable=False)
     ativo = db.Column(db.Boolean, default=True)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -553,9 +584,13 @@ class NutEstoqueLocal(db.Model):
 class NutUnidadeMedida(db.Model):
     """Unidade de medida do cadastro de produtos."""
     __tablename__ = 'nut_unidades'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'codigo', name='uq_nut_unidades_cliente_codigo'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    codigo = db.Column(db.String(20), nullable=False, unique=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    codigo = db.Column(db.String(20), nullable=False)
     descricao = db.Column(db.String(120))
     unid_conversao = db.Column(db.String(20))
     valor_conversao = db.Column(db.Float, default=0)
@@ -584,9 +619,13 @@ class NutUnidadeMedida(db.Model):
 class NutGrupoProduto(db.Model):
     """Grupo de produtos (ex.: BEBIDAS)."""
     __tablename__ = 'nut_grupos_produto'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'nome', name='uq_nut_grupos_produto_cliente_nome'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    nome = db.Column(db.String(120), nullable=False, unique=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    nome = db.Column(db.String(120), nullable=False)
     ativo = db.Column(db.Boolean, default=True)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     produtos = db.relationship('NutProduto', back_populates='grupo', lazy='dynamic')
@@ -605,6 +644,7 @@ class NutProduto(db.Model):
     __tablename__ = 'nut_produtos'
 
     id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
     estoque_id = db.Column(db.Integer, db.ForeignKey('nut_estoques.id'), nullable=False, index=True)
     estoque = db.relationship('NutEstoqueLocal')
     grupo_id = db.Column(db.Integer, db.ForeignKey('nut_grupos_produto.id'), nullable=False, index=True)
@@ -654,8 +694,12 @@ class NutProduto(db.Model):
 class NutFornecedor(db.Model):
     """Cadastro de fornecedores."""
     __tablename__ = 'nut_fornecedores'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'nome', name='uq_nut_fornecedores_cliente_nome'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
     nome = db.Column(db.String(200), nullable=False)
     endereco = db.Column(db.String(255))
     bairro = db.Column(db.String(120))
@@ -698,9 +742,13 @@ class NutFornecedor(db.Model):
 class NutEtiqueta(db.Model):
     """Configuração de etiqueta (folha)."""
     __tablename__ = 'nut_etiquetas'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'nome', name='uq_nut_etiquetas_cliente_nome'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    nome = db.Column(db.String(160), nullable=False, unique=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    nome = db.Column(db.String(160), nullable=False)
     ativa = db.Column(db.Boolean, default=True)
 
     # carta | a4 | outros
@@ -778,9 +826,13 @@ class NutEtiquetaCampo(db.Model):
 class NutPrecoRefeicao(db.Model):
     """Legado: catálogo plano dieta/item (não é o modelo principal de preços)."""
     __tablename__ = 'nut_precos_refeicoes'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'refeicao', name='uq_nut_precos_refeicoes_cliente_refeicao'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    refeicao = db.Column(db.String(160), nullable=False, unique=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    refeicao = db.Column(db.String(160), nullable=False)
     grupo = db.Column(db.String(80), default='')
     valor = db.Column(db.Float, default=0)  # espelho de valor_empresa (compat)
     valor_empresa = db.Column(db.Float, default=0)
@@ -812,10 +864,15 @@ class NutPrecoRefeicao(db.Model):
 class NutTipoRefeicao(db.Model):
     """Tipo de refeição do dia (Desjejum, Colação, Almoço, …)."""
     __tablename__ = 'nut_tipos_refeicao'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'nome', name='uq_nut_tipos_refeicao_cliente_nome'),
+        db.UniqueConstraint('cliente_id', 'sigla', name='uq_nut_tipos_refeicao_cliente_sigla'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    nome = db.Column(db.String(80), nullable=False, unique=True)
-    sigla = db.Column(db.String(10), nullable=False, unique=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    nome = db.Column(db.String(80), nullable=False)
+    sigla = db.Column(db.String(10), nullable=False)
     ordem = db.Column(db.Integer, default=0)
     hora_limite = db.Column(db.String(5), default='')  # HH:MM
     ativo = db.Column(db.Boolean, default=True)

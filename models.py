@@ -157,6 +157,9 @@ class Cliente(db.Model):
     responsavel = db.Column(db.String(100))
     telefone_responsavel = db.Column(db.String(20))
     ativo = db.Column(db.Boolean, default=True)
+    # Flags de habilitação por sistema (cadastro unificado portal/chamados/nutrição)
+    habilitado_chamados = db.Column(db.Boolean, default=True)
+    habilitado_nutricao = db.Column(db.Boolean, default=False)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __repr__(self):
@@ -171,6 +174,9 @@ class Cliente(db.Model):
             'email': self.email,
             'responsavel': self.responsavel,
             'telefone_responsavel': self.telefone_responsavel,
+            'habilitado_chamados': bool(self.habilitado_chamados),
+            'habilitado_nutricao': bool(self.habilitado_nutricao),
+            'ativo': bool(self.ativo),
             'data_criacao': self.data_criacao.strftime('%d/%m/%Y %H:%M') if self.data_criacao else None
         }
 
@@ -271,6 +277,11 @@ class Usuario(db.Model):
     setor = db.Column(db.String(80))
     setor_nutricao = db.Column(db.String(80))
     telefone = db.Column(db.String(20))
+    # Cliente do cadastro unificado (escopo Nutrição / vínculo operacional)
+    # cliente_todos=True → vê todos os clientes; cliente_id=X → um cliente; ambos vazios → sem vínculo
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    cliente_todos = db.Column(db.Boolean, default=False)
+    cliente = db.relationship('Cliente', foreign_keys=[cliente_id], backref='usuarios')
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     menus = db.relationship('PermissaoMenu', backref='usuario', cascade='all, delete-orphan', lazy='dynamic')
 
@@ -330,6 +341,16 @@ class ChamadoSetor(db.Model):
         return f'<ChamadoSetor {self.nome}>'
 
 
+FUNCOES_TECNICO = (
+    ('assistente', 'Assistente'),
+    ('tecnico', 'Técnico'),
+    ('supervisor', 'Supervisor'),
+    ('gestor', 'Gestor'),
+)
+FUNCOES_TECNICO_KEYS = {k for k, _ in FUNCOES_TECNICO}
+FUNCOES_TECNICO_LABEL = dict(FUNCOES_TECNICO)
+
+
 class ChamadoTecnico(db.Model):
     """Técnicos vinculados a setores."""
     __tablename__ = 'chamado_tecnicos'
@@ -337,12 +358,17 @@ class ChamadoTecnico(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(120))
+    funcao = db.Column(db.String(20), nullable=True)
     setor_id = db.Column(db.Integer, db.ForeignKey('chamado_setores.id'), nullable=True)
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
     ativo = db.Column(db.Boolean, default=True, nullable=False)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
 
     usuario = db.relationship('Usuario', foreign_keys=[usuario_id])
+
+    @property
+    def funcao_label(self):
+        return FUNCOES_TECNICO_LABEL.get(self.funcao or '', self.funcao or '')
 
     def __repr__(self):
         return f'<ChamadoTecnico {self.nome}>'
@@ -702,6 +728,35 @@ class ChamadoPortao(db.Model):
             'foto_path': self.foto_path or '',
             'foto_url': f'/static/{self.foto_path}' if self.foto_path else '',
             'observacoes': self.observacoes or '',
+            'created_at': self.created_at.strftime('%d/%m/%Y %H:%M') if self.created_at else '',
+        }
+
+
+class ChamadoEstoque(db.Model):
+    """Itens de estoque (produtos) do sistema de chamados."""
+    __tablename__ = 'chamado_estoque'
+
+    id = db.Column(db.Integer, primary_key=True)
+    produto = db.Column(db.String(150), nullable=False)
+    marca = db.Column(db.String(100))
+    modelo = db.Column(db.String(100))
+    quantidade = db.Column(db.Integer, default=0, nullable=False)
+    data_aquisicao = db.Column(db.Date)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<ChamadoEstoque {self.produto}>'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'produto': self.produto,
+            'marca': self.marca or '',
+            'modelo': self.modelo or '',
+            'quantidade': int(self.quantidade or 0),
+            'data_aquisicao': self.data_aquisicao.strftime('%Y-%m-%d') if self.data_aquisicao else '',
+            'data_aquisicao_fmt': self.data_aquisicao.strftime('%d/%m/%Y') if self.data_aquisicao else '',
             'created_at': self.created_at.strftime('%d/%m/%Y %H:%M') if self.created_at else '',
         }
 

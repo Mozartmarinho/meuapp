@@ -31,6 +31,17 @@ from nutricao_seed_produtos import (
 )
 from nutricao_seed_fornecedores import FORNECEDORES_SEED, ESTADOS_BR
 from nutricao_seed_etiquetas import ETIQUETAS_SEED
+from nutricao_tenant import (
+    apply_cliente_filter,
+    ensure_cliente_hfb,
+    current_cliente_id,
+    write_cliente_id,
+)
+
+
+def _q(model, cliente_id=None):
+    """Query scoped to current nutrition client when applicable."""
+    return apply_cliente_filter(model.query, model, cliente_id=cliente_id)
 
 
 # Cadastro de Clínicas (legado "Grupo") — nome, ativo
@@ -139,7 +150,7 @@ def _parse_date(value):
 
 
 def list_dietas(somente_ativas=False):
-    q = NutDieta.query
+    q = _q(NutDieta)
     if somente_ativas:
         q = q.filter_by(ativo=True)
     return [
@@ -149,7 +160,7 @@ def list_dietas(somente_ativas=False):
 
 
 def list_grupos_dieta(somente_ativos=False):
-    q = NutGrupoDieta.query
+    q = _q(NutGrupoDieta)
     if somente_ativos:
         q = q.filter_by(ativo=True)
     return [
@@ -204,14 +215,14 @@ def _seed_grupos_dieta():
 
 
 def list_tipos_refeicao(somente_ativos=False):
-    q = NutTipoRefeicao.query
+    q = _q(NutTipoRefeicao)
     if somente_ativos:
         q = q.filter_by(ativo=True)
     return [t.to_dict() for t in q.order_by(NutTipoRefeicao.ordem, NutTipoRefeicao.id).all()]
 
 
 def list_clinicas(somente_ativas=False):
-    q = NutClinica.query
+    q = _q(NutClinica)
     if somente_ativas:
         q = q.filter_by(ativo=True)
     return [c.to_dict() for c in q.order_by(NutClinica.nome).all()]
@@ -219,15 +230,19 @@ def list_clinicas(somente_ativas=False):
 
 def list_enfermarias(somente_ativas=False):
     from sqlalchemy import func
-    q = NutEnfermaria.query
+    q = _q(NutEnfermaria)
     if somente_ativas:
         q = q.filter_by(ativo=True)
     rows = q.order_by(NutEnfermaria.nome).all()
-    counts = dict(
-        db.session.query(NutLeito.enfermaria_id, func.count(NutLeito.id))
-        .group_by(NutLeito.enfermaria_id)
-        .all()
-    )
+    enf_ids = [e.id for e in rows]
+    counts = {}
+    if enf_ids:
+        counts = dict(
+            db.session.query(NutLeito.enfermaria_id, func.count(NutLeito.id))
+            .filter(NutLeito.enfermaria_id.in_(enf_ids))
+            .group_by(NutLeito.enfermaria_id)
+            .all()
+        )
     return [e.to_dict(num_leitos=counts.get(e.id, 0)) for e in rows]
 
 
@@ -235,6 +250,14 @@ def list_leitos(enfermaria_id=None, somente_ativos=False):
     q = NutLeito.query
     if enfermaria_id:
         q = q.filter_by(enfermaria_id=enfermaria_id)
+    else:
+        # Scope via enfermarias do cliente atual
+        cid = current_cliente_id()
+        if cid is not None:
+            enf_ids = [e.id for e in _q(NutEnfermaria).with_entities(NutEnfermaria.id).all()]
+            if not enf_ids:
+                return []
+            q = q.filter(NutLeito.enfermaria_id.in_(enf_ids))
     if somente_ativos:
         q = q.filter_by(ativo=True)
     return [l.to_dict() for l in q.order_by(NutLeito.numero, NutLeito.nome).all()]
@@ -463,7 +486,7 @@ def _seed_enfermarias():
 
 
 def list_cardapios(tipo=None, dieta_id=None):
-    q = NutCardapio.query.filter_by(ativo=True)
+    q = _q(NutCardapio).filter_by(ativo=True)
     if tipo:
         q = q.filter_by(tipo=tipo)
     if dieta_id:
@@ -794,7 +817,7 @@ def _seed_cardapios():
 
 
 def list_tabelas_nutrientes(somente_ativas=True):
-    q = NutTabelaNutrientes.query
+    q = _q(NutTabelaNutrientes)
     if somente_ativas:
         q = q.filter_by(ativo=True)
     return [t.to_dict() for t in q.order_by(NutTabelaNutrientes.nome).all()]
@@ -862,7 +885,7 @@ def _seed_nutricional():
 
 
 def list_pratos_liquidos(somente_ativos=True):
-    q = NutPratoLiquido.query
+    q = _q(NutPratoLiquido)
     if somente_ativos:
         q = q.filter_by(ativo=True)
     return [p.to_dict() for p in q.order_by(NutPratoLiquido.nome, NutPratoLiquido.id).all()]
@@ -888,28 +911,28 @@ def _seed_pratos_liquidos():
 
 
 def list_estoques(somente_ativos=True):
-    q = NutEstoqueLocal.query
+    q = _q(NutEstoqueLocal)
     if somente_ativos:
         q = q.filter_by(ativo=True)
     return [e.to_dict() for e in q.order_by(NutEstoqueLocal.nome).all()]
 
 
 def list_unidades(somente_ativas=True):
-    q = NutUnidadeMedida.query
+    q = _q(NutUnidadeMedida)
     if somente_ativas:
         q = q.filter_by(ativo=True)
     return [u.to_dict() for u in q.order_by(NutUnidadeMedida.codigo).all()]
 
 
 def list_grupos_produto(somente_ativos=True):
-    q = NutGrupoProduto.query
+    q = _q(NutGrupoProduto)
     if somente_ativos:
         q = q.filter_by(ativo=True)
     return [g.to_dict() for g in q.order_by(NutGrupoProduto.nome).all()]
 
 
 def list_produtos(estoque_id=None, grupo_id=None, somente_ativos=True):
-    q = NutProduto.query.outerjoin(NutGrupoProduto)
+    q = _q(NutProduto).outerjoin(NutGrupoProduto)
     if estoque_id:
         q = q.filter(NutProduto.estoque_id == estoque_id)
     if grupo_id:
@@ -989,7 +1012,7 @@ def _seed_produtos():
 
 
 def list_fornecedores(somente_ativos=True):
-    q = NutFornecedor.query
+    q = _q(NutFornecedor)
     if somente_ativos:
         q = q.filter_by(ativo=True)
     return [f.to_dict() for f in q.order_by(NutFornecedor.nome, NutFornecedor.id).all()]
@@ -1018,7 +1041,7 @@ def _seed_fornecedores():
 
 
 def list_etiquetas(somente_ativas=False):
-    q = NutEtiqueta.query
+    q = _q(NutEtiqueta)
     if somente_ativas:
         q = q.filter_by(ativa=True)
     return [e.to_dict() for e in q.order_by(NutEtiqueta.nome, NutEtiqueta.id).all()]
@@ -1186,7 +1209,7 @@ DIETAS_PRECO_MATRIX_NOMES = {n.strip().upper() for n, _c, _a in DIETAS_PRECOS_SE
 
 def list_precos_refeicoes(somente_ativos=True):
     """Legado: catálogo plano (mantido inativo; não é a tela principal)."""
-    q = NutPrecoRefeicao.query
+    q = _q(NutPrecoRefeicao)
     if somente_ativos:
         q = q.filter_by(ativo=True)
     return [
@@ -1198,6 +1221,9 @@ def list_precos_refeicoes(somente_ativos=True):
 def list_precos_dieta_tipo(somente_ativas=True, somente_tipos_ativos=True):
     """Lista preços dieta × tipo (linhas planas)."""
     q = NutPrecoDietaTipo.query.join(NutDieta).join(NutTipoRefeicao)
+    cid = current_cliente_id()
+    if cid is not None:
+        q = q.filter(NutDieta.cliente_id == cid)
     if somente_ativas:
         q = q.filter(NutDieta.ativo.is_(True))
     if somente_tipos_ativos:
@@ -1212,7 +1238,7 @@ def matriz_precos_dieta_tipo(somente_ativas=True, somente_tipos_ativos=True):
     Cada célula traz Empresa / Paciente / Acompanhante.
     """
     tipos = list_tipos_refeicao(somente_ativos=somente_tipos_ativos)
-    dietas_q = NutDieta.query
+    dietas_q = _q(NutDieta)
     if somente_ativas:
         dietas_q = dietas_q.filter_by(ativo=True)
     ordem_catalogo = {
@@ -1517,13 +1543,14 @@ def _seed_precos_refeicoes():
 def seed_nutricao():
     """Garante cadastros básicos de clínicas e dietas."""
     _ensure_nutricao_columns()
+    cid = ensure_cliente_hfb().id
     for nome, ativo in CLINICAS_SEED:
-        if not NutClinica.query.filter_by(nome=nome).first():
-            db.session.add(NutClinica(nome=nome, ativo=bool(ativo)))
+        if not NutClinica.query.filter_by(nome=nome, cliente_id=cid).first():
+            db.session.add(NutClinica(nome=nome, ativo=bool(ativo), cliente_id=cid))
 
     for nome, cat, ativo in DIETAS_SEED:
-        if not NutDieta.query.filter_by(nome=nome).first():
-            db.session.add(NutDieta(nome=nome, categoria=cat, grupo='', ativo=bool(ativo)))
+        if not NutDieta.query.filter_by(nome=nome, cliente_id=cid).first():
+            db.session.add(NutDieta(nome=nome, categoria=cat, grupo='', ativo=bool(ativo), cliente_id=cid))
 
     db.session.flush()
     _seed_enfermarias()
@@ -1541,25 +1568,38 @@ def seed_nutricao():
     # Após preços/catálogo, reabsorve grupos novos criados nas dietas
     _seed_grupos_dieta()
 
-    if NutPaciente.query.count() == 0:
+    # Backfill cliente_id on any seed rows still NULL
+    for model in (
+        NutClinica, NutEnfermaria, NutDieta, NutGrupoDieta, NutPaciente, NutMapaRefeicao,
+        NutCardapio, NutTabelaNutrientes, NutPratoLiquido, NutEstoqueLocal, NutUnidadeMedida,
+        NutGrupoProduto, NutProduto, NutFornecedor, NutEtiqueta, NutPrecoRefeicao, NutTipoRefeicao,
+    ):
+        try:
+            model.query.filter(model.cliente_id.is_(None)).update(
+                {model.cliente_id: cid}, synchronize_session=False
+            )
+        except Exception:
+            pass
+
+    if NutPaciente.query.filter_by(cliente_id=cid).count() == 0:
         exemplos = [
             NutPaciente(
                 nome='Maria Silva', sexo='F', nascimento=_parse_date('1985-03-15'),
                 prontuario='12345', clinica='CLÍNICA MÉDICA A', leito='101-A',
                 dieta='BRANDA COM SAL', diagnostico='HAS', admissao=date.today(),
-                altura_cm=165, peso_kg=72, ativo=True,
+                altura_cm=165, peso_kg=72, ativo=True, cliente_id=cid,
             ),
             NutPaciente(
                 nome='João Santos', sexo='M', nascimento=_parse_date('1972-08-22'),
                 prontuario='12346', clinica='CTI - 1', leito='05',
                 dieta='PASTOSA COM SAL', diagnostico='Pós-operatório', admissao=date.today(),
-                altura_cm=175, peso_kg=80, ativo=True,
+                altura_cm=175, peso_kg=80, ativo=True, cliente_id=cid,
             ),
             NutPaciente(
                 nome='Ana Oliveira', sexo='F', nascimento=_parse_date('1990-12-01'),
                 prontuario='12347', clinica='ONCO', leito='210-B',
                 dieta='LIQUIDA SEM SAL', diagnostico='Em tratamento', admissao=date.today(),
-                altura_cm=160, peso_kg=58, ativo=True,
+                altura_cm=160, peso_kg=58, ativo=True, cliente_id=cid,
             ),
         ]
         for p in exemplos:
@@ -1569,6 +1609,7 @@ def seed_nutricao():
 
 
 def paciente_from_payload(d, paciente=None):
+    is_new = paciente is None
     paciente = paciente or NutPaciente()
     paciente.nome = (d.get('nome') or '').strip()
     paciente.sexo = (d.get('sexo') or '').strip()[:1] or None
@@ -1591,6 +1632,8 @@ def paciente_from_payload(d, paciente=None):
         paciente.peso_kg = None
     if 'ativo' in d:
         paciente.ativo = bool(d.get('ativo'))
+    if is_new or not paciente.cliente_id:
+        paciente.cliente_id = write_cliente_id()
     return paciente
 
 
@@ -1600,6 +1643,7 @@ def mapa_from_paciente(paciente, data_ref=None, flags=None, extras=None, usuario
     extras = extras or {}
     agora = datetime.utcnow()
     return NutMapaRefeicao(
+        cliente_id=getattr(paciente, 'cliente_id', None) or write_cliente_id(),
         data_refeicao=data_ref,
         paciente_id=paciente.id,
         adm=extras.get('adm', paciente.admissao),

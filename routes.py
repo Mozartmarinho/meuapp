@@ -33,6 +33,7 @@ from models import (
     ChamadoRamal,
     ChamadoCamera,
     ChamadoPortao,
+    ChamadoEstoque,
     ConhecimentoPasta,
     TIPO_FOTO_CONSERTO,
     TIPO_FOTO_ENCAMINHAMENTO,
@@ -48,6 +49,8 @@ from models import (
     TIPO_SETOR_CHAMADOS,
     TIPO_SETOR_NUTRICAO,
     TIPOS_CONTRATO,
+    FUNCOES_TECNICO,
+    FUNCOES_TECNICO_KEYS,
     CANAIS_MENSAGEM,
     CANAIS_ENVIO_LIVE,
     PASTA_CONHECIMENTO_PADRAO,
@@ -180,6 +183,10 @@ _CHAMADOS_ENDPOINT_MENUS = {
     'main.excluir_portao': 'portoes',
     'main.adicionar_setor_portao': 'portoes',
     'main.toggle_setor_portao': 'portoes',
+    'main.estoque': 'estoque',
+    'main.adicionar_estoque': 'estoque',
+    'main.editar_estoque': 'estoque',
+    'main.excluir_estoque': 'estoque',
     'main.recursos': 'recursos',
     'main.ver_recurso': 'recursos',
     'main.salvar_grupo_recurso': 'recursos',
@@ -246,6 +253,17 @@ def _parse_data_compra(valor):
         except ValueError:
             continue
     return None
+
+
+def _clientes_para_chamados():
+    """Clientes habilitados para Gestão de Chamados."""
+    return (
+        Cliente.query.filter(
+            db.or_(Cliente.habilitado_chamados.is_(True), Cliente.habilitado_chamados.is_(None))
+        )
+        .order_by(Cliente.nome.asc())
+        .all()
+    )
 
 
 def _vincular_equipamento_chamado(chamado, form, cliente_id):
@@ -592,15 +610,47 @@ def _setor_atuacao(usuario, chamado):
     return _setor_usuario(usuario) or normalizar_setor_chamado(chamado.setor_destino) or ''
 
 
+def _normalizar_email(email):
+    """E-mail normalizado para vínculo técnico ↔ acesso (trim + lower)."""
+    return (email or '').strip().lower() or None
+
+
+def _usuario_por_email(email):
+    """Busca Usuario (Acesso) pelo e-mail normalizado."""
+    email = _normalizar_email(email)
+    if not email:
+        return None
+    return Usuario.query.filter(func.lower(Usuario.email) == email).first()
+
+
+def _vincular_tecnicos_ao_usuario(usuario):
+    """
+    Liga ChamadoTecnico ↔ Usuario pelo e-mail.
+    - Todos os técnicos com o mesmo e-mail recebem usuario_id.
+    - Técnicos que apontavam para este usuário e mudaram de e-mail são desvinculados.
+    """
+    if not usuario or not getattr(usuario, 'id', None):
+        return
+    email = _normalizar_email(usuario.email)
+    for t in ChamadoTecnico.query.filter(ChamadoTecnico.usuario_id == usuario.id).all():
+        if _normalizar_email(t.email) != email:
+            t.usuario_id = None
+    if not email:
+        return
+    for t in ChamadoTecnico.query.filter(func.lower(ChamadoTecnico.email) == email).all():
+        t.usuario_id = usuario.id
+
+
 def _setores_tecnico_usuario(usuario):
     """IDs de chamado_setores onde o usuário está cadastrado como técnico."""
     try:
+        email = _normalizar_email(getattr(usuario, 'email', None))
+        conds = [ChamadoTecnico.usuario_id == usuario.id]
+        if email:
+            conds.append(func.lower(ChamadoTecnico.email) == email)
         tec = ChamadoTecnico.query.filter(
             ChamadoTecnico.ativo == True,  # noqa: E712
-            or_(
-                ChamadoTecnico.usuario_id == usuario.id,
-                ChamadoTecnico.email == usuario.email,
-            ),
+            or_(*conds),
         ).all()
         return {t.setor_id for t in tec if t.setor_id}
     except Exception:
@@ -1070,6 +1120,13 @@ def _wants_json():
 
 
 def _acesso_payload(usuario):
+    cliente_todos = bool(getattr(usuario, 'cliente_todos', False))
+    if cliente_todos:
+        cliente_nome = 'Todos os clientes'
+    elif getattr(usuario, 'cliente', None):
+        cliente_nome = usuario.cliente.nome
+    else:
+        cliente_nome = None
     return {
         'id': usuario.id,
         'nome': usuario.nome,
@@ -1080,9 +1137,49 @@ def _acesso_payload(usuario):
         'setor_nutricao': normalizar_setor(
             TIPO_SETOR_NUTRICAO, getattr(usuario, 'setor_nutricao', None)
         ),
+        'cliente_id': getattr(usuario, 'cliente_id', None),
+        'cliente_todos': cliente_todos,
+        'cliente_nome': cliente_nome,
         'sistemas': {chave: usuario.tem_sistema(chave) for chave in SISTEMAS},
         'permissoes': {sistema: usuario.menus_liberados(sistema) for sistema in SISTEMAS},
     }
+
+
+def _json_text(value):
+    """Coerce optional model fields to a JSON-safe string (never Jinja Undefined)."""
+    if value is None:
+        return ''
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
+def _cliente_payload(cliente):
+    """Payload JSON para modal de clientes no portal (None em chamados = habilitado)."""
+    hab_chamados = getattr(cliente, 'habilitado_chamados', None)
+    return {
+        'id': int(getattr(cliente, 'id', 0) or 0),
+        'nome': _json_text(getattr(cliente, 'nome', None)),
+        'endereco': _json_text(getattr(cliente, 'endereco', None)),
+        'telefone': _json_text(getattr(cliente, 'telefone', None)),
+        'email': _json_text(getattr(cliente, 'email', None)),
+        'responsavel': _json_text(getattr(cliente, 'responsavel', None)),
+        'telefone_responsavel': _json_text(getattr(cliente, 'telefone_responsavel', None)),
+        'habilitado_chamados': hab_chamados is None or bool(hab_chamados),
+        'habilitado_nutricao': bool(getattr(cliente, 'habilitado_nutricao', False)),
+    }
+
+
+def _pode_gerenciar_clientes(user):
+    return bool(
+        user
+        and (
+            user.pode_gerenciar_acessos()
+            or user.tem_menu('chamados', 'clientes')
+            or user.is_master
+            or user.tipo == 'admin'
+        )
+    )
 
 
 @main.route('/')
@@ -1098,6 +1195,8 @@ def inicio():
 
     acessos = []
     acessos_js = []
+    clientes_portal = []
+    clientes_js = []
     smtp_cfg = {'servidor': '', 'porta': 587, 'usar_tls': True, 'usuario': '', 'remetente': ''}
     senha_salva = False
     smtp_ok = False
@@ -1105,6 +1204,8 @@ def inicio():
         from email_service import obter_config_smtp, smtp_configurado
         acessos = Usuario.query.order_by(Usuario.data_criacao.desc()).all()
         acessos_js = [_acesso_payload(a) for a in acessos]
+        clientes_portal = Cliente.query.order_by(Cliente.data_criacao.desc()).all()
+        clientes_js = [_cliente_payload(c) for c in clientes_portal]
         raw_cfg = obter_config_smtp()
         smtp_cfg = {k: v for k, v in raw_cfg.items() if k != 'senha'}
         row = ConfiguracaoEmail.query.get(1)
@@ -1113,6 +1214,7 @@ def inicio():
 
     pendencias = _pendencias_chamados(user)
     mostrar_pendencias = bool(session.pop('mostrar_pendencias', False) and pendencias)
+    clientes_acesso = Cliente.query.order_by(Cliente.nome.asc()).all()
     return render_template(
         'inicio.html',
         user_name=user.nome if user else session.get('user_name', 'Usuário'),
@@ -1129,6 +1231,9 @@ def inicio():
         mostrar_pendencias=mostrar_pendencias,
         setores_chamados=listar_setores(TIPO_SETOR_CHAMADOS),
         setores_nutricao=listar_setores(TIPO_SETOR_NUTRICAO),
+        clientes_acesso=clientes_acesso,
+        clientes_portal=clientes_portal,
+        clientes_js=clientes_js,
     )
 
 
@@ -1219,12 +1324,12 @@ def configuracoes():
 
 
 def _salvar_acesso_geral(usuario, form, novo=False):
-    email = (form.get('email') or '').strip().lower()
+    email = _normalizar_email(form.get('email'))
     nome = (form.get('nome') or '').strip()
     senha = form.get('senha') or ''
     if not nome or not email:
         raise ValueError('Nome e e-mail são obrigatórios.')
-    outro = Usuario.query.filter(Usuario.email == email, Usuario.id != usuario.id).first()
+    outro = Usuario.query.filter(func.lower(Usuario.email) == email, Usuario.id != usuario.id).first()
     if outro:
         raise ValueError('Já existe um acesso com este e-mail.')
     usuario.nome = nome
@@ -1232,6 +1337,17 @@ def _salvar_acesso_geral(usuario, form, novo=False):
     usuario.setor = normalizar_setor_chamado(form.get('setor')) or None
     usuario.setor_nutricao = normalizar_setor(TIPO_SETOR_NUTRICAO, form.get('setor_nutricao')) or None
     usuario.telefone = (form.get('telefone') or '').strip() or None
+    raw_cli = (form.get('cliente_id') or '').strip().lower()
+    if raw_cli in ('todos', '__all__'):
+        usuario.cliente_id = None
+        usuario.cliente_todos = True
+    elif raw_cli.isdigit():
+        cli = Cliente.query.get(int(raw_cli))
+        usuario.cliente_id = cli.id if cli else None
+        usuario.cliente_todos = False
+    else:
+        usuario.cliente_id = None
+        usuario.cliente_todos = False
     if senha:
         usuario.senha = generate_password_hash(senha)
     elif novo:
@@ -1245,6 +1361,7 @@ def _salvar_acesso_geral(usuario, form, novo=False):
         conceder_acesso_total(usuario)
     else:
         aplicar_permissoes_formulario(usuario, form)
+    _vincular_tecnicos_ao_usuario(usuario)
     db.session.commit()
 
 
@@ -1326,6 +1443,7 @@ def novo_acesso():
         user_name=user.nome,
         setores_chamados=listar_setores(TIPO_SETOR_CHAMADOS),
         setores_nutricao=listar_setores(TIPO_SETOR_NUTRICAO),
+        clientes=Cliente.query.order_by(Cliente.nome.asc()).all(),
     )
 
 
@@ -1362,6 +1480,7 @@ def editar_acesso(id):
         user_name=user.nome,
         setores_chamados=listar_setores(TIPO_SETOR_CHAMADOS),
         setores_nutricao=listar_setores(TIPO_SETOR_NUTRICAO),
+        clientes=Cliente.query.order_by(Cliente.nome.asc()).all(),
     )
 
 @main.route('/dashboard')
@@ -1478,7 +1597,7 @@ def listar_chamados():
     user_id = session['user_id']
     setor = _setor_usuario(user)
     chamados = _query_chamados_usuario(user).all()
-    clientes = Cliente.query.order_by(Cliente.nome.asc()).all()
+    clientes = _clientes_para_chamados()
     grupos, fechados = _grupos_tickets(chamados)
     if setor:
         subtitulo = f'Chamados que você abriu e encaminhamentos para {setor}'
@@ -1600,7 +1719,7 @@ def ver_chamado(id):
 @login_required
 def novo_chamado():
     """Criar novo chamado"""
-    clientes = Cliente.query.order_by(Cliente.nome.asc()).all()
+    clientes = _clientes_para_chamados()
     mesas = mesas_ativas()
     if request.method == 'POST':
         try:
@@ -1676,7 +1795,7 @@ def novo_chamado():
 def editar_chamado(id):
     """Editar chamado existente"""
     chamado = Chamado.query.get_or_404(id)
-    clientes = Cliente.query.all()
+    clientes = _clientes_para_chamados()
 
     if request.method == 'POST':
         try:
@@ -1716,59 +1835,97 @@ def editar_chamado(id):
 @main.route('/clientes')
 @login_required
 def listar_clientes():
-    """Lista todos os clientes"""
+    """Lista todos os clientes (cadastro unificado portal/chamados/nutrição)."""
+    user = Usuario.query.get(session['user_id'])
+    if not _pode_gerenciar_clientes(user):
+        flash('Você não tem permissão para gerenciar clientes.', 'error')
+        return redirect(url_for('main.inicio'))
     clientes = Cliente.query.order_by(Cliente.data_criacao.desc()).all()
     return render_template('clientes.html', clientes=clientes)
+
 
 @main.route('/novo_cliente', methods=['GET', 'POST'])
 @login_required
 def novo_cliente():
     """Criar novo cliente"""
+    user = Usuario.query.get(session['user_id'])
+    if not _pode_gerenciar_clientes(user):
+        if _wants_json():
+            return jsonify({'ok': False, 'message': 'Sem permissão para gerenciar clientes.'}), 403
+        flash('Você não tem permissão para gerenciar clientes.', 'error')
+        return redirect(url_for('main.inicio'))
     if request.method == 'POST':
         try:
             cliente = Cliente(
                 nome=request.form['nome'],
-                endereco=request.form['endereco'],
-                telefone=request.form['telefone'],
+                endereco=request.form.get('endereco') or '',
+                telefone=request.form.get('telefone') or '',
                 email=(request.form.get('email') or '').strip() or None,
-                responsavel=request.form['responsavel'],
-                telefone_responsavel=request.form['telefone_responsavel']
+                responsavel=request.form.get('responsavel') or '',
+                telefone_responsavel=request.form.get('telefone_responsavel') or '',
+                habilitado_chamados=request.form.get('habilitado_chamados') == 'on',
+                habilitado_nutricao=request.form.get('habilitado_nutricao') == 'on',
             )
 
             db.session.add(cliente)
             db.session.commit()
 
+            if _wants_json():
+                return jsonify({
+                    'ok': True,
+                    'message': 'Cliente criado com sucesso!',
+                    'cliente': _cliente_payload(cliente),
+                })
             flash('Cliente criado com sucesso!', 'success')
             return redirect(url_for('main.listar_clientes'))
 
         except Exception as e:
-            flash(f'Erro ao criar cliente: {str(e)}', 'error')
             db.session.rollback()
+            if _wants_json():
+                return jsonify({'ok': False, 'message': str(e)}), 400
+            flash(f'Erro ao criar cliente: {str(e)}', 'error')
 
     return render_template('novo_cliente.html')
+
 
 @main.route('/clientes/<int:id>/editar', methods=['GET', 'POST'])
 @login_required
 def editar_cliente(id):
     """Editar cliente existente"""
+    user = Usuario.query.get(session['user_id'])
+    if not _pode_gerenciar_clientes(user):
+        if _wants_json():
+            return jsonify({'ok': False, 'message': 'Sem permissão para gerenciar clientes.'}), 403
+        flash('Você não tem permissão para gerenciar clientes.', 'error')
+        return redirect(url_for('main.inicio'))
     cliente = Cliente.query.get_or_404(id)
 
     if request.method == 'POST':
         try:
             cliente.nome = request.form['nome']
-            cliente.endereco = request.form['endereco']
-            cliente.telefone = request.form['telefone']
+            cliente.endereco = request.form.get('endereco') or ''
+            cliente.telefone = request.form.get('telefone') or ''
             cliente.email = (request.form.get('email') or '').strip() or None
-            cliente.responsavel = request.form['responsavel']
-            cliente.telefone_responsavel = request.form['telefone_responsavel']
+            cliente.responsavel = request.form.get('responsavel') or ''
+            cliente.telefone_responsavel = request.form.get('telefone_responsavel') or ''
+            cliente.habilitado_chamados = request.form.get('habilitado_chamados') == 'on'
+            cliente.habilitado_nutricao = request.form.get('habilitado_nutricao') == 'on'
 
             db.session.commit()
+            if _wants_json():
+                return jsonify({
+                    'ok': True,
+                    'message': 'Cliente atualizado com sucesso!',
+                    'cliente': _cliente_payload(cliente),
+                })
             flash('Cliente atualizado com sucesso!', 'success')
             return redirect(url_for('main.listar_clientes'))
 
         except Exception as e:
-            flash(f'Erro ao atualizar cliente: {str(e)}', 'error')
             db.session.rollback()
+            if _wants_json():
+                return jsonify({'ok': False, 'message': str(e)}), 400
+            flash(f'Erro ao atualizar cliente: {str(e)}', 'error')
 
     return render_template('editar_cliente.html', cliente=cliente)
 
@@ -2003,7 +2160,12 @@ def tecnicos():
         .order_by(ChamadoTecnico.nome)
         .all()
     )
-    return render_template('tecnicos.html', setores=setores, tecnicos=tecnicos_list)
+    return render_template(
+        'tecnicos.html',
+        setores=setores,
+        tecnicos=tecnicos_list,
+        funcoes=FUNCOES_TECNICO,
+    )
 
 
 @main.route('/tecnicos/setor/adicionar', methods=['POST'])
@@ -2036,6 +2198,32 @@ def toggle_chamado_setor(sid):
     return jsonify({'ok': True, 'id': s.id, 'ativo': s.ativo})
 
 
+def _tecnico_json(t):
+    setor_nome = t.setor.nome if t.setor else ''
+    return {
+        'ok': True,
+        'id': t.id,
+        'nome': t.nome,
+        'email': t.email or '',
+        'funcao': t.funcao or '',
+        'funcao_label': t.funcao_label or '',
+        'setor': setor_nome,
+        'setor_id': t.setor_id or '',
+        'ativo': t.ativo,
+        'usuario_id': t.usuario_id,
+        'vinculado': bool(t.usuario_id),
+    }
+
+
+def _parse_funcao_tecnico(data):
+    funcao = (data.get('funcao') or '').strip().lower()
+    if not funcao:
+        return None, 'Informe a função do técnico.'
+    if funcao not in FUNCOES_TECNICO_KEYS:
+        return None, 'Função inválida.'
+    return funcao, None
+
+
 @main.route('/tecnicos/tecnico/adicionar', methods=['POST'])
 @login_required
 def adicionar_chamado_tecnico():
@@ -2044,25 +2232,26 @@ def adicionar_chamado_tecnico():
         return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
     data = request.get_json(silent=True) or request.form
     nome = (data.get('nome') or '').strip()
-    email = (data.get('email') or '').strip().lower()
+    email = _normalizar_email(data.get('email'))
+    funcao, err_funcao = _parse_funcao_tecnico(data)
     setor_id_raw = (data.get('setor_id') or '').strip()
     setor_id = int(setor_id_raw) if setor_id_raw.isdigit() else None
     if not nome:
         return jsonify({'ok': False, 'error': 'Informe o nome do técnico.'}), 400
-    usuario_vinculado = None
-    if email:
-        usuario_vinculado = Usuario.query.filter_by(email=email).first()
+    if err_funcao:
+        return jsonify({'ok': False, 'error': err_funcao}), 400
+    usuario_vinculado = _usuario_por_email(email)
     t = ChamadoTecnico(
         nome=nome,
-        email=email or None,
+        email=email,
+        funcao=funcao,
         setor_id=setor_id,
         usuario_id=usuario_vinculado.id if usuario_vinculado else None,
         ativo=True,
     )
     db.session.add(t)
     db.session.commit()
-    setor_nome = t.setor.nome if t.setor else ''
-    return jsonify({'ok': True, 'id': t.id, 'nome': t.nome, 'email': t.email or '', 'setor': setor_nome, 'setor_id': t.setor_id or '', 'ativo': t.ativo})
+    return jsonify(_tecnico_json(t))
 
 
 @main.route('/tecnicos/tecnico/<int:tid>/editar', methods=['POST'])
@@ -2074,22 +2263,22 @@ def editar_chamado_tecnico(tid):
     t = ChamadoTecnico.query.get_or_404(tid)
     data = request.get_json(silent=True) or request.form
     nome = (data.get('nome') or '').strip()
-    email = (data.get('email') or '').strip().lower()
+    email = _normalizar_email(data.get('email'))
+    funcao, err_funcao = _parse_funcao_tecnico(data)
     setor_id_raw = (data.get('setor_id') or '').strip()
     setor_id = int(setor_id_raw) if setor_id_raw.isdigit() else None
     if not nome:
         return jsonify({'ok': False, 'error': 'Informe o nome do técnico.'}), 400
+    if err_funcao:
+        return jsonify({'ok': False, 'error': err_funcao}), 400
     t.nome = nome
-    t.email = email or None
+    t.email = email
+    t.funcao = funcao
     t.setor_id = setor_id
-    if email:
-        u = Usuario.query.filter_by(email=email).first()
-        t.usuario_id = u.id if u else None
-    else:
-        t.usuario_id = None
+    u = _usuario_por_email(email)
+    t.usuario_id = u.id if u else None
     db.session.commit()
-    setor_nome = t.setor.nome if t.setor else ''
-    return jsonify({'ok': True, 'id': t.id, 'nome': t.nome, 'email': t.email or '', 'setor': setor_nome, 'setor_id': t.setor_id or '', 'ativo': t.ativo})
+    return jsonify(_tecnico_json(t))
 
 
 @main.route('/tecnicos/tecnico/<int:tid>/excluir', methods=['POST'])
@@ -2545,6 +2734,107 @@ def toggle_setor_portao(sid):
     return jsonify({'ok': True, 'id': s.id, 'ativo': s.ativo})
 
 
+def _parse_data_aquisicao(raw):
+    """Parse YYYY-MM-DD date string; empty → None."""
+    from datetime import datetime as _dt
+    texto = (raw or '').strip()
+    if not texto:
+        return None
+    try:
+        return _dt.strptime(texto, '%Y-%m-%d').date()
+    except ValueError:
+        return False
+
+
+@main.route('/estoque')
+@login_required
+def estoque():
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'estoque'):
+        flash('Você não tem permissão para acessar Estoque.', 'error')
+        return redirect(url_for('main.inicio'))
+    itens = ChamadoEstoque.query.order_by(ChamadoEstoque.produto.asc()).all()
+    return render_template('estoque.html', itens=itens)
+
+
+@main.route('/estoque/adicionar', methods=['POST'])
+@login_required
+def adicionar_estoque():
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'estoque'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    data = request.get_json(silent=True) or request.form
+    produto = (data.get('produto') or '').strip()
+    marca = (data.get('marca') or '').strip()
+    modelo = (data.get('modelo') or '').strip()
+    qtd_raw = (data.get('quantidade') or '0').strip()
+    if not produto:
+        return jsonify({'ok': False, 'error': 'Informe o nome do produto.'}), 400
+    try:
+        quantidade = int(qtd_raw)
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'Quantidade inválida.'}), 400
+    if quantidade < 0:
+        return jsonify({'ok': False, 'error': 'Quantidade não pode ser negativa.'}), 400
+    data_aq = _parse_data_aquisicao(data.get('data_aquisicao'))
+    if data_aq is False:
+        return jsonify({'ok': False, 'error': 'Data de aquisição inválida.'}), 400
+    item = ChamadoEstoque(
+        produto=produto,
+        marca=marca or None,
+        modelo=modelo or None,
+        quantidade=quantidade,
+        data_aquisicao=data_aq,
+    )
+    db.session.add(item)
+    db.session.commit()
+    return jsonify({'ok': True, 'item': item.to_dict()})
+
+
+@main.route('/estoque/<int:eid>/editar', methods=['POST'])
+@login_required
+def editar_estoque(eid):
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'estoque'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    item = ChamadoEstoque.query.get_or_404(eid)
+    data = request.get_json(silent=True) or request.form
+    produto = (data.get('produto') or '').strip()
+    marca = (data.get('marca') or '').strip()
+    modelo = (data.get('modelo') or '').strip()
+    qtd_raw = (data.get('quantidade') or '0').strip()
+    if not produto:
+        return jsonify({'ok': False, 'error': 'Informe o nome do produto.'}), 400
+    try:
+        quantidade = int(qtd_raw)
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'Quantidade inválida.'}), 400
+    if quantidade < 0:
+        return jsonify({'ok': False, 'error': 'Quantidade não pode ser negativa.'}), 400
+    data_aq = _parse_data_aquisicao(data.get('data_aquisicao'))
+    if data_aq is False:
+        return jsonify({'ok': False, 'error': 'Data de aquisição inválida.'}), 400
+    item.produto = produto
+    item.marca = marca or None
+    item.modelo = modelo or None
+    item.quantidade = quantidade
+    item.data_aquisicao = data_aq
+    db.session.commit()
+    return jsonify({'ok': True, 'item': item.to_dict()})
+
+
+@main.route('/estoque/<int:eid>/excluir', methods=['POST'])
+@login_required
+def excluir_estoque(eid):
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'estoque'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    item = ChamadoEstoque.query.get_or_404(eid)
+    db.session.delete(item)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
 @main.route('/equipamentos')
 @login_required
 def listar_equipamentos():
@@ -2554,7 +2844,7 @@ def listar_equipamentos():
         .order_by(Equipamento.patrimonio.asc(), Equipamento.nome_equipamento.asc())
         .all()
     )
-    clientes = Cliente.query.order_by(Cliente.nome.asc()).all()
+    clientes = _clientes_para_chamados()
     setores = ChamadoSetor.query.order_by(ChamadoSetor.nome).all()
     return render_template(
         'equipamentos.html',
@@ -2730,7 +3020,7 @@ def novo_equipamento():
     """Criar novo equipamento (popup na listagem; POST legado ainda aceito)."""
     if request.method == 'GET':
         return redirect(url_for('main.listar_equipamentos'))
-    clientes = Cliente.query.order_by(Cliente.nome.asc()).all()
+    clientes = _clientes_para_chamados()
     try:
         campos = _dados_equipamento_form(request.form)
         equipamento = Equipamento(**campos)

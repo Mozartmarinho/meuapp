@@ -9,6 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}?v=menu30" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/loading-overlay.css') }}?v=1" rel="stylesheet">
 </head>
 <body data-sidebar-collapse="sg-nutricao-sidebar-collapsed">
     <script>
@@ -34,6 +35,9 @@
             <img src="{{ url_for('static', filename='img/logo.png') }}" alt="São Geraldo Service">
             <div class="brand-tagline">Transformando vidas</div>
             <div class="module-label">Nutrição Hospitalar</div>
+            {% if nutricao_cliente_nome %}
+            <div class="module-cliente" title="{{ nutricao_cliente_nome }}">{{ nutricao_cliente_nome }}</div>
+            {% endif %}
         </div>
 
         <ul class="sidebar-menu">
@@ -223,6 +227,7 @@
 
     <div class="toast" id="toast"><span id="toastIcon">✓</span><span id="toastMessage"></span></div>
 
+    <script src="{{ url_for('static', filename='js/loading-overlay.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     <script>
     function showToast(msg, type) {

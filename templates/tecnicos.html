@@ -24,18 +24,34 @@
     </div>
     <table class="tec-table" id="tabTecnicos">
         <thead>
-            <tr><th>Nome</th><th>E-mail</th><th>Setor</th><th>Situação</th><th>Ações</th></tr>
+            <tr>
+                <th>Nome</th>
+                <th>E-mail</th>
+                <th>Função</th>
+                <th>Setor</th>
+                <th>Acesso</th>
+                <th>Situação</th>
+                <th>Ações</th>
+            </tr>
         </thead>
         <tbody id="tbody-tecnicos">
             {% for t in tecnicos %}
             <tr id="tec-row-{{ t.id }}">
                 <td>{{ t.nome }}</td>
                 <td>{{ t.email or '—' }}</td>
+                <td>{{ t.funcao_label or '—' }}</td>
                 <td>{{ t.setor.nome if t.setor else '—' }}</td>
+                <td>
+                    {% if t.usuario_id %}
+                    <span class="tec-badge tec-badge-ok">Vinculado</span>
+                    {% else %}
+                    <span class="tec-badge tec-badge-off">Sem acesso</span>
+                    {% endif %}
+                </td>
                 <td><span class="tec-badge {% if t.ativo %}tec-badge-ok{% else %}tec-badge-off{% endif %}">{{ 'Ativo' if t.ativo else 'Inativo' }}</span></td>
                 <td>
                     <button class="btn tec-btn-sm tec-btn-muted"
-                            onclick="abrirEditarTecnico({{ t.id }}, '{{ t.nome|e }}', '{{ (t.email or '')|e }}', '{{ t.setor_id or '' }}')">
+                            onclick="abrirEditarTecnico({{ t.id }}, '{{ t.nome|e }}', '{{ (t.email or '')|e }}', '{{ t.funcao or '' }}', '{{ t.setor_id or '' }}')">
                         <i class="fas fa-edit"></i>
                     </button>
                     <button class="btn tec-btn-sm tec-btn-danger"
@@ -45,7 +61,7 @@
                 </td>
             </tr>
             {% else %}
-            <tr id="tec-vazio"><td colspan="5" style="text-align:center;color:var(--gray-500)">Nenhum técnico cadastrado.</td></tr>
+            <tr id="tec-vazio"><td colspan="7" style="text-align:center;color:var(--gray-500)">Nenhum técnico cadastrado.</td></tr>
             {% endfor %}
         </tbody>
     </table>
@@ -137,6 +153,16 @@
         <div class="form-group">
             <label>E-mail</label>
             <input type="email" id="tecEmail" placeholder="email@exemplo.com" maxlength="120">
+            <small class="tec-hint">Vincula automaticamente ao Cadastro de Acessos com o mesmo e-mail.</small>
+        </div>
+        <div class="form-group">
+            <label>Função *</label>
+            <select id="tecFuncao">
+                <option value="">Selecione...</option>
+                {% for key, label in funcoes %}
+                <option value="{{ key }}">{{ label }}</option>
+                {% endfor %}
+            </select>
         </div>
         <div class="form-group">
             <label>Setor</label>
@@ -173,6 +199,7 @@
 .tec-btn-sm { padding: 0.3rem 0.65rem; font-size: 0.74rem; border-radius: 0.25rem; gap: 0.3rem; }
 .tec-btn-muted { background: var(--gray-200); color: var(--gray-700); }
 .tec-btn-danger { background: #fee2e2; color: #b91c1c; }
+.tec-hint { display: block; margin-top: 0.25rem; font-size: 0.68rem; color: var(--gray-500); }
 /* Overlay + Modal */
 .tec-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 1000; }
 .tec-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: var(--white); border-radius: 0.5rem; box-shadow: 0 8px 32px rgba(0,0,0,.18); z-index: 1001; width: min(96vw, 420px); }
@@ -284,10 +311,34 @@ document.getElementById('setorNome').addEventListener('keydown', function (e) {
 });
 
 // ── Técnico ───────────────────────────────────────────────────
+function _escAttr(s) {
+    return String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+function _acessoBadgeHtml(vinculado) {
+    return vinculado
+        ? '<span class="tec-badge tec-badge-ok">Vinculado</span>'
+        : '<span class="tec-badge tec-badge-off">Sem acesso</span>';
+}
+function _tecRowHtml(d) {
+    const nome = _escAttr(d.nome);
+    const email = _escAttr(d.email || '');
+    const funcao = _escAttr(d.funcao || '');
+    return '<td>' + (d.nome || '') + '</td>' +
+        '<td>' + (d.email || '—') + '</td>' +
+        '<td>' + (d.funcao_label || '—') + '</td>' +
+        '<td>' + (d.setor || '—') + '</td>' +
+        '<td>' + _acessoBadgeHtml(d.vinculado) + '</td>' +
+        '<td><span class="tec-badge tec-badge-ok">Ativo</span></td>' +
+        '<td>' +
+        '<button class="btn tec-btn-sm tec-btn-muted" onclick="abrirEditarTecnico(' + d.id + ', \'' + nome + '\', \'' + email + '\', \'' + funcao + '\', \'' + (d.setor_id || '') + '\')"><i class="fas fa-edit"></i></button> ' +
+        '<button class="btn tec-btn-sm tec-btn-danger" onclick="excluirTecnico(' + d.id + ')"><i class="fas fa-trash"></i></button>' +
+        '</td>';
+}
 function abrirModalTecnico() {
     document.getElementById('tecId').value = '';
     document.getElementById('tecNome').value = '';
     document.getElementById('tecEmail').value = '';
+    document.getElementById('tecFuncao').value = '';
     document.getElementById('tecSetor').value = '';
     document.getElementById('tecErro').style.display = 'none';
     document.getElementById('modalTecnicoTitulo').textContent = 'Adicionar Técnico';
@@ -295,10 +346,11 @@ function abrirModalTecnico() {
     document.getElementById('modalTecnico').style.display = '';
     document.getElementById('tecNome').focus();
 }
-function abrirEditarTecnico(id, nome, email, setorId) {
+function abrirEditarTecnico(id, nome, email, funcao, setorId) {
     document.getElementById('tecId').value = id;
     document.getElementById('tecNome').value = nome;
     document.getElementById('tecEmail').value = email;
+    document.getElementById('tecFuncao').value = funcao || '';
     document.getElementById('tecSetor').value = setorId;
     document.getElementById('tecErro').style.display = 'none';
     document.getElementById('modalTecnicoTitulo').textContent = 'Editar Técnico';
@@ -314,14 +366,16 @@ function salvarTecnico() {
     const id = document.getElementById('tecId').value;
     const nome = document.getElementById('tecNome').value.trim();
     const email = document.getElementById('tecEmail').value.trim();
+    const funcao = document.getElementById('tecFuncao').value;
     const setorId = document.getElementById('tecSetor').value;
     const erro = document.getElementById('tecErro');
     if (!nome) { erro.textContent = 'Informe o nome do técnico.'; erro.style.display = ''; return; }
+    if (!funcao) { erro.textContent = 'Informe a função do técnico.'; erro.style.display = ''; return; }
     const url = id ? '/tecnicos/tecnico/' + id + '/editar' : '/tecnicos/tecnico/adicionar';
     fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome, email, setor_id: setorId }),
+        body: JSON.stringify({ nome, email, funcao, setor_id: setorId }),
     })
         .then(r => r.json())
         .then(d => {
@@ -329,23 +383,14 @@ function salvarTecnico() {
             fecharModalTecnico();
             if (id) {
                 const row = document.getElementById('tec-row-' + id);
-                if (row) {
-                    row.cells[0].textContent = d.nome;
-                    row.cells[1].textContent = d.email || '—';
-                    row.cells[2].textContent = d.setor || '—';
-                }
+                if (row) row.innerHTML = _tecRowHtml(d);
             } else {
                 const tbody = document.getElementById('tbody-tecnicos');
                 const vazio = document.getElementById('tec-vazio');
                 if (vazio) vazio.remove();
                 const tr = document.createElement('tr');
                 tr.id = 'tec-row-' + d.id;
-                tr.innerHTML = `<td>${d.nome}</td><td>${d.email || '—'}</td><td>${d.setor || '—'}</td>
-                    <td><span class="tec-badge tec-badge-ok">Ativo</span></td>
-                    <td>
-                        <button class="btn tec-btn-sm tec-btn-muted" onclick="abrirEditarTecnico(${d.id},'${d.nome.replace(/'/g,"\\'")}','${(d.email||'').replace(/'/g,"\\'")}','${d.setor_id||''}')"><i class="fas fa-edit"></i></button>
-                        <button class="btn tec-btn-sm tec-btn-danger" onclick="excluirTecnico(${d.id})"><i class="fas fa-trash"></i></button>
-                    </td>`;
+                tr.innerHTML = _tecRowHtml(d);
                 tbody.appendChild(tr);
             }
         });

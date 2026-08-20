@@ -49,6 +49,7 @@
         .alert-error { background:#fee2e2; color:#991b1b; }
         @media (max-width:720px) { .grid { grid-template-columns:1fr; } }
     </style>
+    <link href="{{ url_for('static', filename='css/loading-overlay.css') }}?v=1" rel="stylesheet">
 </head>
 <body>
     <main class="wrap">
@@ -102,6 +103,19 @@
                         </select>
                         <button type="button" class="btn-setor-plus" data-setor-tipo="nutricao" title="Adicionar função ou setor" aria-label="Adicionar setor de nutrição">+</button>
                     </div>
+                </div>
+                <div class="form-group full">
+                    <label for="cliente_id">Cliente</label>
+                    <select id="cliente_id" name="cliente_id">
+                        <option value="">— Nenhum —</option>
+                        <option value="todos" {% if acesso and acesso.cliente_todos %}selected{% endif %}>Todos os clientes</option>
+                        {% for c in clientes or [] %}
+                        <option value="{{ c.id }}" {% if acesso and not acesso.cliente_todos and acesso.cliente_id == c.id %}selected{% endif %}>
+                            {{ c.nome }}{% if c.habilitado_nutricao %} (Nutrição){% endif %}{% if c.habilitado_chamados is none or c.habilitado_chamados %} (Chamados){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <p style="margin-top:6px;font-size:.82rem;color:var(--muted)">Vínculo usado para escopo da Nutrição (mapa, faturamento, cadastros). “Todos” libera visão de todos os clientes.</p>
                 </div>
                 <div class="form-group" style="display:flex;align-items:flex-end">
                     <label class="check">
@@ -221,5 +235,6 @@
         });
     })();
     </script>
+    <script src="{{ url_for('static', filename='js/loading-overlay.js') }}?v=1"></script>
 </body>
 </html>

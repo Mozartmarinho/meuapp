@@ -9,6 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     {% include '_auth_styles.html' %}
+    <link href="{{ url_for('static', filename='css/loading-overlay.css') }}?v=1" rel="stylesheet">
 </head>
 <body>
     <div class="login-container">
@@ -44,5 +45,6 @@
             </div>
         </div>
     </div>
+    <script src="{{ url_for('static', filename='js/loading-overlay.js') }}?v=1"></script>
 </body>
 </html>

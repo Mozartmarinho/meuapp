@@ -1,0 +1,371 @@
+{% extends "base.html" %}
+
+{% block title %}Estoque - São Geraldo Service{% endblock %}
+
+{% block content %}
+<div class="chamados-page est-page">
+    <div class="header">
+        <div>
+            <h1>Estoque</h1>
+            <p class="chamados-sub">Produtos cadastrados para o setor de chamados</p>
+        </div>
+        <button type="button" class="btn btn-success" id="btnNovoEstoque">
+            <i class="fas fa-plus"></i> Adicionar produto
+        </button>
+    </div>
+
+    <div class="table-wrap">
+        <table class="table" id="tabelaEstoque">
+            <thead>
+                <tr>
+                    <th>Produto</th>
+                    <th>Marca</th>
+                    <th>Modelo</th>
+                    <th>Quantidade</th>
+                    <th>Data aquisição</th>
+                    <th class="no-print">Ações</th>
+                </tr>
+            </thead>
+            <tbody id="tbodyEstoque">
+                {% for item in itens %}
+                <tr data-id="{{ item.id }}"
+                    data-produto="{{ item.produto }}"
+                    data-marca="{{ item.marca or '' }}"
+                    data-modelo="{{ item.modelo or '' }}"
+                    data-quantidade="{{ item.quantidade }}"
+                    data-aquisicao="{{ item.data_aquisicao.strftime('%Y-%m-%d') if item.data_aquisicao else '' }}">
+                    <td><strong>{{ item.produto }}</strong></td>
+                    <td>{{ item.marca or '—' }}</td>
+                    <td>{{ item.modelo or '—' }}</td>
+                    <td>{{ item.quantidade }}</td>
+                    <td>{{ item.data_aquisicao.strftime('%d/%m/%Y') if item.data_aquisicao else '—' }}</td>
+                    <td class="acoes-cell no-print">
+                        <button type="button" class="btn btn-sm btn-editar-link btn-editar-est" title="Editar">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-excluir-est" title="Excluir">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr id="linhaVazia">
+                    <td colspan="6" class="empty-row">Nenhum produto cadastrado.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div id="modalEstoque" class="modal-overlay nc-modal" hidden>
+    <div class="modal-dialog nc-dialog" role="dialog" aria-modal="true" aria-labelledby="estModalTitle">
+        <div class="modal-header">
+            <h2 id="estModalTitle">Novo produto</h2>
+            <button type="button" class="modal-close" id="btnFecharEstX" aria-label="Fechar">&times;</button>
+        </div>
+        <form id="formEstoque">
+            <input type="hidden" id="est_id" value="">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="est_produto">Produto *</label>
+                    <input type="text" id="est_produto" name="produto" required maxlength="150" placeholder="Ex: Cabo HDMI">
+                </div>
+                <div class="form-group">
+                    <label for="est_marca">Marca</label>
+                    <input type="text" id="est_marca" name="marca" maxlength="100" placeholder="Ex: Intelbras">
+                </div>
+                <div class="form-group">
+                    <label for="est_modelo">Modelo</label>
+                    <input type="text" id="est_modelo" name="modelo" maxlength="100" placeholder="Ex: HD 20">
+                </div>
+                <div class="form-group">
+                    <label for="est_quantidade">Quantidade</label>
+                    <input type="number" id="est_quantidade" name="quantidade" min="0" step="1" value="0">
+                </div>
+                <div class="form-group">
+                    <label for="est_aquisicao">Data aquisição</label>
+                    <input type="date" id="est_aquisicao" name="data_aquisicao">
+                </div>
+                <div id="estErro" class="tec-erro" style="display:none"></div>
+            </div>
+            <div class="nc-footer">
+                <button type="button" class="btn nc-btn-muted" id="btnFecharEst">
+                    <i class="fas fa-times"></i> Fechar
+                </button>
+                <button type="submit" class="btn btn-success" id="btnSalvarEst">
+                    <i class="fas fa-save"></i> Salvar
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.chamados-page { padding: 4px 0; }
+.chamados-page .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+}
+.chamados-page h1 { margin: 0; font-size: 1.6rem; }
+.chamados-sub { margin: 0.2rem 0 0; color: var(--gray-600); font-size: 0.8rem; }
+.table-wrap {
+    background: white;
+    border-radius: 0.4rem;
+    overflow: auto;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+}
+.chamados-page .table { width: 100%; border-collapse: collapse; background: white; }
+.chamados-page .table th, .chamados-page .table td {
+    padding: 0.6rem 0.7rem;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+    font-size: 0.85rem;
+}
+.chamados-page .table th { background: #f2f2f2; }
+.chamados-page .table tr:hover { background: #f1f1f1; }
+.empty-row { text-align: center; color: var(--gray-600); padding: 1.4rem !important; }
+.acoes-cell { white-space: nowrap; }
+.acoes-cell .btn { margin-right: 0.25rem; }
+.btn-editar-link { background-color: var(--gray-300); color: var(--gray-800); }
+.btn-excluir-est { background-color: #f8d7da; color: #842029; }
+.tec-erro {
+    color: #842029;
+    background: #f8d7da;
+    border-radius: 0.3rem;
+    padding: 0.45rem 0.6rem;
+    font-size: 0.82rem;
+    margin-top: 0.4rem;
+}
+.nc-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1200;
+    padding: 1rem;
+}
+.nc-modal[hidden] { display: none !important; }
+.nc-dialog {
+    background: #fff;
+    border-radius: 0.5rem;
+    width: 100%;
+    max-width: 440px;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.18);
+    overflow: hidden;
+}
+.nc-dialog .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid #e5e5e5;
+}
+.nc-dialog .modal-header h2 { margin: 0; font-size: 1.1rem; }
+.nc-dialog .modal-close {
+    border: none;
+    background: transparent;
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--gray-600);
+}
+.nc-dialog .modal-body { padding: 1rem; }
+.nc-dialog .form-group { margin-bottom: 0.75rem; }
+.nc-dialog .form-group label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+    color: var(--gray-700);
+}
+.nc-dialog .form-group input {
+    width: 100%;
+    padding: 0.45rem 0.55rem;
+    border: 1px solid #ccc;
+    border-radius: 0.3rem;
+    font-size: 0.9rem;
+    box-sizing: border-box;
+}
+.nc-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid #e5e5e5;
+    background: #fafafa;
+}
+.nc-btn-muted { background: var(--gray-200); color: var(--gray-800); }
+</style>
+
+<script>
+(function () {
+    const overlay = document.getElementById('modalEstoque');
+    const form = document.getElementById('formEstoque');
+    const tbody = document.getElementById('tbodyEstoque');
+    const btnSalvar = document.getElementById('btnSalvarEst');
+    const erroEl = document.getElementById('estErro');
+
+    function showErro(msg) {
+        if (!msg) {
+            erroEl.style.display = 'none';
+            erroEl.textContent = '';
+            return;
+        }
+        erroEl.textContent = msg;
+        erroEl.style.display = 'block';
+    }
+
+    function abrirModal() {
+        overlay.hidden = false;
+        document.body.style.overflow = 'hidden';
+    }
+
+    function fecharModal() {
+        overlay.hidden = true;
+        document.body.style.overflow = '';
+        showErro('');
+    }
+
+    function abrirNovo() {
+        document.getElementById('estModalTitle').textContent = 'Novo produto';
+        form.reset();
+        document.getElementById('est_id').value = '';
+        document.getElementById('est_quantidade').value = '0';
+        abrirModal();
+        setTimeout(function () { document.getElementById('est_produto').focus(); }, 30);
+    }
+
+    function abrirEditar(tr) {
+        document.getElementById('estModalTitle').textContent = 'Editar produto';
+        document.getElementById('est_id').value = tr.getAttribute('data-id') || '';
+        document.getElementById('est_produto').value = tr.getAttribute('data-produto') || '';
+        document.getElementById('est_marca').value = tr.getAttribute('data-marca') || '';
+        document.getElementById('est_modelo').value = tr.getAttribute('data-modelo') || '';
+        document.getElementById('est_quantidade').value = tr.getAttribute('data-quantidade') || '0';
+        document.getElementById('est_aquisicao').value = tr.getAttribute('data-aquisicao') || '';
+        abrirModal();
+    }
+
+    document.getElementById('btnNovoEstoque').addEventListener('click', abrirNovo);
+    document.getElementById('btnFecharEst').addEventListener('click', fecharModal);
+    document.getElementById('btnFecharEstX').addEventListener('click', fecharModal);
+    overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) fecharModal();
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !overlay.hidden) fecharModal();
+    });
+
+    function escapeHtml(s) {
+        return String(s || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function rowHtml(item) {
+        return (
+            '<tr data-id="' + item.id + '"' +
+            ' data-produto="' + escapeHtml(item.produto) + '"' +
+            ' data-marca="' + escapeHtml(item.marca) + '"' +
+            ' data-modelo="' + escapeHtml(item.modelo) + '"' +
+            ' data-quantidade="' + item.quantidade + '"' +
+            ' data-aquisicao="' + escapeHtml(item.data_aquisicao || '') + '">' +
+            '<td><strong>' + escapeHtml(item.produto) + '</strong></td>' +
+            '<td>' + escapeHtml(item.marca || '—') + '</td>' +
+            '<td>' + escapeHtml(item.modelo || '—') + '</td>' +
+            '<td>' + item.quantidade + '</td>' +
+            '<td>' + escapeHtml(item.data_aquisicao_fmt || '—') + '</td>' +
+            '<td class="acoes-cell no-print">' +
+            '<button type="button" class="btn btn-sm btn-editar-link btn-editar-est" title="Editar"><i class="fas fa-edit"></i></button> ' +
+            '<button type="button" class="btn btn-sm btn-excluir-est" title="Excluir"><i class="fas fa-trash"></i></button>' +
+            '</td></tr>'
+        );
+    }
+
+    tbody.addEventListener('click', function (e) {
+        const btnEdit = e.target.closest('.btn-editar-est');
+        const btnDel = e.target.closest('.btn-excluir-est');
+        const tr = e.target.closest('tr[data-id]');
+        if (!tr) return;
+        if (btnEdit) {
+            abrirEditar(tr);
+            return;
+        }
+        if (btnDel) {
+            if (!confirm('Excluir este produto?')) return;
+            const id = tr.getAttribute('data-id');
+            fetch('/estoque/' + id + '/excluir', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data.ok) {
+                    alert(data.error || 'Erro ao excluir.');
+                    return;
+                }
+                tr.remove();
+                if (!tbody.querySelector('tr[data-id]')) {
+                    tbody.innerHTML = '<tr id="linhaVazia"><td colspan="6" class="empty-row">Nenhum produto cadastrado.</td></tr>';
+                }
+            })
+            .catch(function () { alert('Erro ao excluir.'); });
+        }
+    });
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        showErro('');
+        const id = document.getElementById('est_id').value;
+        const payload = {
+            produto: document.getElementById('est_produto').value,
+            marca: document.getElementById('est_marca').value,
+            modelo: document.getElementById('est_modelo').value,
+            quantidade: document.getElementById('est_quantidade').value,
+            data_aquisicao: document.getElementById('est_aquisicao').value
+        };
+        const url = id ? ('/estoque/' + id + '/editar') : '/estoque/adicionar';
+        btnSalvar.disabled = true;
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+        .then(function (res) {
+            btnSalvar.disabled = false;
+            if (!res.ok || !res.data.ok) {
+                showErro((res.data && res.data.error) || 'Erro ao salvar.');
+                return;
+            }
+            const item = res.data.item;
+            const vazia = document.getElementById('linhaVazia');
+            if (vazia) vazia.remove();
+            const existing = tbody.querySelector('tr[data-id="' + item.id + '"]');
+            if (existing) {
+                existing.outerHTML = rowHtml(item);
+            } else {
+                tbody.insertAdjacentHTML('beforeend', rowHtml(item));
+            }
+            fecharModal();
+        })
+        .catch(function () {
+            btnSalvar.disabled = false;
+            showErro('Erro ao salvar.');
+        });
+    });
+})();
+</script>
+{% endblock %}

@@ -10,6 +10,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}?v=menu31" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/chamados-mdk.css') }}?v=mdk3" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/loading-overlay.css') }}?v=1" rel="stylesheet">
 </head>
 <body data-sidebar-collapse="sg-chamados-sidebar-collapsed">
     <script>
@@ -124,6 +125,14 @@
                 </a>
             </li>
             {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'estoque') %}
+            <li>
+                <a href="{{ url_for('main.estoque') }}" class="{% if request.endpoint == 'main.estoque' %}active{% endif %}" title="Estoque">
+                    <i class="fas fa-boxes menu-icon"></i>
+                    <span class="menu-label">Estoque</span>
+                </a>
+            </li>
+            {% endif %}
             {% if usuario_atual and usuario_atual.tem_menu('chamados', 'recursos') %}
             <li>
                 <a href="{{ url_for('main.dashboard', _anchor='recursos') }}" title="Recursos">
@@ -195,6 +204,7 @@
         {% block content %}{% endblock %}
     </main>
 
+    <script src="{{ url_for('static', filename='js/loading-overlay.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     <script src="{{ url_for('static', filename='js/chamados-mdk.js') }}?v=mdk1"></script>
     {% block scripts %}{% endblock %}

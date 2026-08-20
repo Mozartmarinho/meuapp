@@ -9,6 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}?v=menu30" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/loading-overlay.css') }}?v=1" rel="stylesheet">
     <style>
         .badge-status {
             display: inline-flex;
@@ -547,6 +548,7 @@
         </div>
     </main>
 
+    <script src="{{ url_for('static', filename='js/loading-overlay.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     <script>
     document.querySelectorAll('[data-menu-toggle]').forEach(btn => {
