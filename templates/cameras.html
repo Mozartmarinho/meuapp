@@ -14,42 +14,6 @@
         </button>
     </div>
 
-    <!-- ── SETORES ─────────────────────────────────────────────── -->
-    <section class="tec-section cam-setores no-print">
-        <div class="tec-section-head">
-            <h2>Setores</h2>
-            <button type="button" class="btn btn-primary tec-btn-sm" id="btnAdicionarSetor">
-                <i class="fas fa-plus"></i> Adicionar setor
-            </button>
-        </div>
-        <table class="tec-table" id="tabSetores">
-            <thead>
-                <tr><th>Nome</th><th>Situação</th><th>Ações</th></tr>
-            </thead>
-            <tbody>
-                {% for s in setores %}
-                <tr id="setor-row-{{ s.id }}">
-                    <td>{{ s.nome }}</td>
-                    <td>
-                        <span class="tec-badge {% if s.ativo %}tec-badge-ok{% else %}tec-badge-off{% endif %}"
-                              id="setor-status-{{ s.id }}">
-                            {{ 'Ativo' if s.ativo else 'Inativo' }}
-                        </span>
-                    </td>
-                    <td>
-                        <button type="button" class="btn tec-btn-sm tec-btn-muted"
-                                onclick="toggleSetor({{ s.id }})">
-                            <i class="fas fa-toggle-on"></i> Alternar
-                        </button>
-                    </td>
-                </tr>
-                {% else %}
-                <tr id="setores-vazio"><td colspan="3" style="text-align:center;color:var(--gray-500)">Nenhum setor cadastrado.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </section>
-
     <div class="eq-filters">
         <select id="filtroSetor">
             <option value="">Todos os setores</option>
@@ -66,6 +30,9 @@
         <button type="button" class="btn btn-sm nc-btn-muted" id="btnLimparFiltros">Limpar filtros</button>
         <button type="button" class="btn btn-sm btn-primary" id="btnImprimirCam">
             <i class="fas fa-print"></i> Imprimir
+        </button>
+        <button type="button" class="btn btn-sm btn-primary" id="btnAdicionarSetor">
+            <i class="fas fa-plus"></i> Adicionar setor
         </button>
     </div>
 
@@ -121,7 +88,55 @@
     </div>
 </div>
 
-<!-- ── MODAL SETOR ────────────────────────────────────────────── -->
+<!-- ── MODAL LISTA SETORES ─────────────────────────────────────── -->
+<div class="tec-overlay" id="modalListaSetoresOverlay" style="display:none" onclick="fecharModalListaSetores()"></div>
+<div class="tec-modal eq-setores-modal" id="modalListaSetores" style="display:none">
+    <div class="tec-modal-head">
+        <span>Setores</span>
+        <button type="button" class="tec-modal-close" onclick="fecharModalListaSetores()" aria-label="Fechar">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+    <div class="tec-modal-body eq-setores-body">
+        <div class="tec-section-head">
+            <h2 class="eq-setores-title">Setores</h2>
+            <button type="button" class="btn btn-primary tec-btn-sm" id="btnNovoSetor">
+                <i class="fas fa-plus"></i> Adicionar setor
+            </button>
+        </div>
+        <table class="tec-table" id="tabSetores">
+            <thead>
+                <tr><th>Nome</th><th>Situação</th><th>Ações</th></tr>
+            </thead>
+            <tbody>
+                {% for s in setores %}
+                <tr id="setor-row-{{ s.id }}" data-nome="{{ s.nome }}">
+                    <td>{{ s.nome }}</td>
+                    <td>
+                        <span class="tec-badge {% if s.ativo %}tec-badge-ok{% else %}tec-badge-off{% endif %}"
+                              id="setor-status-{{ s.id }}">
+                            {{ 'Ativo' if s.ativo else 'Inativo' }}
+                        </span>
+                    </td>
+                    <td>
+                        <button type="button" class="btn tec-btn-sm tec-btn-muted"
+                                onclick="toggleSetor({{ s.id }})">
+                            <i class="fas fa-toggle-on"></i> Alternar
+                        </button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr id="setores-vazio"><td colspan="3" style="text-align:center;color:var(--gray-500)">Nenhum setor cadastrado.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="tec-modal-foot">
+        <button type="button" class="btn tec-btn-sm tec-btn-muted" onclick="fecharModalListaSetores()">Fechar</button>
+    </div>
+</div>
+
+<!-- ── MODAL ADICIONAR SETOR ──────────────────────────────────── -->
 <div class="tec-overlay" id="modalSetorOverlay" style="display:none" onclick="fecharModalSetor()"></div>
 <div class="tec-modal" id="modalSetor" style="display:none">
     <div class="tec-modal-head">
@@ -287,13 +302,7 @@
 .nc-btn-muted { background-color: var(--gray-300); color: var(--gray-800); }
 .tec-erro { color: #842029; font-size: 0.75rem; margin-top: 0.4rem; }
 body.modal-open { overflow: hidden; }
-.tec-section {
-    background: var(--white);
-    border: 1px solid var(--gray-200);
-    border-radius: 0.5rem;
-    margin-bottom: 1rem;
-    padding: 1rem 1.2rem;
-}
+.eq-header-actions { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .tec-section-head {
     display: flex;
     justify-content: space-between;
@@ -302,7 +311,7 @@ body.modal-open { overflow: hidden; }
     gap: 0.6rem;
     flex-wrap: wrap;
 }
-.tec-section-head h2 {
+.eq-setores-title {
     font-size: 0.95rem;
     font-weight: 700;
     color: var(--gray-700);
@@ -352,6 +361,8 @@ body.modal-open { overflow: hidden; }
     z-index: 1001;
     width: min(96vw, 420px);
 }
+.eq-setores-modal { width: min(96vw, 560px); }
+.eq-setores-body { max-height: min(70vh, 420px); overflow-y: auto; }
 .tec-modal-head {
     display: flex;
     justify-content: space-between;
@@ -393,6 +404,8 @@ body.modal-open { overflow: hidden; }
     padding: 0.75rem 1rem;
     border-top: 1px solid var(--gray-200);
 }
+#modalSetorOverlay, #modalSetor { z-index: 1100; }
+#modalSetor { z-index: 1101; }
 .eq-filters {
     display: flex;
     align-items: center;
@@ -415,7 +428,6 @@ body.modal-open { overflow: hidden; }
     .app-topbar,
     .eq-filters,
     .cam-page > .header,
-    .cam-setores,
     .modal-overlay,
     .tec-overlay,
     .tec-modal,
@@ -445,6 +457,14 @@ body.modal-open { overflow: hidden; }
 </style>
 
 <script>
+function abrirModalListaSetores() {
+    document.getElementById('modalListaSetoresOverlay').style.display = '';
+    document.getElementById('modalListaSetores').style.display = '';
+}
+function fecharModalListaSetores() {
+    document.getElementById('modalListaSetoresOverlay').style.display = 'none';
+    document.getElementById('modalListaSetores').style.display = 'none';
+}
 function abrirModalSetor() {
     document.getElementById('setorNome').value = '';
     document.getElementById('setorErro').style.display = 'none';
@@ -481,6 +501,7 @@ function salvarSetor() {
             if (vazio) vazio.remove();
             const tr = document.createElement('tr');
             tr.id = 'setor-row-' + d.id;
+            tr.setAttribute('data-nome', d.nome);
             tr.innerHTML =
                 '<td>' + d.nome + '</td>' +
                 '<td><span class="tec-badge tec-badge-ok" id="setor-status-' + d.id + '">Ativo</span></td>' +
@@ -505,19 +526,31 @@ function toggleSetor(sid) {
                 span.textContent = d.ativo ? 'Ativo' : 'Inativo';
                 span.className = 'tec-badge ' + (d.ativo ? 'tec-badge-ok' : 'tec-badge-off');
             }
+            const row = document.getElementById('setor-row-' + sid);
+            const nome = row
+                ? (row.getAttribute('data-nome') || row.cells[0].textContent.trim())
+                : ('Setor ' + sid);
             const camSel = document.getElementById('cam_setor');
             if (camSel) {
                 const opt = camSel.querySelector('option[value="' + sid + '"]');
                 if (!d.ativo && opt) {
                     opt.remove();
                 } else if (d.ativo && !opt) {
-                    const row = document.getElementById('setor-row-' + sid);
-                    const nome = row ? row.cells[0].textContent.trim() : ('Setor ' + sid);
                     _appendSetorOption(camSel, sid, nome);
                 }
             }
+            const filtro = document.getElementById('filtroSetor');
+            if (filtro && d.ativo) {
+                _appendSetorOption(filtro, sid, nome);
+            }
         });
 }
+
+document.getElementById('btnAdicionarSetor').addEventListener('click', abrirModalListaSetores);
+document.getElementById('btnNovoSetor').addEventListener('click', abrirModalSetor);
+document.getElementById('setorNome').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); salvarSetor(); }
+});
 
 (function () {
     const overlay = document.getElementById('modalCamera');
@@ -530,11 +563,6 @@ function toggleSetor(sid) {
     const selectSetor = document.getElementById('filtroSetor');
     const selectDvr = document.getElementById('filtroDvr');
     const printTitle = document.getElementById('camPrintTitle');
-
-    document.getElementById('btnAdicionarSetor').addEventListener('click', abrirModalSetor);
-    document.getElementById('setorNome').addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') { e.preventDefault(); salvarSetor(); }
-    });
 
     function showErro(msg) {
         errEl.textContent = msg || '';
@@ -593,6 +621,21 @@ function toggleSetor(sid) {
     document.getElementById('btnFecharCamX').addEventListener('click', fecharModal);
     overlay.addEventListener('click', function (e) {
         if (e.target === overlay) fecharModal();
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        const addSetor = document.getElementById('modalSetor');
+        const listaSetores = document.getElementById('modalListaSetores');
+        if (addSetor && addSetor.style.display !== 'none') {
+            fecharModalSetor();
+            return;
+        }
+        if (listaSetores && listaSetores.style.display !== 'none') {
+            fecharModalListaSetores();
+            return;
+        }
+        if (!overlay.hidden) fecharModal();
     });
 
     document.getElementById('cam_imagem').addEventListener('change', function () {

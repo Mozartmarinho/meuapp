@@ -9,15 +9,24 @@
             <h1>Cadastro de Equipamentos</h1>
             <p class="chamados-sub">Vincule o patrimônio ao cliente cadastrado</p>
         </div>
-        <button type="button" class="btn btn-success" id="btnNovoEq">
-            <i class="fas fa-plus"></i> Novo Equipamento
-        </button>
+        <div class="eq-header-actions">
+            <button type="button" class="btn btn-primary" id="btnAdicionarSetorEq">
+                <i class="fas fa-plus"></i> Adicionar setor
+            </button>
+            <button type="button" class="btn btn-success" id="btnNovoEq">
+                <i class="fas fa-plus"></i> Novo Equipamento
+            </button>
+        </div>
     </div>
 
     <div class="eq-filters">
         <input type="text" id="filtroCodigo" placeholder="Buscar por código..." autocomplete="off">
+        <input type="text" id="filtroNome" placeholder="Buscar por nome..." autocomplete="off">
         <select id="filtroSetor">
             <option value="">Todos os setores</option>
+            {% for s in setores %}
+            <option value="{{ s.nome }}">{{ s.nome }}</option>
+            {% endfor %}
         </select>
         <select id="filtroLocal">
             <option value="">Todos os locais/clientes</option>
@@ -107,7 +116,14 @@
                 </div>
                 <div class="form-group">
                     <label for="eq_setor">Setor</label>
-                    <input type="text" id="eq_setor" name="setor" maxlength="100" placeholder="Setor onde o equipamento está">
+                    <select id="eq_setor" name="setor">
+                        <option value="">Selecione o setor...</option>
+                        {% for s in setores %}
+                        {% if s.ativo %}
+                        <option value="{{ s.nome }}">{{ s.nome }}</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
                 </div>
                 <div class="form-group">
                     <label for="eq_compra">Data compra</label>
@@ -126,6 +142,74 @@
     </div>
 </div>
 
+<!-- ── MODAL LISTA SETORES ─────────────────────────────────────── -->
+<div class="tec-overlay" id="modalListaSetoresOverlay" style="display:none" onclick="fecharModalListaSetores()"></div>
+<div class="tec-modal eq-setores-modal" id="modalListaSetores" style="display:none">
+    <div class="tec-modal-head">
+        <span>Setores</span>
+        <button type="button" class="tec-modal-close" onclick="fecharModalListaSetores()" aria-label="Fechar">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+    <div class="tec-modal-body eq-setores-body">
+        <div class="tec-section-head">
+            <h2 class="eq-setores-title">Setores</h2>
+            <button type="button" class="btn btn-primary tec-btn-sm" id="btnNovoSetorEq">
+                <i class="fas fa-plus"></i> Adicionar setor
+            </button>
+        </div>
+        <table class="tec-table" id="tabSetores">
+            <thead>
+                <tr><th>Nome</th><th>Situação</th><th>Ações</th></tr>
+            </thead>
+            <tbody>
+                {% for s in setores %}
+                <tr id="setor-row-{{ s.id }}" data-nome="{{ s.nome }}">
+                    <td>{{ s.nome }}</td>
+                    <td>
+                        <span class="tec-badge {% if s.ativo %}tec-badge-ok{% else %}tec-badge-off{% endif %}"
+                              id="setor-status-{{ s.id }}">
+                            {{ 'Ativo' if s.ativo else 'Inativo' }}
+                        </span>
+                    </td>
+                    <td>
+                        <button type="button" class="btn tec-btn-sm tec-btn-muted"
+                                onclick="toggleSetorEq({{ s.id }})">
+                            <i class="fas fa-toggle-on"></i> Alternar
+                        </button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr id="setores-vazio"><td colspan="3" style="text-align:center;color:var(--gray-500)">Nenhum setor cadastrado.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="tec-modal-foot">
+        <button type="button" class="btn tec-btn-sm tec-btn-muted" onclick="fecharModalListaSetores()">Fechar</button>
+    </div>
+</div>
+
+<!-- ── MODAL ADICIONAR SETOR ──────────────────────────────────── -->
+<div class="tec-overlay" id="modalSetorOverlay" style="display:none" onclick="fecharModalSetor()"></div>
+<div class="tec-modal" id="modalSetor" style="display:none">
+    <div class="tec-modal-head">
+        <span>Adicionar Setor</span>
+        <button type="button" class="tec-modal-close" onclick="fecharModalSetor()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="tec-modal-body">
+        <div class="form-group">
+            <label>Nome do Setor *</label>
+            <input type="text" id="setorNome" placeholder="Ex: Informática" maxlength="80">
+        </div>
+        <div id="setorErro" class="tec-erro" style="display:none"></div>
+    </div>
+    <div class="tec-modal-foot">
+        <button type="button" class="btn tec-btn-sm tec-btn-muted" onclick="fecharModalSetor()">Fechar</button>
+        <button type="button" class="btn btn-success tec-btn-sm" onclick="salvarSetorEq()">Salvar</button>
+    </div>
+</div>
+
 <style>
 .chamados-page { padding: 4px 0; }
 .chamados-page .header {
@@ -136,6 +220,31 @@
     gap: 0.8rem;
     flex-wrap: wrap;
 }
+.eq-header-actions { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.tec-section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem; gap: 0.5rem; }
+.eq-setores-title { font-size: 0.95rem; font-weight: 700; color: var(--gray-700); margin: 0; }
+.tec-table { width: 100%; border-collapse: collapse; }
+.tec-table th { text-align: left; font-size: 0.72rem; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: .04em; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--gray-200); }
+.tec-table td { padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--gray-100); vertical-align: middle; }
+.tec-badge { font-size: 0.7rem; font-weight: 600; padding: 0.18rem 0.55rem; border-radius: 0.9rem; }
+.tec-badge-ok { background: #d1fae5; color: #065f46; }
+.tec-badge-off { background: var(--gray-200); color: var(--gray-600); }
+.tec-btn-sm { padding: 0.3rem 0.65rem; font-size: 0.74rem; border-radius: 0.25rem; gap: 0.3rem; }
+.tec-btn-muted { background: var(--gray-200); color: var(--gray-700); }
+.tec-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 1000; }
+.tec-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: var(--white); border-radius: 0.5rem; box-shadow: 0 8px 32px rgba(0,0,0,.18); z-index: 1001; width: min(96vw, 420px); }
+.eq-setores-modal { width: min(96vw, 560px); }
+.eq-setores-body { max-height: min(70vh, 420px); overflow-y: auto; }
+.tec-modal-head { display: flex; justify-content: space-between; align-items: center; padding: 0.8rem 1rem; border-bottom: 1px solid var(--gray-200); font-weight: 700; font-size: 0.9rem; }
+.tec-modal-close { background: none; border: none; cursor: pointer; color: var(--gray-500); font-size: 1rem; padding: 0; }
+.tec-modal-body { padding: 1rem; }
+.tec-modal-body .form-group { margin-bottom: 0.65rem; }
+.tec-modal-body label { font-size: 0.72rem; display: block; margin-bottom: 0.18rem; color: var(--gray-600); font-weight: 600; }
+.tec-modal-body input { width: 100%; box-sizing: border-box; padding: 0.42rem 0.55rem; font-size: 0.8rem; border: 1px solid var(--gray-300); border-radius: 0.3rem; }
+.tec-modal-foot { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid var(--gray-200); }
+.tec-erro { color: #b91c1c; font-size: 0.75rem; margin-top: 0.4rem; }
+#modalSetorOverlay, #modalSetor { z-index: 1100; }
+#modalSetor { z-index: 1101; }
 .chamados-page h1 { margin: 0; font-size: 1.6rem; }
 .chamados-sub { margin: 0.2rem 0 0; color: var(--gray-600); font-size: 0.8rem; }
 .table-wrap {
@@ -225,6 +334,8 @@ body.modal-open { overflow: hidden; }
     .eq-filters,
     .eq-page > .header,
     .modal-overlay,
+    .tec-overlay,
+    .tec-modal,
     .no-print { display: none !important; }
     .eq-print-header {
         display: block !important;
@@ -275,13 +386,27 @@ body.modal-open { overflow: hidden; }
         setTimeout(function () { document.getElementById('eq_codigo').focus(); }, 30);
     }
 
+    function ensureSetorOption(selectEl, nome) {
+        if (!selectEl || !nome) return;
+        const exists = Array.from(selectEl.options).some(function (o) {
+            return o.value === nome;
+        });
+        if (exists) return;
+        const opt = document.createElement('option');
+        opt.value = nome;
+        opt.textContent = nome;
+        selectEl.appendChild(opt);
+    }
+
     function abrirEditar(tr) {
         document.getElementById('eqModalTitle').textContent = 'Editar Equipamento';
         document.getElementById('eq_id').value = tr.getAttribute('data-id') || '';
         document.getElementById('eq_codigo').value = tr.getAttribute('data-codigo') || '';
         document.getElementById('eq_nome').value = tr.getAttribute('data-nome') || '';
         document.getElementById('eq_local').value = tr.getAttribute('data-cliente') || '';
-        document.getElementById('eq_setor').value = tr.getAttribute('data-setor') || '';
+        const setorNome = (tr.getAttribute('data-setor') || '').trim();
+        ensureSetorOption(document.getElementById('eq_setor'), setorNome);
+        document.getElementById('eq_setor').value = setorNome;
         document.getElementById('eq_compra').value = tr.getAttribute('data-compra') || '';
         abrirModal();
     }
@@ -293,7 +418,19 @@ body.modal-open { overflow: hidden; }
         if (ev.target === overlay) fecharModal();
     });
     document.addEventListener('keydown', function (ev) {
-        if (ev.key === 'Escape' && !overlay.hidden) fecharModal();
+        if (ev.key === 'Escape') {
+            const addSetor = document.getElementById('modalSetor');
+            const listaSetores = document.getElementById('modalListaSetores');
+            if (addSetor && addSetor.style.display !== 'none') {
+                fecharModalSetor();
+                return;
+            }
+            if (listaSetores && listaSetores.style.display !== 'none') {
+                fecharModalListaSetores();
+                return;
+            }
+            if (!overlay.hidden) fecharModal();
+        }
     });
 
     document.querySelectorAll('.btn-editar-eq').forEach(function (btn) {
@@ -372,29 +509,35 @@ body.modal-open { overflow: hidden; }
         const tbody = document.querySelector('#tabelaEquipamentos tbody');
         const rows = Array.from(tbody.querySelectorAll('tr[data-id]'));
         const inputCodigo = document.getElementById('filtroCodigo');
+        const inputNome = document.getElementById('filtroNome');
         const selectSetor = document.getElementById('filtroSetor');
         const selectLocal = document.getElementById('filtroLocal');
         const btnLimpar = document.getElementById('btnLimparFiltros');
         const btnImprimir = document.getElementById('btnImprimirEq');
         const printTitle = document.getElementById('eqPrintTitle');
 
-        function fillSelect(selectEl, values) {
+        function fillSelectMissing(selectEl, values) {
+            const existing = new Set(
+                Array.from(selectEl.options).map(function (o) { return o.value; }).filter(Boolean)
+            );
             values.forEach(function (v) {
+                if (existing.has(v)) return;
                 const opt = document.createElement('option');
                 opt.value = v;
                 opt.textContent = v;
                 selectEl.appendChild(opt);
+                existing.add(v);
             });
         }
 
         const sortPt = function (a, b) { return a.localeCompare(b, 'pt'); };
 
-        // Populate setor dropdown from distinct values already in the DOM
-        const setores = [...new Set(
+        // Merge orphan setores from equipment rows into the catalog filter
+        const setoresFromRows = [...new Set(
             rows.map(function (tr) { return (tr.getAttribute('data-setor') || '').trim(); })
                 .filter(Boolean)
         )].sort(sortPt);
-        fillSelect(selectSetor, setores);
+        fillSelectMissing(selectSetor, setoresFromRows);
 
         // Local/Cliente: unique names from rows + clients used for linking on the page
         const locaisFromRows = rows.map(function (tr) {
@@ -406,7 +549,7 @@ body.modal-open { overflow: hidden; }
             return (opt.getAttribute('data-nome') || opt.textContent || '').trim();
         }).filter(Boolean);
         const locais = [...new Set(locaisFromRows.concat(locaisFromClientes))].sort(sortPt);
-        fillSelect(selectLocal, locais);
+        fillSelectMissing(selectLocal, locais);
 
         function buildPrintTitle() {
             const setor = (selectSetor.value || '').trim();
@@ -424,14 +567,16 @@ body.modal-open { overflow: hidden; }
 
         function applyFilters() {
             const cod = inputCodigo.value.trim().toLowerCase();
+            const nome = inputNome.value.trim().toLowerCase();
             const setor = selectSetor.value;
             const local = selectLocal.value;
             let visible = 0;
             rows.forEach(function (tr) {
                 const matchCod = !cod || (tr.getAttribute('data-codigo') || '').toLowerCase().includes(cod);
+                const matchNome = !nome || (tr.getAttribute('data-nome') || '').toLowerCase().includes(nome);
                 const matchSetor = !setor || (tr.getAttribute('data-setor') || '') === setor;
                 const matchLocal = !local || (tr.getAttribute('data-local') || '') === local;
-                const show = matchCod && matchSetor && matchLocal;
+                const show = matchCod && matchNome && matchSetor && matchLocal;
                 tr.style.display = show ? '' : 'none';
                 if (show) visible++;
             });
@@ -447,10 +592,12 @@ body.modal-open { overflow: hidden; }
         }
 
         inputCodigo.addEventListener('input', applyFilters);
+        inputNome.addEventListener('input', applyFilters);
         selectSetor.addEventListener('change', applyFilters);
         selectLocal.addEventListener('change', applyFilters);
         btnLimpar.addEventListener('click', function () {
             inputCodigo.value = '';
+            inputNome.value = '';
             selectSetor.value = '';
             selectLocal.value = '';
             applyFilters();
@@ -458,5 +605,100 @@ body.modal-open { overflow: hidden; }
         btnImprimir.addEventListener('click', imprimirVisiveis);
     })();
 })();
+
+// ── Setores (ChamadoSetor) ────────────────────────────────────
+function abrirModalListaSetores() {
+    document.getElementById('modalListaSetoresOverlay').style.display = '';
+    document.getElementById('modalListaSetores').style.display = '';
+}
+function fecharModalListaSetores() {
+    document.getElementById('modalListaSetoresOverlay').style.display = 'none';
+    document.getElementById('modalListaSetores').style.display = 'none';
+}
+function abrirModalSetor() {
+    document.getElementById('setorNome').value = '';
+    document.getElementById('setorErro').style.display = 'none';
+    document.getElementById('modalSetorOverlay').style.display = '';
+    document.getElementById('modalSetor').style.display = '';
+    document.getElementById('setorNome').focus();
+}
+function fecharModalSetor() {
+    document.getElementById('modalSetorOverlay').style.display = 'none';
+    document.getElementById('modalSetor').style.display = 'none';
+}
+function _appendSetorNomeOption(selectEl, nome) {
+    if (!selectEl || !nome) return;
+    const exists = Array.from(selectEl.options).some(function (o) { return o.value === nome; });
+    if (exists) return;
+    const opt = document.createElement('option');
+    opt.value = nome;
+    opt.textContent = nome;
+    selectEl.appendChild(opt);
+}
+function _syncEqSetorSelect(sid, nome, ativo) {
+    const sel = document.getElementById('eq_setor');
+    if (!sel) return;
+    const opt = Array.from(sel.options).find(function (o) { return o.value === nome; });
+    if (!ativo && opt) {
+        opt.remove();
+        return;
+    }
+    if (ativo) _appendSetorNomeOption(sel, nome);
+}
+function salvarSetorEq() {
+    const nome = document.getElementById('setorNome').value.trim();
+    const erro = document.getElementById('setorErro');
+    if (!nome) { erro.textContent = 'Informe o nome do setor.'; erro.style.display = ''; return; }
+    const fd = new FormData();
+    fd.append('nome', nome);
+    fetch('/equipamentos/setor/adicionar', { method: 'POST', body: fd })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (!d.ok) { erro.textContent = d.error || 'Erro ao salvar.'; erro.style.display = ''; return; }
+            fecharModalSetor();
+            const tbody = document.querySelector('#tabSetores tbody');
+            const vazio = document.getElementById('setores-vazio');
+            if (vazio) vazio.remove();
+            const tr = document.createElement('tr');
+            tr.id = 'setor-row-' + d.id;
+            tr.setAttribute('data-nome', d.nome);
+            tr.innerHTML =
+                '<td>' + d.nome + '</td>' +
+                '<td><span class="tec-badge tec-badge-ok" id="setor-status-' + d.id + '">Ativo</span></td>' +
+                '<td><button type="button" class="btn tec-btn-sm tec-btn-muted" onclick="toggleSetorEq(' + d.id + ')">' +
+                '<i class="fas fa-toggle-on"></i> Alternar</button></td>';
+            tbody.appendChild(tr);
+            _appendSetorNomeOption(document.getElementById('filtroSetor'), d.nome);
+            _syncEqSetorSelect(d.id, d.nome, true);
+        })
+        .catch(function () {
+            erro.textContent = 'Erro de comunicação.';
+            erro.style.display = '';
+        });
+}
+function toggleSetorEq(sid) {
+    fetch('/equipamentos/setor/' + sid + '/toggle', { method: 'POST' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (!d.ok) return;
+            const span = document.getElementById('setor-status-' + sid);
+            if (span) {
+                span.textContent = d.ativo ? 'Ativo' : 'Inativo';
+                span.className = 'tec-badge ' + (d.ativo ? 'tec-badge-ok' : 'tec-badge-off');
+            }
+            const row = document.getElementById('setor-row-' + sid);
+            const nome = row ? (row.getAttribute('data-nome') || row.cells[0].textContent.trim()) : '';
+            if (nome) {
+                _appendSetorNomeOption(document.getElementById('filtroSetor'), nome);
+                _syncEqSetorSelect(sid, nome, d.ativo);
+            }
+        });
+}
+
+document.getElementById('btnAdicionarSetorEq').addEventListener('click', abrirModalListaSetores);
+document.getElementById('btnNovoSetorEq').addEventListener('click', abrirModalSetor);
+document.getElementById('setorNome').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); salvarSetorEq(); }
+});
 </script>
 {% endblock %}

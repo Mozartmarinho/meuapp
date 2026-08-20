@@ -166,6 +166,8 @@ _CHAMADOS_ENDPOINT_MENUS = {
     'main.editar_equipamento': 'equipamentos',
     'main.api_equipamentos': 'equipamentos',
     'main.api_equipamento': 'equipamentos',
+    'main.adicionar_setor_equipamento': 'equipamentos',
+    'main.toggle_setor_equipamento': 'equipamentos',
     'main.cameras': 'cameras',
     'main.adicionar_camera': 'cameras',
     'main.editar_camera': 'cameras',
@@ -176,6 +178,8 @@ _CHAMADOS_ENDPOINT_MENUS = {
     'main.adicionar_portao': 'portoes',
     'main.editar_portao': 'portoes',
     'main.excluir_portao': 'portoes',
+    'main.adicionar_setor_portao': 'portoes',
+    'main.toggle_setor_portao': 'portoes',
     'main.recursos': 'recursos',
     'main.ver_recurso': 'recursos',
     'main.salvar_grupo_recurso': 'recursos',
@@ -2203,6 +2207,19 @@ def adicionar_setor_ramal():
     return jsonify({'ok': True, 'id': s.id, 'nome': s.nome})
 
 
+@main.route('/ramais/setor/<int:sid>/toggle', methods=['POST'])
+@login_required
+def toggle_setor_ramal(sid):
+    """Alterna ativo/inativo do setor (mesmo ChamadoSetor de técnicos/câmeras)."""
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'telefones_ramais'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    s = ChamadoSetor.query.get_or_404(sid)
+    s.ativo = not s.ativo
+    db.session.commit()
+    return jsonify({'ok': True, 'id': s.id, 'ativo': s.ativo})
+
+
 _UPLOAD_CAMERAS = Path(__file__).resolve().parent / 'static' / 'uploads' / 'cameras'
 
 
@@ -2496,6 +2513,38 @@ def excluir_portao(pid):
     return jsonify({'ok': True})
 
 
+@main.route('/portoes/setor/adicionar', methods=['POST'])
+@login_required
+def adicionar_setor_portao():
+    """Cadastro de setor (ChamadoSetor) a partir da página de portões."""
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'portoes'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    data = request.get_json(silent=True) or request.form
+    nome = (data.get('nome') or '').strip()
+    if not nome:
+        return jsonify({'ok': False, 'error': 'Informe o nome do setor.'}), 400
+    if ChamadoSetor.query.filter_by(nome=nome).first():
+        return jsonify({'ok': False, 'error': 'Setor já cadastrado.'}), 400
+    s = ChamadoSetor(nome=nome, ativo=True)
+    db.session.add(s)
+    db.session.commit()
+    return jsonify({'ok': True, 'id': s.id, 'nome': s.nome, 'ativo': s.ativo})
+
+
+@main.route('/portoes/setor/<int:sid>/toggle', methods=['POST'])
+@login_required
+def toggle_setor_portao(sid):
+    """Alterna ativo/inativo do setor (mesmo ChamadoSetor de técnicos/câmeras)."""
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'portoes'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    s = ChamadoSetor.query.get_or_404(sid)
+    s.ativo = not s.ativo
+    db.session.commit()
+    return jsonify({'ok': True, 'id': s.id, 'ativo': s.ativo})
+
+
 @main.route('/equipamentos')
 @login_required
 def listar_equipamentos():
@@ -2506,11 +2555,49 @@ def listar_equipamentos():
         .all()
     )
     clientes = Cliente.query.order_by(Cliente.nome.asc()).all()
+    setores = ChamadoSetor.query.order_by(ChamadoSetor.nome).all()
     return render_template(
         'equipamentos.html',
         equipamentos=equipamentos,
         clientes=clientes,
+        setores=setores,
     )
+
+
+@main.route('/equipamentos/setor/adicionar', methods=['POST'])
+@login_required
+def adicionar_setor_equipamento():
+    """Cadastro de setor (ChamadoSetor) a partir da página de equipamentos."""
+    user = Usuario.query.get(session['user_id'])
+    if not user or not (
+        user.tem_menu('chamados', 'equipamentos') or user.tem_menu('chamados', 'recursos')
+    ):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    data = request.get_json(silent=True) or request.form
+    nome = (data.get('nome') or '').strip()
+    if not nome:
+        return jsonify({'ok': False, 'error': 'Informe o nome do setor.'}), 400
+    if ChamadoSetor.query.filter_by(nome=nome).first():
+        return jsonify({'ok': False, 'error': 'Setor já cadastrado.'}), 400
+    s = ChamadoSetor(nome=nome, ativo=True)
+    db.session.add(s)
+    db.session.commit()
+    return jsonify({'ok': True, 'id': s.id, 'nome': s.nome, 'ativo': s.ativo})
+
+
+@main.route('/equipamentos/setor/<int:sid>/toggle', methods=['POST'])
+@login_required
+def toggle_setor_equipamento(sid):
+    """Alterna ativo/inativo do setor (mesmo ChamadoSetor de técnicos/câmeras/ramais)."""
+    user = Usuario.query.get(session['user_id'])
+    if not user or not (
+        user.tem_menu('chamados', 'equipamentos') or user.tem_menu('chamados', 'recursos')
+    ):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    s = ChamadoSetor.query.get_or_404(sid)
+    s.ativo = not s.ativo
+    db.session.commit()
+    return jsonify({'ok': True, 'id': s.id, 'ativo': s.ativo})
 
 
 def _dados_equipamento_form(data):
@@ -2654,7 +2741,13 @@ def novo_equipamento():
     except Exception as e:
         db.session.rollback()
         flash(f'Erro ao criar equipamento: {str(e)}', 'error')
-    return render_template('equipamentos.html', equipamentos=Equipamento.query.all(), clientes=clientes)
+    setores = ChamadoSetor.query.order_by(ChamadoSetor.nome).all()
+    return render_template(
+        'equipamentos.html',
+        equipamentos=Equipamento.query.all(),
+        clientes=clientes,
+        setores=setores,
+    )
 
 
 @main.route('/equipamentos/<int:id>/editar', methods=['GET', 'POST'])
