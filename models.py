@@ -1,8 +1,16 @@
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+from zoneinfo import ZoneInfo
 
 db = SQLAlchemy()
+
+TZ_BRASILIA = ZoneInfo('America/Sao_Paulo')
+
+
+def now_brasilia():
+    """Horário atual em Brasília (naive), para gravar/exibir consistente no app."""
+    return datetime.now(TZ_BRASILIA).replace(tzinfo=None)
 
 SETORES_CHAMADO = ('Informática', 'Elétrica', 'Obra', 'Compras')
 SETORES_NUTRICAO = (
@@ -772,7 +780,7 @@ class ChamadoEstoqueUso(db.Model):
     estoque_id = db.Column(db.Integer, db.ForeignKey('chamado_estoque.id'), nullable=False, index=True)
     quantidade = db.Column(db.Integer, nullable=False)
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=now_brasilia)
 
     chamado = db.relationship('Chamado', foreign_keys=[chamado_id])
     atendimento = db.relationship('ChamadoAtendimento', foreign_keys=[atendimento_id])
@@ -793,14 +801,16 @@ class ChamadoEstoqueUso(db.Model):
                 setor_nome = ch.setor_tecnico.nome
             else:
                 setor_nome = ch.setor_destino or ch.setor_origem or ''
+        # created_at é gravado em horário de Brasília (naive) ao finalizar
+        dt = self.created_at
         return {
             'id': self.id,
             'produto': est.produto if est else '',
             'marca': (est.marca or '') if est else '',
             'modelo': (est.modelo or '') if est else '',
             'quantidade': int(self.quantidade or 0),
-            'data_saida': self.created_at.strftime('%Y-%m-%d') if self.created_at else '',
-            'data_saida_fmt': self.created_at.strftime('%d/%m/%Y %H:%M') if self.created_at else '',
+            'data_saida': dt.strftime('%Y-%m-%d') if dt else '',
+            'data_saida_fmt': dt.strftime('%d/%m/%Y %H:%M') if dt else '',
             'numero_chamado': ch.numero_chamado if ch else '',
             'chamado_id': self.chamado_id,
             'usuario_atendimento': atendente.nome if atendente else '',
@@ -850,7 +860,7 @@ def sla_horas_tipo_contrato(tipo):
 def contrato_vigente(cliente_id, ref_date=None):
     if not cliente_id:
         return None
-    ref = ref_date or date.today()
+    ref = ref_date or now_brasilia().date()
     try:
         q = Contrato.query.filter_by(cliente_id=cliente_id).order_by(Contrato.id.desc())
         vigentes = []

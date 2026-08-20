@@ -36,6 +36,7 @@ from models import (
     ChamadoEstoque,
     ChamadoEstoqueUso,
     ConhecimentoPasta,
+    now_brasilia,
     TIPO_FOTO_CONSERTO,
     TIPO_FOTO_ENCAMINHAMENTO,
     TIPO_HOP_ENCAMINHAR,
@@ -186,6 +187,7 @@ _CHAMADOS_ENDPOINT_MENUS = {
     'main.adicionar_setor_portao': 'portoes',
     'main.toggle_setor_portao': 'portoes',
     'main.estoque': 'estoque',
+    'main.api_estoque': 'estoque',
     'main.adicionar_estoque': 'estoque',
     'main.editar_estoque': 'estoque',
     'main.excluir_estoque': 'estoque',
@@ -2194,6 +2196,7 @@ def _debitar_estoque_finalizar(chamado, atendimento, user, raw_usos):
             estoque_id=item.id,
             quantidade=qtd,
             usuario_id=user.id if user else None,
+            created_at=now_brasilia(),
         ))
 
 
@@ -2832,7 +2835,7 @@ def estoque():
         return redirect(url_for('main.inicio'))
     itens = ChamadoEstoque.query.order_by(ChamadoEstoque.produto.asc()).all()
 
-    setor_filtro = (request.args.get('setor') or '').strip()
+    produto_filtro = (request.args.get('produto') or '').strip()
     data_de = (request.args.get('data_de') or '').strip()
     data_ate = (request.args.get('data_ate') or '').strip()
 
@@ -2846,17 +2849,17 @@ def estoque():
         )
         .order_by(ChamadoEstoqueUso.created_at.desc())
     )
-    if setor_filtro:
-        saidas_q = (
-            saidas_q
-            .join(ChamadoEstoqueUso.chamado)
-            .outerjoin(Chamado.setor_tecnico)
-            .filter(or_(
-                ChamadoSetor.nome == setor_filtro,
-                Chamado.setor_destino == setor_filtro,
-                Chamado.setor_origem == setor_filtro,
-            ))
-        )
+    if produto_filtro:
+        try:
+            produto_id = int(produto_filtro)
+            saidas_q = saidas_q.filter(ChamadoEstoqueUso.estoque_id == produto_id)
+        except ValueError:
+            # Fallback: filtra pelo nome do produto
+            saidas_q = (
+                saidas_q
+                .join(ChamadoEstoqueUso.estoque)
+                .filter(ChamadoEstoque.produto == produto_filtro)
+            )
     if data_de:
         try:
             dt_de = datetime.strptime(data_de, '%Y-%m-%d')
@@ -2871,21 +2874,14 @@ def estoque():
             pass
 
     saidas = saidas_q.limit(500).all()
-    setores = ChamadoSetor.query.order_by(ChamadoSetor.nome.asc()).all()
-    setores_nomes = listar_setores(TIPO_SETOR_CHAMADOS)
-    # Unifica catálogo ChamadoSetor + setores de encaminhamento
-    nomes_extra = {s.nome for s in setores}
-    for n in setores_nomes:
-        if n not in nomes_extra:
-            nomes_extra.add(n)
-    setores_filtro = sorted(nomes_extra)
+    produtos_filtro = itens  # todos os produtos do estoque
 
     return render_template(
         'estoque.html',
         itens=itens,
         saidas=saidas,
-        setores_filtro=setores_filtro,
-        filtro_setor=setor_filtro,
+        produtos_filtro=produtos_filtro,
+        filtro_produto=produto_filtro,
         filtro_data_de=data_de,
         filtro_data_ate=data_ate,
     )
