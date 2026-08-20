@@ -441,6 +441,8 @@ class Equipamento(db.Model):
     __tablename__ = 'equipamentos'
 
     id = db.Column(db.Integer, primary_key=True)
+    # Coluna legada NOT NULL no MySQL; espelha o nome do equipamento
+    equipamento = db.Column(db.String(100), nullable=False)
     nome_equipamento = db.Column(db.String(100), nullable=False)
     modelo = db.Column(db.String(100))
     numero_serie = db.Column(db.String(50), unique=True)

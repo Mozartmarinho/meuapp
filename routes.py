@@ -3059,6 +3059,7 @@ def _dados_equipamento_form(data):
     grupo = grupo_recurso_padrao(cliente_id)
     return {
         'patrimonio': codigo,
+        'equipamento': nome,  # coluna legada NOT NULL
         'nome_equipamento': nome,
         'setor': setor or None,
         'localizacao': setor or None,
@@ -3132,6 +3133,7 @@ def api_equipamento(id):
     try:
         campos = _dados_equipamento_form(data)
         equipamento.patrimonio = campos['patrimonio']
+        equipamento.equipamento = campos['equipamento']
         equipamento.nome_equipamento = campos['nome_equipamento']
         equipamento.setor = campos['setor']
         equipamento.localizacao = campos['localizacao']
@@ -3195,6 +3197,7 @@ def editar_equipamento(id):
     try:
         campos = _dados_equipamento_form(request.form)
         equipamento.patrimonio = campos['patrimonio']
+        equipamento.equipamento = campos['equipamento']
         equipamento.nome_equipamento = campos['nome_equipamento']
         equipamento.setor = campos['setor']
         equipamento.localizacao = campos['localizacao']
