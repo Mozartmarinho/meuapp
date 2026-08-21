@@ -9,6 +9,7 @@ from models_nutricao import (
     NutTabelaNutrientes, NutAlimento, NutAlimentoNutriente, NutPratoLiquido,
     NutEstoqueLocal, NutUnidadeMedida, NutGrupoProduto, NutProduto, NutFornecedor,
     NutEtiqueta, NutEtiquetaCampo, NutPrecoRefeicao, NutTipoRefeicao, NutPrecoDietaTipo,
+    NutRefeicaoAcompanhante, NutRefeicaoFuncionario,
 )
 from nutricao_tenant import (
     resolve_nutricao_cliente,
@@ -26,6 +27,9 @@ from nutricao_service import (
     mapa_from_paciente,
     garantir_mapa_do_dia,
     marcar_alteracao_mapa,
+    leito_ocupado_no_mapa,
+    MSG_LEITO_OCUPADO,
+    baixar_acompanhantes_do_paciente,
     list_clinicas,
     list_enfermarias,
     list_leitos,
@@ -314,6 +318,12 @@ def api_pacientes():
         # Por padrão só cadastra; inclusão no mapa é via /api/mapa/inserir
         if d.get('adicionar_mapa'):
             data_mapa = _parse_date(d.get('admissao')) or _parse_date(d.get('data_mapa')) or date.today()
+            clinica_m = (d.get('clinica') or p.clinica or '').strip()
+            enfermaria_m = (d.get('enfermaria') or '').strip()
+            leito_m = (d.get('leito') or p.leito or '').strip()
+            if leito_ocupado_no_mapa(data_mapa, clinica_m, enfermaria_m, leito_m):
+                db.session.rollback()
+                return jsonify({'ok': False, 'error': MSG_LEITO_OCUPADO}), 400
             flags = {fl: bool(d.get(fl, True)) for fl in FLAG_FIELDS}
             extras = {
                 'adm': _parse_date(d.get('admissao')) or p.admissao,
@@ -354,6 +364,11 @@ def api_paciente(pid):
     if request.method == 'DELETE':
         p.ativo = False
         p.data_saida = p.data_saida or date.today()
+        baixar_acompanhantes_do_paciente(
+            p.id,
+            motivo=p.motivo_saida or 'Exclusão paciente',
+            data_saida=p.data_saida,
+        )
         db.session.commit()
         return jsonify({'ok': True})
     d = request.get_json(force=True) or {}
@@ -375,6 +390,243 @@ def api_paciente(pid):
         marcar_alteracao_mapa(linha, _usuario_sessao())
         db.session.commit()
     return jsonify({'ok': True, 'paciente': p.to_dict()})
+
+
+# ---- REFEIÇÃO ACOMPANHANTE ----
+def _resolve_dieta_refeicao(d):
+    """Retorna (dieta_id, refeicao_nome) a partir de dieta_id e/ou refeicao/dieta texto."""
+    dieta_id = d.get('dieta_id')
+    refeicao = (d.get('refeicao') or d.get('dieta') or '').strip()
+    dieta = None
+    if dieta_id not in (None, ''):
+        try:
+            dieta = _get_scoped(NutDieta, int(dieta_id))
+        except (TypeError, ValueError):
+            dieta = None
+    if not dieta and refeicao:
+        dieta = scoped_query(NutDieta).filter(
+            NutDieta.nome == refeicao,
+            NutDieta.ativo.is_(True),
+        ).first()
+    if dieta:
+        return dieta.id, dieta.nome
+    return None, refeicao or None
+
+
+def _list_acompanhantes_db(ativos_only=True, q=None):
+    query = scoped_query(NutRefeicaoAcompanhante)
+    if ativos_only:
+        query = query.filter_by(ativo=True)
+    termo = (q or '').strip()
+    if termo:
+        like = f'%{termo}%'
+        query = query.outerjoin(NutPaciente).filter(
+            db.or_(
+                NutRefeicaoAcompanhante.nome_acompanhante.ilike(like),
+                NutRefeicaoAcompanhante.refeicao.ilike(like),
+                NutPaciente.nome.ilike(like),
+            )
+        )
+    query = query.order_by(NutRefeicaoAcompanhante.nome_acompanhante)
+    return [r.to_dict() for r in query.all()]
+
+
+def _list_funcionarios_refeicao_db(ativos_only=True, q=None):
+    query = scoped_query(NutRefeicaoFuncionario)
+    if ativos_only:
+        query = query.filter_by(ativo=True)
+    termo = (q or '').strip()
+    if termo:
+        like = f'%{termo}%'
+        query = query.filter(
+            db.or_(
+                NutRefeicaoFuncionario.nome.ilike(like),
+                NutRefeicaoFuncionario.refeicao.ilike(like),
+            )
+        )
+    query = query.order_by(NutRefeicaoFuncionario.nome)
+    return [r.to_dict() for r in query.all()]
+
+
+@nutricao.route('/nutricao/refeicao-acompanhante')
+def refeicao_acompanhante():
+    seed_nutricao()
+    return render_template(
+        'nutricao_refeicao_acompanhante.html',
+        acompanhantes=_list_acompanhantes_db(True),
+        dietas=_list_dietas_db(somente_ativas=True),
+        pacientes=_list_pacientes_db(True, limit=500),
+        **active('refeicao_acompanhante'),
+    )
+
+
+@nutricao.route('/nutricao/api/refeicao-acompanhantes', methods=['GET', 'POST'])
+def api_refeicao_acompanhantes():
+    seed_nutricao()
+    if request.method == 'POST':
+        d = request.get_json(force=True) or {}
+        nome = (d.get('nome_acompanhante') or d.get('nome') or '').strip()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome do acompanhante é obrigatório'}), 400
+        paciente_id = d.get('paciente_id')
+        try:
+            paciente_id = int(paciente_id)
+        except (TypeError, ValueError):
+            return jsonify({'ok': False, 'error': 'Paciente é obrigatório'}), 400
+        pac = _get_scoped(NutPaciente, paciente_id)
+        if not pac:
+            return jsonify({'ok': False, 'error': 'Paciente não encontrado'}), 404
+        dieta_id, refeicao = _resolve_dieta_refeicao(d)
+        if not refeicao and not dieta_id:
+            return jsonify({'ok': False, 'error': 'Selecione uma dieta/refeição'}), 400
+        quantidade = _parse_quantidade_refeicao(d, default=1)
+        if quantidade is None:
+            return jsonify({'ok': False, 'error': 'Quantidade deve ser um número >= 1'}), 400
+        row = NutRefeicaoAcompanhante(
+            cliente_id=getattr(pac, 'cliente_id', None) or write_cliente_id(),
+            nome_acompanhante=nome,
+            paciente_id=pac.id,
+            dieta_id=dieta_id,
+            refeicao=refeicao,
+            quantidade=quantidade,
+            ativo=True,
+        )
+        db.session.add(row)
+        db.session.commit()
+        return jsonify({'ok': True, 'id': row.id, 'acompanhante': row.to_dict()})
+    q = request.args.get('q') or ''
+    ativos = str(request.args.get('ativos', '1')).lower() not in ('0', 'false', 'nao', 'não')
+    return jsonify({'ok': True, 'acompanhantes': _list_acompanhantes_db(ativos, q=q)})
+
+
+@nutricao.route('/nutricao/api/refeicao-acompanhantes/<int:aid>', methods=['PUT', 'DELETE'])
+def api_refeicao_acompanhante_ops(aid):
+    row = _get_scoped_or_404(NutRefeicaoAcompanhante, aid)
+    if not row:
+        return jsonify({'ok': False, 'error': 'Não encontrado'}), 404
+    if request.method == 'DELETE':
+        row.ativo = False
+        row.data_saida = date.today()
+        row.motivo_saida = 'Exclusão'
+        db.session.commit()
+        return jsonify({'ok': True})
+    d = request.get_json(force=True) or {}
+    if 'nome_acompanhante' in d or 'nome' in d:
+        nome = (d.get('nome_acompanhante') or d.get('nome') or '').strip()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome do acompanhante é obrigatório'}), 400
+        row.nome_acompanhante = nome
+    if 'paciente_id' in d and d.get('paciente_id') not in (None, ''):
+        try:
+            pid = int(d.get('paciente_id'))
+        except (TypeError, ValueError):
+            return jsonify({'ok': False, 'error': 'Paciente inválido'}), 400
+        pac = _get_scoped(NutPaciente, pid)
+        if not pac:
+            return jsonify({'ok': False, 'error': 'Paciente não encontrado'}), 404
+        row.paciente_id = pac.id
+        if not row.cliente_id:
+            row.cliente_id = getattr(pac, 'cliente_id', None) or write_cliente_id()
+    if any(k in d for k in ('dieta_id', 'refeicao', 'dieta')):
+        dieta_id, refeicao = _resolve_dieta_refeicao(d)
+        if not refeicao and not dieta_id:
+            return jsonify({'ok': False, 'error': 'Selecione uma dieta/refeição'}), 400
+        row.dieta_id = dieta_id
+        row.refeicao = refeicao
+    if 'quantidade' in d:
+        quantidade = _parse_quantidade_refeicao(d)
+        if quantidade is None:
+            return jsonify({'ok': False, 'error': 'Quantidade deve ser um número >= 1'}), 400
+        row.quantidade = quantidade
+    if 'ativo' in d:
+        row.ativo = bool(d.get('ativo'))
+    db.session.commit()
+    return jsonify({'ok': True, 'acompanhante': row.to_dict()})
+
+
+# ---- REFEIÇÕES FUNCIONÁRIOS ----
+@nutricao.route('/nutricao/refeicoes-funcionarios')
+def refeicoes_funcionarios():
+    seed_nutricao()
+    return render_template(
+        'nutricao_refeicoes_funcionarios.html',
+        funcionarios=_list_funcionarios_refeicao_db(True),
+        dietas=_list_dietas_db(somente_ativas=True),
+        **active('refeicoes_funcionarios'),
+    )
+
+
+def _parse_quantidade_refeicao(d, default=1):
+    raw = d.get('quantidade', default)
+    try:
+        qtd = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if qtd < 1:
+        return None
+    return qtd
+
+
+@nutricao.route('/nutricao/api/refeicao-funcionarios', methods=['GET', 'POST'])
+def api_refeicao_funcionarios():
+    seed_nutricao()
+    if request.method == 'POST':
+        d = request.get_json(force=True) or {}
+        nome = (d.get('nome') or '').strip()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome é obrigatório'}), 400
+        dieta_id, refeicao = _resolve_dieta_refeicao(d)
+        if not refeicao and not dieta_id:
+            return jsonify({'ok': False, 'error': 'Informe a refeição/dieta'}), 400
+        quantidade = _parse_quantidade_refeicao(d, default=1)
+        if quantidade is None:
+            return jsonify({'ok': False, 'error': 'Quantidade deve ser um número >= 1'}), 400
+        row = NutRefeicaoFuncionario(
+            cliente_id=write_cliente_id(),
+            nome=nome,
+            dieta_id=dieta_id,
+            refeicao=refeicao,
+            quantidade=quantidade,
+            ativo=True,
+        )
+        db.session.add(row)
+        db.session.commit()
+        return jsonify({'ok': True, 'id': row.id, 'funcionario': row.to_dict()})
+    q = request.args.get('q') or ''
+    ativos = str(request.args.get('ativos', '1')).lower() not in ('0', 'false', 'nao', 'não')
+    return jsonify({'ok': True, 'funcionarios': _list_funcionarios_refeicao_db(ativos, q=q)})
+
+
+@nutricao.route('/nutricao/api/refeicao-funcionarios/<int:fid>', methods=['PUT', 'DELETE'])
+def api_refeicao_funcionario_ops(fid):
+    row = _get_scoped_or_404(NutRefeicaoFuncionario, fid)
+    if not row:
+        return jsonify({'ok': False, 'error': 'Não encontrado'}), 404
+    if request.method == 'DELETE':
+        row.ativo = False
+        db.session.commit()
+        return jsonify({'ok': True})
+    d = request.get_json(force=True) or {}
+    if 'nome' in d:
+        nome = (d.get('nome') or '').strip()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome é obrigatório'}), 400
+        row.nome = nome
+    if any(k in d for k in ('dieta_id', 'refeicao', 'dieta')):
+        dieta_id, refeicao = _resolve_dieta_refeicao(d)
+        if not refeicao and not dieta_id:
+            return jsonify({'ok': False, 'error': 'Informe a refeição/dieta'}), 400
+        row.dieta_id = dieta_id
+        row.refeicao = refeicao
+    if 'quantidade' in d:
+        quantidade = _parse_quantidade_refeicao(d)
+        if quantidade is None:
+            return jsonify({'ok': False, 'error': 'Quantidade deve ser um número >= 1'}), 400
+        row.quantidade = quantidade
+    if 'ativo' in d:
+        row.ativo = bool(d.get('ativo'))
+    db.session.commit()
+    return jsonify({'ok': True, 'funcionario': row.to_dict()})
 
 
 # ---- MAPA API ----
@@ -426,6 +678,9 @@ def api_mapa_inserir():
         return jsonify({'ok': False, 'error': 'Informe a enfermaria'}), 400
     if not leito:
         return jsonify({'ok': False, 'error': 'Informe o leito'}), 400
+
+    if leito_ocupado_no_mapa(data_mapa, clinica, enfermaria, leito):
+        return jsonify({'ok': False, 'error': MSG_LEITO_OCUPADO}), 400
 
     # Reinserção no mapa: limpa saída anterior para o paciente voltar a persistir nos dias seguintes
     p.ativo = True
@@ -492,6 +747,21 @@ def api_mapa_put(mid):
     if not row or not row.ativo:
         return jsonify({'ok': False, 'error': 'Linha não encontrada'}), 404
     d = request.get_json(force=True) or {}
+
+    def _campo_loc(nome):
+        if nome in d:
+            val = d.get(nome)
+            return (str(val).strip() if val is not None else '') or None
+        return getattr(row, nome, None)
+
+    clinica_f = _campo_loc('clinica')
+    enfermaria_f = _campo_loc('enfermaria')
+    leito_f = _campo_loc('leito')
+    if leito_ocupado_no_mapa(
+        row.data_refeicao, clinica_f, enfermaria_f, leito_f, exclude_id=row.id
+    ):
+        return jsonify({'ok': False, 'error': MSG_LEITO_OCUPADO}), 400
+
     for campo in (
         'leito', 'prontuario', 'nome', 'diagnostico', 'dieta', 'observacoes', 'clinica', 'enfermaria',
         'obs_etiqueta', 'extras', 'suplementos', 'enteral', 'formula_infantil', 'lve',
@@ -691,7 +961,7 @@ def api_clinica_enfermarias(cid):
             'todas': list_enfermarias(somente_ativas=True),
         })
 
-        d = request.get_json(force=True) or {}
+    d = request.get_json(force=True) or {}
     ids = d.get('enfermaria_ids')
     if ids is None:
         return jsonify({'ok': False, 'error': 'Informe enfermaria_ids'}), 400
@@ -700,7 +970,8 @@ def api_clinica_enfermarias(cid):
     except (TypeError, ValueError):
         return jsonify({'ok': False, 'error': 'enfermaria_ids inválido'}), 400
 
-    selecionadas = NutEnfermaria.query.filter(
+    # Replace the full set of links for this clínica (empty list unlinks all).
+    selecionadas = scoped_query(NutEnfermaria).filter(
         NutEnfermaria.id.in_(ids),
         NutEnfermaria.ativo.is_(True),
     ).all() if ids else []

@@ -88,6 +88,15 @@
       white-space: nowrap;
       text-align: right;
     }
+    .right-stack {
+      flex: 0 0 auto;
+      text-align: right;
+      line-height: 1.1;
+    }
+    .right-stack .data-hora {
+      white-space: nowrap;
+      font-size: {{ r.modelo.fonte_obs }}pt;
+    }
     .line-full {
       width: 100%;
       overflow: hidden;
@@ -136,7 +145,10 @@
         <div class="label">
           <div class="row meal-line">
             <span class="left">{{ eti.linha1_esq }}</span>
-            <span class="right">{{ eti.linha1_dir }}</span>
+            <span class="right-stack">
+              <div class="right">{{ eti.linha1_dir }}</div>
+              {% if eti.data_hora %}<div class="data-hora">{{ eti.data_hora }}</div>{% endif %}
+            </span>
           </div>
           <div class="row">
             <span class="left">{{ eti.setor }}</span>

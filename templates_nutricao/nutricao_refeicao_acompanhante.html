@@ -1,0 +1,219 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="acompanhante-cadastro">
+<div class="page-header">
+  <h1>Refeição acompanhante</h1>
+  <p>Acompanhantes vinculados a pacientes e dietas da nutrição</p>
+</div>
+
+<div class="toolbar">
+  <div class="toolbar-search">
+    <i class="fas fa-search"></i>
+    <input type="text" id="buscaAcomp" placeholder="Buscar acompanhante, paciente ou dieta..." oninput="filtrarAcomp()">
+  </div>
+  <button class="btn btn-primary btn-sm" type="button" onclick="abrirAcomp()">
+    <i class="fas fa-plus"></i> Adicionar refeição acompanhante
+  </button>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden">
+  <div class="table-container" style="box-shadow:none;border-radius:0;">
+    <table id="tabelaAcomp" class="data-table">
+      <thead>
+        <tr>
+          <th>Nome acompanhante</th>
+          <th>Nome paciente</th>
+          <th>Refeição (dieta vinculada)</th>
+          <th style="width:100px">Quantidade</th>
+          <th style="width:72px">Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tabelaAcompBody">
+        {% for a in acompanhantes %}
+        <tr data-id="{{ a.id }}"
+            data-nome="{{ a.nome_acompanhante or '' }}"
+            data-paciente="{{ a.nome_paciente or '' }}"
+            data-paciente-id="{{ a.paciente_id or '' }}"
+            data-dieta-id="{{ a.dieta_id or '' }}"
+            data-refeicao="{{ a.refeicao or '' }}"
+            data-quantidade="{{ a.quantidade if a.quantidade is not none else 1 }}">
+          <td><strong>{{ a.nome_acompanhante }}</strong></td>
+          <td>{{ a.nome_paciente or '-' }}</td>
+          <td><span class="status status-info">{{ a.refeicao or '-' }}</span></td>
+          <td>{{ a.quantidade if a.quantidade is not none else 1 }}</td>
+          <td class="paciente-acoes">
+            <button class="btn btn-ghost btn-sm" type="button" onclick="editarAcompLinha(this)" title="Editar">
+              <i class="fas fa-edit"></i>
+            </button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="excluirAcomp({{ a.id }})" title="Excluir">
+              <i class="fas fa-trash"></i>
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr id="linhaVazia">
+          <td colspan="5" style="text-align:center;color:#6B7280;">Nenhum acompanhante cadastrado.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+</div>
+
+<style>
+.acompanhante-cadastro .page-header { margin-bottom: 1rem; }
+.acompanhante-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.acompanhante-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.acompanhante-cadastro .toolbar { gap: 0.6rem; margin-bottom: 0.8rem; }
+.acompanhante-cadastro .toolbar-search {
+  gap: 0.4rem;
+  padding: 0.44rem 0.68rem;
+  max-width: 336px;
+  flex-basis: 176px;
+}
+.acompanhante-cadastro .toolbar-search i { font-size: 0.72rem; }
+.acompanhante-cadastro .toolbar-search input {
+  font-size: 0.72rem;
+  padding: 0;
+  width: auto;
+  border: none;
+  box-shadow: none;
+}
+.acompanhante-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.acompanhante-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
+.acompanhante-cadastro .btn-ghost { padding: 0.16rem 0.32rem; }
+</style>
+
+<script>
+const DIETAS_ACOMP = {{ (dietas or [])|tojson }};
+const PACIENTES_ACOMP = {{ (pacientes or [])|tojson }};
+
+function filtrarAcomp(){
+  const q = (document.getElementById('buscaAcomp')?.value || '').toLowerCase().trim();
+  document.querySelectorAll('#tabelaAcompBody tr[data-id]').forEach(tr => {
+    const txt = [
+      tr.dataset.nome || '',
+      tr.dataset.paciente || '',
+      tr.dataset.refeicao || ''
+    ].join(' ').toLowerCase();
+    tr.style.display = !q || txt.includes(q) ? '' : 'none';
+  });
+}
+
+function dietasOpts(selectedId, selectedNome){
+  const sid = selectedId != null ? String(selectedId) : '';
+  const sn = (selectedNome || '').trim();
+  return (DIETAS_ACOMP || []).map(d => {
+    const sel = sid && String(d.id) === sid ? 'selected'
+      : (!sid && sn && String(d.nome).toUpperCase() === sn.toUpperCase() ? 'selected' : '');
+    return `<option value="${d.id}" data-nome="${escHtml(d.nome)}" ${sel}>${escHtml(d.nome)}</option>`;
+  }).join('');
+}
+
+function pacientesOpts(selectedId){
+  const sid = selectedId != null ? String(selectedId) : '';
+  return (PACIENTES_ACOMP || []).map(p => {
+    const sel = sid && String(p.id) === sid ? 'selected' : '';
+    return `<option value="${p.id}" ${sel}>${escHtml(p.nome)}</option>`;
+  }).join('');
+}
+
+function escHtml(s){
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+}
+
+function abrirAcomp(data){
+  const isEdit = !!(data && data.id);
+  const qtd = (data && data.quantidade != null && data.quantidade !== '') ? data.quantidade : 1;
+  const pacienteId = data && data.paciente_id ? data.paciente_id : '';
+  const pacienteNome = (data && data.nome_paciente) || '';
+  const html = `
+    <div class="form-group"><label class="form-label">Nome acompanhante *</label>
+      <input class="form-control" id="ac-nome" value="${escHtml((data && data.nome_acompanhante) || '')}"></div>
+    <div class="form-group"><label class="form-label">Nome paciente *</label>
+      <select class="form-control" id="ac-paciente" ${isEdit ? '' : 'required'}>
+        <option value="">Selecione</option>
+        ${pacientesOpts(pacienteId)}
+        ${isEdit && pacienteId && !(PACIENTES_ACOMP || []).some(p => String(p.id) === String(pacienteId))
+          ? `<option value="${escHtml(pacienteId)}" selected>${escHtml(pacienteNome || ('Paciente #' + pacienteId))}</option>`
+          : ''}
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Refeição (dieta) *</label>
+      <select class="form-control" id="ac-dieta">
+        <option value="">Selecione</option>
+        ${dietasOpts(data && data.dieta_id, data && data.refeicao)}
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Quantidade *</label>
+      <input class="form-control" type="number" id="ac-quantidade" min="1" step="1" value="${escHtml(qtd)}" required></div>
+  `;
+  window._editAcompId = isEdit ? data.id : null;
+  abrirModal(isEdit ? 'Editar refeição acompanhante' : 'Nova refeição acompanhante', html, isEdit ? 'Atualizar' : 'Salvar', salvarAcomp);
+}
+
+function editarAcompLinha(btn){
+  const tr = btn.closest('tr');
+  if (!tr) return;
+  abrirAcomp({
+    id: tr.dataset.id,
+    nome_acompanhante: tr.dataset.nome || '',
+    paciente_id: tr.dataset.pacienteId || '',
+    nome_paciente: tr.dataset.paciente || '',
+    dieta_id: tr.dataset.dietaId || '',
+    refeicao: tr.dataset.refeicao || '',
+    quantidade: tr.dataset.quantidade || 1
+  });
+}
+
+async function salvarAcomp(){
+  const nome = (document.getElementById('ac-nome')?.value || '').trim();
+  const pacienteId = document.getElementById('ac-paciente')?.value || '';
+  const sel = document.getElementById('ac-dieta');
+  const dietaId = sel?.value || '';
+  const refeicao = sel?.selectedOptions?.[0]?.dataset?.nome || sel?.selectedOptions?.[0]?.textContent || '';
+  const quantidade = parseInt(document.getElementById('ac-quantidade')?.value, 10);
+  if (!nome){ showToast('Nome do acompanhante é obrigatório','error'); return; }
+  if (!pacienteId){ showToast('Selecione o paciente','error'); return; }
+  if (!dietaId && !refeicao){ showToast('Selecione uma dieta','error'); return; }
+  if (!Number.isFinite(quantidade) || quantidade < 1){
+    showToast('Quantidade deve ser um número >= 1','error'); return;
+  }
+  const id = window._editAcompId;
+  const url = id ? `/nutricao/api/refeicao-acompanhantes/${id}` : '/nutricao/api/refeicao-acompanhantes';
+  const method = id ? 'PUT' : 'POST';
+  const r = await fetch(url, {
+    method,
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      nome_acompanhante: nome,
+      paciente_id: pacienteId,
+      dieta_id: dietaId || null,
+      refeicao,
+      quantidade
+    })
+  });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){
+    showToast((j && j.error) || 'Falha ao salvar','error');
+    return;
+  }
+  fecharModal();
+  showToast(id ? 'Acompanhante atualizado' : 'Acompanhante cadastrado','success');
+  setTimeout(() => location.reload(), 400);
+}
+
+async function excluirAcomp(id){
+  if (!confirm('Excluir este acompanhante?')) return;
+  const r = await fetch(`/nutricao/api/refeicao-acompanhantes/${id}`, { method:'DELETE' });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){
+    showToast((j && j.error) || 'Falha ao excluir','error');
+    return;
+  }
+  showToast('Acompanhante excluído','success');
+  setTimeout(() => location.reload(), 400);
+}
+</script>
+{% endblock %}

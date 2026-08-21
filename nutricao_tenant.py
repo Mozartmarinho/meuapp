@@ -24,6 +24,8 @@ NUTRICAO_CLIENTE_TABLES = (
     'nut_etiquetas',
     'nut_precos_refeicoes',
     'nut_tipos_refeicao',
+    'nut_refeicao_acompanhantes',
+    'nut_refeicao_funcionarios',
 )
 
 

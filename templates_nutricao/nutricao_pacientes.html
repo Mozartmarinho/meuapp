@@ -149,6 +149,7 @@
 <script>
 const clinicasOptions = {{ clinicas | tojson }};
 const dietasOptions = {{ dietas | tojson }};
+window.DIETAS_PACIENTE = dietasOptions;
 
 function filtrarPacientes(){
   const q = (document.getElementById('buscaPaciente').value || '').toLowerCase();
@@ -259,8 +260,16 @@ async function salvarPacientePopup(){
     showToast((j && j.error) || 'Falha ao salvar','error');
     return;
   }
+  if (!id) {
+    showToast('Paciente cadastrado','success');
+    const pac = (j && j.paciente) || { id: j.id, nome };
+    perguntarIncluirAcompanhante(pac, function(){
+      setTimeout(() => location.reload(), 300);
+    });
+    return;
+  }
   fecharModal();
-  showToast(id ? 'Paciente atualizado' : 'Paciente cadastrado','success');
+  showToast('Paciente atualizado','success');
   setTimeout(() => location.reload(), 500);
 }
 

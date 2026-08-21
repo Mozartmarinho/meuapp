@@ -1,0 +1,181 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="func-refeicao-cadastro">
+<div class="page-header">
+  <h1>Refeições funcionários</h1>
+  <p>Cadastro simples de refeições para funcionários</p>
+</div>
+
+<div class="toolbar">
+  <div class="toolbar-search">
+    <i class="fas fa-search"></i>
+    <input type="text" id="buscaFunc" placeholder="Buscar por nome ou refeição..." oninput="filtrarFunc()">
+  </div>
+  <button class="btn btn-primary btn-sm" type="button" onclick="abrirFunc()">
+    <i class="fas fa-plus"></i> Adicionar
+  </button>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden">
+  <div class="table-container" style="box-shadow:none;border-radius:0;">
+    <table id="tabelaFunc" class="data-table">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Refeição</th>
+          <th style="width:100px">Quantidade</th>
+          <th style="width:72px">Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tabelaFuncBody">
+        {% for f in funcionarios %}
+        <tr data-id="{{ f.id }}"
+            data-nome="{{ f.nome or '' }}"
+            data-dieta-id="{{ f.dieta_id or '' }}"
+            data-refeicao="{{ f.refeicao or '' }}"
+            data-quantidade="{{ f.quantidade if f.quantidade is not none else 1 }}">
+          <td><strong>{{ f.nome }}</strong></td>
+          <td><span class="status status-info">{{ f.refeicao or '-' }}</span></td>
+          <td>{{ f.quantidade if f.quantidade is not none else 1 }}</td>
+          <td class="paciente-acoes">
+            <button class="btn btn-ghost btn-sm" type="button" onclick="editarFuncLinha(this)" title="Editar">
+              <i class="fas fa-edit"></i>
+            </button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="excluirFunc({{ f.id }})" title="Excluir">
+              <i class="fas fa-trash"></i>
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr id="linhaVazia">
+          <td colspan="4" style="text-align:center;color:#6B7280;">Nenhuma refeição de funcionário cadastrada.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+</div>
+
+<style>
+.func-refeicao-cadastro .page-header { margin-bottom: 1rem; }
+.func-refeicao-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.func-refeicao-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.func-refeicao-cadastro .toolbar { gap: 0.6rem; margin-bottom: 0.8rem; }
+.func-refeicao-cadastro .toolbar-search {
+  gap: 0.4rem;
+  padding: 0.44rem 0.68rem;
+  max-width: 336px;
+  flex-basis: 176px;
+}
+.func-refeicao-cadastro .toolbar-search i { font-size: 0.72rem; }
+.func-refeicao-cadastro .toolbar-search input {
+  font-size: 0.72rem;
+  padding: 0;
+  width: auto;
+  border: none;
+  box-shadow: none;
+}
+.func-refeicao-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.func-refeicao-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
+.func-refeicao-cadastro .btn-ghost { padding: 0.16rem 0.32rem; }
+</style>
+
+<script>
+const DIETAS_FUNC = {{ (dietas or [])|tojson }};
+
+function filtrarFunc(){
+  const q = (document.getElementById('buscaFunc')?.value || '').toLowerCase().trim();
+  document.querySelectorAll('#tabelaFuncBody tr[data-id]').forEach(tr => {
+    const txt = [(tr.dataset.nome || ''), (tr.dataset.refeicao || '')].join(' ').toLowerCase();
+    tr.style.display = !q || txt.includes(q) ? '' : 'none';
+  });
+}
+
+function escHtml(s){
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+}
+
+function dietasOpts(selectedId, selectedNome){
+  const sid = selectedId != null ? String(selectedId) : '';
+  const sn = (selectedNome || '').trim();
+  return (DIETAS_FUNC || []).map(d => {
+    const sel = sid && String(d.id) === sid ? 'selected'
+      : (!sid && sn && String(d.nome).toUpperCase() === sn.toUpperCase() ? 'selected' : '');
+    return `<option value="${d.id}" data-nome="${escHtml(d.nome)}" ${sel}>${escHtml(d.nome)}</option>`;
+  }).join('');
+}
+
+function abrirFunc(data){
+  const isEdit = !!(data && data.id);
+  const qtd = (data && data.quantidade != null && data.quantidade !== '') ? data.quantidade : 1;
+  const html = `
+    <div class="form-group"><label class="form-label">Nome *</label>
+      <input class="form-control" id="fn-nome" value="${escHtml((data && data.nome) || '')}"></div>
+    <div class="form-group"><label class="form-label">Refeição *</label>
+      <select class="form-control" id="fn-dieta">
+        <option value="">Selecione</option>
+        ${dietasOpts(data && data.dieta_id, data && data.refeicao)}
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Quantidade *</label>
+      <input class="form-control" type="number" id="fn-quantidade" min="1" step="1" value="${escHtml(qtd)}" required></div>
+  `;
+  window._editFuncId = isEdit ? data.id : null;
+  abrirModal(isEdit ? 'Editar refeição funcionário' : 'Nova refeição funcionário', html, isEdit ? 'Atualizar' : 'Salvar', salvarFunc);
+}
+
+function editarFuncLinha(btn){
+  const tr = btn.closest('tr');
+  if (!tr) return;
+  abrirFunc({
+    id: tr.dataset.id,
+    nome: tr.dataset.nome || '',
+    dieta_id: tr.dataset.dietaId || '',
+    refeicao: tr.dataset.refeicao || '',
+    quantidade: tr.dataset.quantidade || 1
+  });
+}
+
+async function salvarFunc(){
+  const nome = (document.getElementById('fn-nome')?.value || '').trim();
+  const sel = document.getElementById('fn-dieta');
+  const dietaId = sel?.value || '';
+  const refeicao = sel?.selectedOptions?.[0]?.dataset?.nome || sel?.selectedOptions?.[0]?.textContent || '';
+  const quantidade = parseInt(document.getElementById('fn-quantidade')?.value, 10);
+  if (!nome){ showToast('Nome é obrigatório','error'); return; }
+  if (!dietaId && !refeicao){ showToast('Selecione a refeição','error'); return; }
+  if (!Number.isFinite(quantidade) || quantidade < 1){
+    showToast('Quantidade deve ser um número >= 1','error'); return;
+  }
+  const id = window._editFuncId;
+  const url = id ? `/nutricao/api/refeicao-funcionarios/${id}` : '/nutricao/api/refeicao-funcionarios';
+  const method = id ? 'PUT' : 'POST';
+  const r = await fetch(url, {
+    method,
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ nome, dieta_id: dietaId || null, refeicao, quantidade })
+  });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){
+    showToast((j && j.error) || 'Falha ao salvar','error');
+    return;
+  }
+  fecharModal();
+  showToast(id ? 'Atualizado' : 'Cadastrado','success');
+  setTimeout(() => location.reload(), 400);
+}
+
+async function excluirFunc(id){
+  if (!confirm('Excluir esta refeição de funcionário?')) return;
+  const r = await fetch(`/nutricao/api/refeicao-funcionarios/${id}`, { method:'DELETE' });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){
+    showToast((j && j.error) || 'Falha ao excluir','error');
+    return;
+  }
+  showToast('Excluído','success');
+  setTimeout(() => location.reload(), 400);
+}
+</script>
+{% endblock %}

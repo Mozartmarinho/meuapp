@@ -3040,6 +3040,8 @@ def _dados_equipamento_form(data):
     nome = (data.get('nome') or data.get('nome_equipamento') or '').strip()
     setor = (data.get('setor') or data.get('localizacao') or '').strip()
     local = (data.get('local') or '').strip()
+    marca = (data.get('marca') or '').strip()
+    modelo = (data.get('modelo') or '').strip()
     cliente_raw = data.get('cliente_id')
     cliente_id = int(cliente_raw) if str(cliente_raw or '').isdigit() else None
     if not codigo:
@@ -3061,6 +3063,8 @@ def _dados_equipamento_form(data):
         'patrimonio': codigo,
         'equipamento': nome,  # coluna legada NOT NULL
         'nome_equipamento': nome,
+        'marca': marca or None,
+        'modelo': modelo or None,
         'setor': setor or None,
         'localizacao': setor or None,
         'local': local,
@@ -3135,6 +3139,8 @@ def api_equipamento(id):
         equipamento.patrimonio = campos['patrimonio']
         equipamento.equipamento = campos['equipamento']
         equipamento.nome_equipamento = campos['nome_equipamento']
+        equipamento.marca = campos['marca']
+        equipamento.modelo = campos['modelo']
         equipamento.setor = campos['setor']
         equipamento.localizacao = campos['localizacao']
         equipamento.local = campos['local']
@@ -3199,6 +3205,8 @@ def editar_equipamento(id):
         equipamento.patrimonio = campos['patrimonio']
         equipamento.equipamento = campos['equipamento']
         equipamento.nome_equipamento = campos['nome_equipamento']
+        equipamento.marca = campos['marca']
+        equipamento.modelo = campos['modelo']
         equipamento.setor = campos['setor']
         equipamento.localizacao = campos['localizacao']
         equipamento.local = campos['local']

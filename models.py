@@ -12,6 +12,26 @@ def now_brasilia():
     """Horário atual em Brasília (naive), para gravar/exibir consistente no app."""
     return datetime.now(TZ_BRASILIA).replace(tzinfo=None)
 
+
+def to_brasilia_naive(dt):
+    """Normaliza datetime para Brasília naive (sem tzinfo).
+
+    - Aware: converte para America/Sao_Paulo e remove tzinfo.
+    - Naive: assume já estar em horário de Brasília (convenção do app após
+      gravar com now_brasilia); não desloca de novo.
+    """
+    if dt is None:
+        return None
+    if getattr(dt, 'tzinfo', None) is not None:
+        return dt.astimezone(TZ_BRASILIA).replace(tzinfo=None)
+    return dt
+
+
+def fmt_brasilia(dt, fmt='%d/%m/%Y %H:%M'):
+    """Formata datetime em horário de Brasília; string vazia se ausente."""
+    local = to_brasilia_naive(dt)
+    return local.strftime(fmt) if local else ''
+
 SETORES_CHAMADO = ('Informática', 'Elétrica', 'Obra', 'Compras')
 SETORES_NUTRICAO = (
     'Nutricionista UAN',
@@ -444,6 +464,7 @@ class Equipamento(db.Model):
     # Coluna legada NOT NULL no MySQL; espelha o nome do equipamento
     equipamento = db.Column(db.String(100), nullable=False)
     nome_equipamento = db.Column(db.String(100), nullable=False)
+    marca = db.Column(db.String(100))
     modelo = db.Column(db.String(100))
     numero_serie = db.Column(db.String(50), unique=True)
     patrimonio = db.Column(db.String(50), unique=True)
@@ -473,7 +494,8 @@ class Equipamento(db.Model):
             'codigo': self.patrimonio,
             'nome_equipamento': self.nome_equipamento,
             'nome': self.nome_equipamento,
-            'modelo': self.modelo,
+            'marca': self.marca or '',
+            'modelo': self.modelo or '',
             'numero_serie': self.numero_serie,
             'patrimonio': self.patrimonio,
             'localizacao': self.localizacao,

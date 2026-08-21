@@ -364,7 +364,7 @@ async function carregarVinculoClinica(){
     }
     todasEnfermarias = j.todas || [];
     const selecionadas = (j.clinica && j.clinica.enfermarias) || [];
-    snapshotSelecionados = selecionadas.map(e => e.id);
+    snapshotSelecionados = selecionadas.map(e => Number(e.id));
     renderListas(selecionadas);
     setVinculoEnabled(true);
   } catch (e) {
@@ -376,23 +376,29 @@ async function salvarVinculoClinica(){
   const cid = document.getElementById('selClinicaVinculo').value;
   if (!cid) return;
   const enfermaria_ids = idsSelecionadosAtuais();
-  const r = await fetch(`/nutricao/api/clinicas/${cid}/enfermarias`, {
-    method: 'PUT',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ enfermaria_ids })
-  });
-  const j = await r.json();
-  if (!r.ok || j.ok === false){
-    showToast((j && j.error) || 'Falha ao salvar vínculo','error');
-    return;
+  try {
+    const r = await fetch(`/nutricao/api/clinicas/${cid}/enfermarias`, {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ enfermaria_ids })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.ok === false){
+      showToast((j && j.error) || 'Falha ao salvar vínculo','error');
+      return;
+    }
+    const salvas = (j.clinica && j.clinica.enfermarias) || [];
+    snapshotSelecionados = salvas.map(e => Number(e.id));
+    renderListas(salvas);
+    showToast('Vínculo salvo','success');
+  } catch (e) {
+    showToast('Erro ao salvar vínculo','error');
   }
-  snapshotSelecionados = enfermaria_ids.slice();
-  showToast('Vínculo salvo','success');
 }
 
 function restaurarVinculo(){
-  const selecionadas = todasEnfermarias.filter(e => snapshotSelecionados.includes(Number(e.id)));
-  renderListas(selecionadas);
+  // Discard local moves and reload last saved vínculo from the server
+  carregarVinculoClinica();
 }
 
 document.addEventListener('DOMContentLoaded', function(){

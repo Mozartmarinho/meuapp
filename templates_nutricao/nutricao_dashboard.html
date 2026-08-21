@@ -361,6 +361,12 @@
   font-size: 0.92rem;
 }
 .busca-pac-vazio .acoes { margin-top: 0.65rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.busca-pac-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.88rem;
+  color: #64748b;
+  font-style: italic;
+}
 .flags-grid {
   display: flex;
   flex-wrap: wrap;
@@ -778,6 +784,7 @@ const DATA_INICIAL = {{ (data_mapa or '')|tojson }};
 const CLINICAS_MAPA = {{ (clinicas or [])|tojson }};
 const ENFERMARIAS_MAPA = {{ (enfermarias or [])|tojson }};
 const DIETAS_MAPA = {{ (dietas or [])|tojson }};
+window.DIETAS_MAPA = DIETAS_MAPA;
 const USUARIO_ATUAL = {{ (usuario_atual or 'sistema')|tojson }};
 const CAMPOS_TEXTO = {
   obs_etiqueta: 'Observação etiqueta (pequenas refeições)',
@@ -795,6 +802,8 @@ let ctxLinha = null;
 let ctxCampo = null;
 let buscaPacienteTimer = null;
 let pacienteSelecionadoInserir = null;
+/** true após selecionar paciente (form enfermaria/dieta) até salvar no mapa ou sair confirmado */
+let fluxoIncompleto = false;
 let linhasMapaCache = {};
 let mapaCarregadoParaData = null;
 let substState = null;
@@ -813,8 +822,15 @@ function formatDateBR(iso){
 }
 
 function formatDateTimeBR(d){
-  const pad = n => String(n).padStart(2, '0');
-  return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${String(d.getFullYear()).slice(-2)} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  // Sempre America/Sao_Paulo (igual backend now_brasilia), independente do fuso do SO
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit', month: '2-digit', year: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  }).formatToParts(d instanceof Date ? d : new Date(d));
+  const get = (t) => (parts.find(p => p.type === t) || {}).value || '';
+  return `${get('day')}/${get('month')}/${get('year')} ${get('hour')}:${get('minute')}:${get('second')}`;
 }
 
 function esc(s){
@@ -1515,12 +1531,14 @@ function acaoContextMenu(acao){
 
 function abrirInserirPaciente(nomePreenchido){
   pacienteSelecionadoInserir = null;
+  fluxoIncompleto = false;
   window._buscaPacientesCache = {};
   const nome = esc(nomePreenchido || '');
   const html = `
     <div class="form-group">
       <label class="form-label">Nome do paciente</label>
       <input class="form-control" id="busca-pac-nome" value="${nome}" placeholder="Digite para buscar no cadastro..." autocomplete="off" oninput="agendarBuscaPaciente()">
+      <p class="busca-pac-hint">(para inserir dieta selecione o paciente)</p>
     </div>
     <div id="busca-pac-resultados" class="busca-pac-lista"></div>
   `;
@@ -1642,7 +1660,10 @@ async function salvarCadastroPacienteRapido(){
     return;
   }
   showToast('Paciente cadastrado','success');
-  abrirInserirPaciente(nome);
+  const pac = (j && j.paciente) || { id: j.id, nome };
+  perguntarIncluirAcompanhante(pac, function(){
+    abrirInserirPaciente(nome);
+  });
 }
 
 function selecionarPacienteInserir(id){
@@ -1653,6 +1674,7 @@ function selecionarPacienteInserir(id){
 
 function abrirFormularioInserirMapa(p){
   pacienteSelecionadoInserir = p;
+  fluxoIncompleto = true;
   const dietasOpts = (DIETAS_MAPA || []).map(d =>
     `<option value="${esc(d.nome)}" ${String(d.nome).toUpperCase() === String(p.dieta || '').toUpperCase() ? 'selected' : ''}>${esc(d.nome)}</option>`
   ).join('');
@@ -1838,6 +1860,8 @@ async function salvarInserirPacienteMapa(){
     showToast((j && j.error) || 'Falha ao inserir no mapa','error');
     return;
   }
+  fluxoIncompleto = false;
+  pacienteSelecionadoInserir = null;
   fecharModal();
   showToast('Paciente inserido no mapa','success');
   await carregarMapa();
@@ -2075,6 +2099,16 @@ async function confirmarSaidaLinhaMapa(){
 }
 
 document.addEventListener('DOMContentLoaded', function(){
+  const _fecharModalBase = window.fecharModal;
+  window.fecharModal = function(){
+    if (fluxoIncompleto){
+      if (!window.confirm('Deseja mesmo sair sem inserir enfermaria e dieta?')) return;
+      fluxoIncompleto = false;
+      pacienteSelecionadoInserir = null;
+    }
+    if (_fecharModalBase) _fecharModalBase();
+  };
+
   atualizarLabelData();
   popularEnfermariasFiltro();
   mostrarMapaPlaceholder(MSG_MAPA_SELECIONE);

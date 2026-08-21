@@ -295,6 +295,8 @@ def ensure_equipamentos_schema():
             'data_compra': 'DATE NULL',
             'ativo': 'TINYINT(1) NOT NULL DEFAULT 1',
             'nome_equipamento': 'VARCHAR(100) NULL',
+            'marca': 'VARCHAR(100) NULL',
+            'modelo': 'VARCHAR(100) NULL',
             'tipo_recurso': "VARCHAR(40) NULL DEFAULT 'Estação'",
             'grupo_id': 'INT NULL',
             'usuario_equipamento': 'VARCHAR(120) NULL',

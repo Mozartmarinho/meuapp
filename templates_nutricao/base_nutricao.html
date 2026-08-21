@@ -54,6 +54,18 @@
                 </a>
             </li>
             <li>
+                <a href="{{ url_for('nutricao.refeicao_acompanhante') }}" class="{% if active_page == 'refeicao_acompanhante' %}active{% endif %}" title="Refeição acompanhante">
+                    <i class="fas fa-user-friends menu-icon"></i>
+                    <span class="menu-label">Refeição acompanhante</span>
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('nutricao.refeicoes_funcionarios') }}" class="{% if active_page == 'refeicoes_funcionarios' %}active{% endif %}" title="Refeições funcionários">
+                    <i class="fas fa-id-badge menu-icon"></i>
+                    <span class="menu-label">Refeições funcionários</span>
+                </a>
+            </li>
+            <li>
                 <a href="javascript:void(0);" onclick="toggleCadastroMenu()" class="{% if cadastro_pages %}active{% endif %}" title="Cadastro">
                     <i class="fas fa-folder-open menu-icon"></i>
                     <span class="menu-label">Cadastro</span>
@@ -248,6 +260,8 @@
     }
     function fecharModal() {
         document.getElementById('modalOverlay').style.display = 'none';
+        var footer = document.getElementById('modalFooter');
+        if (footer) footer.style.display = 'flex';
         window._cb = null;
     }
     function confirmarModal() {
@@ -263,6 +277,117 @@
         if (!submenu || !chevron) return;
         submenu.classList.toggle('open');
         chevron.classList.toggle('open');
+    }
+
+    /** Após salvar paciente novo: pergunta se deseja incluir acompanhante. */
+    function perguntarIncluirAcompanhante(paciente, onDone) {
+        window._acompPacientePosCadastro = paciente || null;
+        window._acompOnDone = typeof onDone === 'function' ? onDone : null;
+        var html =
+            '<p style="margin:0 0 1rem;">Deseja incluir acompanhante?</p>' +
+            '<div style="display:flex;gap:0.5rem;flex-wrap:wrap;">' +
+            '<button type="button" class="btn btn-primary" onclick="responderIncluirAcompanhante(true)">Sim</button>' +
+            '<button type="button" class="btn btn-secondary" onclick="responderIncluirAcompanhante(false)">Não</button>' +
+            '</div>';
+        abrirModal('Acompanhante', html, 'Não', function () { responderIncluirAcompanhante(false); });
+        var footer = document.getElementById('modalFooter');
+        if (footer) footer.style.display = 'none';
+    }
+
+    function responderIncluirAcompanhante(sim) {
+        var pac = window._acompPacientePosCadastro;
+        var done = window._acompOnDone;
+        if (!sim) {
+            fecharModal();
+            window._acompPacientePosCadastro = null;
+            window._acompOnDone = null;
+            if (done) done(pac);
+            return;
+        }
+        abrirFormAcompanhantePosCadastro(pac, done);
+    }
+
+    async function _dietasParaAcompanhante() {
+        if (window.DIETAS_MAPA && window.DIETAS_MAPA.length) return window.DIETAS_MAPA;
+        if (window.DIETAS_PACIENTE && window.DIETAS_PACIENTE.length) return window.DIETAS_PACIENTE;
+        try {
+            var r = await fetch('/nutricao/api/dietas?ativas=1');
+            var j = await r.json();
+            return Array.isArray(j) ? j : (j.dietas || []);
+        } catch (e) {
+            return [];
+        }
+    }
+
+    async function abrirFormAcompanhantePosCadastro(paciente, onDone) {
+        window._acompPacientePosCadastro = paciente || null;
+        window._acompOnDone = typeof onDone === 'function' ? onDone : null;
+        var dietas = await _dietasParaAcompanhante();
+        var opts = (dietas || []).map(function (d) {
+            return '<option value="' + d.id + '" data-nome="' + String(d.nome || '').replace(/"/g, '&quot;') + '">' +
+                String(d.nome || '').replace(/</g, '&lt;') + '</option>';
+        }).join('');
+        var nomePac = (paciente && paciente.nome) ? String(paciente.nome) : '';
+        var html =
+            '<p style="margin:0 0 0.75rem;color:#6B7280;font-size:0.85rem;">Paciente: <strong>' +
+            nomePac.replace(/</g, '&lt;') + '</strong></p>' +
+            '<div class="form-group"><label class="form-label">Nome do acompanhante *</label>' +
+            '<input class="form-control" id="modal-acomp-nome"></div>' +
+            '<div class="form-group"><label class="form-label">Vincular uma dieta *</label>' +
+            '<select class="form-control" id="modal-acomp-dieta"><option value="">Selecione</option>' + opts +
+            '</select></div>';
+        abrirModal('Cadastrar acompanhante', html, 'Salvar acompanhante', salvarAcompanhantePosCadastro);
+        var footer = document.getElementById('modalFooter');
+        if (footer) footer.style.display = 'flex';
+    }
+
+    async function salvarAcompanhantePosCadastro() {
+        var pac = window._acompPacientePosCadastro;
+        var done = window._acompOnDone;
+        if (!pac || !pac.id) {
+            showToast('Paciente inválido', 'error');
+            return;
+        }
+        var nome = (document.getElementById('modal-acomp-nome') && document.getElementById('modal-acomp-nome').value || '').trim();
+        var sel = document.getElementById('modal-acomp-dieta');
+        var dietaId = sel && sel.value ? sel.value : '';
+        var refeicao = '';
+        if (sel && sel.selectedOptions && sel.selectedOptions[0]) {
+            refeicao = sel.selectedOptions[0].getAttribute('data-nome') || sel.selectedOptions[0].textContent || '';
+        }
+        if (!nome) {
+            showToast('Informe o nome do acompanhante', 'error');
+            return;
+        }
+        if (!dietaId && !refeicao) {
+            showToast('Selecione uma dieta', 'error');
+            return;
+        }
+        try {
+            var r = await fetch('/nutricao/api/refeicao-acompanhantes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    nome_acompanhante: nome,
+                    paciente_id: pac.id,
+                    dieta_id: dietaId || null,
+                    refeicao: refeicao,
+                    quantidade: 1
+                })
+            });
+            var j = await r.json();
+            if (!r.ok || (j && j.ok === false)) {
+                showToast((j && j.error) || 'Falha ao salvar acompanhante', 'error');
+                return;
+            }
+            showToast('Acompanhante cadastrado', 'success');
+            fecharModal();
+            window._acompPacientePosCadastro = null;
+            window._acompOnDone = null;
+            if (done) done(pac);
+        } catch (e) {
+            showToast('Falha ao salvar acompanhante', 'error');
+        }
     }
     </script>
     {% block scripts %}{% endblock %}

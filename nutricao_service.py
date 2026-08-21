@@ -1,11 +1,12 @@
 """Seed inicial e helpers do módulo de nutrição."""
 from datetime import date, datetime, timedelta
-from models import db
+from models import db, now_brasilia, fmt_brasilia
 from models_nutricao import (
     NutClinica, NutEnfermaria, NutLeito, NutDieta, NutGrupoDieta, NutPaciente, NutMapaRefeicao, NutCardapio,
     NutTabelaNutrientes, NutAlimento, NutAlimentoNutriente, NutPratoLiquido,
     NutEstoqueLocal, NutUnidadeMedida, NutGrupoProduto, NutProduto, NutFornecedor,
     NutEtiqueta, NutEtiquetaCampo, NutPrecoRefeicao, NutTipoRefeicao, NutPrecoDietaTipo,
+    NutRefeicaoAcompanhante, NutRefeicaoFuncionario,
 )
 from nutricao_seed_enfermarias import ENFERMARIAS_SEED, VINCULOS_CLINICA_ENFERMARIA_SEED
 from nutricao_seed_dietas import (
@@ -407,6 +408,22 @@ def _ensure_nutricao_columns():
                 db.session.commit()
             except Exception:
                 db.session.rollback()
+        if 'nut_refeicao_funcionarios' in tables:
+            cols = {c['name'] for c in insp.get_columns('nut_refeicao_funcionarios')}
+            if 'quantidade' not in cols:
+                db.session.execute(text(
+                    'ALTER TABLE nut_refeicao_funcionarios ADD COLUMN quantidade INTEGER DEFAULT 1'
+                ))
+                db.session.commit()
+                insp.clear_cache()
+        if 'nut_refeicao_acompanhantes' in tables:
+            cols = {c['name'] for c in insp.get_columns('nut_refeicao_acompanhantes')}
+            if 'quantidade' not in cols:
+                db.session.execute(text(
+                    'ALTER TABLE nut_refeicao_acompanhantes ADD COLUMN quantidade INTEGER DEFAULT 1'
+                ))
+                db.session.commit()
+                insp.clear_cache()
     except Exception:
         db.session.rollback()
 
@@ -416,6 +433,10 @@ def _ensure_nutricao_columns():
         ('nut_tipos_refeicao', 'hora_limite', "ALTER TABLE nut_tipos_refeicao ADD COLUMN hora_limite VARCHAR(5) NULL"),
         ('nut_cardapios', 'dieta_id', 'ALTER TABLE nut_cardapios ADD COLUMN dieta_id INTEGER NULL'),
         ('nut_alimentos', 'fdc_id', 'ALTER TABLE nut_alimentos ADD COLUMN fdc_id INTEGER NULL'),
+        ('nut_refeicao_funcionarios', 'quantidade',
+         'ALTER TABLE nut_refeicao_funcionarios ADD COLUMN quantidade INTEGER DEFAULT 1'),
+        ('nut_refeicao_acompanhantes', 'quantidade',
+         'ALTER TABLE nut_refeicao_acompanhantes ADD COLUMN quantidade INTEGER DEFAULT 1'),
     ):
         try:
             insp = inspect(db.engine)
@@ -1641,7 +1662,7 @@ def mapa_from_paciente(paciente, data_ref=None, flags=None, extras=None, usuario
     data_ref = data_ref or date.today()
     flags = flags or {}
     extras = extras or {}
-    agora = datetime.utcnow()
+    agora = now_brasilia()
     return NutMapaRefeicao(
         cliente_id=getattr(paciente, 'cliente_id', None) or write_cliente_id(),
         data_refeicao=data_ref,
@@ -1689,7 +1710,7 @@ def _chave_linha_mapa(row):
 
 def _clonar_linha_mapa(src, data_ref, usuario=None):
     """Copia snapshot operacional de uma linha ativa para outra data."""
-    agora = datetime.utcnow()
+    agora = now_brasilia()
     idade = src.idade
     if src.paciente_id and src.paciente:
         try:
@@ -1911,8 +1932,33 @@ def garantir_mapa_do_dia(data_ref=None):
 
 def marcar_alteracao_mapa(row, usuario=None):
     row.usuario_alteracao = (usuario or 'sistema')[:80]
-    row.data_atualizacao = datetime.utcnow()
+    row.data_atualizacao = now_brasilia()
     return row
+
+
+MSG_LEITO_OCUPADO = 'Leito ocupado. Escolha outro leito.'
+
+
+def leito_ocupado_no_mapa(data_ref, clinica, enfermaria, leito, exclude_id=None):
+    """True se já existe linha ativa no mapa do dia com a mesma clínica+enfermaria+leito."""
+    clinica_n = (clinica or '').strip().upper()
+    enfermaria_n = (enfermaria or '').strip().upper()
+    leito_n = (leito or '').strip().upper()
+    if not data_ref or not clinica_n or not enfermaria_n or not leito_n:
+        return False
+    q = (
+        _q(NutMapaRefeicao)
+        .filter(
+            NutMapaRefeicao.data_refeicao == data_ref,
+            NutMapaRefeicao.ativo.is_(True),
+            db.func.upper(NutMapaRefeicao.clinica) == clinica_n,
+            db.func.upper(NutMapaRefeicao.enfermaria) == enfermaria_n,
+            db.func.upper(NutMapaRefeicao.leito) == leito_n,
+        )
+    )
+    if exclude_id is not None:
+        q = q.filter(NutMapaRefeicao.id != int(exclude_id))
+    return q.first() is not None
 
 
 def _aplicar_baixa_linha(row, motivo, usuario=None, data_saida=None, hospital_transferencia=None):
@@ -1925,6 +1971,25 @@ def _aplicar_baixa_linha(row, motivo, usuario=None, data_saida=None, hospital_tr
         row.hospital_transferencia = hosp[:200] if hosp else None
     marcar_alteracao_mapa(row, usuario)
     return row
+
+
+def baixar_acompanhantes_do_paciente(paciente_id, motivo=None, data_saida=None):
+    """Baixa (soft) todos os acompanhantes ativos do paciente."""
+    if not paciente_id:
+        return 0
+    motivo = ((motivo or 'Baixa paciente').strip() or 'Baixa paciente')[:40]
+    data_ref = data_saida or date.today()
+    rows = (
+        NutRefeicaoAcompanhante.query
+        .filter_by(paciente_id=paciente_id, ativo=True)
+        .all()
+    )
+    for row in rows:
+        row.ativo = False
+        row.data_saida = data_ref
+        row.motivo_saida = motivo
+        row.data_atualizacao = now_brasilia()
+    return len(rows)
 
 
 def registrar_saida_mapa(row, motivo, usuario=None, data_saida=None, hospital_transferencia=None):
@@ -1971,6 +2036,11 @@ def registrar_saida_mapa(row, motivo, usuario=None, data_saida=None, hospital_tr
             pac.data_saida = data_ref
             pac.hora_saida = datetime.now().strftime('%H:%M:%S')
             pac.motivo_saida = motivo[:40]
+        baixar_acompanhantes_do_paciente(
+            row.paciente_id,
+            motivo=motivo,
+            data_saida=data_ref,
+        )
     return row
 
 
@@ -2647,6 +2717,17 @@ def _fmt_leito(leito):
     return s
 
 
+def _fmt_data_hora_etiqueta(row):
+    """Última alteração do mapa; se ausente, data de inclusão (dd/mm/yyyy HH:mm).
+
+    Timestamps do mapa são gravados em Brasília (naive), como estoque saídas.
+    fmt_brasilia só desloca se o datetime for aware; naive não é reinterpretado
+    como UTC (evita double-shift).
+    """
+    dt = row.data_atualizacao or row.data_inclusao or row.data_criacao
+    return fmt_brasilia(dt, '%d/%m/%Y %H:%M')
+
+
 def gerar_impressao_etiquetas(
     data_ref=None,
     horario='desjejum',
@@ -2770,6 +2851,7 @@ def gerar_impressao_etiquetas(
             'seq': seq,
             'linha1_esq': linha1_esq,
             'linha1_dir': linha1_dir,
+            'data_hora': _fmt_data_hora_etiqueta(l),
             'setor': (setor or '').upper(),
             'leito': leito_fmt,
             'nome': (l.nome or '').upper(),

@@ -1,6 +1,6 @@
 """Modelos do módulo de Nutrição Hospitalar."""
 from datetime import datetime, date
-from models import db
+from models import db, now_brasilia, fmt_brasilia
 
 
 nut_clinica_enfermarias = db.Table(
@@ -260,15 +260,15 @@ class NutMapaRefeicao(db.Model):
     lve = db.Column(db.Text)
     # Cardápio personalizado por refeição (JSON): { meal: { pares, justificativa } }
     substituicoes = db.Column(db.Text)
-    data_inclusao = db.Column(db.DateTime, default=datetime.utcnow)
+    data_inclusao = db.Column(db.DateTime, default=now_brasilia)
     usuario_alteracao = db.Column(db.String(80))
 
     data_saida = db.Column(db.Date)
     motivo_saida = db.Column(db.String(40))
     hospital_transferencia = db.Column(db.String(200))
     ativo = db.Column(db.Boolean, default=True)
-    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
-    data_atualizacao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    data_criacao = db.Column(db.DateTime, default=now_brasilia)
+    data_atualizacao = db.Column(db.DateTime, default=now_brasilia, onupdate=now_brasilia)
 
     def get_substituicoes(self):
         import json
@@ -290,7 +290,8 @@ class NutMapaRefeicao(db.Model):
         usuario = (self.usuario_alteracao or '').strip()
         ultima = ''
         if alteracao:
-            ultima = alteracao.strftime('%d/%m/%y %H:%M:%S')
+            # Timestamps do mapa são gravados em Brasília (naive), como estoque
+            ultima = fmt_brasilia(alteracao, '%d/%m/%y %H:%M:%S')
             if usuario:
                 ultima = f'{usuario} — {ultima}'
         return {
@@ -320,7 +321,7 @@ class NutMapaRefeicao(db.Model):
             'formula_infantil': self.formula_infantil or '',
             'lve': self.lve or '',
             'substituicoes': self.get_substituicoes(),
-            'data_inclusao': inclusao.strftime('%d/%m/%y %H:%M:%S') if inclusao else '',
+            'data_inclusao': fmt_brasilia(inclusao, '%d/%m/%y %H:%M:%S') if inclusao else '',
             'usuario_alteracao': usuario,
             'ultima_alteracao': ultima,
             'data_saida': self.data_saida.isoformat() if self.data_saida else '',
@@ -928,4 +929,71 @@ class NutPrecoDietaTipo(db.Model):
             'valor_acompanhante': aco,
             'valor': emp,
             'total': round(emp + pac + aco, 2),
+        }
+
+
+class NutRefeicaoAcompanhante(db.Model):
+    """Refeição de acompanhante vinculada a um paciente e a uma dieta."""
+    __tablename__ = 'nut_refeicao_acompanhantes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    nome_acompanhante = db.Column(db.String(150), nullable=False)
+    paciente_id = db.Column(db.Integer, db.ForeignKey('nut_pacientes.id'), nullable=False, index=True)
+    paciente = db.relationship('NutPaciente', backref='acompanhantes')
+    dieta_id = db.Column(db.Integer, db.ForeignKey('nut_dietas.id'), nullable=True, index=True)
+    dieta_rel = db.relationship('NutDieta', lazy='joined')
+    refeicao = db.Column(db.String(200))  # nome da dieta (snapshot)
+    quantidade = db.Column(db.Integer, default=1, nullable=False)
+    ativo = db.Column(db.Boolean, default=True)
+    data_saida = db.Column(db.Date)
+    motivo_saida = db.Column(db.String(40))
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    data_atualizacao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        pac = self.paciente
+        dieta = self.dieta_rel
+        refeicao = (self.refeicao or '').strip() or (dieta.nome if dieta else '')
+        return {
+            'id': self.id,
+            'nome_acompanhante': self.nome_acompanhante or '',
+            'paciente_id': self.paciente_id,
+            'nome_paciente': (pac.nome if pac else '') or '',
+            'dieta_id': self.dieta_id,
+            'refeicao': refeicao,
+            'dieta': refeicao,
+            'quantidade': int(self.quantidade or 1),
+            'ativo': bool(self.ativo),
+            'data_saida': self.data_saida.isoformat() if self.data_saida else '',
+            'motivo_saida': self.motivo_saida or '',
+        }
+
+
+class NutRefeicaoFuncionario(db.Model):
+    """Refeição de funcionário (cadastro simples)."""
+    __tablename__ = 'nut_refeicao_funcionarios'
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    nome = db.Column(db.String(150), nullable=False)
+    dieta_id = db.Column(db.Integer, db.ForeignKey('nut_dietas.id'), nullable=True, index=True)
+    dieta_rel = db.relationship('NutDieta', lazy='joined')
+    refeicao = db.Column(db.String(200))
+    quantidade = db.Column(db.Integer, default=1, nullable=False)
+    ativo = db.Column(db.Boolean, default=True)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    data_atualizacao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        dieta = self.dieta_rel
+        refeicao = (self.refeicao or '').strip() or (dieta.nome if dieta else '')
+        return {
+            'id': self.id,
+            'nome': self.nome or '',
+            'dieta_id': self.dieta_id,
+            'refeicao': refeicao,
+            'dieta': refeicao,
+            'quantidade': int(self.quantidade or 1),
+            'ativo': bool(self.ativo),
         }

@@ -37,6 +37,8 @@ SISTEMAS = {
             ('dashboard', 'Dashboard'),
             ('cadastro', 'Cadastro'),
             ('mapa_refeicoes', 'Mapa de Refeições'),
+            ('refeicao_acompanhante', 'Refeição acompanhante'),
+            ('refeicoes_funcionarios', 'Refeições funcionários'),
             ('estoque', 'Estoque'),
             ('faturamento', 'Faturamento'),
             ('auditoria', 'Auditoria'),
