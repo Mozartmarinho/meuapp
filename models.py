@@ -131,6 +131,25 @@ def listar_setores(tipo):
     return nomes
 
 
+def listar_setores_detalhe(tipo):
+    """Lista setores cadastrados no banco (id, nome, padrao) para a grade."""
+    if tipo not in (TIPO_SETOR_CHAMADOS, TIPO_SETOR_NUTRICAO):
+        return []
+    rows = (
+        SetorFuncao.query.filter_by(tipo=tipo)
+        .order_by(SetorFuncao.padrao.desc(), SetorFuncao.nome.asc(), SetorFuncao.id.asc())
+        .all()
+    )
+    return [
+        {
+            'id': int(r.id),
+            'nome': r.nome or '',
+            'padrao': bool(r.padrao),
+        }
+        for r in rows
+    ]
+
+
 def normalizar_setor(tipo, valor):
     """Casa com o catálogo do tipo (padrões + extras), ignorando acento/caixa."""
     raw = (valor or '').strip()
@@ -171,6 +190,38 @@ def adicionar_setor(tipo, nome):
     db.session.add(row)
     db.session.commit()
     return row.nome
+
+
+def atualizar_setor(setor_id, nome):
+    """Renomeia um setor cadastrado (mesmo tipo, sem duplicar)."""
+    row = SetorFuncao.query.get(int(setor_id))
+    if not row:
+        raise ValueError('Setor não encontrado.')
+    nome = (nome or '').strip()
+    if not nome:
+        raise ValueError('Informe o nome da função ou setor.')
+    if len(nome) > 80:
+        raise ValueError('Nome muito longo (máximo 80 caracteres).')
+    key = _fold_setor(nome)
+    for c in SetorFuncao.query.filter(SetorFuncao.tipo == row.tipo, SetorFuncao.id != row.id).all():
+        if _fold_setor(c.nome) == key:
+            raise ValueError('Essa função ou setor já existe.')
+    row.nome = nome
+    db.session.commit()
+    return row.nome
+
+
+def excluir_setor(setor_id):
+    """Remove setor extra. Setores padrão do sistema não podem ser excluídos."""
+    row = SetorFuncao.query.get(int(setor_id))
+    if not row:
+        raise ValueError('Setor não encontrado.')
+    if bool(row.padrao):
+        raise ValueError('Setor padrão do sistema não pode ser excluído.')
+    tipo = row.tipo
+    db.session.delete(row)
+    db.session.commit()
+    return tipo
 
 
 class Cliente(db.Model):
@@ -303,6 +354,7 @@ class Usuario(db.Model):
     perm_nutricao = db.Column(db.Boolean, default=False)
     perm_pesagem = db.Column(db.Boolean, default=False)
     perm_acesso = db.Column(db.Boolean, default=False)
+    perm_portal = db.Column(db.Boolean, default=False)
     setor = db.Column(db.String(80))
     setor_nutricao = db.Column(db.String(80))
     telefone = db.Column(db.String(20))
@@ -336,8 +388,21 @@ class Usuario(db.Model):
         return {p.menu_key: p.permitido for p in self.menus.filter_by(sistema=sistema).all()}
 
     def pode_gerenciar_acessos(self):
-        """Acessos/Configurações na home: checkbox do sistema 'acesso' (perm_acesso) ou master."""
-        return bool(self.is_master or self.perm_acesso)
+        """Compat: Acessos no portal (menu superior) ou legado perm_acesso / master."""
+        return self.pode_opcao_portal('acessos')
+
+    def pode_opcao_portal(self, menu_key):
+        """Itens do menu Opções (canto superior direito) na home."""
+        if self.is_master or self.tipo == 'admin':
+            return True
+        # Se já há permissões explícitas do portal, elas mandam
+        tem_portal = self.menus.filter_by(sistema='portal').first() is not None
+        if tem_portal or bool(getattr(self, 'perm_portal', False)):
+            return self.tem_menu('portal', menu_key)
+        # Legado: Alterar senha sempre; demais via perm_acesso
+        if menu_key == 'alterar_senha':
+            return True
+        return bool(self.perm_acesso)
 
 
 class SetorFuncao(db.Model):

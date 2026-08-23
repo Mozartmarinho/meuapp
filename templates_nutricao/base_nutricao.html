@@ -48,9 +48,9 @@
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('nutricao.dashboard') }}" class="{% if active_page == 'dashboard' %}active{% endif %}" title="Mapa de Refeições">
+                <a href="{{ url_for('nutricao.dashboard') }}" class="{% if active_page == 'dashboard' %}active{% endif %}" title="Mapa de Refeições Pacientes">
                     <i class="fas fa-map menu-icon"></i>
-                    <span class="menu-label">Mapa de Refeições</span>
+                    <span class="menu-label">Mapa de Refeições Pacientes</span>
                 </a>
             </li>
             <li>
@@ -189,9 +189,21 @@
                 </a>
             </li>
             <li>
+                <a href="{{ url_for('nutricao.totalizacao_dietas_refeicoes') }}" class="{% if active_page == 'totalizacao_dietas_refeicoes' %}active{% endif %}" title="Totalização de dietas e refeições">
+                    <i class="fas fa-utensils menu-icon"></i>
+                    <span class="menu-label">Totalização de dietas e refeições</span>
+                </a>
+            </li>
+            <li>
                 <a href="{{ url_for('nutricao.faturamento') }}" class="{% if active_page == 'faturamento' %}active{% endif %}" title="Faturamento">
                     <i class="fas fa-file-invoice-dollar menu-icon"></i>
                     <span class="menu-label">Faturamento</span>
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('nutricao.faturamento_valores') }}" class="{% if active_page == 'faturamento_valores' %}active{% endif %}" title="Faturamento com valores">
+                    <i class="fas fa-coins menu-icon"></i>
+                    <span class="menu-label">Faturamento com valores</span>
                 </a>
             </li>
             <li>
@@ -335,7 +347,12 @@
             '<input class="form-control" id="modal-acomp-nome"></div>' +
             '<div class="form-group"><label class="form-label">Vincular uma dieta *</label>' +
             '<select class="form-control" id="modal-acomp-dieta"><option value="">Selecione</option>' + opts +
-            '</select></div>';
+            '</select></div>' +
+            '<div class="form-group"><label class="form-label">Refeições *</label>' +
+            '<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:0.25rem;">' +
+            '<label style="display:flex;align-items:center;gap:0.35rem;"><input type="checkbox" id="modal-acomp-almoco" checked> Almoço</label>' +
+            '<label style="display:flex;align-items:center;gap:0.35rem;"><input type="checkbox" id="modal-acomp-jantar" checked> Jantar</label>' +
+            '</div></div>';
         abrirModal('Cadastrar acompanhante', html, 'Salvar acompanhante', salvarAcompanhantePosCadastro);
         var footer = document.getElementById('modalFooter');
         if (footer) footer.style.display = 'flex';
@@ -363,7 +380,15 @@
             showToast('Selecione uma dieta', 'error');
             return;
         }
+        var flAlmoco = !!(document.getElementById('modal-acomp-almoco') && document.getElementById('modal-acomp-almoco').checked);
+        var flJantar = !!(document.getElementById('modal-acomp-jantar') && document.getElementById('modal-acomp-jantar').checked);
+        if (!flAlmoco && !flJantar) {
+            showToast('Marque Almoço e/ou Jantar', 'error');
+            return;
+        }
         try {
+            var hoje = new Date();
+            var iso = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0') + '-' + String(hoje.getDate()).padStart(2, '0');
             var r = await fetch('/nutricao/api/refeicao-acompanhantes', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -372,7 +397,10 @@
                     paciente_id: pac.id,
                     dieta_id: dietaId || null,
                     refeicao: refeicao,
-                    quantidade: 1
+                    quantidade: 1,
+                    data_refeicao: iso,
+                    fl_almoco: flAlmoco,
+                    fl_jantar: flJantar
                 })
             });
             var j = await r.json();

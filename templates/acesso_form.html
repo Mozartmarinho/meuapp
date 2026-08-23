@@ -29,16 +29,35 @@
             background:var(--brand-blue); color:#fff; font-size:1.2rem; font-weight:800; line-height:1;
             cursor:pointer; font-family:inherit;
         }
+        .btn-setor-plus:hover { filter: brightness(1.08); }
         .portal-overlay {
             display:none; position:fixed; inset:0; z-index:80; align-items:center; justify-content:center;
             padding:1rem; background:rgba(13,43,92,.55);
         }
         .portal-overlay.is-open { display:flex; }
         .portal-card {
-            width:min(400px,100%); background:#fff; border-radius:18px; padding:1.2rem;
+            width:min(520px,100%); background:#fff; border-radius:18px; padding:1.2rem;
             box-shadow:0 24px 60px rgba(13,43,92,.28);
         }
         .portal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:14px; }
+        .setor-toolbar { display:flex; justify-content:flex-end; margin:0 0 0.7rem; }
+        .setor-table-wrap {
+            border:1px solid #d7e3f3; border-radius:10px; overflow:hidden; max-height:320px; overflow-y:auto;
+        }
+        .setor-table { width:100%; border-collapse:collapse; }
+        .setor-table th, .setor-table td {
+            padding:8px 10px; font-size:0.78rem; text-align:left; border-bottom:1px solid #e8eef6;
+        }
+        .setor-table th {
+            background:#e8eef6; color:#0f2a5c; font-size:0.68rem; text-transform:uppercase;
+            position:sticky; top:0;
+        }
+        .setor-acoes { width:88px; white-space:nowrap; text-align:right; }
+        .setor-acoes .btn { padding:0.28rem 0.42rem; border-radius:8px; min-width:0; }
+        .setor-badge {
+            display:inline-block; margin-left:6px; padding:1px 6px; border-radius:999px;
+            background:#e0e7ff; color:#3730a3; font-size:0.62rem; font-weight:700;
+        }
         .menus { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px; padding-left:8px; margin-top:8px; }
         .actions { display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
         .btn { display:inline-flex; align-items:center; gap:.45rem; padding:.7rem 1rem; border-radius:999px; text-decoration:none; font-weight:700; border:0; cursor:pointer; }
@@ -154,20 +173,48 @@
     </main>
     <div class="portal-overlay" id="modal-setor-funcao">
         <div class="portal-card">
-            <h2 id="setor-funcao-title" style="font-family:Rajdhani,sans-serif;color:var(--brand-navy);margin-bottom:8px">Nova função / setor</h2>
-            <p style="color:var(--muted);font-size:.9rem;margin-bottom:12px">O nome entra só neste catálogo (chamados ou nutrição).</p>
+            <h2 id="setor-funcao-title" style="font-family:Rajdhani,sans-serif;color:var(--brand-navy);margin-bottom:4px">Funções / setores</h2>
+            <p style="color:var(--muted);font-size:.9rem;margin-bottom:12px">Catálogo usado nos dropdowns de Acessos (chamados ou nutrição).</p>
             <div class="alert alert-error" id="setor-funcao-msg" hidden></div>
-            <form id="form-setor-funcao" autocomplete="off">
-                <input type="hidden" name="tipo" id="setor-funcao-tipo" value="">
-                <div class="form-group">
-                    <label for="setor-funcao-nome">Nome *</label>
-                    <input type="text" id="setor-funcao-nome" name="nome" maxlength="80" required>
+
+            <div id="setor-lista-wrap">
+                <div class="setor-toolbar">
+                    <button type="button" class="btn btn-pri" id="btn-setor-adicionar">
+                        <i class="fas fa-plus"></i> Adicionar
+                    </button>
+                </div>
+                <div class="setor-table-wrap">
+                    <table class="setor-table">
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th class="setor-acoes">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="setor-tbody">
+                            <tr><td colspan="2" style="text-align:center;color:#64748b">Carregando…</td></tr>
+                        </tbody>
+                    </table>
                 </div>
                 <div class="portal-actions">
                     <button type="button" class="btn btn-sec" id="setor-funcao-fechar">Fechar</button>
-                    <button type="submit" class="btn btn-pri"><i class="fas fa-save"></i> Salvar</button>
                 </div>
-            </form>
+            </div>
+
+            <div id="setor-form-wrap" hidden>
+                <form id="form-setor-funcao" autocomplete="off">
+                    <input type="hidden" name="tipo" id="setor-funcao-tipo" value="">
+                    <input type="hidden" name="id" id="setor-funcao-id" value="">
+                    <div class="form-group">
+                        <label for="setor-funcao-nome">Nome *</label>
+                        <input type="text" id="setor-funcao-nome" name="nome" maxlength="80" required>
+                    </div>
+                    <div class="portal-actions">
+                        <button type="button" class="btn btn-sec" id="btn-setor-cancelar-form">Voltar</button>
+                        <button type="submit" class="btn btn-pri"><i class="fas fa-save"></i> Salvar</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
     <script>
@@ -186,6 +233,14 @@
     (function () {
         var URL_SETOR = {{ url_for('main.criar_setor_funcao') | tojson }};
         var overlay = document.getElementById('modal-setor-funcao');
+        var SETOR_ITENS = { chamados: [], nutricao: [] };
+        var setorEditId = null;
+
+        function escapeHtml(str) {
+            return String(str || '').replace(/[&<>"']/g, function (ch) {
+                return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+            });
+        }
         function fillSelect(selectId, nomes, selected) {
             var select = document.getElementById(selectId);
             if (!select) return;
@@ -198,40 +253,199 @@
                 select.appendChild(opt);
             });
         }
+        function showMsg(ok, text) {
+            var msg = document.getElementById('setor-funcao-msg');
+            if (!text) { msg.hidden = true; msg.textContent = ''; return; }
+            msg.hidden = false;
+            msg.className = 'alert ' + (ok ? 'alert-success' : 'alert-error');
+            msg.textContent = text;
+        }
+        function showLista() {
+            document.getElementById('setor-lista-wrap').hidden = false;
+            document.getElementById('setor-form-wrap').hidden = true;
+            setorEditId = null;
+            document.getElementById('setor-funcao-id').value = '';
+            document.getElementById('setor-funcao-nome').value = '';
+        }
+        function showForm(item) {
+            document.getElementById('setor-lista-wrap').hidden = true;
+            document.getElementById('setor-form-wrap').hidden = false;
+            setorEditId = item && item.id ? item.id : null;
+            document.getElementById('setor-funcao-id').value = setorEditId || '';
+            document.getElementById('setor-funcao-nome').value = (item && item.nome) || '';
+            var tipo = document.getElementById('setor-funcao-tipo').value || 'chamados';
+            var label = tipo === 'nutricao' ? 'nutrição' : 'chamados';
+            document.getElementById('setor-funcao-title').textContent = setorEditId
+                ? 'Editar função / setor (' + label + ')'
+                : 'Nova função / setor (' + label + ')';
+            setTimeout(function () {
+                var input = document.getElementById('setor-funcao-nome');
+                if (input) { input.focus(); input.select(); }
+            }, 30);
+        }
+        function renderGrid(itens) {
+            var tbody = document.getElementById('setor-tbody');
+            if (!itens || !itens.length) {
+                tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#64748b">Nenhum setor cadastrado.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = itens.map(function (it) {
+                var badge = it.padrao ? '<span class="setor-badge">padrão</span>' : '';
+                var delBtn = it.padrao
+                    ? ''
+                    : '<button type="button" class="btn btn-sec" data-setor-del="' + it.id + '" title="Excluir"><i class="fas fa-trash"></i></button>';
+                return '<tr data-id="' + it.id + '">' +
+                    '<td><strong>' + escapeHtml(it.nome) + '</strong>' + badge + '</td>' +
+                    '<td class="setor-acoes">' +
+                    '<button type="button" class="btn btn-pri" data-setor-edit="' + it.id + '" title="Editar"><i class="fas fa-pen"></i></button> ' +
+                    delBtn +
+                    '</td></tr>';
+            }).join('');
+        }
+        function syncSelect(tipo, setores, selected) {
+            var selectId = tipo === 'nutricao' ? 'setor_nutricao' : 'setor';
+            var cur = selected;
+            if (!cur) {
+                var sel = document.getElementById(selectId);
+                cur = sel ? sel.value : '';
+            }
+            fillSelect(selectId, setores || [], cur || '');
+        }
+        async function carregarGrid(tipo) {
+            var tbody = document.getElementById('setor-tbody');
+            tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#64748b">Carregando…</td></tr>';
+            try {
+                var r = await fetch(URL_SETOR + '?tipo=' + encodeURIComponent(tipo), {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                var data = await r.json();
+                if (!r.ok || data.ok === false) {
+                    showMsg(false, (data && data.message) || 'Falha ao carregar setores.');
+                    tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#64748b">Não foi possível carregar.</td></tr>';
+                    return;
+                }
+                SETOR_ITENS[tipo] = data.itens || [];
+                syncSelect(tipo, data.setores || []);
+                renderGrid(SETOR_ITENS[tipo]);
+                showMsg(true, '');
+            } catch (e) {
+                showMsg(false, 'Falha ao carregar setores.');
+                tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#64748b">Não foi possível carregar.</td></tr>';
+            }
+        }
+
         document.querySelectorAll('.btn-setor-plus').forEach(function (btn) {
             btn.addEventListener('click', function (ev) {
                 ev.preventDefault();
-                document.getElementById('setor-funcao-tipo').value = btn.getAttribute('data-setor-tipo') || 'chamados';
-                document.getElementById('setor-funcao-nome').value = '';
-                document.getElementById('setor-funcao-title').textContent =
-                    btn.getAttribute('data-setor-tipo') === 'nutricao'
-                        ? 'Nova função / setor (nutrição)'
-                        : 'Nova função / setor (chamados)';
-                var msg = document.getElementById('setor-funcao-msg');
-                msg.hidden = true;
+                var tipo = btn.getAttribute('data-setor-tipo') || 'chamados';
+                document.getElementById('setor-funcao-tipo').value = tipo;
+                document.getElementById('setor-funcao-title').textContent = tipo === 'nutricao'
+                    ? 'Funções / setores (nutrição)'
+                    : 'Funções / setores (chamados)';
+                showMsg(true, '');
+                showLista();
                 overlay.classList.add('is-open');
-                setTimeout(function () { document.getElementById('setor-funcao-nome').focus(); }, 30);
+                carregarGrid(tipo);
             });
         });
+
+        document.getElementById('btn-setor-adicionar').addEventListener('click', function () {
+            showMsg(true, '');
+            showForm(null);
+        });
+        document.getElementById('btn-setor-cancelar-form').addEventListener('click', function () {
+            var tipo = document.getElementById('setor-funcao-tipo').value || 'chamados';
+            document.getElementById('setor-funcao-title').textContent = tipo === 'nutricao'
+                ? 'Funções / setores (nutrição)'
+                : 'Funções / setores (chamados)';
+            showMsg(true, '');
+            showLista();
+            renderGrid(SETOR_ITENS[tipo] || []);
+        });
+
+        document.getElementById('setor-tbody').addEventListener('click', async function (ev) {
+            var editBtn = ev.target.closest('[data-setor-edit]');
+            var delBtn = ev.target.closest('[data-setor-del]');
+            var tipo = document.getElementById('setor-funcao-tipo').value || 'chamados';
+            if (editBtn) {
+                var eid = parseInt(editBtn.getAttribute('data-setor-edit'), 10);
+                var item = (SETOR_ITENS[tipo] || []).find(function (x) { return x.id === eid; });
+                if (item) showForm(item);
+                return;
+            }
+            if (!delBtn) return;
+            var did = parseInt(delBtn.getAttribute('data-setor-del'), 10);
+            if (!confirm('Excluir este setor?')) return;
+            delBtn.disabled = true;
+            try {
+                var r = await fetch(URL_SETOR + '/' + did, {
+                    method: 'DELETE',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                var data = await r.json();
+                showMsg(!!data.ok, data.message || (data.ok ? 'Excluído.' : 'Falha ao excluir.'));
+                if (data.ok) {
+                    SETOR_ITENS[tipo] = data.itens || [];
+                    syncSelect(tipo, data.setores || []);
+                    renderGrid(SETOR_ITENS[tipo]);
+                }
+            } catch (e) {
+                showMsg(false, 'Falha ao excluir.');
+            } finally {
+                delBtn.disabled = false;
+            }
+        });
+
         function fechar() { overlay.classList.remove('is-open'); }
         document.getElementById('setor-funcao-fechar').addEventListener('click', fechar);
         overlay.addEventListener('click', function (ev) { if (ev.target === overlay) fechar(); });
+
         document.getElementById('form-setor-funcao').addEventListener('submit', async function (ev) {
             ev.preventDefault();
             var nome = (document.getElementById('setor-funcao-nome').value || '').trim();
-            var msg = document.getElementById('setor-funcao-msg');
-            if (!nome) { msg.hidden = false; msg.textContent = 'Informe o nome da função ou setor.'; return; }
+            if (!nome) { showMsg(false, 'Informe o nome da função ou setor.'); return; }
             var tipo = document.getElementById('setor-funcao-tipo').value;
-            var res = await fetch(URL_SETOR, {
-                method: 'POST',
-                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
-                body: new FormData(ev.currentTarget)
-            });
-            var data = await res.json();
-            if (!data.ok) { msg.hidden = false; msg.textContent = data.message || 'Não foi possível salvar.'; return; }
-            var selectId = tipo === 'nutricao' ? 'setor_nutricao' : 'setor';
-            fillSelect(selectId, data.setores, data.nome || nome);
-            fechar();
+            var id = (document.getElementById('setor-funcao-id').value || '').trim();
+            var btn = ev.currentTarget.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            try {
+                var data;
+                if (id) {
+                    var r = await fetch(URL_SETOR + '/' + id, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: JSON.stringify({ nome: nome, tipo: tipo })
+                    });
+                    data = await r.json();
+                    if (!r.ok) data.ok = false;
+                } else {
+                    var res = await fetch(URL_SETOR, {
+                        method: 'POST',
+                        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                        body: new FormData(ev.currentTarget)
+                    });
+                    data = await res.json();
+                    if (!res.ok) data.ok = false;
+                }
+                showMsg(!!data.ok, data.message || (data.ok ? 'Salvo.' : 'Não foi possível salvar.'));
+                if (data.ok) {
+                    SETOR_ITENS[tipo] = data.itens || SETOR_ITENS[tipo];
+                    syncSelect(tipo, data.setores || [], data.nome || nome);
+                    showLista();
+                    document.getElementById('setor-funcao-title').textContent = tipo === 'nutricao'
+                        ? 'Funções / setores (nutrição)'
+                        : 'Funções / setores (chamados)';
+                    renderGrid(SETOR_ITENS[tipo]);
+                }
+            } catch (e) {
+                showMsg(false, 'Não foi possível salvar. Tente de novo.');
+            } finally {
+                btn.disabled = false;
+            }
         });
     })();
     </script>

@@ -945,6 +945,9 @@ class NutRefeicaoAcompanhante(db.Model):
     dieta_rel = db.relationship('NutDieta', lazy='joined')
     refeicao = db.Column(db.String(200))  # nome da dieta (snapshot)
     quantidade = db.Column(db.Integer, default=1, nullable=False)
+    data_refeicao = db.Column(db.Date, index=True)
+    fl_almoco = db.Column(db.Boolean, default=True)
+    fl_jantar = db.Column(db.Boolean, default=True)
     ativo = db.Column(db.Boolean, default=True)
     data_saida = db.Column(db.Date)
     motivo_saida = db.Column(db.String(40))
@@ -964,6 +967,9 @@ class NutRefeicaoAcompanhante(db.Model):
             'refeicao': refeicao,
             'dieta': refeicao,
             'quantidade': int(self.quantidade or 1),
+            'data_refeicao': self.data_refeicao.isoformat() if self.data_refeicao else '',
+            'fl_almoco': bool(self.fl_almoco) if self.fl_almoco is not None else True,
+            'fl_jantar': bool(self.fl_jantar) if self.fl_jantar is not None else True,
             'ativo': bool(self.ativo),
             'data_saida': self.data_saida.isoformat() if self.data_saida else '',
             'motivo_saida': self.motivo_saida or '',
@@ -981,6 +987,9 @@ class NutRefeicaoFuncionario(db.Model):
     dieta_rel = db.relationship('NutDieta', lazy='joined')
     refeicao = db.Column(db.String(200))
     quantidade = db.Column(db.Integer, default=1, nullable=False)
+    data_refeicao = db.Column(db.Date, index=True)
+    fl_almoco = db.Column(db.Boolean, default=True)
+    fl_jantar = db.Column(db.Boolean, default=True)
     ativo = db.Column(db.Boolean, default=True)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     data_atualizacao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -995,5 +1004,8 @@ class NutRefeicaoFuncionario(db.Model):
             'refeicao': refeicao,
             'dieta': refeicao,
             'quantidade': int(self.quantidade or 1),
+            'data_refeicao': self.data_refeicao.isoformat() if self.data_refeicao else '',
+            'fl_almoco': bool(self.fl_almoco) if self.fl_almoco is not None else True,
+            'fl_jantar': bool(self.fl_jantar) if self.fl_jantar is not None else True,
             'ativo': bool(self.ativo),
         }

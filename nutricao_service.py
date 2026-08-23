@@ -39,6 +39,12 @@ from nutricao_tenant import (
     write_cliente_id,
 )
 
+# Seed/migração leve: roda no máximo 1× por processo (todas as abas chamavam a cada request).
+_ENSURE_COLUMNS_DONE = False
+_SEED_NUTRICAO_DONE = False
+# Histórico do mapa: olha no máximo N dias atrás ao preencher buracos (evita carregar anos).
+_MAPA_LOOKBACK_DIAS = 60
+
 
 def _q(model, cliente_id=None):
     """Query scoped to current nutrition client when applicable."""
@@ -264,8 +270,14 @@ def list_leitos(enfermaria_id=None, somente_ativos=False):
     return [l.to_dict() for l in q.order_by(NutLeito.numero, NutLeito.nome).all()]
 
 
-def _ensure_nutricao_columns():
-    """Adiciona colunas novas em tabelas já existentes (create_all não altera)."""
+def _ensure_nutricao_columns(force=False):
+    """Adiciona colunas novas em tabelas já existentes (create_all não altera).
+
+    Executa uma vez por processo; reinicie o app após deploy de schema.
+    """
+    global _ENSURE_COLUMNS_DONE
+    if _ENSURE_COLUMNS_DONE and not force:
+        return
     from sqlalchemy import inspect, text
     try:
         insp = inspect(db.engine)
@@ -410,20 +422,52 @@ def _ensure_nutricao_columns():
                 db.session.rollback()
         if 'nut_refeicao_funcionarios' in tables:
             cols = {c['name'] for c in insp.get_columns('nut_refeicao_funcionarios')}
-            if 'quantidade' not in cols:
+            alteracoes = {
+                'quantidade': 'INTEGER DEFAULT 1',
+                'data_refeicao': 'DATE NULL',
+                'fl_almoco': 'BOOLEAN DEFAULT 1',
+                'fl_jantar': 'BOOLEAN DEFAULT 1',
+            }
+            for col, tipo in alteracoes.items():
+                if col not in cols:
+                    try:
+                        db.session.execute(text(f'ALTER TABLE nut_refeicao_funcionarios ADD COLUMN {col} {tipo}'))
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+            insp.clear_cache()
+            try:
                 db.session.execute(text(
-                    'ALTER TABLE nut_refeicao_funcionarios ADD COLUMN quantidade INTEGER DEFAULT 1'
+                    'UPDATE nut_refeicao_funcionarios SET data_refeicao = CURDATE() '
+                    'WHERE data_refeicao IS NULL'
                 ))
                 db.session.commit()
-                insp.clear_cache()
+            except Exception:
+                db.session.rollback()
         if 'nut_refeicao_acompanhantes' in tables:
             cols = {c['name'] for c in insp.get_columns('nut_refeicao_acompanhantes')}
-            if 'quantidade' not in cols:
+            alteracoes = {
+                'quantidade': 'INTEGER DEFAULT 1',
+                'data_refeicao': 'DATE NULL',
+                'fl_almoco': 'BOOLEAN DEFAULT 1',
+                'fl_jantar': 'BOOLEAN DEFAULT 1',
+            }
+            for col, tipo in alteracoes.items():
+                if col not in cols:
+                    try:
+                        db.session.execute(text(f'ALTER TABLE nut_refeicao_acompanhantes ADD COLUMN {col} {tipo}'))
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+            insp.clear_cache()
+            try:
                 db.session.execute(text(
-                    'ALTER TABLE nut_refeicao_acompanhantes ADD COLUMN quantidade INTEGER DEFAULT 1'
+                    'UPDATE nut_refeicao_acompanhantes SET data_refeicao = CURDATE() '
+                    'WHERE data_refeicao IS NULL'
                 ))
                 db.session.commit()
-                insp.clear_cache()
+            except Exception:
+                db.session.rollback()
     except Exception:
         db.session.rollback()
 
@@ -435,8 +479,20 @@ def _ensure_nutricao_columns():
         ('nut_alimentos', 'fdc_id', 'ALTER TABLE nut_alimentos ADD COLUMN fdc_id INTEGER NULL'),
         ('nut_refeicao_funcionarios', 'quantidade',
          'ALTER TABLE nut_refeicao_funcionarios ADD COLUMN quantidade INTEGER DEFAULT 1'),
+        ('nut_refeicao_funcionarios', 'data_refeicao',
+         'ALTER TABLE nut_refeicao_funcionarios ADD COLUMN data_refeicao DATE NULL'),
+        ('nut_refeicao_funcionarios', 'fl_almoco',
+         'ALTER TABLE nut_refeicao_funcionarios ADD COLUMN fl_almoco BOOLEAN DEFAULT 1'),
+        ('nut_refeicao_funcionarios', 'fl_jantar',
+         'ALTER TABLE nut_refeicao_funcionarios ADD COLUMN fl_jantar BOOLEAN DEFAULT 1'),
         ('nut_refeicao_acompanhantes', 'quantidade',
          'ALTER TABLE nut_refeicao_acompanhantes ADD COLUMN quantidade INTEGER DEFAULT 1'),
+        ('nut_refeicao_acompanhantes', 'data_refeicao',
+         'ALTER TABLE nut_refeicao_acompanhantes ADD COLUMN data_refeicao DATE NULL'),
+        ('nut_refeicao_acompanhantes', 'fl_almoco',
+         'ALTER TABLE nut_refeicao_acompanhantes ADD COLUMN fl_almoco BOOLEAN DEFAULT 1'),
+        ('nut_refeicao_acompanhantes', 'fl_jantar',
+         'ALTER TABLE nut_refeicao_acompanhantes ADD COLUMN fl_jantar BOOLEAN DEFAULT 1'),
     ):
         try:
             insp = inspect(db.engine)
@@ -452,6 +508,7 @@ def _ensure_nutricao_columns():
             db.session.rollback()
 
     _backfill_cardapio_dieta_id()
+    _ENSURE_COLUMNS_DONE = True
 
 
 def _backfill_cardapio_dieta_id():
@@ -529,6 +586,15 @@ MEAL_HR_FIELD = {
     'jantar': 'hr_jantar',
     'ceia': 'hr_ceia',
 }
+MEAL_FLAG_FIELD = {
+    'desjejum': 'fl_desjejum',
+    'colacao': 'fl_colacao',
+    'almoco': 'fl_almoco',
+    'merenda': 'fl_merenda',
+    'jantar': 'fl_jantar',
+    'ceia': 'fl_ceia',
+}
+FLAG_TO_MEAL = {v: k for k, v in MEAL_FLAG_FIELD.items()}
 MEAL_LABELS = {
     'desjejum': 'Desjejum',
     'colacao': 'Colação',
@@ -537,6 +603,178 @@ MEAL_LABELS = {
     'jantar': 'Jantar',
     'ceia': 'Ceia',
 }
+# Siglas do cadastro de tipos → chave interna da refeição
+_TIPO_SIGLA_TO_MEAL = {
+    'DESJ': 'desjejum', 'D': 'desjejum',
+    'COL': 'colacao', 'C': 'colacao',
+    'ALM': 'almoco', 'A': 'almoco',
+    'MER': 'merenda', 'M': 'merenda',
+    'JAN': 'jantar', 'J': 'jantar',
+    'CEI': 'ceia', 'CE': 'ceia',
+}
+_TIPO_NOME_TO_MEAL = {
+    'DESJEJUM': 'desjejum',
+    'COLACAO': 'colacao', 'COLAÇÃO': 'colacao',
+    'ALMOCO': 'almoco', 'ALMOÇO': 'almoco',
+    'MERENDA': 'merenda',
+    'JANTAR': 'jantar',
+    'CEIA': 'ceia',
+}
+def mapa_horas_limite():
+    """Retorna {meal_key: 'HH:MM'} a partir do cadastro de tipos de refeição."""
+    import unicodedata
+    out = {}
+    for t in NutTipoRefeicao.query.filter_by(ativo=True).all():
+        meal = _TIPO_SIGLA_TO_MEAL.get((t.sigla or '').strip().upper())
+        if not meal:
+            meal = _TIPO_NOME_TO_MEAL.get((t.nome or '').strip().upper())
+        if not meal:
+            nome_n = ''.join(
+                c for c in unicodedata.normalize('NFKD', (t.nome or '').upper())
+                if not unicodedata.combining(c)
+            ).strip()
+            meal = {
+                'DESJEJUM': 'desjejum', 'COLACAO': 'colacao', 'ALMOCO': 'almoco',
+                'MERENDA': 'merenda', 'JANTAR': 'jantar', 'CEIA': 'ceia',
+            }.get(nome_n)
+        hora = normalizar_hora_limite(getattr(t, 'hora_limite', None))
+        if meal and hora:
+            out[meal] = hora
+    return out
+
+
+def _agora_brasilia():
+    return now_brasilia()
+
+
+def refeicao_apos_hora_limite(meal, data_mapa, agora=None):
+    """True se, no dia do mapa (= hoje), já passou a hora limite da refeição.
+
+    - Dia futuro: ainda aberto (salva no próprio dia).
+    - Dia passado: histórico — não adia.
+    - Hoje após hora limite: adia para o dia seguinte.
+    """
+    if meal not in MEALS_SUBST:
+        return False
+    agora = agora or _agora_brasilia()
+    hoje = agora.date() if hasattr(agora, 'date') else date.today()
+    data_mapa = data_mapa or hoje
+    if data_mapa != hoje:
+        return False
+    hora = mapa_horas_limite().get(meal)
+    if not hora:
+        return False
+    try:
+        parts = hora.split(':')
+        hh, mm = int(parts[0]), int(parts[1]) if len(parts) > 1 else 0
+    except (TypeError, ValueError):
+        return False
+    limite = datetime(hoje.year, hoje.month, hoje.day, hh, mm, 0)
+    return agora >= limite
+
+
+def data_destino_lancamento(meal, data_mapa, agora=None):
+    """Data em que a alteração da refeição deve ser lançada/salva."""
+    data_mapa = data_mapa or date.today()
+    if refeicao_apos_hora_limite(meal, data_mapa, agora=agora):
+        return data_mapa + timedelta(days=1)
+    return data_mapa
+
+
+def info_lancamento_refeicoes(data_mapa, agora=None):
+    """Metadados de hora limite / destino por refeição (para UI e API)."""
+    agora = agora or _agora_brasilia()
+    horas = mapa_horas_limite()
+    out = {}
+    for meal in MEALS_SUBST:
+        apos = refeicao_apos_hora_limite(meal, data_mapa, agora=agora)
+        dest = data_destino_lancamento(meal, data_mapa, agora=agora)
+        hora = horas.get(meal) or ''
+        out[meal] = {
+            'meal': meal,
+            'label': MEAL_LABELS.get(meal, meal),
+            'hora_limite': hora,
+            'apos_limite': apos,
+            'data_mapa': data_mapa.isoformat() if data_mapa else '',
+            'data_destino': dest.isoformat() if dest else '',
+            'data_destino_label': dest.strftime('%d/%m/%Y') if dest else '',
+            'aviso': (
+                f'Após {hora}, alterações de {MEAL_LABELS.get(meal, meal)} '
+                f'só podem ser aplicadas em {dest.strftime("%d/%m/%Y")}.'
+                if apos and hora else ''
+            ),
+        }
+    return out
+
+
+def buscar_linha_mapa_dia(src, data_alvo):
+    """Localiza a linha do paciente em data_alvo (não cria)."""
+    if not src or not data_alvo:
+        return None
+    if src.data_refeicao == data_alvo:
+        return src
+    if src.paciente_id:
+        row = (
+            NutMapaRefeicao.query
+            .filter_by(data_refeicao=data_alvo, paciente_id=src.paciente_id, ativo=True)
+            .order_by(NutMapaRefeicao.id.desc())
+            .first()
+        )
+        if row:
+            return row
+    chave = _chave_linha_mapa(src)
+    for r in NutMapaRefeicao.query.filter_by(data_refeicao=data_alvo, ativo=True).all():
+        if not r.paciente_id and _chave_linha_mapa(r) == chave:
+            return r
+    return None
+
+
+def obter_ou_criar_linha_mapa_dia(src, data_alvo, usuario=None):
+    """Localiza (ou cria a partir de src) a linha do paciente em data_alvo."""
+    if not src or not data_alvo:
+        return None
+    if src.data_refeicao == data_alvo:
+        return src
+
+    existing = buscar_linha_mapa_dia(src, data_alvo)
+    if existing:
+        return existing
+
+    garantir_mapa_do_dia(data_alvo)
+    existing = buscar_linha_mapa_dia(src, data_alvo)
+    if existing:
+        return existing
+
+    if src.paciente_id:
+        existing = (
+            NutMapaRefeicao.query
+            .filter_by(data_refeicao=data_alvo, paciente_id=src.paciente_id)
+            .order_by(NutMapaRefeicao.id.desc())
+            .first()
+        )
+    if not existing:
+        chave = _chave_linha_mapa(src)
+        for r in NutMapaRefeicao.query.filter_by(data_refeicao=data_alvo).all():
+            if not r.paciente_id and _chave_linha_mapa(r) == chave:
+                existing = r
+                break
+    if existing:
+        if _linha_com_baixa(existing):
+            return None
+        if not existing.ativo:
+            existing.ativo = True
+            existing.data_saida = None
+            existing.motivo_saida = None
+            existing.hospital_transferencia = None
+        return existing
+
+    clone = _clonar_linha_mapa(src, data_alvo, usuario=usuario)
+    clone.substituicoes = None
+    db.session.add(clone)
+    db.session.flush()
+    return clone
+
+
 _ITENS_ORDEM = {
     'grandes': [
         'acompanhamento', 'prato_base', 'proteina_opcional', 'proteico_opcional',
@@ -681,15 +919,42 @@ def find_cardapio_for_meal(dieta, meal, data_ref=None, dieta_id=None):
 
 
 def get_mapa_substituicoes(mapa_row):
-    """Monta payload completo do diálogo Substituições para uma linha do mapa."""
+    """Monta payload completo do diálogo Substituições para uma linha do mapa.
+
+    Refeições já após a hora limite exibem/editam o conteúdo do dia seguinte.
+    """
     dieta = (mapa_row.dieta or '').strip()
     data_ref = mapa_row.data_refeicao
-    subs = normalize_substituicoes(mapa_row.get_substituicoes())
+    lanc = info_lancamento_refeicoes(data_ref)
+    subs_hoje = normalize_substituicoes(mapa_row.get_substituicoes())
+
+    # carrega substituições do dia seguinte (quando houver refeições adiadas)
+    destinos = {info['data_destino'] for info in lanc.values() if info.get('apos_limite')}
+    subs_por_data = {data_ref.isoformat() if data_ref else '': subs_hoje}
+    row_por_data = {data_ref.isoformat() if data_ref else '': mapa_row}
+    for dest_iso in destinos:
+        try:
+            dest_date = date.fromisoformat(dest_iso)
+        except ValueError:
+            continue
+        row_dest = buscar_linha_mapa_dia(mapa_row, dest_date)
+        if row_dest:
+            row_por_data[dest_iso] = row_dest
+            subs_por_data[dest_iso] = normalize_substituicoes(row_dest.get_substituicoes())
+
     refeicoes = {}
+    subs_view = {}
     for meal in MEALS_SUBST:
-        card = find_cardapio_for_meal(dieta, meal, data_ref)
+        info = lanc[meal]
+        dest_iso = info['data_destino']
+        row_src = row_por_data.get(dest_iso) or mapa_row
+        data_meal = row_src.data_refeicao or data_ref
+        subs_meal = (subs_por_data.get(dest_iso) or subs_hoje).get(meal) or {
+            'pares': [], 'justificativa': ''
+        }
+        card = find_cardapio_for_meal(dieta, meal, data_meal)
         pratos = pratos_from_itens(card.get_itens() if card else {}, card.tipo if card else None)
-        pares = subs[meal]['pares']
+        pares = subs_meal.get('pares') or []
         refeicoes[meal] = {
             'label': MEAL_LABELS[meal],
             'cardapio_id': card.id if card else None,
@@ -697,9 +962,15 @@ def get_mapa_substituicoes(mapa_row):
             'cardapio_tipo': (card.tipo if card else '') or '',
             'pratos': pratos,
             'pares': pares,
-            'justificativa': subs[meal]['justificativa'],
+            'justificativa': subs_meal.get('justificativa') or '',
             'cardapio_personalizado': cardapio_personalizado(pratos, pares),
+            'lancamento': info,
         }
+        subs_view[meal] = {
+            'pares': list(pares),
+            'justificativa': subs_meal.get('justificativa') or '',
+        }
+
     local = '/'.join(
         x for x in [(mapa_row.clinica or '').strip(), (mapa_row.enfermaria or '').strip()] if x
     )
@@ -713,6 +984,7 @@ def get_mapa_substituicoes(mapa_row):
             (mapa_row.nome or '').strip(),
         ] if x
     )
+    adiadas = [m for m, i in lanc.items() if i.get('apos_limite')]
     return {
         'ok': True,
         'mapa_id': mapa_row.id,
@@ -721,13 +993,20 @@ def get_mapa_substituicoes(mapa_row):
         'data_refeicao': data_ref.isoformat() if data_ref else '',
         'paciente_id': mapa_row.paciente_id,
         'refeicoes': refeicoes,
-        'substituicoes': subs,
+        'substituicoes': subs_view,
+        'lancamento': lanc,
+        'refeicoes_adiadas': adiadas,
+        'aviso_geral': (
+            'Há refeições após a hora limite: as alterações serão salvas no dia seguinte.'
+            if adiadas else ''
+        ),
     }
 
 
 def save_mapa_substituicoes(mapa_row, payload, usuario=None):
-    """Persiste substituições (todas as refeições ou merge parcial)."""
-    atual = normalize_substituicoes(mapa_row.get_substituicoes())
+    """Persiste substituições respeitando hora limite (adia para o dia seguinte)."""
+    data_ref = mapa_row.data_refeicao or date.today()
+    lanc = info_lancamento_refeicoes(data_ref)
     incoming = None
     if isinstance(payload, dict):
         if isinstance(payload.get('substituicoes'), dict):
@@ -743,19 +1022,53 @@ def save_mapa_substituicoes(mapa_row, payload, usuario=None):
                 }}
     if not isinstance(incoming, dict):
         incoming = {}
-    merged = {k: dict(v) for k, v in atual.items()}
+
+    # agrupa por data destino
+    por_destino = {}
     for meal in MEALS_SUBST:
         if meal not in incoming or not isinstance(incoming[meal], dict):
             continue
-        bloco = incoming[meal]
-        norm = normalize_substituicoes({meal: bloco})[meal]
-        if 'pares' in bloco:
-            merged[meal]['pares'] = norm['pares']
-        if 'justificativa' in bloco:
-            merged[meal]['justificativa'] = norm['justificativa']
-    mapa_row.set_substituicoes(merged)
-    marcar_alteracao_mapa(mapa_row, usuario=usuario)
-    return merged
+        dest = date.fromisoformat(lanc[meal]['data_destino'])
+        por_destino.setdefault(dest, []).append(meal)
+
+    salvos = []
+    adiadas = []
+    for dest, meals in por_destino.items():
+        row_dest = obter_ou_criar_linha_mapa_dia(mapa_row, dest, usuario=usuario)
+        if not row_dest:
+            continue
+        atual = normalize_substituicoes(row_dest.get_substituicoes())
+        merged = {k: dict(v) for k, v in atual.items()}
+        for meal in meals:
+            bloco = incoming[meal]
+            norm = normalize_substituicoes({meal: bloco})[meal]
+            if 'pares' in bloco:
+                merged[meal]['pares'] = norm['pares']
+            if 'justificativa' in bloco:
+                merged[meal]['justificativa'] = norm['justificativa']
+            salvos.append(meal)
+            if lanc[meal].get('apos_limite'):
+                adiadas.append({
+                    'meal': meal,
+                    'label': MEAL_LABELS.get(meal, meal),
+                    'data_destino': lanc[meal]['data_destino'],
+                    'data_destino_label': lanc[meal]['data_destino_label'],
+                    'hora_limite': lanc[meal]['hora_limite'],
+                    'aviso': lanc[meal]['aviso'],
+                })
+        row_dest.set_substituicoes(merged)
+        marcar_alteracao_mapa(row_dest, usuario=usuario)
+
+    return {
+        'substituicoes': normalize_substituicoes(mapa_row.get_substituicoes()),
+        'meals_salvos': salvos,
+        'meals_adiados': adiadas,
+        'aviso': (
+            'Substituições após a hora limite foram salvas no dia seguinte: '
+            + ', '.join(f"{a['label']} -> {a['data_destino_label']}" for a in adiadas)
+            if adiadas else ''
+        ),
+    }
 
 
 def importar_substituicoes_anteriores(mapa_row, meal=None, so_justificativa=False):
@@ -784,6 +1097,47 @@ def importar_substituicoes_anteriores(mapa_row, meal=None, so_justificativa=Fals
             atual[m]['pares'] = list(prev_subs[m]['pares'])
     mapa_row.set_substituicoes(atual)
     return atual
+
+
+def listar_justificativas_anteriores(mapa_row, meal=None, limit=40):
+    """Lista justificativas já usadas em mapas anteriores do mesmo paciente."""
+    if not mapa_row.paciente_id and not (mapa_row.prontuario or '').strip():
+        return []
+    q = NutMapaRefeicao.query.filter(
+        NutMapaRefeicao.id != mapa_row.id,
+        NutMapaRefeicao.data_refeicao < (mapa_row.data_refeicao or date.today()),
+    )
+    if mapa_row.paciente_id:
+        q = q.filter(NutMapaRefeicao.paciente_id == mapa_row.paciente_id)
+    else:
+        q = q.filter(NutMapaRefeicao.prontuario == mapa_row.prontuario)
+    rows = q.order_by(NutMapaRefeicao.data_refeicao.desc(), NutMapaRefeicao.id.desc()).limit(80).all()
+    meals = [meal] if meal in MEALS_SUBST else list(MEALS_SUBST)
+    out = []
+    seen = set()
+    for row in rows:
+        subs = normalize_substituicoes(row.get_substituicoes())
+        data_label = row.data_refeicao.strftime('%d/%m/%Y') if row.data_refeicao else ''
+        for m in meals:
+            just = (subs.get(m) or {}).get('justificativa') or ''
+            just = just.strip()
+            if not just:
+                continue
+            key = (just.upper(), m)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({
+                'mapa_id': row.id,
+                'data': row.data_refeicao.isoformat() if row.data_refeicao else '',
+                'data_label': data_label,
+                'meal': m,
+                'meal_label': MEAL_LABELS.get(m, m),
+                'justificativa': just,
+            })
+            if len(out) >= limit:
+                return out
+    return out
 
 
 def _cardapio_seed_signature(item):
@@ -1556,14 +1910,22 @@ def _seed_precos_refeicoes():
         NutPrecoRefeicao.__table__.create(db.engine, checkfirst=True)
     except Exception:
         pass
-    # Mantém dados no banco, mas oculta da UI antiga
-    for row in NutPrecoRefeicao.query.filter_by(ativo=True).all():
-        row.ativo = False
+    # Mantém dados no banco, mas oculta da UI antiga (update em lote)
+    NutPrecoRefeicao.query.filter_by(ativo=True).update(
+        {NutPrecoRefeicao.ativo: False}, synchronize_session=False
+    )
 
 
-def seed_nutricao():
-    """Garante cadastros básicos de clínicas e dietas."""
-    _ensure_nutricao_columns()
+def seed_nutricao(force=False):
+    """Garante cadastros básicos de clínicas e dietas.
+
+    Idempotente e cacheado por processo: a 1ª chamada (~2s) faz o trabalho;
+    as demais retornam na hora (antes cada aba do menu pagava o seed inteiro).
+    """
+    global _SEED_NUTRICAO_DONE
+    if _SEED_NUTRICAO_DONE and not force:
+        return
+    _ensure_nutricao_columns(force=force)
     cid = ensure_cliente_hfb().id
     for nome, ativo in CLINICAS_SEED:
         if not NutClinica.query.filter_by(nome=nome, cliente_id=cid).first():
@@ -1627,6 +1989,7 @@ def seed_nutricao():
             db.session.add(p)
 
     db.session.commit()
+    _SEED_NUTRICAO_DONE = True
 
 
 def paciente_from_payload(d, paciente=None):
@@ -1859,14 +2222,19 @@ def _garantir_ausentes_desde_historico(data_ref):
     """Copia do último estado anterior (sem baixa) quem ainda falta no dia alvo.
 
     Cobre buracos se um dia intermediário nunca recebeu a linha.
+    Limita o lookback para não carregar o histórico inteiro do banco.
     """
     existentes = NutMapaRefeicao.query.filter_by(data_refeicao=data_ref).all()
     by_pid = {r.paciente_id: r for r in existentes if r.paciente_id}
     by_chave = {_chave_linha_mapa(r): r for r in existentes if not r.paciente_id}
 
+    since = data_ref - timedelta(days=_MAPA_LOOKBACK_DIAS)
     priors = (
         NutMapaRefeicao.query
-        .filter(NutMapaRefeicao.data_refeicao < data_ref)
+        .filter(
+            NutMapaRefeicao.data_refeicao < data_ref,
+            NutMapaRefeicao.data_refeicao >= since,
+        )
         .order_by(NutMapaRefeicao.data_refeicao.desc(), NutMapaRefeicao.id.desc())
         .all()
     )
@@ -1898,30 +2266,27 @@ def garantir_mapa_do_dia(data_ref=None):
 
     - Mescla mesmo se o dia já tiver algumas linhas (não aborta por dia não-vazio).
     - Reativa baixas incompletas (ativo=False sem motivo).
-    - Preenche dia a dia e, por fim, cobre ausentes via histórico.
+    - Copia só do dia anterior + preenche ausentes no lookback recente
+      (não varre mais o histórico dia a dia desde a primeira linha).
     Cadastro do paciente (data_saida no NutPaciente) NÃO impede a cópia —
     só a baixa no mapa com motivo.
     """
     data_ref = data_ref or date.today()
 
-    oldest = (
-        db.session.query(NutMapaRefeicao.data_refeicao)
+    alteradas = _sanear_baixas_incompletas(data_ref)
+    tem_anterior = (
+        db.session.query(NutMapaRefeicao.id)
         .filter(NutMapaRefeicao.data_refeicao < data_ref)
-        .order_by(NutMapaRefeicao.data_refeicao.asc())
+        .limit(1)
         .first()
     )
-    alteradas = _sanear_baixas_incompletas(data_ref)
-    if not oldest:
+    if not tem_anterior:
         if alteradas:
             db.session.commit()
             print(f'[mapa] garantir {data_ref}: sanadas/criadas={alteradas}')
         return alteradas
 
-    cur = oldest[0] + timedelta(days=1)
-    while cur <= data_ref:
-        alteradas += _copiar_ativos_dia_anterior(cur)
-        cur += timedelta(days=1)
-
+    alteradas += _copiar_ativos_dia_anterior(data_ref)
     alteradas += _garantir_ausentes_desde_historico(data_ref)
 
     if alteradas:
@@ -1961,6 +2326,106 @@ def leito_ocupado_no_mapa(data_ref, clinica, enfermaria, leito, exclude_id=None)
     return q.first() is not None
 
 
+def _chaves_ocupacao_leito(valor):
+    """Normaliza rótulos de leito para comparação (nº, nome, '1 — Janela')."""
+    s = (valor or '').strip().upper()
+    if not s:
+        return set()
+    keys = {s}
+    for sep in ('—', ' - ', '–'):
+        if sep in s:
+            keys.add(s.split(sep, 1)[0].strip())
+            break
+    # remove zeros à esquerda em chaves numéricas
+    for k in list(keys):
+        if k.isdigit():
+            keys.add(str(int(k)))
+            keys.add(str(int(k)).zfill(2))
+    return {k for k in keys if k}
+
+
+def list_leitos_vagos(
+    data_ref,
+    clinica=None,
+    enfermaria=None,
+    enfermaria_id=None,
+    exclude_mapa_id=None,
+):
+    """Leitos cadastrados ativos da enfermaria que não estão ocupados no mapa do dia."""
+    data_ref = data_ref or date.today()
+    enf = None
+    if enfermaria_id:
+        enf = _q(NutEnfermaria).filter_by(id=int(enfermaria_id)).first()
+    elif (enfermaria or '').strip():
+        nome = (enfermaria or '').strip()
+        enf = (
+            _q(NutEnfermaria)
+            .filter(db.func.upper(NutEnfermaria.nome) == nome.upper())
+            .first()
+        )
+    if not enf:
+        return {'enfermaria': None, 'leitos': [], 'ocupados': 0}
+
+    clinica_n = (clinica or '').strip()
+    enf_nome = (enf.nome or '').strip()
+
+    ocupados_q = (
+        _q(NutMapaRefeicao)
+        .filter(
+            NutMapaRefeicao.data_refeicao == data_ref,
+            NutMapaRefeicao.ativo.is_(True),
+            db.func.upper(NutMapaRefeicao.enfermaria) == enf_nome.upper(),
+        )
+    )
+    if clinica_n:
+        ocupados_q = ocupados_q.filter(
+            db.func.upper(NutMapaRefeicao.clinica) == clinica_n.upper()
+        )
+    if exclude_mapa_id is not None:
+        ocupados_q = ocupados_q.filter(NutMapaRefeicao.id != int(exclude_mapa_id))
+
+    ocupados = set()
+    for row in ocupados_q.all():
+        ocupados |= _chaves_ocupacao_leito(row.leito)
+
+    leitos = []
+    for l in (
+        NutLeito.query
+        .filter_by(enfermaria_id=enf.id, ativo=True)
+        .order_by(NutLeito.numero, NutLeito.nome)
+        .all()
+    ):
+        keys = _chaves_ocupacao_leito(l.numero)
+        keys |= _chaves_ocupacao_leito(l.nome)
+        if keys & ocupados:
+            continue
+        numero = l.numero
+        nome = (l.nome or '').strip()
+        if numero is not None and nome and nome != str(numero) and nome != str(numero).zfill(2):
+            rotulo = f'{numero} — {nome}'
+            valor = str(numero)
+        else:
+            rotulo = nome or (str(numero) if numero is not None else f'Leito {l.id}')
+            valor = str(numero) if numero is not None else rotulo
+        leitos.append({
+            'id': l.id,
+            'enfermaria_id': enf.id,
+            'numero': numero,
+            'nome': nome,
+            'valor': valor,
+            'rotulo': rotulo,
+            'ativo': True,
+        })
+
+    return {
+        'enfermaria': {'id': enf.id, 'nome': enf.nome or ''},
+        'leitos': leitos,
+        'ocupados': len(ocupados),
+        'data': data_ref.isoformat(),
+        'clinica': clinica_n,
+    }
+
+
 def _aplicar_baixa_linha(row, motivo, usuario=None, data_saida=None, hospital_transferencia=None):
     """Aplica campos de baixa em uma linha do mapa (mantém registro histórico)."""
     row.data_saida = data_saida
@@ -1971,6 +2436,50 @@ def _aplicar_baixa_linha(row, motivo, usuario=None, data_saida=None, hospital_tr
         row.hospital_transferencia = hosp[:200] if hosp else None
     marcar_alteracao_mapa(row, usuario)
     return row
+
+
+def resolver_partes_acompanhante(data_ref, fl_almoco=True, fl_jantar=True, agora=None):
+    """Divide lançamento A/J entre o dia pedido e o dia seguinte (hora limite).
+
+    Retorna lista de partes:
+      {data_refeicao, fl_almoco, fl_jantar, adiadas: [meals], aviso}
+    """
+    data_ref = data_ref or date.today()
+    fl_almoco = bool(fl_almoco)
+    fl_jantar = bool(fl_jantar)
+    partes_map = {}
+
+    def _add(meal, flag_name, marcado):
+        if not marcado:
+            return
+        dest = data_destino_lancamento(meal, data_ref, agora=agora)
+        key = dest.isoformat()
+        if key not in partes_map:
+            partes_map[key] = {
+                'data_refeicao': dest,
+                'fl_almoco': False,
+                'fl_jantar': False,
+                'adiadas': [],
+                'aviso': '',
+            }
+        partes_map[key][flag_name] = True
+        if dest != data_ref:
+            partes_map[key]['adiadas'].append(meal)
+
+    _add('almoco', 'fl_almoco', fl_almoco)
+    _add('jantar', 'fl_jantar', fl_jantar)
+
+    partes = []
+    for p in sorted(partes_map.values(), key=lambda x: x['data_refeicao']):
+        if p['adiadas']:
+            labels = ', '.join(MEAL_LABELS.get(m, m) for m in p['adiadas'])
+            p['aviso'] = (
+                f'A refeição será lançada para o dia seguinte '
+                f'({p["data_refeicao"].strftime("%d/%m/%Y")})'
+                + (f': {labels}.' if labels else '.')
+            )
+        partes.append(p)
+    return partes
 
 
 def baixar_acompanhantes_do_paciente(paciente_id, motivo=None, data_saida=None):
@@ -2250,8 +2759,67 @@ def _zero_matriz():
     return {cat: {ref: 0 for ref, _ in REFEICAO_FLAGS} for cat in CATEGORIAS_FAT}
 
 
+def _clinica_para_acompanhante(a, data_ref, clinica_por_paciente_dia=None):
+    """Resolve clínica do lançamento de acompanhante (mapa do dia ou cadastro do paciente)."""
+    pid = a.paciente_id
+    if pid and clinica_por_paciente_dia:
+        cli = clinica_por_paciente_dia.get((int(pid), data_ref))
+        if cli:
+            return cli
+    pac = a.paciente
+    if pac and (pac.clinica or '').strip():
+        return (pac.clinica or '').strip()
+    return 'SEM CLÍNICA'
+
+
+def _somar_acompanhantes_faturamento(blocos, totais_gerais, data_de, data_ate, clinica_por_paciente_dia):
+    """Inclui lançamentos de nut_refeicao_acompanhantes na categoria ACOMP."""
+    from sqlalchemy import or_
+
+    rows = (
+        _q(NutRefeicaoAcompanhante)
+        .filter(NutRefeicaoAcompanhante.ativo.is_(True))
+        .filter(or_(
+            NutRefeicaoAcompanhante.data_saida.is_(None),
+            NutRefeicaoAcompanhante.data_saida > data_de,
+        ))
+        .filter(or_(
+            NutRefeicaoAcompanhante.data_refeicao.is_(None),
+            (
+                (NutRefeicaoAcompanhante.data_refeicao >= data_de)
+                & (NutRefeicaoAcompanhante.data_refeicao <= data_ate)
+            ),
+        ))
+        .all()
+    )
+    flag_map = {
+        'almoco': 'fl_almoco',
+        'jantar': 'fl_jantar',
+    }
+    for a in rows:
+        data_ref = a.data_refeicao or data_de
+        if data_ref < data_de or data_ref > data_ate:
+            continue
+        if a.data_saida and a.data_saida <= data_ref:
+            continue
+        clinica = _clinica_para_acompanhante(a, data_ref, clinica_por_paciente_dia)
+        data_key = data_ref.isoformat()
+        qtd = max(int(a.quantidade or 1), 1)
+        for ref_key, attr in flag_map.items():
+            marcado = getattr(a, attr, None)
+            # legado sem coluna: conta almoco e jantar
+            if marcado is None:
+                ativo_flag = True
+            else:
+                ativo_flag = bool(marcado)
+            if not ativo_flag:
+                continue
+            blocos[clinica][data_key]['acomp'][ref_key] += qtd
+            totais_gerais['acomp'][ref_key] += qtd
+
+
 def relatorio_faturamento(data_de, data_ate, tipo='espelho_1', por_grupo_clinica=False, sintetico=False):
-    """Gera espelho/totais de faturamento a partir do mapa de refeições."""
+    """Gera espelho/totais de faturamento a partir do mapa + refeições acompanhante."""
     from collections import defaultdict
 
     data_de = data_de or date.today()
@@ -2273,7 +2841,7 @@ def relatorio_faturamento(data_de, data_ate, tipo='espelho_1', por_grupo_clinica
     }
 
     linhas = (
-        NutMapaRefeicao.query
+        _q(NutMapaRefeicao)
         .filter(
             NutMapaRefeicao.data_refeicao >= data_de,
             NutMapaRefeicao.data_refeicao <= data_ate,
@@ -2288,10 +2856,13 @@ def relatorio_faturamento(data_de, data_ate, tipo='espelho_1', por_grupo_clinica
     totais_gerais = _zero_matriz()
     formulas = defaultdict(lambda: {'item': '', 'qtd': 0})
     complementares = defaultdict(lambda: {'item': '', 'qtd': 0})
+    clinica_por_paciente_dia = {}
 
     for l in linhas:
         clinica = (l.clinica or 'SEM CLÍNICA').strip() or 'SEM CLÍNICA'
         data_key = l.data_refeicao.isoformat() if l.data_refeicao else data_de.isoformat()
+        if l.paciente_id and l.data_refeicao:
+            clinica_por_paciente_dia[(int(l.paciente_id), l.data_refeicao)] = clinica
         cat = _classificar_dieta_faturamento(l, dieta_cat_map)
 
         for ref_key, flag in REFEICAO_FLAGS:
@@ -2324,6 +2895,11 @@ def relatorio_faturamento(data_de, data_ate, tipo='espelho_1', por_grupo_clinica
                 complementares[k]['item'] = parte
                 complementares[k]['qtd'] += 1
 
+    # Lançamentos de refeição acompanhante → linha ACOMP. (por clínica do paciente no dia)
+    if tipo not in ('total_formulas', 'total_complementares'):
+        _somar_acompanhantes_faturamento(
+            blocos, totais_gerais, data_de, data_ate, clinica_por_paciente_dia
+        )
     # monta tabelas no formato da tela legado
     tabelas = []
     clinicas_ord = sorted(blocos.keys())
@@ -2414,6 +2990,431 @@ def relatorio_faturamento(data_de, data_ate, tipo='espelho_1', por_grupo_clinica
         'formulas': sorted(formulas.values(), key=lambda x: x['item'].upper()),
         'complementares': sorted(complementares.values(), key=lambda x: x['item'].upper()),
         'qtd_tabelas': len(tabelas),
+    }
+
+
+# Mapeamento refeição do mapa → siglas do cadastro de preços (NutTipoRefeicao)
+_REF_KEY_SIGLAS = {
+    'desjejum': ('DESJ', 'D', 'DESJEJUM'),
+    'colacao': ('COL', 'C', 'COLAÇÃO', 'COLACAO'),
+    'almoco': ('ALM', 'A', 'ALMOÇO', 'ALMOCO'),
+    'merenda': ('MER', 'M', 'MERENDA'),
+    'jantar': ('JAN', 'J', 'JANTAR'),
+    'ceia': ('CEI', 'CE', 'CEIA'),
+}
+_REF_KEY_LABELS = {
+    'desjejum': 'Desjejum',
+    'colacao': 'Colação',
+    'almoco': 'Almoço',
+    'merenda': 'Merenda',
+    'jantar': 'Jantar',
+    'ceia': 'Ceia',
+}
+
+
+def _norm_nome_preco(s):
+    import unicodedata
+    t = ' '.join((s or '').strip().upper().split())
+    t = unicodedata.normalize('NFKD', t)
+    return ''.join(c for c in t if not unicodedata.combining(c))
+
+
+def _indexes_precos_faturamento():
+    """Índices para resolver preço de dieta×tipo, catálogo plano e produtos."""
+    dietas_por_nome = {}
+    for d in NutDieta.query.all():
+        nome = _norm_nome_preco(d.nome)
+        if not nome:
+            continue
+        # se já existe, mantém; depois preferimos as com preço no resolver
+        dietas_por_nome.setdefault(nome, d.id)
+
+    tipos_por_sigla = {}
+    tipos_por_nome = {}
+    for t in NutTipoRefeicao.query.all():
+        sid = t.id
+        for s in (t.sigla or '',):
+            k = _norm_nome_preco(s)
+            if k:
+                tipos_por_sigla[k] = sid
+        nk = _norm_nome_preco(t.nome)
+        if nk:
+            tipos_por_nome[nk] = sid
+
+    precos_dieta_tipo = {}
+    dietas_com_preco = set()
+    for p in NutPrecoDietaTipo.query.all():
+        cell = {
+            'empresa': float(p.valor_empresa or 0),
+            'paciente': float(p.valor_paciente or 0),
+            'acompanhante': float(p.valor_acompanhante or 0),
+        }
+        precos_dieta_tipo[(p.dieta_id, p.tipo_refeicao_id)] = cell
+        if cell['empresa'] > 0 or cell['paciente'] > 0 or cell['acompanhante'] > 0:
+            dietas_com_preco.add(p.dieta_id)
+
+    precos_plano = {}
+    for r in NutPrecoRefeicao.query.filter_by(ativo=True).all():
+        nome = _norm_nome_preco(r.refeicao)
+        if not nome:
+            continue
+        emp = float(r.valor_empresa if r.valor_empresa is not None else (r.valor or 0))
+        pac = float(r.valor_paciente or 0)
+        aco = float(r.valor_acompanhante or 0)
+        precos_plano[nome] = {'empresa': emp, 'paciente': pac, 'acompanhante': aco}
+
+    produtos_por_nome = {}
+    for p in NutProduto.query.filter_by(ativo=True).all():
+        desc = _norm_nome_preco(p.descricao)
+        if not desc:
+            continue
+        pm = float(p.preco_medio or 0) or float(p.ult_preco or 0)
+        if pm <= 0:
+            continue
+        if desc not in produtos_por_nome or pm > produtos_por_nome[desc]:
+            produtos_por_nome[desc] = pm
+
+    return {
+        'dietas_por_nome': dietas_por_nome,
+        'dietas_com_preco': dietas_com_preco,
+        'tipos_por_sigla': tipos_por_sigla,
+        'tipos_por_nome': tipos_por_nome,
+        'precos_dieta_tipo': precos_dieta_tipo,
+        'precos_plano': precos_plano,
+        'produtos_por_nome': produtos_por_nome,
+    }
+
+
+def _resolver_dieta_id(nome_item, idx):
+    """Resolve dieta com preço: match exato, senão nome-base mais adequado com preço."""
+    nome = _norm_nome_preco(nome_item)
+    if not nome:
+        return None
+    com_preco = idx.get('dietas_com_preco') or set()
+    dietas = idx['dietas_por_nome']
+
+    def pick_com_preco(chave):
+        did = dietas.get(chave)
+        if did and did in com_preco:
+            return did
+        return None
+
+    direct = pick_com_preco(nome)
+    if direct:
+        return direct
+
+    bases = [nome]
+    for suf in (' COM SAL', ' SEM SAL', ' C/ SAL', ' S/ SAL'):
+        if nome.endswith(suf):
+            bases.append(nome[: -len(suf)].strip())
+            break
+    for base in bases:
+        hit = pick_com_preco(base)
+        if hit:
+            return hit
+
+    # (prioridade, peso, dieta_id)
+    # 2 = dieta é prefixo do nome (BRANDA ⊂ BRANDA COM SAL) → maior len melhor
+    # 1 = nome é prefixo da dieta (LIQUIDA ⊂ LIQUIDA COMPLETA) → menor len melhor
+    candidatos = []
+    for base in bases:
+        if not base:
+            continue
+        for dnome, did in dietas.items():
+            if did not in com_preco or dnome == base:
+                continue
+            if base.startswith(dnome + ' ') or (base.startswith(dnome) and len(base) > len(dnome)):
+                candidatos.append((2, len(dnome), did))
+            elif dnome.startswith(base + ' ') or (dnome.startswith(base) and len(dnome) > len(base)):
+                candidatos.append((1, -len(dnome), did))
+    if candidatos:
+        candidatos.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        return candidatos[0][2]
+
+    return dietas.get(nome)
+
+
+def _tipo_id_para_ref(ref_key, idx):
+    for sig in _REF_KEY_SIGLAS.get(ref_key, ()):
+        tid = idx['tipos_por_sigla'].get(_norm_nome_preco(sig))
+        if tid:
+            return tid
+        tid = idx['tipos_por_nome'].get(_norm_nome_preco(sig))
+        if tid:
+            return tid
+    return None
+
+
+def _preco_unitario_item(nome_item, ref_key, payer, idx):
+    """Resolve preço unitário: cadastro dieta×tipo → catálogo plano → preço médio produto."""
+    payer = payer if payer in ('empresa', 'paciente', 'acompanhante') else 'empresa'
+    nome = _norm_nome_preco(nome_item)
+
+    dieta_id = _resolver_dieta_id(nome_item, idx)
+    tipo_id = _tipo_id_para_ref(ref_key, idx) if ref_key else None
+    if dieta_id and tipo_id:
+        cell = idx['precos_dieta_tipo'].get((dieta_id, tipo_id))
+        if cell:
+            val = float(cell.get(payer) or 0)
+            if val <= 0:
+                val = float(cell.get('empresa') or 0)
+            if val > 0:
+                return val, 'preços refeições (dieta × tipo)'
+
+    if nome:
+        plano = idx['precos_plano'].get(nome)
+        if not plano:
+            for pnome, pvals in idx['precos_plano'].items():
+                if nome.startswith(pnome) or pnome.startswith(nome):
+                    plano = pvals
+                    break
+        if plano:
+            val = float(plano.get(payer) or 0) or float(plano.get('empresa') or 0)
+            if val > 0:
+                return val, 'preços refeições (catálogo)'
+
+        prod = idx['produtos_por_nome'].get(nome)
+        if prod is None:
+            for pnome, pval in idx['produtos_por_nome'].items():
+                if nome.startswith(pnome) or pnome.startswith(nome) or nome in pnome or pnome in nome:
+                    prod = pval
+                    break
+        if prod and float(prod) > 0:
+            return float(prod), 'produto (preço médio)'
+
+    return 0.0, 'sem preço'
+
+
+def _add_linha_fat_valor(linhas, *, data_ref, fonte, pessoa, clinica, item, ref_key, qtd, payer, idx):
+    qtd = max(int(qtd or 1), 1)
+    unit, origem = _preco_unitario_item(item, ref_key, payer, idx)
+    total = round(unit * qtd, 2)
+    linhas.append({
+        'data': data_ref.isoformat() if data_ref else '',
+        'data_label': data_ref.strftime('%d/%m/%Y') if data_ref else '',
+        'fonte': fonte,
+        'pessoa': pessoa or '',
+        'clinica': (clinica or '').strip() or 'SEM CLÍNICA',
+        'item': (item or '').strip() or 'SEM ITEM',
+        'refeicao': _REF_KEY_LABELS.get(ref_key, ref_key or ''),
+        'refeicao_key': ref_key or '',
+        'quantidade': qtd,
+        'preco_unitario': round(unit, 2),
+        'total': total,
+        'origem_preco': origem,
+        'payer': payer,
+    })
+
+
+def relatorio_faturamento_valores(data_de, data_ate):
+    """Faturamento com valores: mapa + acompanhante + funcionários × preços."""
+    from collections import defaultdict
+    from sqlalchemy import or_
+
+    data_de = data_de or date.today()
+    data_ate = data_ate or data_de
+    if data_ate < data_de:
+        data_de, data_ate = data_ate, data_de
+
+    cur = data_de
+    dias = 0
+    while cur <= data_ate and dias < 62:
+        garantir_mapa_do_dia(cur)
+        cur = date.fromordinal(cur.toordinal() + 1)
+        dias += 1
+
+    idx = _indexes_precos_faturamento()
+    linhas = []
+
+    mapa_rows = (
+        _q(NutMapaRefeicao)
+        .filter(
+            NutMapaRefeicao.data_refeicao >= data_de,
+            NutMapaRefeicao.data_refeicao <= data_ate,
+            NutMapaRefeicao.ativo.is_(True),
+        )
+        .order_by(NutMapaRefeicao.data_refeicao, NutMapaRefeicao.clinica, NutMapaRefeicao.nome)
+        .all()
+    )
+
+    clinica_por_paciente_dia = {}
+    for l in mapa_rows:
+        if l.paciente_id and l.data_refeicao:
+            clinica_por_paciente_dia[(int(l.paciente_id), l.data_refeicao)] = (
+                (l.clinica or '').strip() or 'SEM CLÍNICA'
+            )
+        dieta = (l.dieta or '').strip() or 'SEM DIETA'
+        clinica = (l.clinica or '').strip() or 'SEM CLÍNICA'
+        for ref_key, flag in REFEICAO_FLAGS:
+            if getattr(l, flag, False):
+                _add_linha_fat_valor(
+                    linhas,
+                    data_ref=l.data_refeicao,
+                    fonte='Paciente',
+                    pessoa=l.nome,
+                    clinica=clinica,
+                    item=dieta,
+                    ref_key=ref_key,
+                    qtd=1,
+                    payer='empresa',
+                    idx=idx,
+                )
+        # Itens livres (extras / enterais / etc.) → preço médio do produto ou catálogo
+        for campo, label in (
+            ('extras', 'Extra'),
+            ('suplementos', 'Suplemento'),
+            ('enteral', 'Enteral'),
+            ('formula_infantil', 'Fórmula infantil'),
+            ('lve', 'LVE'),
+        ):
+            texto = (getattr(l, campo, None) or '').strip()
+            if not texto:
+                continue
+            for parte in [p.strip() for p in texto.replace('\n', ';').split(';') if p.strip()]:
+                _add_linha_fat_valor(
+                    linhas,
+                    data_ref=l.data_refeicao,
+                    fonte='Paciente',
+                    pessoa=l.nome,
+                    clinica=clinica,
+                    item=parte,
+                    ref_key=None,
+                    qtd=1,
+                    payer='empresa',
+                    idx=idx,
+                )
+
+    ac_rows = (
+        _q(NutRefeicaoAcompanhante)
+        .filter(NutRefeicaoAcompanhante.ativo.is_(True))
+        .filter(or_(
+            NutRefeicaoAcompanhante.data_saida.is_(None),
+            NutRefeicaoAcompanhante.data_saida > data_de,
+        ))
+        .filter(or_(
+            NutRefeicaoAcompanhante.data_refeicao.is_(None),
+            (
+                (NutRefeicaoAcompanhante.data_refeicao >= data_de)
+                & (NutRefeicaoAcompanhante.data_refeicao <= data_ate)
+            ),
+        ))
+        .all()
+    )
+    for a in ac_rows:
+        data_ref = a.data_refeicao or data_de
+        if data_ref < data_de or data_ref > data_ate:
+            continue
+        if a.data_saida and a.data_saida <= data_ref:
+            continue
+        clinica = _clinica_para_acompanhante(a, data_ref, clinica_por_paciente_dia)
+        dieta = (
+            (a.refeicao or '').strip()
+            or ((a.dieta_rel.nome if a.dieta_rel else '') or '').strip()
+            or 'SEM DIETA'
+        )
+        qtd = max(int(a.quantidade or 1), 1)
+        flags = {
+            'almoco': bool(a.fl_almoco) if a.fl_almoco is not None else True,
+            'jantar': bool(a.fl_jantar) if a.fl_jantar is not None else True,
+        }
+        for ref_key, ativo_flag in flags.items():
+            if not ativo_flag:
+                continue
+            _add_linha_fat_valor(
+                linhas,
+                data_ref=data_ref,
+                fonte='Acompanhante',
+                pessoa=a.nome_acompanhante,
+                clinica=clinica,
+                item=dieta,
+                ref_key=ref_key,
+                qtd=qtd,
+                payer='acompanhante',
+                idx=idx,
+            )
+
+    func_rows = (
+        _q(NutRefeicaoFuncionario)
+        .filter(NutRefeicaoFuncionario.ativo.is_(True))
+        .filter(or_(
+            NutRefeicaoFuncionario.data_refeicao.is_(None),
+            (
+                (NutRefeicaoFuncionario.data_refeicao >= data_de)
+                & (NutRefeicaoFuncionario.data_refeicao <= data_ate)
+            ),
+        ))
+        .all()
+    )
+    for f in func_rows:
+        data_ref = f.data_refeicao or data_de
+        if data_ref < data_de or data_ref > data_ate:
+            continue
+        dieta = (
+            (f.refeicao or '').strip()
+            or ((f.dieta_rel.nome if f.dieta_rel else '') or '').strip()
+            or 'SEM DIETA'
+        )
+        qtd = max(int(f.quantidade or 1), 1)
+        flags = {
+            'almoco': bool(f.fl_almoco) if f.fl_almoco is not None else True,
+            'jantar': bool(f.fl_jantar) if f.fl_jantar is not None else True,
+        }
+        for ref_key, ativo_flag in flags.items():
+            if not ativo_flag:
+                continue
+            _add_linha_fat_valor(
+                linhas,
+                data_ref=data_ref,
+                fonte='Funcionário',
+                pessoa=f.nome,
+                clinica='FUNCIONÁRIOS',
+                item=dieta,
+                ref_key=ref_key,
+                qtd=qtd,
+                payer='empresa',
+                idx=idx,
+            )
+
+    linhas.sort(key=lambda x: (x['data'], x['fonte'], x['clinica'], x['pessoa'], x['item'], x['refeicao']))
+
+    resumo_fonte = defaultdict(lambda: {'quantidade': 0, 'total': 0.0})
+    resumo_item = defaultdict(lambda: {'item': '', 'quantidade': 0, 'total': 0.0})
+    sem_preco = 0
+    for row in linhas:
+        resumo_fonte[row['fonte']]['quantidade'] += row['quantidade']
+        resumo_fonte[row['fonte']]['total'] += row['total']
+        k = _norm_nome_preco(row['item'])
+        resumo_item[k]['item'] = row['item']
+        resumo_item[k]['quantidade'] += row['quantidade']
+        resumo_item[k]['total'] += row['total']
+        if row['preco_unitario'] <= 0:
+            sem_preco += 1
+
+    total_qtd = sum(r['quantidade'] for r in linhas)
+    total_valor = round(sum(r['total'] for r in linhas), 2)
+
+    return {
+        'data_de': data_de.isoformat(),
+        'data_ate': data_ate.isoformat(),
+        'data_de_label': data_de.strftime('%d/%m/%Y'),
+        'data_ate_label': data_ate.strftime('%d/%m/%Y'),
+        'titulo': 'Faturamento com valores',
+        'linhas': linhas,
+        'resumo_fontes': [
+            {'fonte': f, 'quantidade': v['quantidade'], 'total': round(v['total'], 2)}
+            for f, v in sorted(resumo_fonte.items())
+        ],
+        'resumo_itens': sorted(
+            [
+                {'item': v['item'], 'quantidade': v['quantidade'], 'total': round(v['total'], 2)}
+                for v in resumo_item.values()
+            ],
+            key=lambda x: x['item'].upper(),
+        ),
+        'total_quantidade': total_qtd,
+        'total_valor': total_valor,
+        'qtd_linhas': len(linhas),
+        'qtd_sem_preco': sem_preco,
     }
 
 
@@ -2580,6 +3581,243 @@ def totalizacao_dietas(
         'imprimir_total_geral': bool(imprimir_total_geral),
         'total_geral': {**gerais, 'total': sum(gerais.values())},
         'qtd_dietas': len([x for x in linhas_rel if not x.get('is_subtotal')]),
+    }
+
+
+def totalizacao_dietas_refeicoes(
+    data_ref=None,
+    totalizacao_para='clinicas',
+    imprimir_por='grupo_clinica',
+    filtros=None,
+    horarios=None,
+    metodo='todas',
+    imprimir_total_geral=True,
+):
+    """Totaliza dietas do mapa + refeições de acompanhantes + funcionários.
+
+    Acompanhantes e funcionários não têm flags por horário: a quantidade
+    cadastrada é aplicada a cada horário selecionado no relatório.
+    """
+    from collections import defaultdict
+    from sqlalchemy import or_
+
+    data_ref = data_ref or date.today()
+    garantir_mapa_do_dia(data_ref)
+    horarios = set(horarios or [])
+    flag_map = {
+        'desjejum': 'fl_desjejum',
+        'colacao': 'fl_colacao',
+        'almoco': 'fl_almoco',
+        'merenda': 'fl_merenda',
+        'jantar': 'fl_jantar',
+        'ceia': 'fl_ceia',
+    }
+    if not horarios:
+        horarios = set(flag_map.keys())
+
+    filtros = [str(f).strip() for f in (filtros or []) if str(f).strip()]
+    filtros_upper = {f.upper() for f in filtros}
+    todos = (not filtros) or ('TODOS' in filtros_upper)
+
+    dieta_cat_map = {
+        (d.nome or '').strip().upper(): (d.categoria or 'basica')
+        for d in _q(NutDieta).all()
+    }
+
+    # ---- Mapa de refeições (mesmos filtros da totalização de dietas) ----
+    q = _q(NutMapaRefeicao).filter_by(data_refeicao=data_ref, ativo=True)
+    linhas = q.order_by(NutMapaRefeicao.dieta, NutMapaRefeicao.clinica).all()
+
+    filtro_labels = []
+    nomes_clinica = set()
+    nomes_enf = set()
+    leitos_filtro = set()
+
+    if imprimir_por == 'enfermaria' and not todos:
+        enfs = NutEnfermaria.query.filter(NutEnfermaria.id.in_(
+            [int(x) for x in filtros if str(x).isdigit()]
+        )).all() if any(str(x).isdigit() for x in filtros) else []
+        if not enfs:
+            enfs = NutEnfermaria.query.filter(
+                db.func.upper(NutEnfermaria.nome).in_(list(filtros_upper))
+            ).all()
+        filtro_labels = [e.nome for e in enfs]
+        nomes_enf = {e.nome.upper() for e in enfs}
+        for e in enfs:
+            for lt in (e.leitos or []):
+                if lt.numero_leito:
+                    leitos_filtro.add(lt.numero_leito.strip().upper())
+        filtradas = []
+        for l in linhas:
+            leito = (l.leito or '').strip().upper()
+            clinica = (l.clinica or '').strip().upper()
+            if leito in leitos_filtro or clinica in nomes_enf or any(n in clinica for n in nomes_enf):
+                filtradas.append(l)
+        linhas = filtradas
+    elif not todos:
+        ids = [int(x) for x in filtros if str(x).isdigit()]
+        if ids:
+            for c in NutClinica.query.filter(NutClinica.id.in_(ids)).all():
+                nomes_clinica.add((c.nome or '').strip().upper())
+                filtro_labels.append(c.nome)
+        for f in filtros:
+            if not str(f).isdigit():
+                nomes_clinica.add(f.upper())
+                if f not in filtro_labels:
+                    filtro_labels.append(f)
+        linhas = [l for l in linhas if (l.clinica or '').strip().upper() in nomes_clinica]
+    else:
+        filtro_labels = ['TODOS']
+
+    totais = defaultdict(lambda: {k: 0 for k in flag_map.keys()})
+    contagem_fontes = {'mapa': 0, 'acompanhantes': 0, 'funcionarios': 0}
+
+    for l in linhas:
+        dieta = (l.dieta or '').strip() or 'SEM DIETA'
+        for hk in horarios:
+            flag = flag_map.get(hk)
+            if flag and getattr(l, flag, False):
+                totais[dieta][hk] += 1
+                contagem_fontes['mapa'] += 1
+
+    # Pacientes do mapa (para filtrar acompanhantes pela clínica do dia)
+    pacientes_mapa_ok = set()
+    clinica_por_paciente = {}
+    for l in linhas:
+        if l.paciente_id:
+            pacientes_mapa_ok.add(l.paciente_id)
+            clinica_por_paciente[l.paciente_id] = (l.clinica or '').strip().upper()
+
+    # ---- Refeições acompanhante ----
+    ac_q = (
+        _q(NutRefeicaoAcompanhante)
+        .filter(NutRefeicaoAcompanhante.ativo.is_(True))
+        .filter(or_(
+            NutRefeicaoAcompanhante.data_saida.is_(None),
+            NutRefeicaoAcompanhante.data_saida > data_ref,
+        ))
+        .filter(or_(
+            NutRefeicaoAcompanhante.data_refeicao == data_ref,
+            NutRefeicaoAcompanhante.data_refeicao.is_(None),
+        ))
+    )
+    acompanhantes = ac_q.all()
+    for a in acompanhantes:
+        if not todos:
+            pid = a.paciente_id
+            if imprimir_por == 'enfermaria':
+                if pid not in pacientes_mapa_ok:
+                    continue
+            else:
+                cli = clinica_por_paciente.get(pid)
+                if not cli:
+                    pac = a.paciente
+                    cli = ((pac.clinica if pac else '') or '').strip().upper()
+                if cli not in nomes_clinica:
+                    continue
+        dieta = (
+            (a.refeicao or '').strip()
+            or ((a.dieta_rel.nome if a.dieta_rel else '') or '').strip()
+            or 'SEM DIETA'
+        )
+        qtd = max(int(a.quantidade or 1), 1)
+        flags = {
+            'almoco': bool(a.fl_almoco) if a.fl_almoco is not None else True,
+            'jantar': bool(a.fl_jantar) if a.fl_jantar is not None else True,
+        }
+        for hk in horarios:
+            if hk in flags:
+                if flags[hk]:
+                    totais[dieta][hk] += qtd
+                    contagem_fontes['acompanhantes'] += qtd
+            # outros horários não entram para acompanhante (só A/J)
+
+    # ---- Refeições funcionários ----
+    funcionarios = (
+        _q(NutRefeicaoFuncionario)
+        .filter(NutRefeicaoFuncionario.ativo.is_(True))
+        .filter(or_(
+            NutRefeicaoFuncionario.data_refeicao == data_ref,
+            NutRefeicaoFuncionario.data_refeicao.is_(None),
+        ))
+        .all()
+    )
+    for f in funcionarios:
+        dieta = (
+            (f.refeicao or '').strip()
+            or ((f.dieta_rel.nome if f.dieta_rel else '') or '').strip()
+            or 'SEM DIETA'
+        )
+        qtd = max(int(f.quantidade or 1), 1)
+        flags = {
+            'almoco': bool(f.fl_almoco) if f.fl_almoco is not None else True,
+            'jantar': bool(f.fl_jantar) if f.fl_jantar is not None else True,
+        }
+        for hk in horarios:
+            if hk in flags and flags[hk]:
+                totais[dieta][hk] += qtd
+                contagem_fontes['funcionarios'] += qtd
+
+    ordem_grupos = ['BÁSICAS', 'LÍQUIDAS', 'D.I.', 'ACOMPANHANTES']
+    por_grupo = defaultdict(list)
+    for nome, counts in totais.items():
+        if sum(counts.values()) <= 0:
+            continue
+        grp = _grupo_dieta_totalizacao(nome, dieta_cat_map)
+        row = {'nome': nome, 'grupo': grp, **counts, 'total': sum(counts.values())}
+        por_grupo[grp].append(row)
+
+    linhas_rel = []
+    gerais = {k: 0 for k in flag_map.keys()}
+    for grp in ordem_grupos:
+        items = sorted(por_grupo.get(grp, []), key=lambda x: x['nome'].upper())
+        if not items:
+            continue
+        sub = {k: 0 for k in flag_map.keys()}
+        for it in items:
+            linhas_rel.append(it)
+            for k in flag_map.keys():
+                sub[k] += it[k]
+                gerais[k] += it[k]
+        label = {
+            'BÁSICAS': 'TOTAL - DIETAS BÁSICAS',
+            'LÍQUIDAS': 'TOTAL - DIETAS LÍQUIDAS',
+            'D.I.': 'TOTAL - DIETA D.I.',
+            'ACOMPANHANTES': 'TOTAL - ACOMPANHANTES DE LEITO',
+        }.get(grp, f'TOTAL - {grp}')
+        linhas_rel.append({
+            'nome': label,
+            'grupo': grp,
+            'is_subtotal': True,
+            **sub,
+            'total': sum(sub.values()),
+        })
+
+    colunas = []
+    labels_h = {
+        'desjejum': 'D', 'colacao': 'C', 'almoco': 'A',
+        'merenda': 'M', 'jantar': 'J', 'ceia': 'Ce',
+    }
+    for hk in ('desjejum', 'colacao', 'almoco', 'merenda', 'jantar', 'ceia'):
+        if hk in horarios:
+            colunas.append({'key': hk, 'label': labels_h[hk]})
+
+    return {
+        'data': data_ref.isoformat(),
+        'data_label': data_ref.strftime('%d/%m/%y'),
+        'data_hora_relatorio': datetime.now().strftime('%d/%m/%y %H:%M:%S'),
+        'totalizacao_para': totalizacao_para,
+        'imprimir_por': imprimir_por,
+        'metodo': metodo,
+        'filtros_label': ', '.join(filtro_labels) if filtro_labels else 'TODOS',
+        'horarios': sorted(horarios),
+        'colunas': colunas,
+        'linhas': linhas_rel,
+        'imprimir_total_geral': bool(imprimir_total_geral),
+        'total_geral': {**gerais, 'total': sum(gerais.values())},
+        'qtd_dietas': len([x for x in linhas_rel if not x.get('is_subtotal')]),
+        'fontes': contagem_fontes,
+        'titulo': 'TOTALIZAÇÃO DE DIETAS E REFEIÇÕES',
     }
 
 

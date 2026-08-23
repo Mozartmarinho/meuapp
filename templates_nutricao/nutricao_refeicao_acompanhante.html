@@ -11,6 +11,17 @@
     <i class="fas fa-search"></i>
     <input type="text" id="buscaAcomp" placeholder="Buscar acompanhante, paciente ou dieta..." oninput="filtrarAcomp()">
   </div>
+
+  <div class="card data-nav">
+    <button class="btn btn-ghost btn-sm" type="button" onclick="alterarData(-1)" aria-label="Dia anterior">
+      <i class="fas fa-chevron-left"></i>
+    </button>
+    <strong id="dataAtualLabel">-</strong>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="alterarData(1)" aria-label="Próximo dia">
+      <i class="fas fa-chevron-right"></i>
+    </button>
+  </div>
+
   <button class="btn btn-primary btn-sm" type="button" onclick="abrirAcomp()">
     <i class="fas fa-plus"></i> Adicionar refeição acompanhante
   </button>
@@ -24,6 +35,8 @@
           <th>Nome acompanhante</th>
           <th>Nome paciente</th>
           <th>Refeição (dieta vinculada)</th>
+          <th class="col-flag" title="Almoço">A</th>
+          <th class="col-flag" title="Jantar">J</th>
           <th style="width:100px">Quantidade</th>
           <th style="width:72px">Ações</th>
         </tr>
@@ -36,10 +49,14 @@
             data-paciente-id="{{ a.paciente_id or '' }}"
             data-dieta-id="{{ a.dieta_id or '' }}"
             data-refeicao="{{ a.refeicao or '' }}"
-            data-quantidade="{{ a.quantidade if a.quantidade is not none else 1 }}">
+            data-quantidade="{{ a.quantidade if a.quantidade is not none else 1 }}"
+            data-fl-almoco="{{ 1 if a.fl_almoco else 0 }}"
+            data-fl-jantar="{{ 1 if a.fl_jantar else 0 }}">
           <td><strong>{{ a.nome_acompanhante }}</strong></td>
           <td>{{ a.nome_paciente or '-' }}</td>
           <td><span class="status status-info">{{ a.refeicao or '-' }}</span></td>
+          <td class="col-flag">{% if a.fl_almoco %}<i class="fas fa-check"></i>{% endif %}</td>
+          <td class="col-flag">{% if a.fl_jantar %}<i class="fas fa-check"></i>{% endif %}</td>
           <td>{{ a.quantidade if a.quantidade is not none else 1 }}</td>
           <td class="paciente-acoes">
             <button class="btn btn-ghost btn-sm" type="button" onclick="editarAcompLinha(this)" title="Editar">
@@ -52,7 +69,7 @@
         </tr>
         {% else %}
         <tr id="linhaVazia">
-          <td colspan="5" style="text-align:center;color:#6B7280;">Nenhum acompanhante cadastrado.</td>
+          <td colspan="7" style="text-align:center;color:#6B7280;">Nenhum acompanhante neste dia.</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -83,11 +100,104 @@
 .acompanhante-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
 .acompanhante-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
 .acompanhante-cadastro .btn-ghost { padding: 0.16rem 0.32rem; }
+.acompanhante-cadastro .data-nav {
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.acompanhante-cadastro .data-nav strong {
+  min-width: 120px;
+  text-align: center;
+  color: #1e3a5f;
+}
+.acompanhante-cadastro .col-flag { width: 44px; text-align: center; }
+.acompanhante-cadastro .col-flag .fa-check { color: #15803d; }
+.flags-refeicao {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  margin-top: 0.25rem;
+}
+.flags-refeicao label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.88rem;
+  color: #334155;
+  cursor: pointer;
+}
+.ac-aviso-limite {
+  margin-top: 0.55rem;
+  padding: 0.5rem 0.65rem;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 6px;
+  color: #9a3412;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
 </style>
 
 <script>
 const DIETAS_ACOMP = {{ (dietas or [])|tojson }};
 const PACIENTES_ACOMP = {{ (pacientes or [])|tojson }};
+const DATA_PADRAO = '{{ data_padrao }}';
+const LANCAMENTO_INFO = {{ (lancamento_info or {})|tojson }};
+const HORAS_LIMITE = {{ (horas_limite or {})|tojson }};
+let dataAtual = DATA_PADRAO ? new Date(DATA_PADRAO + 'T12:00:00') : new Date();
+
+function formatDateISO(d){
+  const ano = d.getFullYear();
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+  return `${ano}-${mes}-${dia}`;
+}
+function formatDateBR(iso){
+  if (!iso || !iso.includes('-')) return '-';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+function atualizarLabelData(){
+  const el = document.getElementById('dataAtualLabel');
+  if (el) el.textContent = formatDateBR(formatDateISO(dataAtual));
+}
+function alterarData(delta){
+  dataAtual.setDate(dataAtual.getDate() + delta);
+  location.href = '{{ url_for("nutricao.refeicao_acompanhante") }}?data=' + encodeURIComponent(formatDateISO(dataAtual));
+}
+
+function _avisoLimiteAcomp(flA, flJ){
+  const msgs = [];
+  if (flA && LANCAMENTO_INFO?.almoco?.apos_limite) {
+    msgs.push(LANCAMENTO_INFO.almoco.aviso
+      || 'A refeição será lançada para o dia seguinte (Almoço).');
+  }
+  if (flJ && LANCAMENTO_INFO?.jantar?.apos_limite) {
+    msgs.push(LANCAMENTO_INFO.jantar.aviso
+      || 'A refeição será lançada para o dia seguinte (Jantar).');
+  }
+  if (!msgs.length) return '';
+  if (msgs.length === 1) return 'A refeição será lançada para o dia seguinte.';
+  return 'Há refeições após a hora limite: serão lançadas para o dia seguinte.';
+}
+
+function _atualizarAvisoModalAcomp(){
+  const box = document.getElementById('ac-aviso-limite');
+  if (!box) return;
+  const flA = !!document.getElementById('ac-fl-almoco')?.checked;
+  const flJ = !!document.getElementById('ac-fl-jantar')?.checked;
+  const msg = _avisoLimiteAcomp(flA, flJ);
+  if (msg) {
+    box.hidden = false;
+    box.textContent = msg;
+  } else {
+    box.hidden = true;
+    box.textContent = '';
+  }
+}
 
 function filtrarAcomp(){
   const q = (document.getElementById('buscaAcomp')?.value || '').toLowerCase().trim();
@@ -128,6 +238,8 @@ function abrirAcomp(data){
   const qtd = (data && data.quantidade != null && data.quantidade !== '') ? data.quantidade : 1;
   const pacienteId = data && data.paciente_id ? data.paciente_id : '';
   const pacienteNome = (data && data.nome_paciente) || '';
+  const flA = data && data.fl_almoco === false ? false : true;
+  const flJ = data && data.fl_jantar === false ? false : true;
   const html = `
     <div class="form-group"><label class="form-label">Nome acompanhante *</label>
       <input class="form-control" id="ac-nome" value="${escHtml((data && data.nome_acompanhante) || '')}"></div>
@@ -146,11 +258,24 @@ function abrirAcomp(data){
         ${dietasOpts(data && data.dieta_id, data && data.refeicao)}
       </select>
     </div>
+    <div class="form-group">
+      <label class="form-label">Refeições *</label>
+      <div class="flags-refeicao">
+        <label><input type="checkbox" id="ac-fl-almoco" ${flA ? 'checked' : ''}> Almoço</label>
+        <label><input type="checkbox" id="ac-fl-jantar" ${flJ ? 'checked' : ''}> Jantar</label>
+      </div>
+      <div id="ac-aviso-limite" class="ac-aviso-limite" hidden></div>
+    </div>
     <div class="form-group"><label class="form-label">Quantidade *</label>
       <input class="form-control" type="number" id="ac-quantidade" min="1" step="1" value="${escHtml(qtd)}" required></div>
   `;
   window._editAcompId = isEdit ? data.id : null;
   abrirModal(isEdit ? 'Editar refeição acompanhante' : 'Nova refeição acompanhante', html, isEdit ? 'Atualizar' : 'Salvar', salvarAcomp);
+  setTimeout(() => {
+    document.getElementById('ac-fl-almoco')?.addEventListener('change', _atualizarAvisoModalAcomp);
+    document.getElementById('ac-fl-jantar')?.addEventListener('change', _atualizarAvisoModalAcomp);
+    _atualizarAvisoModalAcomp();
+  }, 0);
 }
 
 function editarAcompLinha(btn){
@@ -163,7 +288,9 @@ function editarAcompLinha(btn){
     nome_paciente: tr.dataset.paciente || '',
     dieta_id: tr.dataset.dietaId || '',
     refeicao: tr.dataset.refeicao || '',
-    quantidade: tr.dataset.quantidade || 1
+    quantidade: tr.dataset.quantidade || 1,
+    fl_almoco: tr.dataset.flAlmoco !== '0',
+    fl_jantar: tr.dataset.flJantar !== '0'
   });
 }
 
@@ -174,9 +301,12 @@ async function salvarAcomp(){
   const dietaId = sel?.value || '';
   const refeicao = sel?.selectedOptions?.[0]?.dataset?.nome || sel?.selectedOptions?.[0]?.textContent || '';
   const quantidade = parseInt(document.getElementById('ac-quantidade')?.value, 10);
+  const flAlmoco = !!document.getElementById('ac-fl-almoco')?.checked;
+  const flJantar = !!document.getElementById('ac-fl-jantar')?.checked;
   if (!nome){ showToast('Nome do acompanhante é obrigatório','error'); return; }
   if (!pacienteId){ showToast('Selecione o paciente','error'); return; }
   if (!dietaId && !refeicao){ showToast('Selecione uma dieta','error'); return; }
+  if (!flAlmoco && !flJantar){ showToast('Marque Almoço e/ou Jantar','error'); return; }
   if (!Number.isFinite(quantidade) || quantidade < 1){
     showToast('Quantidade deve ser um número >= 1','error'); return;
   }
@@ -191,7 +321,10 @@ async function salvarAcomp(){
       paciente_id: pacienteId,
       dieta_id: dietaId || null,
       refeicao,
-      quantidade
+      quantidade,
+      data_refeicao: formatDateISO(dataAtual),
+      fl_almoco: flAlmoco,
+      fl_jantar: flJantar
     })
   });
   const j = await r.json();
@@ -200,8 +333,16 @@ async function salvarAcomp(){
     return;
   }
   fecharModal();
-  showToast(id ? 'Acompanhante atualizado' : 'Acompanhante cadastrado','success');
-  setTimeout(() => location.reload(), 400);
+  const aviso = (j && j.aviso) || '';
+  const destino = (j && j.data_destino) || formatDateISO(dataAtual);
+  if (j.adiado && aviso) {
+    showToast(aviso, 'success');
+  } else {
+    showToast(id ? 'Acompanhante atualizado' : 'Acompanhante cadastrado', 'success');
+  }
+  setTimeout(() => {
+    location.href = '{{ url_for("nutricao.refeicao_acompanhante") }}?data=' + encodeURIComponent(destino);
+  }, 500);
 }
 
 async function excluirAcomp(id){
@@ -213,7 +354,9 @@ async function excluirAcomp(id){
     return;
   }
   showToast('Acompanhante excluído','success');
-  setTimeout(() => location.reload(), 400);
+  setTimeout(() => location.href = '{{ url_for("nutricao.refeicao_acompanhante") }}?data=' + encodeURIComponent(formatDateISO(dataAtual)), 400);
 }
+
+atualizarLabelData();
 </script>
 {% endblock %}

@@ -36,6 +36,7 @@ from models import (
     ChamadoEstoque,
     ChamadoEstoqueUso,
     ConhecimentoPasta,
+    SetorFuncao,
     now_brasilia,
     TIPO_FOTO_CONSERTO,
     TIPO_FOTO_ENCAMINHAMENTO,
@@ -60,7 +61,10 @@ from models import (
     normalizar_setor_chamado,
     normalizar_setor,
     listar_setores,
+    listar_setores_detalhe,
     adicionar_setor,
+    atualizar_setor,
+    excluir_setor,
     sla_do_chamado,
     _bucket_sla,
     mesas_ativas,
@@ -1068,7 +1072,11 @@ def alterar_senha():
     if not usuario:
         flash('Usuário não encontrado.', 'error')
         return redirect(url_for('main.login'))
-
+    if not usuario.pode_opcao_portal('alterar_senha'):
+        flash('Você não tem permissão para alterar senha.', 'error')
+        if _wants_json():
+            return jsonify({'ok': False, 'message': 'Sem permissão para alterar senha.'}), 403
+        return redirect(url_for('main.inicio'))
     if request.method == 'POST':
         acao = request.form.get('acao') or 'alterar'
         if acao == 'enviar_email':
@@ -1178,7 +1186,7 @@ def _pode_gerenciar_clientes(user):
     return bool(
         user
         and (
-            user.pode_gerenciar_acessos()
+            user.pode_opcao_portal('clientes')
             or user.tem_menu('chamados', 'clientes')
             or user.is_master
             or user.tipo == 'admin'
@@ -1194,6 +1202,8 @@ def inicio():
     sistemas_liberados = []
     if user:
         for chave, meta in SISTEMAS.items():
+            if meta.get('oculto_inicio'):
+                continue
             if user.tem_sistema(chave):
                 sistemas_liberados.append(chave)
 
@@ -1204,12 +1214,14 @@ def inicio():
     smtp_cfg = {'servidor': '', 'porta': 587, 'usar_tls': True, 'usuario': '', 'remetente': ''}
     senha_salva = False
     smtp_ok = False
-    if user and user.pode_gerenciar_acessos():
-        from email_service import obter_config_smtp, smtp_configurado
+    if user and user.pode_opcao_portal('acessos'):
         acessos = Usuario.query.order_by(Usuario.data_criacao.desc()).all()
         acessos_js = [_acesso_payload(a) for a in acessos]
+    if user and user.pode_opcao_portal('clientes'):
         clientes_portal = Cliente.query.order_by(Cliente.data_criacao.desc()).all()
         clientes_js = [_cliente_payload(c) for c in clientes_portal]
+    if user and user.pode_opcao_portal('configuracoes'):
+        from email_service import obter_config_smtp, smtp_configurado
         raw_cfg = obter_config_smtp()
         smtp_cfg = {k: v for k, v in raw_cfg.items() if k != 'senha'}
         row = ConfiguracaoEmail.query.get(1)
@@ -1254,8 +1266,16 @@ def listar_acessos():
 
 def _exigir_gestao_acessos():
     user = Usuario.query.get(session['user_id'])
-    if not user or not user.pode_gerenciar_acessos():
-        flash('Você não tem permissão para acessar as configurações.', 'error')
+    if not user or not user.pode_opcao_portal('acessos'):
+        flash('Você não tem permissão para gerenciar acessos.', 'error')
+        return None
+    return user
+
+
+def _exigir_opcao_portal(menu_key, mensagem=None):
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.pode_opcao_portal(menu_key):
+        flash(mensagem or 'Você não tem permissão para esta opção.', 'error')
         return None
     return user
 
@@ -1263,7 +1283,7 @@ def _exigir_gestao_acessos():
 @main.route('/configuracoes', methods=['GET', 'POST'])
 @login_required
 def configuracoes():
-    user = _exigir_gestao_acessos()
+    user = _exigir_opcao_portal('configuracoes', 'Você não tem permissão para acessar as configurações.')
     if not user:
         return redirect(url_for('main.inicio'))
 
@@ -1369,29 +1389,39 @@ def _salvar_acesso_geral(usuario, form, novo=False):
     db.session.commit()
 
 
-@main.route('/acessos/setores', methods=['POST'])
+@main.route('/acessos/setores', methods=['GET', 'POST'])
 @login_required
 def criar_setor_funcao():
-    """(+) no cadastro de Acessos: inclui função/setor no catálogo do dropdown."""
+    """Lista (GET) ou cria (POST) função/setor do catálogo de Acessos."""
     user = Usuario.query.get(session['user_id'])
     if not user or not user.pode_gerenciar_acessos():
         if _wants_json():
             return jsonify({'ok': False, 'message': 'Sem permissão para gerenciar acessos.'}), 403
         flash('Você não tem permissão para gerenciar acessos.', 'error')
         return redirect(url_for('main.inicio'))
+
+    if request.method == 'GET':
+        tipo = (request.args.get('tipo') or '').strip() or TIPO_SETOR_CHAMADOS
+        return jsonify({
+            'ok': True,
+            'tipo': tipo,
+            'setores': listar_setores(tipo),
+            'itens': listar_setores_detalhe(tipo),
+        })
+
     data = request.get_json(silent=True) or {}
     tipo = (request.form.get('tipo') or data.get('tipo') or '').strip()
     nome = request.form.get('nome') if request.form.get('nome') is not None else data.get('nome')
     try:
         salvo = adicionar_setor(tipo, nome)
-        setores = listar_setores(tipo)
         if _wants_json():
             return jsonify({
                 'ok': True,
                 'message': 'Função/setor adicionado.',
                 'nome': salvo,
                 'tipo': tipo,
-                'setores': setores,
+                'setores': listar_setores(tipo),
+                'itens': listar_setores_detalhe(tipo),
             })
         flash('Função/setor adicionado.', 'success')
         return redirect(url_for('main.inicio'))
@@ -1413,6 +1443,46 @@ def criar_setor_funcao():
             return jsonify({'ok': False, 'message': str(e)}), 400
         flash(str(e), 'error')
         return redirect(url_for('main.inicio'))
+
+
+@main.route('/acessos/setores/<int:sid>', methods=['PUT', 'DELETE'])
+@login_required
+def setor_funcao_ops(sid):
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.pode_gerenciar_acessos():
+        return jsonify({'ok': False, 'message': 'Sem permissão para gerenciar acessos.'}), 403
+    try:
+        if request.method == 'DELETE':
+            tipo = excluir_setor(sid)
+            return jsonify({
+                'ok': True,
+                'message': 'Setor excluído.',
+                'tipo': tipo,
+                'setores': listar_setores(tipo),
+                'itens': listar_setores_detalhe(tipo),
+            })
+        data = request.get_json(silent=True) or {}
+        nome = data.get('nome')
+        salvo = atualizar_setor(sid, nome)
+        row = SetorFuncao.query.get(sid)
+        tipo = row.tipo if row else (data.get('tipo') or TIPO_SETOR_CHAMADOS)
+        return jsonify({
+            'ok': True,
+            'message': 'Setor atualizado.',
+            'nome': salvo,
+            'tipo': tipo,
+            'setores': listar_setores(tipo),
+            'itens': listar_setores_detalhe(tipo),
+        })
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({'ok': False, 'message': str(e)}), 400
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'ok': False, 'message': 'Essa função ou setor já existe.'}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'ok': False, 'message': str(e)}), 400
 
 
 @main.route('/acessos/novo', methods=['GET', 'POST'])

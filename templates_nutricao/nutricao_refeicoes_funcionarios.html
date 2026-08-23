@@ -11,6 +11,17 @@
     <i class="fas fa-search"></i>
     <input type="text" id="buscaFunc" placeholder="Buscar por nome ou refeição..." oninput="filtrarFunc()">
   </div>
+
+  <div class="card data-nav">
+    <button class="btn btn-ghost btn-sm" type="button" onclick="alterarData(-1)" aria-label="Dia anterior">
+      <i class="fas fa-chevron-left"></i>
+    </button>
+    <strong id="dataAtualLabel">-</strong>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="alterarData(1)" aria-label="Próximo dia">
+      <i class="fas fa-chevron-right"></i>
+    </button>
+  </div>
+
   <button class="btn btn-primary btn-sm" type="button" onclick="abrirFunc()">
     <i class="fas fa-plus"></i> Adicionar
   </button>
@@ -23,6 +34,8 @@
         <tr>
           <th>Nome</th>
           <th>Refeição</th>
+          <th class="col-flag" title="Almoço">A</th>
+          <th class="col-flag" title="Jantar">J</th>
           <th style="width:100px">Quantidade</th>
           <th style="width:72px">Ações</th>
         </tr>
@@ -33,9 +46,13 @@
             data-nome="{{ f.nome or '' }}"
             data-dieta-id="{{ f.dieta_id or '' }}"
             data-refeicao="{{ f.refeicao or '' }}"
-            data-quantidade="{{ f.quantidade if f.quantidade is not none else 1 }}">
+            data-quantidade="{{ f.quantidade if f.quantidade is not none else 1 }}"
+            data-fl-almoco="{{ 1 if f.fl_almoco else 0 }}"
+            data-fl-jantar="{{ 1 if f.fl_jantar else 0 }}">
           <td><strong>{{ f.nome }}</strong></td>
           <td><span class="status status-info">{{ f.refeicao or '-' }}</span></td>
+          <td class="col-flag">{% if f.fl_almoco %}<i class="fas fa-check"></i>{% endif %}</td>
+          <td class="col-flag">{% if f.fl_jantar %}<i class="fas fa-check"></i>{% endif %}</td>
           <td>{{ f.quantidade if f.quantidade is not none else 1 }}</td>
           <td class="paciente-acoes">
             <button class="btn btn-ghost btn-sm" type="button" onclick="editarFuncLinha(this)" title="Editar">
@@ -48,7 +65,7 @@
         </tr>
         {% else %}
         <tr id="linhaVazia">
-          <td colspan="4" style="text-align:center;color:#6B7280;">Nenhuma refeição de funcionário cadastrada.</td>
+          <td colspan="6" style="text-align:center;color:#6B7280;">Nenhuma refeição de funcionário neste dia.</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -79,10 +96,60 @@
 .func-refeicao-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
 .func-refeicao-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
 .func-refeicao-cadastro .btn-ghost { padding: 0.16rem 0.32rem; }
+.func-refeicao-cadastro .data-nav {
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.func-refeicao-cadastro .data-nav strong {
+  min-width: 120px;
+  text-align: center;
+  color: #1e3a5f;
+}
+.func-refeicao-cadastro .col-flag { width: 44px; text-align: center; }
+.func-refeicao-cadastro .col-flag .fa-check { color: #15803d; }
+.flags-refeicao {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  margin-top: 0.25rem;
+}
+.flags-refeicao label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.88rem;
+  color: #334155;
+  cursor: pointer;
+}
 </style>
 
 <script>
 const DIETAS_FUNC = {{ (dietas or [])|tojson }};
+const DATA_PADRAO = '{{ data_padrao }}';
+let dataAtual = DATA_PADRAO ? new Date(DATA_PADRAO + 'T12:00:00') : new Date();
+
+function formatDateISO(d){
+  const ano = d.getFullYear();
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+  return `${ano}-${mes}-${dia}`;
+}
+function formatDateBR(iso){
+  if (!iso || !iso.includes('-')) return '-';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+function atualizarLabelData(){
+  const el = document.getElementById('dataAtualLabel');
+  if (el) el.textContent = formatDateBR(formatDateISO(dataAtual));
+}
+function alterarData(delta){
+  dataAtual.setDate(dataAtual.getDate() + delta);
+  location.href = '{{ url_for("nutricao.refeicoes_funcionarios") }}?data=' + encodeURIComponent(formatDateISO(dataAtual));
+}
 
 function filtrarFunc(){
   const q = (document.getElementById('buscaFunc')?.value || '').toLowerCase().trim();
@@ -109,6 +176,8 @@ function dietasOpts(selectedId, selectedNome){
 function abrirFunc(data){
   const isEdit = !!(data && data.id);
   const qtd = (data && data.quantidade != null && data.quantidade !== '') ? data.quantidade : 1;
+  const flA = data && data.fl_almoco === false ? false : true;
+  const flJ = data && data.fl_jantar === false ? false : true;
   const html = `
     <div class="form-group"><label class="form-label">Nome *</label>
       <input class="form-control" id="fn-nome" value="${escHtml((data && data.nome) || '')}"></div>
@@ -117,6 +186,13 @@ function abrirFunc(data){
         <option value="">Selecione</option>
         ${dietasOpts(data && data.dieta_id, data && data.refeicao)}
       </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Refeições</label>
+      <div class="flags-refeicao">
+        <label><input type="checkbox" id="fn-fl-almoco" ${flA ? 'checked' : ''}> Almoço</label>
+        <label><input type="checkbox" id="fn-fl-jantar" ${flJ ? 'checked' : ''}> Jantar</label>
+      </div>
     </div>
     <div class="form-group"><label class="form-label">Quantidade *</label>
       <input class="form-control" type="number" id="fn-quantidade" min="1" step="1" value="${escHtml(qtd)}" required></div>
@@ -133,7 +209,9 @@ function editarFuncLinha(btn){
     nome: tr.dataset.nome || '',
     dieta_id: tr.dataset.dietaId || '',
     refeicao: tr.dataset.refeicao || '',
-    quantidade: tr.dataset.quantidade || 1
+    quantidade: tr.dataset.quantidade || 1,
+    fl_almoco: tr.dataset.flAlmoco !== '0',
+    fl_jantar: tr.dataset.flJantar !== '0'
   });
 }
 
@@ -143,6 +221,8 @@ async function salvarFunc(){
   const dietaId = sel?.value || '';
   const refeicao = sel?.selectedOptions?.[0]?.dataset?.nome || sel?.selectedOptions?.[0]?.textContent || '';
   const quantidade = parseInt(document.getElementById('fn-quantidade')?.value, 10);
+  const flAlmoco = !!document.getElementById('fn-fl-almoco')?.checked;
+  const flJantar = !!document.getElementById('fn-fl-jantar')?.checked;
   if (!nome){ showToast('Nome é obrigatório','error'); return; }
   if (!dietaId && !refeicao){ showToast('Selecione a refeição','error'); return; }
   if (!Number.isFinite(quantidade) || quantidade < 1){
@@ -154,7 +234,15 @@ async function salvarFunc(){
   const r = await fetch(url, {
     method,
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ nome, dieta_id: dietaId || null, refeicao, quantidade })
+    body: JSON.stringify({
+      nome,
+      dieta_id: dietaId || null,
+      refeicao,
+      quantidade,
+      data_refeicao: formatDateISO(dataAtual),
+      fl_almoco: flAlmoco,
+      fl_jantar: flJantar
+    })
   });
   const j = await r.json();
   if (!r.ok || j.ok === false){
@@ -163,7 +251,7 @@ async function salvarFunc(){
   }
   fecharModal();
   showToast(id ? 'Atualizado' : 'Cadastrado','success');
-  setTimeout(() => location.reload(), 400);
+  setTimeout(() => location.href = '{{ url_for("nutricao.refeicoes_funcionarios") }}?data=' + encodeURIComponent(formatDateISO(dataAtual)), 400);
 }
 
 async function excluirFunc(id){
@@ -175,7 +263,9 @@ async function excluirFunc(id){
     return;
   }
   showToast('Excluído','success');
-  setTimeout(() => location.reload(), 400);
+  setTimeout(() => location.href = '{{ url_for("nutricao.refeicoes_funcionarios") }}?data=' + encodeURIComponent(formatDateISO(dataAtual)), 400);
 }
+
+atualizarLabelData();
 </script>
 {% endblock %}

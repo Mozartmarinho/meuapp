@@ -23,10 +23,7 @@
     </div>
   </div>
 
-  <div class="colab-tab">
-    <span class="colab-tab-active"><i class="fas fa-search"></i> Filtros &amp; Colaboradores</span>
-  </div>
-
+  {# Layout fixo em 2 colunas (filtros | lista) — evita a vista “só filtros” que parecia a tela antiga #}
   <div class="colab-grid">
     <aside class="colab-filters card-panel">
       <div class="panel-head"><i class="fas fa-magnifying-glass"></i> Filtros de Busca</div>
@@ -421,7 +418,7 @@
 {% block scripts %}
 <style>
 
-.colab-wrap { max-width: 1400px; }
+.colab-wrap { max-width: 1400px; container-type: inline-size; container-name: colab; }
 .colab-hero {
   display:flex; justify-content:space-between; gap:.8rem; flex-wrap:wrap;
   padding:.92rem 1rem; border-radius:11.2px; background:#fff;
@@ -443,13 +440,23 @@
   background:#fff; color:#15803d; border:1px solid rgba(22,163,74,.4); border-radius:8px;
   padding:.32rem .6rem; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:.28rem;
 }
-.colab-tab { border-bottom:1px solid rgba(15,42,86,.1); margin-bottom:.8rem; }
-.colab-tab-active {
-  display:inline-flex; gap:.32rem; align-items:center; padding:.44rem 0; margin-right:.8rem;
-  border-bottom:2px solid var(--brand-blue); color:var(--brand-blue); font-weight:700; font-size:.76rem;
+/* Sempre filtros à esquerda + lista à direita (tela nova). Empilha só em telas bem estreitas. */
+.colab-grid {
+  display:grid;
+  grid-template-columns:minmax(220px, 280px) minmax(0, 1fr);
+  gap:.8rem;
+  align-items:start;
 }
-.colab-grid { display:grid; grid-template-columns:minmax(208px, 320px) 1fr; gap:.8rem; }
-@media (max-width:980px){ .colab-grid { grid-template-columns:1fr; } }
+.colab-filters { position:sticky; top:calc(var(--topbar-height, 56px) + .5rem); max-height:calc(100vh - 5rem); overflow:auto; }
+.colab-list { min-width:0; }
+@container colab (max-width: 640px) {
+  .colab-grid { grid-template-columns:1fr; }
+  .colab-filters { position:static; max-height:none; }
+}
+@media (max-width: 640px) {
+  .colab-grid { grid-template-columns:1fr; }
+  .colab-filters { position:static; max-height:none; }
+}
 .card-panel {
   background:#fff; border:1px solid rgba(15,42,86,.1); border-radius:11.2px;
   box-shadow:0 4px 9.6px rgba(0,0,0,.04); overflow:hidden;

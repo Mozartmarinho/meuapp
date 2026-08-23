@@ -36,11 +36,12 @@ SISTEMAS = {
         'menus': [
             ('dashboard', 'Dashboard'),
             ('cadastro', 'Cadastro'),
-            ('mapa_refeicoes', 'Mapa de Refeições'),
+            ('mapa_refeicoes', 'Mapa de Refeições Pacientes'),
             ('refeicao_acompanhante', 'Refeição acompanhante'),
             ('refeicoes_funcionarios', 'Refeições funcionários'),
             ('estoque', 'Estoque'),
             ('faturamento', 'Faturamento'),
+            ('faturamento_valores', 'Faturamento com valores'),
             ('auditoria', 'Auditoria'),
         ],
     },
@@ -91,6 +92,18 @@ SISTEMAS = {
             ('sobre', 'Sobre o Sistema'),
         ],
     },
+    'portal': {
+        'nome': 'Opções do portal (menu superior direito)',
+        'campo': 'perm_portal',
+        'endpoint': 'main.inicio',
+        'oculto_inicio': True,
+        'menus': [
+            ('alterar_senha', 'Alterar senha'),
+            ('acessos', 'Acessos'),
+            ('clientes', 'Clientes'),
+            ('configuracoes', 'Configurações'),
+        ],
+    },
 }
 
 
@@ -121,6 +134,7 @@ def conceder_acesso_total(usuario):
     usuario.perm_nutricao = True
     usuario.perm_pesagem = True
     usuario.perm_acesso = True
+    usuario.perm_portal = True
     for sistema, meta in SISTEMAS.items():
         for menu_key, _label in meta['menus']:
             perm = usuario.menus.filter_by(sistema=sistema, menu_key=menu_key).first()
@@ -157,4 +171,33 @@ def garantir_acesso_master():
         usuario.tipo = 'admin'
     conceder_acesso_total(usuario)
     db.session.commit()
+    ensure_portal_opcoes_legado()
     return usuario
+
+
+def ensure_portal_opcoes_legado():
+    """Garante perm_portal + menus do menu superior para quem já tinha Acessos."""
+    from models import db, Usuario, PermissaoMenu
+    menus = SISTEMAS.get('portal', {}).get('menus') or []
+    if not menus:
+        return
+    q = Usuario.query.filter(
+        db.or_(
+            Usuario.is_master.is_(True),
+            Usuario.perm_acesso.is_(True),
+            Usuario.perm_portal.is_(True),
+        )
+    )
+    for u in q.all():
+        if not bool(getattr(u, 'perm_portal', False)):
+            u.perm_portal = True
+        if u.menus.filter_by(sistema='portal').first():
+            continue
+        for menu_key, _label in menus:
+            db.session.add(PermissaoMenu(
+                usuario_id=u.id,
+                sistema='portal',
+                menu_key=menu_key,
+                permitido=True,
+            ))
+    db.session.commit()

@@ -1,0 +1,184 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="fatv-page">
+<div class="page-header">
+  <h1>Faturamento com valores</h1>
+  <p>Mapa de pacientes, acompanhantes e funcionários com preços do cadastro</p>
+</div>
+
+<div class="card fatv-panel">
+  <fieldset class="fatv-box">
+    <legend>Período</legend>
+    <div class="fatv-periodo">
+      <div class="form-group" style="margin:0">
+        <label class="form-label" for="fDe">De:</label>
+        <input class="form-control" type="date" id="fDe" value="{{ data_de }}">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label" for="fAte">Até:</label>
+        <input class="form-control" type="date" id="fAte" value="{{ data_ate }}">
+      </div>
+    </div>
+  </fieldset>
+
+  <div class="fatv-actions">
+    <button type="button" class="btn btn-primary" onclick="gerar()">
+      <i class="fas fa-search"></i> Gerar
+    </button>
+    <button type="button" class="btn btn-primary" onclick="exportar()">
+      <i class="fas fa-file-excel"></i> Exportar
+    </button>
+    <button type="button" class="btn btn-primary" onclick="imprimir()">
+      <i class="fas fa-print"></i> Imprimir
+    </button>
+    <button type="button" class="btn btn-ghost" onclick="location.href='{{ url_for('nutricao.dashboard') }}'">
+      <i class="fas fa-times"></i> Fechar
+    </button>
+  </div>
+</div>
+
+{% if r %}
+<div class="card fatv-resumo">
+  <div class="fatv-meta">
+    <strong>Período:</strong> {{ r.data_de_label }}{% if r.data_de != r.data_ate %} a {{ r.data_ate_label }}{% endif %}
+    &nbsp;|&nbsp; <strong>Linhas:</strong> {{ r.qtd_linhas }}
+    &nbsp;|&nbsp; <strong>Qtd:</strong> {{ r.total_quantidade }}
+    &nbsp;|&nbsp; <strong>Total:</strong> R$ {{ '%.2f'|format(r.total_valor)|replace('.', ',') }}
+    {% if r.qtd_sem_preco %}
+    &nbsp;|&nbsp; <span class="fatv-warn">{{ r.qtd_sem_preco }} sem preço</span>
+    {% endif %}
+  </div>
+
+  {% if r.resumo_fontes %}
+  <table class="fatv-table fatv-table-sm">
+    <thead>
+      <tr><th>Fonte</th><th>Qtd</th><th>Total (R$)</th></tr>
+    </thead>
+    <tbody>
+      {% for f in r.resumo_fontes %}
+      <tr>
+        <td>{{ f.fonte }}</td>
+        <td class="num">{{ f.quantidade }}</td>
+        <td class="num">{{ '%.2f'|format(f.total)|replace('.', ',') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
+<div class="card fatv-grid-wrap">
+  <table class="fatv-table">
+    <thead>
+      <tr>
+        <th>Data</th>
+        <th>Fonte</th>
+        <th>Pessoa</th>
+        <th>Clínica</th>
+        <th>Item</th>
+        <th>Refeição</th>
+        <th>Qtd</th>
+        <th>Preço</th>
+        <th>Total</th>
+        <th>Origem</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in r.linhas %}
+      <tr class="{% if row.preco_unitario <= 0 %}sem-preco{% endif %}">
+        <td>{{ row.data_label }}</td>
+        <td>{{ row.fonte }}</td>
+        <td>{{ row.pessoa }}</td>
+        <td>{{ row.clinica }}</td>
+        <td>{{ row.item }}</td>
+        <td>{{ row.refeicao or '—' }}</td>
+        <td class="num">{{ row.quantidade }}</td>
+        <td class="num">{{ '%.2f'|format(row.preco_unitario)|replace('.', ',') }}</td>
+        <td class="num">{{ '%.2f'|format(row.total)|replace('.', ',') }}</td>
+        <td class="origem">{{ row.origem_preco }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="10">Nenhum lançamento no período.</td></tr>
+      {% endfor %}
+    </tbody>
+    {% if r.linhas %}
+    <tfoot>
+      <tr>
+        <td colspan="6"><strong>TOTAL</strong></td>
+        <td class="num"><strong>{{ r.total_quantidade }}</strong></td>
+        <td></td>
+        <td class="num"><strong>{{ '%.2f'|format(r.total_valor)|replace('.', ',') }}</strong></td>
+        <td></td>
+      </tr>
+    </tfoot>
+    {% endif %}
+  </table>
+</div>
+{% endif %}
+</div>
+
+<style>
+.fatv-page .page-header { margin-bottom: 1rem; }
+.fatv-page .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.fatv-page .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.fatv-page .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.fatv-page .btn-ghost { padding: 0.28rem 0.4rem; }
+.fatv-page .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+.fatv-page .form-control {
+  padding: 0.6rem; font-size: 0.8rem; border-radius: 0.3rem;
+  min-height: 0; height: auto; line-height: 1.25;
+}
+.fatv-panel { padding: 0.88rem 1rem 1.12rem; max-width: 520px; margin-bottom: 0.8rem; }
+.fatv-box {
+  border:1px solid #dbe3ee; border-radius:6px; padding:0.68rem 0.8rem 0.8rem;
+  margin:0 0 0.72rem; background:#f8fafc;
+}
+.fatv-box legend { font-size:0.68rem; font-weight:700; color:#334155; padding:0 0.32rem; }
+.fatv-periodo { display:flex; flex-wrap:wrap; gap:0.68rem; }
+.fatv-periodo .form-control { min-width:128px; }
+.fatv-actions { display:flex; flex-wrap:wrap; gap:0.44rem; }
+.fatv-resumo { padding: 0.8rem 1rem; margin-bottom: 0.8rem; }
+.fatv-meta { font-size: 0.78rem; color:#334155; margin-bottom: 0.6rem; }
+.fatv-warn { color:#b45309; font-weight:600; }
+.fatv-grid-wrap { padding: 0; overflow:auto; }
+.fatv-table { width:100%; border-collapse:collapse; font-size:0.72rem; }
+.fatv-table th, .fatv-table td {
+  border-bottom:1px solid #e2e8f0; padding:0.42rem 0.5rem; text-align:left; vertical-align:top;
+}
+.fatv-table th { background:#e8eef6; color:#0f2a5c; font-weight:700; position:sticky; top:0; }
+.fatv-table .num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.fatv-table .origem { color:#64748b; font-size:0.68rem; }
+.fatv-table tr.sem-preco td { background:#fff7ed; }
+.fatv-table-sm { max-width:360px; margin-top:0.4rem; }
+.fatv-table tfoot td { background:#f1f5f9; border-top:2px solid #94a3b8; }
+</style>
+
+<script>
+function params(extra){
+  const qs = new URLSearchParams({
+    data_de: document.getElementById('fDe').value,
+    data_ate: document.getElementById('fAte').value,
+    ...(extra || {})
+  });
+  return qs;
+}
+function validar(){
+  const de = document.getElementById('fDe').value;
+  const ate = document.getElementById('fAte').value;
+  if (!de || !ate){ showToast('Informe o período','error'); return false; }
+  return true;
+}
+function gerar(){
+  if (!validar()) return;
+  location.href = '/nutricao/faturamento-valores?' + params({gerar:'1'}).toString();
+}
+function imprimir(){
+  if (!validar()) return;
+  window.open('/nutricao/faturamento-valores/imprimir?' + params().toString(), '_blank');
+}
+function exportar(){
+  if (!validar()) return;
+  window.location.href = '/nutricao/faturamento-valores/exportar?' + params().toString();
+}
+</script>
+{% endblock %}

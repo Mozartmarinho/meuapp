@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ r.titulo }} — {{ r.data_de_label }}</title>
+  <style>
+    @page { margin: 10mm; size: A4 landscape; }
+    body { font-family: "Segoe UI", Tahoma, sans-serif; color:#152238; margin:0; padding:12px 16px 20px; font-size:10px; }
+    h1 { font-size:15px; margin:0 0 2px; }
+    .sub { color:#64748b; margin-bottom:8px; }
+    .meta { margin-bottom:10px; }
+    .meta strong { color:#0f2a5c; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border:1px solid #94a3b8; padding:3px 5px; text-align:left; }
+    th { background:#e8eef6; font-size:9px; }
+    td.num, th.num { text-align:right; white-space:nowrap; }
+    tfoot td { font-weight:700; background:#f1f5f9; }
+    .resumo { margin-bottom:12px; max-width:420px; }
+    .sem-preco { background:#fff7ed; }
+    .no-print { margin-bottom:10px; }
+    @media print { .no-print { display:none !important; } body { padding:0; } }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <button onclick="window.print()">Imprimir</button>
+    <button onclick="window.close()" style="margin-left:6px">Fechar</button>
+  </div>
+
+  <h1>{{ r.titulo }}</h1>
+  <div class="sub">São Geraldo Service — Nutrição Hospitalar</div>
+  <div class="meta">
+    <strong>Período:</strong> {{ r.data_de_label }}{% if r.data_de != r.data_ate %} a {{ r.data_ate_label }}{% endif %}
+    &nbsp;|&nbsp; <strong>Qtd:</strong> {{ r.total_quantidade }}
+    &nbsp;|&nbsp; <strong>Total:</strong> R$ {{ '%.2f'|format(r.total_valor)|replace('.', ',') }}
+    {% if r.qtd_sem_preco %} &nbsp;|&nbsp; <strong>{{ r.qtd_sem_preco }} sem preço</strong>{% endif %}
+  </div>
+
+  {% if r.resumo_fontes %}
+  <table class="resumo">
+    <thead><tr><th>Fonte</th><th class="num">Qtd</th><th class="num">Total (R$)</th></tr></thead>
+    <tbody>
+      {% for f in r.resumo_fontes %}
+      <tr>
+        <td>{{ f.fonte }}</td>
+        <td class="num">{{ f.quantidade }}</td>
+        <td class="num">{{ '%.2f'|format(f.total)|replace('.', ',') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <table>
+    <thead>
+      <tr>
+        <th>Data</th>
+        <th>Fonte</th>
+        <th>Pessoa</th>
+        <th>Clínica</th>
+        <th>Item</th>
+        <th>Refeição</th>
+        <th class="num">Qtd</th>
+        <th class="num">Preço</th>
+        <th class="num">Total</th>
+        <th>Origem</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in r.linhas %}
+      <tr class="{% if row.preco_unitario <= 0 %}sem-preco{% endif %}">
+        <td>{{ row.data_label }}</td>
+        <td>{{ row.fonte }}</td>
+        <td>{{ row.pessoa }}</td>
+        <td>{{ row.clinica }}</td>
+        <td>{{ row.item }}</td>
+        <td>{{ row.refeicao or '—' }}</td>
+        <td class="num">{{ row.quantidade }}</td>
+        <td class="num">{{ '%.2f'|format(row.preco_unitario)|replace('.', ',') }}</td>
+        <td class="num">{{ '%.2f'|format(row.total)|replace('.', ',') }}</td>
+        <td>{{ row.origem_preco }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="10">Nenhum lançamento no período.</td></tr>
+      {% endfor %}
+    </tbody>
+    {% if r.linhas %}
+    <tfoot>
+      <tr>
+        <td colspan="6">TOTAL</td>
+        <td class="num">{{ r.total_quantidade }}</td>
+        <td></td>
+        <td class="num">{{ '%.2f'|format(r.total_valor)|replace('.', ',') }}</td>
+        <td></td>
+      </tr>
+    </tfoot>
+    {% endif %}
+  </table>
+</body>
+</html>

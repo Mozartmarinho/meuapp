@@ -29,6 +29,7 @@ from nutricao_service import (
     marcar_alteracao_mapa,
     leito_ocupado_no_mapa,
     MSG_LEITO_OCUPADO,
+    list_leitos_vagos,
     baixar_acompanhantes_do_paciente,
     list_clinicas,
     list_enfermarias,
@@ -54,7 +55,9 @@ from nutricao_service import (
     ensure_precos_para_dieta,
     totalizar_mapa_uma,
     relatorio_faturamento,
+    relatorio_faturamento_valores,
     totalizacao_dietas as gerar_totalizacao_dietas,
+    totalizacao_dietas_refeicoes as gerar_totalizacao_dietas_refeicoes,
     listar_avisos_alta_mapa,
     aplicar_avisos_alta_mapa,
     registrar_saida_mapa,
@@ -63,6 +66,7 @@ from nutricao_service import (
     get_mapa_substituicoes,
     save_mapa_substituicoes,
     importar_substituicoes_anteriores,
+    listar_justificativas_anteriores,
     CARDAPIO_OPCOES,
     ESTADOS_BR,
     _parse_date,
@@ -413,10 +417,15 @@ def _resolve_dieta_refeicao(d):
     return None, refeicao or None
 
 
-def _list_acompanhantes_db(ativos_only=True, q=None):
+def _list_acompanhantes_db(ativos_only=True, q=None, data_ref=None):
     query = scoped_query(NutRefeicaoAcompanhante)
     if ativos_only:
         query = query.filter_by(ativo=True)
+    if data_ref is not None:
+        query = query.filter(db.or_(
+            NutRefeicaoAcompanhante.data_refeicao == data_ref,
+            NutRefeicaoAcompanhante.data_refeicao.is_(None),
+        ))
     termo = (q or '').strip()
     if termo:
         like = f'%{termo}%'
@@ -431,10 +440,15 @@ def _list_acompanhantes_db(ativos_only=True, q=None):
     return [r.to_dict() for r in query.all()]
 
 
-def _list_funcionarios_refeicao_db(ativos_only=True, q=None):
+def _list_funcionarios_refeicao_db(ativos_only=True, q=None, data_ref=None):
     query = scoped_query(NutRefeicaoFuncionario)
     if ativos_only:
         query = query.filter_by(ativo=True)
+    if data_ref is not None:
+        query = query.filter(db.or_(
+            NutRefeicaoFuncionario.data_refeicao == data_ref,
+            NutRefeicaoFuncionario.data_refeicao.is_(None),
+        ))
     termo = (q or '').strip()
     if termo:
         like = f'%{termo}%'
@@ -448,20 +462,37 @@ def _list_funcionarios_refeicao_db(ativos_only=True, q=None):
     return [r.to_dict() for r in query.all()]
 
 
+def _parse_bool_flag(d, key, default=True):
+    if key not in d:
+        return default
+    v = d.get(key)
+    if isinstance(v, bool):
+        return v
+    if v is None:
+        return default
+    return str(v).strip().lower() in ('1', 'true', 'sim', 'on', 'yes')
+
+
 @nutricao.route('/nutricao/refeicao-acompanhante')
 def refeicao_acompanhante():
+    from nutricao_service import info_lancamento_refeicoes, mapa_horas_limite
     seed_nutricao()
+    data_ref = _parse_date(request.args.get('data')) or date.today()
     return render_template(
         'nutricao_refeicao_acompanhante.html',
-        acompanhantes=_list_acompanhantes_db(True),
+        acompanhantes=_list_acompanhantes_db(True, data_ref=data_ref),
         dietas=_list_dietas_db(somente_ativas=True),
         pacientes=_list_pacientes_db(True, limit=500),
+        data_padrao=data_ref.isoformat(),
+        horas_limite=mapa_horas_limite(),
+        lancamento_info=info_lancamento_refeicoes(data_ref),
         **active('refeicao_acompanhante'),
     )
 
 
 @nutricao.route('/nutricao/api/refeicao-acompanhantes', methods=['GET', 'POST'])
 def api_refeicao_acompanhantes():
+    from nutricao_service import resolver_partes_acompanhante
     seed_nutricao()
     if request.method == 'POST':
         d = request.get_json(force=True) or {}
@@ -482,25 +513,67 @@ def api_refeicao_acompanhantes():
         quantidade = _parse_quantidade_refeicao(d, default=1)
         if quantidade is None:
             return jsonify({'ok': False, 'error': 'Quantidade deve ser um número >= 1'}), 400
-        row = NutRefeicaoAcompanhante(
-            cliente_id=getattr(pac, 'cliente_id', None) or write_cliente_id(),
-            nome_acompanhante=nome,
-            paciente_id=pac.id,
-            dieta_id=dieta_id,
-            refeicao=refeicao,
-            quantidade=quantidade,
-            ativo=True,
-        )
-        db.session.add(row)
+        data_ref = _parse_date(d.get('data_refeicao') or d.get('data')) or date.today()
+        fl_almoco = _parse_bool_flag(d, 'fl_almoco', True)
+        fl_jantar = _parse_bool_flag(d, 'fl_jantar', True)
+        if not fl_almoco and not fl_jantar:
+            return jsonify({'ok': False, 'error': 'Marque Almoço e/ou Jantar'}), 400
+
+        partes = resolver_partes_acompanhante(data_ref, fl_almoco, fl_jantar)
+        if not partes:
+            return jsonify({'ok': False, 'error': 'Marque Almoço e/ou Jantar'}), 400
+
+        criados = []
+        avisos = []
+        for parte in partes:
+            row = NutRefeicaoAcompanhante(
+                cliente_id=getattr(pac, 'cliente_id', None) or write_cliente_id(),
+                nome_acompanhante=nome,
+                paciente_id=pac.id,
+                dieta_id=dieta_id,
+                refeicao=refeicao,
+                quantidade=quantidade,
+                data_refeicao=parte['data_refeicao'],
+                fl_almoco=bool(parte['fl_almoco']),
+                fl_jantar=bool(parte['fl_jantar']),
+                ativo=True,
+            )
+            db.session.add(row)
+            db.session.flush()
+            criados.append(row.to_dict())
+            if parte.get('aviso'):
+                avisos.append(parte['aviso'])
+
         db.session.commit()
-        return jsonify({'ok': True, 'id': row.id, 'acompanhante': row.to_dict()})
+        data_destino = partes[-1]['data_refeicao'].isoformat() if any(p.get('adiadas') for p in partes) else data_ref.isoformat()
+        aviso = avisos[0] if len(avisos) == 1 else (
+            'A refeição será lançada para o dia seguinte.' if avisos else ''
+        )
+        # se tudo foi adiado, aponta a data de destino para o front redirecionar
+        so_adiado = all(p.get('adiadas') for p in partes)
+        return jsonify({
+            'ok': True,
+            'id': criados[0]['id'] if criados else None,
+            'acompanhante': criados[0] if criados else None,
+            'acompanhantes': criados,
+            'adiado': bool(avisos),
+            'aviso': aviso or (
+                'A refeição será lançada para o dia seguinte.' if so_adiado else ''
+            ),
+            'data_destino': data_destino if avisos else data_ref.isoformat(),
+        })
     q = request.args.get('q') or ''
     ativos = str(request.args.get('ativos', '1')).lower() not in ('0', 'false', 'nao', 'não')
-    return jsonify({'ok': True, 'acompanhantes': _list_acompanhantes_db(ativos, q=q)})
+    data_ref = _parse_date(request.args.get('data'))
+    return jsonify({
+        'ok': True,
+        'acompanhantes': _list_acompanhantes_db(ativos, q=q, data_ref=data_ref),
+    })
 
 
 @nutricao.route('/nutricao/api/refeicao-acompanhantes/<int:aid>', methods=['PUT', 'DELETE'])
 def api_refeicao_acompanhante_ops(aid):
+    from nutricao_service import resolver_partes_acompanhante
     row = _get_scoped_or_404(NutRefeicaoAcompanhante, aid)
     if not row:
         return jsonify({'ok': False, 'error': 'Não encontrado'}), 404
@@ -538,20 +611,74 @@ def api_refeicao_acompanhante_ops(aid):
         if quantidade is None:
             return jsonify({'ok': False, 'error': 'Quantidade deve ser um número >= 1'}), 400
         row.quantidade = quantidade
+
+    data_ref = row.data_refeicao or date.today()
+    if 'data_refeicao' in d or 'data' in d:
+        parsed = _parse_date(d.get('data_refeicao') or d.get('data'))
+        if parsed:
+            data_ref = parsed
+
+    fl_almoco = row.fl_almoco if row.fl_almoco is not None else True
+    fl_jantar = row.fl_jantar if row.fl_jantar is not None else True
+    if 'fl_almoco' in d:
+        fl_almoco = _parse_bool_flag(d, 'fl_almoco', True)
+    if 'fl_jantar' in d:
+        fl_jantar = _parse_bool_flag(d, 'fl_jantar', True)
+    if not fl_almoco and not fl_jantar:
+        return jsonify({'ok': False, 'error': 'Marque Almoço e/ou Jantar'}), 400
+
+    partes = resolver_partes_acompanhante(data_ref, fl_almoco, fl_jantar)
+    avisos = [p['aviso'] for p in partes if p.get('aviso')]
+
+    # 1ª parte atualiza o registro; demais criam novos (ex.: A amanhã + J hoje)
+    primeira = partes[0]
+    row.data_refeicao = primeira['data_refeicao']
+    row.fl_almoco = bool(primeira['fl_almoco'])
+    row.fl_jantar = bool(primeira['fl_jantar'])
     if 'ativo' in d:
         row.ativo = bool(d.get('ativo'))
-    db.session.commit()
-    return jsonify({'ok': True, 'acompanhante': row.to_dict()})
 
+    extras = []
+    for parte in partes[1:]:
+        novo = NutRefeicaoAcompanhante(
+            cliente_id=row.cliente_id or write_cliente_id(),
+            nome_acompanhante=row.nome_acompanhante,
+            paciente_id=row.paciente_id,
+            dieta_id=row.dieta_id,
+            refeicao=row.refeicao,
+            quantidade=row.quantidade,
+            data_refeicao=parte['data_refeicao'],
+            fl_almoco=bool(parte['fl_almoco']),
+            fl_jantar=bool(parte['fl_jantar']),
+            ativo=True,
+        )
+        db.session.add(novo)
+        db.session.flush()
+        extras.append(novo.to_dict())
+
+    db.session.commit()
+    aviso = avisos[0] if len(avisos) == 1 else (
+        'A refeição será lançada para o dia seguinte.' if avisos else ''
+    )
+    return jsonify({
+        'ok': True,
+        'acompanhante': row.to_dict(),
+        'acompanhantes_extra': extras,
+        'adiado': bool(avisos),
+        'aviso': aviso,
+        'data_destino': (partes[-1]['data_refeicao'].isoformat() if avisos else data_ref.isoformat()),
+    })
 
 # ---- REFEIÇÕES FUNCIONÁRIOS ----
 @nutricao.route('/nutricao/refeicoes-funcionarios')
 def refeicoes_funcionarios():
     seed_nutricao()
+    data_ref = _parse_date(request.args.get('data')) or date.today()
     return render_template(
         'nutricao_refeicoes_funcionarios.html',
-        funcionarios=_list_funcionarios_refeicao_db(True),
+        funcionarios=_list_funcionarios_refeicao_db(True, data_ref=data_ref),
         dietas=_list_dietas_db(somente_ativas=True),
+        data_padrao=data_ref.isoformat(),
         **active('refeicoes_funcionarios'),
     )
 
@@ -581,12 +708,18 @@ def api_refeicao_funcionarios():
         quantidade = _parse_quantidade_refeicao(d, default=1)
         if quantidade is None:
             return jsonify({'ok': False, 'error': 'Quantidade deve ser um número >= 1'}), 400
+        data_ref = _parse_date(d.get('data_refeicao') or d.get('data')) or date.today()
+        fl_almoco = _parse_bool_flag(d, 'fl_almoco', True)
+        fl_jantar = _parse_bool_flag(d, 'fl_jantar', True)
         row = NutRefeicaoFuncionario(
             cliente_id=write_cliente_id(),
             nome=nome,
             dieta_id=dieta_id,
             refeicao=refeicao,
             quantidade=quantidade,
+            data_refeicao=data_ref,
+            fl_almoco=fl_almoco,
+            fl_jantar=fl_jantar,
             ativo=True,
         )
         db.session.add(row)
@@ -594,7 +727,11 @@ def api_refeicao_funcionarios():
         return jsonify({'ok': True, 'id': row.id, 'funcionario': row.to_dict()})
     q = request.args.get('q') or ''
     ativos = str(request.args.get('ativos', '1')).lower() not in ('0', 'false', 'nao', 'não')
-    return jsonify({'ok': True, 'funcionarios': _list_funcionarios_refeicao_db(ativos, q=q)})
+    data_ref = _parse_date(request.args.get('data'))
+    return jsonify({
+        'ok': True,
+        'funcionarios': _list_funcionarios_refeicao_db(ativos, q=q, data_ref=data_ref),
+    })
 
 
 @nutricao.route('/nutricao/api/refeicao-funcionarios/<int:fid>', methods=['PUT', 'DELETE'])
@@ -623,6 +760,14 @@ def api_refeicao_funcionario_ops(fid):
         if quantidade is None:
             return jsonify({'ok': False, 'error': 'Quantidade deve ser um número >= 1'}), 400
         row.quantidade = quantidade
+    if 'data_refeicao' in d or 'data' in d:
+        data_ref = _parse_date(d.get('data_refeicao') or d.get('data'))
+        if data_ref:
+            row.data_refeicao = data_ref
+    if 'fl_almoco' in d:
+        row.fl_almoco = _parse_bool_flag(d, 'fl_almoco', True)
+    if 'fl_jantar' in d:
+        row.fl_jantar = _parse_bool_flag(d, 'fl_jantar', True)
     if 'ativo' in d:
         row.ativo = bool(d.get('ativo'))
     db.session.commit()
@@ -743,6 +888,10 @@ def _seed_aviso_alta_demo(data_ref):
 
 @nutricao.route('/nutricao/api/mapa/<int:mid>', methods=['PUT'])
 def api_mapa_put(mid):
+    from nutricao_service import (
+        info_lancamento_refeicoes, obter_ou_criar_linha_mapa_dia, MEAL_FLAG_FIELD,
+        refeicao_apos_hora_limite, data_destino_lancamento,
+    )
     row = _get_scoped_or_404(NutMapaRefeicao, mid)
     if not row or not row.ativo:
         return jsonify({'ok': False, 'error': 'Linha não encontrada'}), 404
@@ -762,10 +911,11 @@ def api_mapa_put(mid):
     ):
         return jsonify({'ok': False, 'error': MSG_LEITO_OCUPADO}), 400
 
-    for campo in (
+    campos_cadastro = (
         'leito', 'prontuario', 'nome', 'diagnostico', 'dieta', 'observacoes', 'clinica', 'enfermaria',
         'obs_etiqueta', 'extras', 'suplementos', 'enteral', 'formula_infantil', 'lve',
-    ):
+    )
+    for campo in campos_cadastro:
         if campo in d:
             val = d.get(campo)
             setattr(row, campo, (str(val).strip() if val is not None else '') or None)
@@ -776,13 +926,58 @@ def api_mapa_put(mid):
             pass
     if 'adm' in d:
         row.adm = _parse_date(d.get('adm'))
-    # data_saida do mapa só via Excluir (/saida); não permitir zerar/alterar por PUT genérico
+
+    avisos = []
+    # flags por refeição: respeitam hora limite
     for fl in FLAG_FIELDS:
-        if fl in d:
-            setattr(row, fl, bool(d.get(fl)))
+        if fl not in d:
+            continue
+        meal = next((m for m, f in MEAL_FLAG_FIELD.items() if f == fl), None)
+        valor = bool(d.get(fl))
+        if meal and refeicao_apos_hora_limite(meal, row.data_refeicao):
+            dest = data_destino_lancamento(meal, row.data_refeicao)
+            target = obter_ou_criar_linha_mapa_dia(row, dest, usuario=_usuario_sessao())
+            if target:
+                setattr(target, fl, valor)
+                marcar_alteracao_mapa(target, _usuario_sessao())
+                avisos.append(f'{meal} → {dest.strftime("%d/%m/%Y")}')
+            continue
+        setattr(row, fl, valor)
+
     marcar_alteracao_mapa(row, _usuario_sessao())
+
+    # após qualquer hora limite, propaga cadastro (dieta etc.) para o dia seguinte
+    lanc = info_lancamento_refeicoes(row.data_refeicao)
+    if any(i.get('apos_limite') for i in lanc.values()) and any(c in d for c in campos_cadastro):
+        # usa o maior data_destino entre refeições fechadas
+        destinos = [
+            date.fromisoformat(i['data_destino'])
+            for i in lanc.values() if i.get('apos_limite')
+        ]
+        if destinos:
+            dest = max(destinos)
+            target = obter_ou_criar_linha_mapa_dia(row, dest, usuario=_usuario_sessao())
+            if target:
+                for campo in campos_cadastro:
+                    if campo in d:
+                        setattr(target, campo, getattr(row, campo))
+                if 'idade' in d:
+                    target.idade = row.idade
+                if 'adm' in d:
+                    target.adm = row.adm
+                marcar_alteracao_mapa(target, _usuario_sessao())
+                avisos.append(
+                    f'Cadastro também aplicado em {dest.strftime("%d/%m/%Y")} '
+                    '(refeições após a hora limite).'
+                )
+
     db.session.commit()
-    return jsonify({'ok': True, 'linha': row.to_dict()})
+    return jsonify({
+        'ok': True,
+        'linha': row.to_dict(),
+        'aviso': ' '.join(avisos) if avisos else '',
+        'adiado': bool(avisos),
+    })
 
 
 @nutricao.route('/nutricao/api/mapa/<int:mid>/saida', methods=['POST'])
@@ -833,6 +1028,10 @@ def api_mapa_saida(mid):
 
 @nutricao.route('/nutricao/api/mapa/<int:mid>/toggle', methods=['POST'])
 def api_mapa_toggle(mid):
+    from nutricao_service import (
+        FLAG_TO_MEAL, data_destino_lancamento, obter_ou_criar_linha_mapa_dia,
+        refeicao_apos_hora_limite, mapa_horas_limite, MEAL_LABELS,
+    )
     row = _get_scoped_or_404(NutMapaRefeicao, mid)
     if not row or not row.ativo:
         return jsonify({'ok': False, 'error': 'Linha não encontrada'}), 404
@@ -840,13 +1039,37 @@ def api_mapa_toggle(mid):
     campo = (d.get('campo') or '').strip()
     if campo not in FLAG_FIELDS:
         return jsonify({'ok': False, 'error': 'Campo inválido'}), 400
+
+    meal = FLAG_TO_MEAL.get(campo)
+    aviso = ''
+    target = row
+    if meal and refeicao_apos_hora_limite(meal, row.data_refeicao):
+        dest = data_destino_lancamento(meal, row.data_refeicao)
+        target = obter_ou_criar_linha_mapa_dia(row, dest, usuario=_usuario_sessao())
+        if not target:
+            return jsonify({'ok': False, 'error': 'Não foi possível lançar no dia seguinte'}), 400
+        hora = mapa_horas_limite().get(meal) or ''
+        aviso = (
+            f'Após {hora}, {MEAL_LABELS.get(meal, meal)} foi lançado em '
+            f'{dest.strftime("%d/%m/%Y")}.'
+        )
+
     if 'valor' in d:
-        setattr(row, campo, bool(d.get('valor')))
+        setattr(target, campo, bool(d.get('valor')))
     else:
-        setattr(row, campo, not bool(getattr(row, campo)))
-    marcar_alteracao_mapa(row, _usuario_sessao())
+        setattr(target, campo, not bool(getattr(target, campo)))
+    marcar_alteracao_mapa(target, _usuario_sessao())
     db.session.commit()
-    return jsonify({'ok': True, 'linha': row.to_dict()})
+    # se adiou, a linha do dia atual permanece; devolve ambas infos
+    resp = {'ok': True, 'linha': row.to_dict(), 'aviso': aviso}
+    if target.id != row.id:
+        resp['linha_destino'] = target.to_dict()
+        resp['adiado'] = True
+        # UI do dia atual: não muda o indicador de hoje
+        resp['linha'] = row.to_dict()
+    else:
+        resp['linha'] = target.to_dict()
+    return jsonify(resp)
 
 
 @nutricao.route('/nutricao/api/mapa/<int:mid>/substituicoes', methods=['GET', 'PUT'])
@@ -861,9 +1084,13 @@ def api_mapa_substituicoes(mid):
         return jsonify(get_mapa_substituicoes(row))
 
     d = request.get_json(force=True) or {}
-    save_mapa_substituicoes(row, d, usuario=_usuario_sessao())
+    result = save_mapa_substituicoes(row, d, usuario=_usuario_sessao())
     db.session.commit()
-    return jsonify(get_mapa_substituicoes(row))
+    payload = get_mapa_substituicoes(row)
+    if isinstance(result, dict):
+        payload['meals_adiados'] = result.get('meals_adiados') or []
+        payload['aviso_salvamento'] = result.get('aviso') or ''
+    return jsonify(payload)
 
 
 @nutricao.route('/nutricao/api/mapa/<int:mid>/substituicoes/importar', methods=['POST'])
@@ -882,6 +1109,23 @@ def api_mapa_substituicoes_importar(mid):
     marcar_alteracao_mapa(row, _usuario_sessao())
     db.session.commit()
     return jsonify(get_mapa_substituicoes(row))
+
+
+@nutricao.route('/nutricao/api/mapa/<int:mid>/substituicoes/justificativas', methods=['GET'])
+def api_mapa_substituicoes_justificativas(mid):
+    """Lista justificativas anteriores do mesmo paciente (para popup de importação)."""
+    seed_nutricao()
+    row = _get_scoped_or_404(NutMapaRefeicao, mid)
+    if not row or not row.ativo:
+        return jsonify({'ok': False, 'error': 'Linha não encontrada'}), 404
+    meal = (request.args.get('meal') or '').strip().lower() or None
+    todas = str(request.args.get('todas', '0')).lower() in ('1', 'true', 'sim')
+    items = listar_justificativas_anteriores(
+        row,
+        meal=None if todas else meal,
+        limit=40,
+    )
+    return jsonify({'ok': True, 'justificativas': items, 'meal': meal})
 
 
 # ---- CLINICAS (página) ----
@@ -1117,6 +1361,22 @@ def api_leitos():
         db.session.add(row)
         db.session.commit()
         return jsonify({'ok': True, 'id': row.id, 'leito': row.to_dict(), 'enfermaria': enf.to_dict()})
+
+    # Leitos vagos no mapa do dia (cadastrados e sem paciente)
+    if str(request.args.get('vagos', '')).lower() in ('1', 'true', 'sim'):
+        data_ref = _parse_date(request.args.get('data')) or date.today()
+        clinica = (request.args.get('clinica') or '').strip() or None
+        enfermaria = (request.args.get('enfermaria') or '').strip() or None
+        enfermaria_id = request.args.get('enfermaria_id', type=int)
+        exclude_mapa_id = request.args.get('exclude_mapa_id', type=int)
+        result = list_leitos_vagos(
+            data_ref=data_ref,
+            clinica=clinica,
+            enfermaria=enfermaria,
+            enfermaria_id=enfermaria_id,
+            exclude_mapa_id=exclude_mapa_id,
+        )
+        return jsonify({'ok': True, **result})
 
     enfermaria_id = request.args.get('enfermaria_id', type=int)
     somente_ativos = str(request.args.get('ativos', '')).lower() in ('1', 'true', 'sim')
@@ -2836,6 +3096,50 @@ def totalizacao_dietas_imprimir():
     )
 
 
+@nutricao.route('/nutricao/totalizacao-dietas-refeicoes')
+def totalizacao_dietas_refeicoes():
+    seed_nutricao()
+    return render_template(
+        'nutricao_totalizacao_dietas_refeicoes.html',
+        clinicas=_list_clinicas_db(somente_ativas=False),
+        enfermarias=list_enfermarias(somente_ativas=True),
+        data_padrao=date.today().isoformat(),
+        **active('totalizacao_dietas_refeicoes')
+    )
+
+
+@nutricao.route('/nutricao/totalizacao-dietas-refeicoes/imprimir')
+def totalizacao_dietas_refeicoes_imprimir():
+    seed_nutricao()
+    data_ref = _parse_date(request.args.get('data')) or date.today()
+    totalizacao_para = (request.args.get('totalizacao_para') or 'clinicas').strip()
+    imprimir_por = (request.args.get('imprimir_por') or 'grupo_clinica').strip()
+    filtros = [x for x in (request.args.get('filtros') or '').split('|') if x.strip()]
+    horarios = [x for x in (request.args.get('horarios') or '').split(',') if x.strip()]
+    metodo = (request.args.get('metodo') or 'todas').strip()
+    imprimir_total = str(request.args.get('imprimir_total_geral', '1')).lower() in ('1', 'true', 'sim')
+
+    try:
+        _seed_faturamento_demo(data_ref, data_ref)
+    except Exception:
+        garantir_mapa_do_dia(data_ref)
+
+    rel = gerar_totalizacao_dietas_refeicoes(
+        data_ref=data_ref,
+        totalizacao_para=totalizacao_para,
+        imprimir_por=imprimir_por,
+        filtros=filtros,
+        horarios=horarios,
+        metodo=metodo,
+        imprimir_total_geral=imprimir_total,
+    )
+    return render_template(
+        'nutricao_totalizacao_dietas_refeicoes_print.html',
+        r=rel,
+        **active('totalizacao_dietas_refeicoes')
+    )
+
+
 @nutricao.route('/nutricao/relatorio-mapa-uma/imprimir')
 def relatorio_mapa_uma_imprimir():
     seed_nutricao()
@@ -2906,6 +3210,86 @@ def faturamento():
         'nutricao_faturamento.html',
         data_padrao=hoje,
         **active('faturamento')
+    )
+
+
+@nutricao.route('/nutricao/faturamento-valores')
+def faturamento_valores():
+    seed_nutricao()
+    data_de = _parse_date(request.args.get('data_de')) or date.today()
+    data_ate = _parse_date(request.args.get('data_ate')) or data_de
+    gerar = str(request.args.get('gerar', '')).lower() in ('1', 'true', 'sim')
+    rel = None
+    if gerar:
+        try:
+            _seed_faturamento_demo(data_de, data_ate)
+        except Exception:
+            pass
+        rel = relatorio_faturamento_valores(data_de, data_ate)
+    return render_template(
+        'nutricao_faturamento_valores.html',
+        data_de=data_de.isoformat(),
+        data_ate=data_ate.isoformat(),
+        r=rel,
+        **active('faturamento_valores')
+    )
+
+
+@nutricao.route('/nutricao/faturamento-valores/imprimir')
+def faturamento_valores_imprimir():
+    seed_nutricao()
+    data_de = _parse_date(request.args.get('data_de')) or date.today()
+    data_ate = _parse_date(request.args.get('data_ate')) or data_de
+    try:
+        _seed_faturamento_demo(data_de, data_ate)
+    except Exception:
+        pass
+    rel = relatorio_faturamento_valores(data_de, data_ate)
+    return render_template(
+        'nutricao_faturamento_valores_print.html',
+        r=rel,
+        **active('faturamento_valores')
+    )
+
+
+@nutricao.route('/nutricao/faturamento-valores/exportar')
+def faturamento_valores_exportar():
+    import csv
+    import io
+    from flask import Response
+
+    seed_nutricao()
+    data_de = _parse_date(request.args.get('data_de')) or date.today()
+    data_ate = _parse_date(request.args.get('data_ate')) or data_de
+    try:
+        _seed_faturamento_demo(data_de, data_ate)
+    except Exception:
+        pass
+    rel = relatorio_faturamento_valores(data_de, data_ate)
+    buf = io.StringIO()
+    w = csv.writer(buf, delimiter=';')
+    w.writerow(['Relatório', rel['titulo']])
+    w.writerow(['Período', f"{rel['data_de_label']} a {rel['data_ate_label']}"])
+    w.writerow([])
+    w.writerow([
+        'Data', 'Fonte', 'Pessoa', 'Clínica', 'Item', 'Refeição',
+        'Qtd', 'Preço unit.', 'Total', 'Origem do preço',
+    ])
+    for row in rel['linhas']:
+        w.writerow([
+            row['data_label'], row['fonte'], row['pessoa'], row['clinica'],
+            row['item'], row['refeicao'], row['quantidade'],
+            f"{row['preco_unitario']:.2f}".replace('.', ','),
+            f"{row['total']:.2f}".replace('.', ','),
+            row['origem_preco'],
+        ])
+    w.writerow([])
+    w.writerow(['TOTAL', '', '', '', '', '', rel['total_quantidade'], '', f"{rel['total_valor']:.2f}".replace('.', ',')])
+    out = '\ufeff' + buf.getvalue()
+    return Response(
+        out,
+        mimetype='text/csv; charset=utf-8',
+        headers={'Content-Disposition': 'attachment; filename=faturamento_valores.csv'},
     )
 
 

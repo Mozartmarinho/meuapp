@@ -139,11 +139,18 @@ def ensure_usuarios_schema():
         if 'reset_token_expira' not in cols:
             db.session.execute(text('ALTER TABLE usuarios ADD COLUMN reset_token_expira DATETIME NULL'))
             db.session.commit()
-        for col in ('is_master', 'perm_chamados', 'perm_nutricao', 'perm_pesagem', 'perm_acesso'):
+        for col in ('is_master', 'perm_chamados', 'perm_nutricao', 'perm_pesagem', 'perm_acesso', 'perm_portal'):
             if col not in cols:
                 db.session.execute(text(f'ALTER TABLE usuarios ADD COLUMN {col} TINYINT(1) NOT NULL DEFAULT 0'))
                 db.session.commit()
                 cols.add(col)
+                if col == 'perm_portal':
+                    # herda quem já gerenciava acessos no legado
+                    db.session.execute(text(
+                        'UPDATE usuarios SET perm_portal = 1 '
+                        'WHERE COALESCE(perm_acesso, 0) = 1 OR COALESCE(is_master, 0) = 1'
+                    ))
+                    db.session.commit()
         if 'setor' not in cols:
             db.session.execute(text('ALTER TABLE usuarios ADD COLUMN setor VARCHAR(80) NULL'))
             db.session.commit()

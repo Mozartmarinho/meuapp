@@ -289,7 +289,31 @@
         .btn-setor-plus:hover { filter: brightness(1.08); }
 
         #modal-setor-funcao { z-index: 95; }
-        #modal-setor-funcao .portal-card { width: min(400px, 100%); }
+        #modal-setor-funcao .portal-card { width: min(520px, 100%); }
+        #modal-setor-funcao .setor-toolbar {
+            display: flex; justify-content: flex-end; margin: 0 0 0.7rem;
+        }
+        #modal-setor-funcao .setor-table-wrap {
+            border: 1px solid #d7e3f3; border-radius: 10px; overflow: hidden; max-height: 320px; overflow-y: auto;
+        }
+        #modal-setor-funcao .setor-table { width: 100%; border-collapse: collapse; }
+        #modal-setor-funcao .setor-table th,
+        #modal-setor-funcao .setor-table td {
+            padding: 8px 10px; font-size: 0.78rem; text-align: left; border-bottom: 1px solid #e8eef6;
+        }
+        #modal-setor-funcao .setor-table th {
+            background: #e8eef6; color: #0f2a5c; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.03em;
+            position: sticky; top: 0;
+        }
+        #modal-setor-funcao .setor-acoes { width: 88px; white-space: nowrap; text-align: right; }
+        #modal-setor-funcao .setor-acoes .portal-btn {
+            padding: 0.28rem 0.42rem; min-width: 0;
+        }
+        #modal-setor-funcao .setor-badge {
+            display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px;
+            background: #e0e7ff; color: #3730a3; font-size: 0.62rem; font-weight: 700;
+        }
+        #modal-setor-funcao #setor-form-wrap { margin-top: 0.4rem; }
 
         /* Modal Acessos / Clientes (lista + Novo/Editar): ~30% menor. Não afeta Configurações / Alterar senha. */
         #modal-acessos,
@@ -589,16 +613,21 @@
                     <i class="fas fa-bell"></i> Pendências ({{ pendencias|length }})
                 </button>
                 {% endif %}
-                <button type="button" class="btn-opcao" data-open-modal="modal-senha">
+                <button type="button" class="btn-opcao" data-open-modal="modal-senha"
+                    {% if not (usuario and usuario.pode_opcao_portal('alterar_senha')) %}hidden{% endif %}>
                     <i class="fas fa-key"></i> Alterar senha
                 </button>
-                {% if usuario and usuario.pode_gerenciar_acessos() %}
+                {% if usuario and usuario.pode_opcao_portal('acessos') %}
                 <button type="button" class="btn-opcao" data-open-modal="modal-acessos">
                     <i class="fas fa-user-shield"></i> Acessos
                 </button>
+                {% endif %}
+                {% if usuario and usuario.pode_opcao_portal('clientes') %}
                 <button type="button" class="btn-opcao" data-open-modal="modal-clientes">
                     <i class="fas fa-building"></i> Clientes
                 </button>
+                {% endif %}
+                {% if usuario and usuario.pode_opcao_portal('configuracoes') %}
                 <button type="button" class="btn-opcao" data-open-modal="modal-config">
                     <i class="fas fa-cog"></i> Configurações
                 </button>
@@ -917,28 +946,56 @@
     </div>
 
     <div class="portal-overlay" id="modal-setor-funcao" role="presentation">
-        <div class="portal-card narrow" role="dialog" aria-modal="true" aria-labelledby="setor-funcao-title">
+        <div class="portal-card" role="dialog" aria-modal="true" aria-labelledby="setor-funcao-title">
             <button type="button" class="portal-close" data-close-modal aria-label="Fechar">&times;</button>
             <div class="portal-head">
                 <div>
-                    <h2 id="setor-funcao-title">Nova função / setor</h2>
-                    <p id="setor-funcao-hint">O nome entra só neste catálogo (chamados ou nutrição).</p>
+                    <h2 id="setor-funcao-title">Funções / setores</h2>
+                    <p id="setor-funcao-hint">Catálogo usado nos dropdowns de Acessos (chamados ou nutrição).</p>
                 </div>
             </div>
             <div class="portal-alert" id="setor-funcao-msg" hidden></div>
-            <form class="portal-form" id="form-setor-funcao" autocomplete="off">
-                <input type="hidden" name="tipo" id="setor-funcao-tipo" value="">
-                <div class="grid" style="grid-template-columns:1fr">
-                    <div class="form-group">
-                        <label for="setor-funcao-nome">Nome *</label>
-                        <input type="text" id="setor-funcao-nome" name="nome" maxlength="80" required>
-                    </div>
+
+            <div id="setor-lista-wrap">
+                <div class="setor-toolbar">
+                    <button type="button" class="portal-btn pri" id="btn-setor-adicionar">
+                        <i class="fas fa-plus"></i> Adicionar
+                    </button>
+                </div>
+                <div class="setor-table-wrap">
+                    <table class="setor-table">
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th class="setor-acoes">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="setor-tbody">
+                            <tr><td colspan="2" style="text-align:center;color:#64748b">Carregando…</td></tr>
+                        </tbody>
+                    </table>
                 </div>
                 <div class="portal-actions">
                     <button type="button" class="portal-btn sec" data-close-modal>Fechar</button>
-                    <button type="submit" class="portal-btn pri"><i class="fas fa-save"></i> Salvar</button>
                 </div>
-            </form>
+            </div>
+
+            <div id="setor-form-wrap" hidden>
+                <form class="portal-form" id="form-setor-funcao" autocomplete="off">
+                    <input type="hidden" name="tipo" id="setor-funcao-tipo" value="">
+                    <input type="hidden" name="id" id="setor-funcao-id" value="">
+                    <div class="grid" style="grid-template-columns:1fr">
+                        <div class="form-group">
+                            <label for="setor-funcao-nome">Nome *</label>
+                            <input type="text" id="setor-funcao-nome" name="nome" maxlength="80" required>
+                        </div>
+                    </div>
+                    <div class="portal-actions">
+                        <button type="button" class="portal-btn sec" id="btn-setor-cancelar-form">Voltar</button>
+                        <button type="submit" class="portal-btn pri"><i class="fas fa-save"></i> Salvar</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 
@@ -1396,24 +1453,153 @@
             check.addEventListener('change', function () { setSistemaState(check); });
         });
 
+        var SETOR_ITENS = { chamados: [], nutricao: [] };
+        var setorEditId = null;
+
+        function showSetorLista() {
+            document.getElementById('setor-lista-wrap').hidden = false;
+            document.getElementById('setor-form-wrap').hidden = true;
+            setorEditId = null;
+            document.getElementById('setor-funcao-id').value = '';
+            document.getElementById('setor-funcao-nome').value = '';
+        }
+
+        function showSetorForm(item) {
+            document.getElementById('setor-lista-wrap').hidden = true;
+            document.getElementById('setor-form-wrap').hidden = false;
+            setorEditId = item && item.id ? item.id : null;
+            document.getElementById('setor-funcao-id').value = setorEditId || '';
+            document.getElementById('setor-funcao-nome').value = (item && item.nome) || '';
+            var tipo = document.getElementById('setor-funcao-tipo').value || 'chamados';
+            var labelTipo = tipo === 'nutricao' ? 'nutrição' : 'chamados';
+            document.getElementById('setor-funcao-title').textContent = setorEditId
+                ? 'Editar função / setor (' + labelTipo + ')'
+                : 'Nova função / setor (' + labelTipo + ')';
+            setTimeout(function () {
+                var input = document.getElementById('setor-funcao-nome');
+                if (input) { input.focus(); input.select(); }
+            }, 30);
+        }
+
+        function renderSetorGrid(itens) {
+            var tbody = document.getElementById('setor-tbody');
+            if (!itens || !itens.length) {
+                tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#64748b">Nenhum setor cadastrado.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = itens.map(function (it) {
+                var badge = it.padrao ? '<span class="setor-badge">padrão</span>' : '';
+                var delBtn = it.padrao
+                    ? ''
+                    : '<button type="button" class="portal-btn sec" data-setor-del="' + it.id + '" title="Excluir"><i class="fas fa-trash"></i></button>';
+                return '<tr data-id="' + it.id + '">' +
+                    '<td><strong>' + escapeHtml(it.nome) + '</strong>' + badge + '</td>' +
+                    '<td class="setor-acoes">' +
+                    '<button type="button" class="portal-btn pri" data-setor-edit="' + it.id + '" title="Editar"><i class="fas fa-pen"></i></button> ' +
+                    delBtn +
+                    '</td></tr>';
+            }).join('');
+        }
+
+        function syncSetorSelects(tipo, setores, selected) {
+            SETORES[tipo] = setores || SETORES[tipo] || [];
+            var selectId = tipo === 'nutricao' ? 'acesso-setor-nutricao' : 'acesso-setor';
+            var cur = selected;
+            if (!cur) {
+                var sel = document.getElementById(selectId);
+                cur = sel ? sel.value : '';
+            }
+            fillSetorSelect(selectId, SETORES[tipo], cur || '');
+        }
+
+        async function carregarSetoresGrid(tipo) {
+            var msg = document.getElementById('setor-funcao-msg');
+            var tbody = document.getElementById('setor-tbody');
+            tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#64748b">Carregando…</td></tr>';
+            try {
+                var r = await fetch(URL_SETOR + '?tipo=' + encodeURIComponent(tipo), {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                var data = await r.json();
+                if (!r.ok || data.ok === false) {
+                    showMsg(msg, false, (data && data.message) || 'Falha ao carregar setores.');
+                    tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#64748b">Não foi possível carregar.</td></tr>';
+                    return;
+                }
+                SETOR_ITENS[tipo] = data.itens || [];
+                syncSetorSelects(tipo, data.setores || SETORES[tipo]);
+                renderSetorGrid(SETOR_ITENS[tipo]);
+                showMsg(msg, true, '');
+            } catch (e) {
+                showMsg(msg, false, 'Falha ao carregar setores.');
+                tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#64748b">Não foi possível carregar.</td></tr>';
+            }
+        }
+
         document.querySelectorAll('#form-acesso .btn-setor-plus').forEach(function (btn) {
             btn.addEventListener('click', function (ev) {
                 ev.preventDefault();
                 ev.stopPropagation();
                 var tipo = btn.getAttribute('data-setor-tipo') || 'chamados';
                 document.getElementById('setor-funcao-tipo').value = tipo;
-                document.getElementById('setor-funcao-nome').value = '';
                 document.getElementById('setor-funcao-title').textContent = tipo === 'nutricao'
-                    ? 'Nova função / setor (nutrição)'
-                    : 'Nova função / setor (chamados)';
+                    ? 'Funções / setores (nutrição)'
+                    : 'Funções / setores (chamados)';
                 showMsg(document.getElementById('setor-funcao-msg'), true, '');
+                showSetorLista();
                 document.getElementById('modal-setor-funcao').classList.add('is-open');
                 document.body.classList.add('modal-open');
-                setTimeout(function () {
-                    var input = document.getElementById('setor-funcao-nome');
-                    if (input) input.focus();
-                }, 30);
+                carregarSetoresGrid(tipo);
             });
+        });
+
+        document.getElementById('btn-setor-adicionar').addEventListener('click', function () {
+            showMsg(document.getElementById('setor-funcao-msg'), true, '');
+            showSetorForm(null);
+        });
+
+        document.getElementById('btn-setor-cancelar-form').addEventListener('click', function () {
+            var tipo = document.getElementById('setor-funcao-tipo').value || 'chamados';
+            document.getElementById('setor-funcao-title').textContent = tipo === 'nutricao'
+                ? 'Funções / setores (nutrição)'
+                : 'Funções / setores (chamados)';
+            showMsg(document.getElementById('setor-funcao-msg'), true, '');
+            showSetorLista();
+            renderSetorGrid(SETOR_ITENS[tipo] || []);
+        });
+
+        document.getElementById('setor-tbody').addEventListener('click', async function (ev) {
+            var editBtn = ev.target.closest('[data-setor-edit]');
+            var delBtn = ev.target.closest('[data-setor-del]');
+            var tipo = document.getElementById('setor-funcao-tipo').value || 'chamados';
+            var msg = document.getElementById('setor-funcao-msg');
+            if (editBtn) {
+                var eid = parseInt(editBtn.getAttribute('data-setor-edit'), 10);
+                var item = (SETOR_ITENS[tipo] || []).find(function (x) { return x.id === eid; });
+                if (item) showSetorForm(item);
+                return;
+            }
+            if (!delBtn) return;
+            var did = parseInt(delBtn.getAttribute('data-setor-del'), 10);
+            if (!confirm('Excluir este setor?')) return;
+            delBtn.disabled = true;
+            try {
+                var r = await fetch(URL_SETOR + '/' + did, {
+                    method: 'DELETE',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                var data = await r.json();
+                showMsg(msg, !!data.ok, data.message || (data.ok ? 'Excluído.' : 'Falha ao excluir.'));
+                if (data.ok) {
+                    SETOR_ITENS[tipo] = data.itens || [];
+                    syncSetorSelects(tipo, data.setores || SETORES[tipo]);
+                    renderSetorGrid(SETOR_ITENS[tipo]);
+                }
+            } catch (e) {
+                showMsg(msg, false, 'Falha ao excluir.');
+            } finally {
+                delBtn.disabled = false;
+            }
         });
 
         document.getElementById('form-setor-funcao').addEventListener('submit', async function (ev) {
@@ -1426,19 +1612,35 @@
                 return;
             }
             var tipo = document.getElementById('setor-funcao-tipo').value;
+            var id = (document.getElementById('setor-funcao-id').value || '').trim();
             var btn = form.querySelector('button[type="submit"]');
             btn.disabled = true;
             try {
-                var data = await postForm(URL_SETOR, form);
-                showMsg(msg, !!data.ok, data.message || (data.ok ? 'Adicionado.' : 'Não foi possível salvar.'));
+                var data;
+                if (id) {
+                    var r = await fetch(URL_SETOR + '/' + id, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: JSON.stringify({ nome: nome, tipo: tipo })
+                    });
+                    data = await r.json();
+                    if (!r.ok) data.ok = false;
+                } else {
+                    data = await postForm(URL_SETOR, form);
+                }
+                showMsg(msg, !!data.ok, data.message || (data.ok ? 'Salvo.' : 'Não foi possível salvar.'));
                 if (data.ok) {
-                    SETORES[tipo] = data.setores || SETORES[tipo];
-                    if (SETORES[tipo] && data.nome && SETORES[tipo].indexOf(data.nome) < 0) {
-                        SETORES[tipo] = SETORES[tipo].concat([data.nome]);
-                    }
-                    var selectId = tipo === 'nutricao' ? 'acesso-setor-nutricao' : 'acesso-setor';
-                    fillSetorSelect(selectId, SETORES[tipo], data.nome || nome);
-                    closeModal(document.getElementById('modal-setor-funcao'));
+                    SETOR_ITENS[tipo] = data.itens || SETOR_ITENS[tipo];
+                    syncSetorSelects(tipo, data.setores || SETORES[tipo], data.nome || nome);
+                    showSetorLista();
+                    document.getElementById('setor-funcao-title').textContent = tipo === 'nutricao'
+                        ? 'Funções / setores (nutrição)'
+                        : 'Funções / setores (chamados)';
+                    renderSetorGrid(SETOR_ITENS[tipo]);
                 }
             } catch (err) {
                 showMsg(msg, false, 'Não foi possível salvar. Tente de novo.');
