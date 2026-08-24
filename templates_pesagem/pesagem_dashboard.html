@@ -1,27 +1,94 @@
 {% extends "base_pesagem.html" %}
 {% block title %}Leituras{% endblock %}
 {% block content %}
-<div class="page-header">
-  <h1>Controle de Pesagem</h1>
-  <p>Pesos recebidos das balanças via agente Windows local</p>
+<div class="page-header" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-start;justify-content:space-between;">
+  <div>
+    <h1>Controle de Pesagem</h1>
+    <p>Pesos recebidos do sistema externo (agente) e armazenados no servidor</p>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
+    <a class="btn btn-secondary" id="btnImprimir" href="{{ url_for('pesagem.dashboard_imprimir', **{
+      'data_de': filtros.data_de,
+      'data_ate': filtros.data_ate,
+      'cliente_id': filtros.cliente_id,
+      'balanca': filtros.balanca,
+      'q': filtros.q,
+      'limit': filtros.limit
+    }) }}" target="_blank" rel="noopener">
+      <i class="fas fa-print"></i> Imprimir filtro
+    </a>
+  </div>
 </div>
 
-<div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-bottom:1.25rem;">
+<div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-bottom:1.25rem;">
   <div class="card" style="padding:1rem 1.15rem;">
-    <div style="color:var(--gray-500);font-size:0.85rem;">Leituras hoje</div>
+    <div style="color:var(--gray-500);font-size:0.85rem;">Leituras (filtro)</div>
+    <div style="font-family:var(--font-brand);font-size:1.8rem;font-weight:700;color:var(--brand-navy);">{{ total_filtro }}</div>
+  </div>
+  <div class="card" style="padding:1rem 1.15rem;">
+    <div style="color:var(--gray-500);font-size:0.85rem;">Soma (filtro)</div>
+    <div style="font-family:var(--font-brand);font-size:1.8rem;font-weight:700;color:var(--brand-navy);">{{ '%.2f'|format(soma_filtro) }} kg</div>
+  </div>
+  <div class="card" style="padding:1rem 1.15rem;">
+    <div style="color:var(--gray-500);font-size:0.85rem;">Média (filtro)</div>
+    <div style="font-family:var(--font-brand);font-size:1.8rem;font-weight:700;color:var(--brand-navy);">{{ '%.3f'|format(media_filtro) }} kg</div>
+  </div>
+  <div class="card" style="padding:1rem 1.15rem;">
+    <div style="color:var(--gray-500);font-size:0.85rem;">Hoje (todas)</div>
     <div style="font-family:var(--font-brand);font-size:1.8rem;font-weight:700;color:var(--brand-navy);">{{ total_hoje }}</div>
+    <div style="font-size:0.8rem;color:var(--gray-500);">{{ '%.2f'|format(soma_hoje) }} kg</div>
   </div>
   <div class="card" style="padding:1rem 1.15rem;">
-    <div style="color:var(--gray-500);font-size:0.85rem;">Soma hoje</div>
-    <div style="font-family:var(--font-brand);font-size:1.8rem;font-weight:700;color:var(--brand-navy);">{{ '%.2f'|format(soma_hoje) }} kg</div>
-  </div>
-  <div class="card" style="padding:1rem 1.15rem;">
-    <div style="color:var(--gray-500);font-size:0.85rem;">Última leitura</div>
+    <div style="color:var(--gray-500);font-size:0.85rem;">Última do filtro</div>
     <div style="font-family:var(--font-brand);font-size:1.35rem;font-weight:700;color:var(--brand-navy);">
       {% if ultima %}{{ '%.3f'|format(ultima.peso) }} {{ ultima.unidade }}{% else %}—{% endif %}
     </div>
-    <div style="font-size:0.8rem;color:var(--gray-500);">{% if ultima %}{{ ultima.balanca_codigo }} · {{ ultima.data_leitura }}{% endif %}</div>
+    <div style="font-size:0.8rem;color:var(--gray-500);">
+      {% if ultima %}{{ ultima.cliente_nome or '-' }} · {{ ultima.data_leitura }}{% endif %}
+    </div>
   </div>
+</div>
+
+<form class="toolbar card" method="get" action="{{ url_for('pesagem.dashboard') }}"
+      style="padding:1rem 1.15rem;margin-bottom:1.25rem;display:flex;flex-wrap:wrap;gap:0.65rem;align-items:flex-end;">
+  <div class="form-group" style="margin:0;min-width:180px;flex:1.2;">
+    <label class="form-label" for="filtroCliente">Cliente</label>
+    <select class="form-control" id="filtroCliente" name="cliente_id">
+      <option value="">Todos os clientes</option>
+      {% for c in clientes %}
+      <option value="{{ c.id }}" {% if filtros.cliente_id|string == c.id|string %}selected{% endif %}>{{ c.nome }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-group" style="margin:0;min-width:140px;">
+    <label class="form-label" for="filtroDe">De</label>
+    <input class="form-control" type="date" id="filtroDe" name="data_de" value="{{ filtros.data_de }}">
+  </div>
+  <div class="form-group" style="margin:0;min-width:140px;">
+    <label class="form-label" for="filtroAte">Até</label>
+    <input class="form-control" type="date" id="filtroAte" name="data_ate" value="{{ filtros.data_ate }}">
+  </div>
+  <div class="form-group" style="margin:0;min-width:130px;">
+    <label class="form-label" for="filtroBalanca">Balança</label>
+    <select class="form-control" id="filtroBalanca" name="balanca">
+      <option value="">Todas</option>
+      {% for b in balancas %}
+      <option value="{{ b.codigo }}" {% if filtros.balanca == b.codigo %}selected{% endif %}>{{ b.codigo }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-group" style="margin:0;min-width:160px;flex:1;">
+    <label class="form-label" for="filtroQ">Busca</label>
+    <input class="form-control" id="filtroQ" name="q" value="{{ filtros.q }}" placeholder="Cliente, PC, observação...">
+  </div>
+  <input type="hidden" name="limit" value="{{ filtros.limit }}">
+  <button class="btn btn-primary" type="submit"><i class="fas fa-search"></i> Filtrar</button>
+  <a class="btn btn-secondary" href="{{ url_for('pesagem.dashboard') }}">Limpar</a>
+</form>
+
+<div class="card" style="margin-bottom:1.25rem;padding:0.85rem 1.15rem;font-size:0.9rem;color:#475569;">
+  <strong style="color:var(--brand-navy);">Filtro atual:</strong> {{ filtros.rotulo }}
+  <span style="margin-left:0.5rem;">— exibindo até {{ filtros.limit }} registro(s)</span>
 </div>
 
 <div class="card" style="margin-bottom:1.25rem;padding:1rem 1.15rem;">
@@ -37,7 +104,7 @@
       <i class="fas fa-power-off"></i> Baixar instalador
     </a>
   </div>
-  <p style="margin:0.75rem 0 0;font-size:0.8rem;color:var(--gray-500);">Versão {{ agente_versao }}</p>
+  <p style="margin:0.75rem 0 0;font-size:0.8rem;color:var(--gray-500);">Versão {{ agente_versao }} · servidor {{ server_hint }}</p>
 </div>
 
 <div class="card" style="padding:0;overflow:hidden;">
@@ -46,9 +113,9 @@
       <thead>
         <tr>
           <th>Data/Hora</th>
-          <th>Balança</th>
           <th>Cliente</th>
           <th>Peso</th>
+          <th>Balança</th>
           <th>Estável</th>
           <th>Origem</th>
           <th>PC / COM</th>
@@ -58,10 +125,10 @@
       <tbody>
         {% for l in leituras %}
         <tr>
-          <td>{{ l.data_leitura }}</td>
-          <td>{{ l.balanca_codigo }}</td>
+          <td style="white-space:nowrap;">{{ l.data_leitura }}</td>
           <td>{{ l.cliente_nome or '-' }}</td>
           <td><strong>{{ '%.3f'|format(l.peso) }}</strong> {{ l.unidade }}</td>
+          <td>{{ l.balanca_codigo }}</td>
           <td>{{ 'Sim' if l.estavel else 'Não' }}</td>
           <td>{{ l.origem }}</td>
           <td>{{ l.computador or '-' }}{% if l.porta_com %} / {{ l.porta_com }}{% endif %}</td>
@@ -70,7 +137,7 @@
         {% else %}
         <tr>
           <td colspan="8" style="text-align:center;padding:1.5rem;color:#64748b;">
-            Nenhuma leitura ainda. Conecte a balança e inicie o agente Windows.
+            Nenhuma leitura no filtro selecionado. Envie pesos pelo agente com cliente selecionado.
           </td>
         </tr>
         {% endfor %}

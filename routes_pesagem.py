@@ -1,6 +1,6 @@
 """Rotas do Sistema de Controle de Pesagem."""
 from functools import wraps
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 import os
 import socket
@@ -45,6 +45,7 @@ def login_required(f):
 
 _PESAGEM_ENDPOINT_MENUS = {
     'pesagem.dashboard': 'dashboard',
+    'pesagem.dashboard_imprimir': 'dashboard',
     'pesagem.balancas_page': 'balancas',
     'pesagem.clientes_page': 'clientes',
     'pesagem.auditoria': 'auditoria',
@@ -223,7 +224,7 @@ def _salvar_imagem_cliente(upload, cliente_id):
 
 
 def _resolver_cliente_leitura(d):
-    """Aceita cliente_id / cliente_nome do agente sem alterar o peso."""
+    """Resolve cliente cadastrado (pesagem_clientes) a partir do agente."""
     cliente_id = None
     raw_id = d.get('cliente_id')
     if raw_id not in (None, '', 0, '0'):
@@ -236,8 +237,27 @@ def _resolver_cliente_leitura(d):
         cli = PesagemCliente.query.get(cliente_id)
         if cli:
             return cli.id, nome or cli.nome
-        return None, nome
-    return None, nome
+    if nome:
+        cli = PesagemCliente.query.filter_by(nome=nome).first()
+        if cli:
+            return cli.id, cli.nome
+    return None, None
+
+
+def _resolver_data_leitura(d):
+    raw = d.get('data_hora') or d.get('data_leitura')
+    if not raw:
+        return datetime.now()
+    text = str(raw).strip().replace('Z', '')
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%dT%H:%M:%S.%f'):
+        try:
+            return datetime.strptime(text[:26], fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return datetime.now()
 
 
 def _parse_float(value):
@@ -250,40 +270,224 @@ def _parse_float(value):
         return None
 
 
+def _parse_date_arg(value):
+    if not value:
+        return None
+    text = str(value).strip()[:10]
+    if not text:
+        return None
+    try:
+        return datetime.strptime(text, '%Y-%m-%d').date()
+    except ValueError:
+        return None
+
+
+def _filtros_leituras_from_request(args=None):
+    """Lê filtros da query string para o dashboard / impressão."""
+    args = args if args is not None else request.args
+    hoje = date.today()
+
+    tem_param = any(k in args for k in ('data_de', 'data_ate', 'cliente_id', 'balanca', 'q', 'limit'))
+    data_de = _parse_date_arg(args.get('data_de'))
+    data_ate = _parse_date_arg(args.get('data_ate'))
+
+    # Primeira carga (sem query): últimos 7 dias
+    if not tem_param:
+        data_de = hoje - timedelta(days=7)
+        data_ate = hoje
+
+    cliente_id = None
+    raw_cli = args.get('cliente_id')
+    if raw_cli not in (None, '', '0'):
+        try:
+            cliente_id = int(raw_cli)
+        except (TypeError, ValueError):
+            cliente_id = None
+
+    balanca = (args.get('balanca') or '').strip().upper() or None
+    q = (args.get('q') or '').strip() or None
+    try:
+        limit = min(int(args.get('limit') or 500), 2000)
+    except (TypeError, ValueError):
+        limit = 500
+
+    if data_de and data_ate and data_de > data_ate:
+        data_de, data_ate = data_ate, data_de
+
+    return {
+        'data_de': data_de,
+        'data_ate': data_ate,
+        'cliente_id': cliente_id,
+        'balanca': balanca,
+        'q': q,
+        'limit': limit,
+    }
+
+
+def _aplicar_filtros_leituras(query, filtros):
+    data_de = filtros.get('data_de')
+    data_ate = filtros.get('data_ate')
+    if data_de:
+        query = query.filter(
+            PesagemLeitura.data_leitura >= datetime.combine(data_de, datetime.min.time())
+        )
+    if data_ate:
+        query = query.filter(
+            PesagemLeitura.data_leitura
+            <= datetime.combine(data_ate, datetime.max.time()).replace(microsecond=0)
+        )
+    if filtros.get('cliente_id'):
+        query = query.filter(PesagemLeitura.cliente_id == filtros['cliente_id'])
+    if filtros.get('balanca'):
+        query = query.filter(PesagemLeitura.balanca_codigo == filtros['balanca'])
+    if filtros.get('q'):
+        like = f"%{filtros['q']}%"
+        query = query.filter(
+            db.or_(
+                PesagemLeitura.cliente_nome.ilike(like),
+                PesagemLeitura.balanca_codigo.ilike(like),
+                PesagemLeitura.computador.ilike(like),
+                PesagemLeitura.observacao.ilike(like),
+            )
+        )
+    return query
+
+
+def _rotulo_filtros(filtros, cliente_nome=None):
+    partes = []
+    if filtros.get('data_de') or filtros.get('data_ate'):
+        de = filtros['data_de'].strftime('%d/%m/%Y') if filtros.get('data_de') else '—'
+        ate = filtros['data_ate'].strftime('%d/%m/%Y') if filtros.get('data_ate') else '—'
+        partes.append(f'Período: {de} a {ate}')
+    else:
+        partes.append('Período: todos')
+    if filtros.get('cliente_id'):
+        partes.append(f'Cliente: {cliente_nome or ("#" + str(filtros["cliente_id"]))}')
+    else:
+        partes.append('Cliente: todos')
+    if filtros.get('balanca'):
+        partes.append(f'Balança: {filtros["balanca"]}')
+    else:
+        partes.append('Balança: todas')
+    if filtros.get('q'):
+        partes.append(f'Busca: {filtros["q"]}')
+    return ' · '.join(partes)
+
+
+def _resumo_leituras(filtros):
+    q = _aplicar_filtros_leituras(PesagemLeitura.query, filtros)
+    total = q.count()
+    soma = (
+        _aplicar_filtros_leituras(
+            db.session.query(func.coalesce(func.sum(PesagemLeitura.peso), 0.0)),
+            filtros,
+        ).scalar()
+    )
+    media = None
+    if total:
+        media = (
+            _aplicar_filtros_leituras(
+                db.session.query(func.avg(PesagemLeitura.peso)),
+                filtros,
+            ).scalar()
+        )
+    ultima = q.order_by(PesagemLeitura.data_leitura.desc()).first()
+    return {
+        'total': int(total or 0),
+        'soma': float(soma or 0),
+        'media': float(media or 0),
+        'ultima': ultima.to_dict() if ultima else None,
+    }
+
+
+def _consultar_dashboard(filtros):
+    resumo = _resumo_leituras(filtros)
+    leituras = (
+        _aplicar_filtros_leituras(PesagemLeitura.query, filtros)
+        .order_by(PesagemLeitura.data_leitura.desc())
+        .limit(filtros.get('limit') or 500)
+        .all()
+    )
+    cliente_nome = None
+    if filtros.get('cliente_id'):
+        cli = PesagemCliente.query.get(filtros['cliente_id'])
+        cliente_nome = cli.nome if cli else None
+    return resumo, leituras, cliente_nome
+
+
 # ---- PÁGINAS ----
 @pesagem.route('/pesagem')
 @login_required
 def dashboard():
     seed_pesagem()
-    hoje = datetime.utcnow().date()
-    inicio_hoje = datetime.combine(hoje, datetime.min.time())
+    filtros = _filtros_leituras_from_request()
+    resumo, leituras, cliente_nome = _consultar_dashboard(filtros)
 
+    hoje = date.today()
+    inicio_hoje = datetime.combine(hoje, datetime.min.time())
     total_hoje = PesagemLeitura.query.filter(PesagemLeitura.data_leitura >= inicio_hoje).count()
-    ultima = PesagemLeitura.query.order_by(PesagemLeitura.data_leitura.desc()).first()
-    balancas = PesagemBalanca.query.order_by(PesagemBalanca.codigo).all()
-    leituras = (
-        PesagemLeitura.query
-        .order_by(PesagemLeitura.data_leitura.desc())
-        .limit(100)
-        .all()
-    )
     soma_hoje = (
         db.session.query(func.coalesce(func.sum(PesagemLeitura.peso), 0.0))
         .filter(PesagemLeitura.data_leitura >= inicio_hoje)
         .scalar()
     )
 
+    clientes = PesagemCliente.query.order_by(PesagemCliente.nome).all()
+    balancas = PesagemBalanca.query.order_by(PesagemBalanca.codigo).all()
+
+    filtros_ui = {
+        'data_de': filtros['data_de'].isoformat() if filtros.get('data_de') else '',
+        'data_ate': filtros['data_ate'].isoformat() if filtros.get('data_ate') else '',
+        'cliente_id': filtros.get('cliente_id') or '',
+        'balanca': filtros.get('balanca') or '',
+        'q': filtros.get('q') or '',
+        'limit': filtros.get('limit') or 500,
+        'rotulo': _rotulo_filtros(filtros, cliente_nome),
+        'cliente_nome': cliente_nome or '',
+    }
+
     return render_template(
         'pesagem_dashboard.html',
         balancas=[b.to_dict() for b in balancas],
+        clientes=[_cliente_to_dict(c) for c in clientes],
         leituras=[l.to_dict() for l in leituras],
         total_hoje=total_hoje,
         soma_hoje=float(soma_hoje or 0),
-        ultima=ultima.to_dict() if ultima else None,
+        total_filtro=resumo['total'],
+        soma_filtro=resumo['soma'],
+        media_filtro=resumo['media'],
+        ultima=resumo['ultima'],
+        filtros=filtros_ui,
         api_key=PESAGEM_API_KEY,
         server_hint=request.host_url.rstrip('/'),
         agente_versao=_agente_pesagem_version(),
         **{'active_page': 'dashboard'},
+    )
+
+
+@pesagem.route('/pesagem/imprimir')
+@login_required
+def dashboard_imprimir():
+    """Impressão das leituras com os mesmos filtros da tela."""
+    seed_pesagem()
+    filtros = _filtros_leituras_from_request()
+    filtros['limit'] = min(int(filtros.get('limit') or 2000), 2000)
+    resumo, leituras, cliente_nome = _consultar_dashboard(filtros)
+    return render_template(
+        'pesagem_dashboard_print.html',
+        leituras=[l.to_dict() for l in leituras],
+        total=resumo['total'],
+        soma=resumo['soma'],
+        media=resumo['media'],
+        filtros_rotulo=_rotulo_filtros(filtros, cliente_nome),
+        filtros={
+            'data_de': filtros['data_de'].strftime('%d/%m/%Y') if filtros.get('data_de') else '—',
+            'data_ate': filtros['data_ate'].strftime('%d/%m/%Y') if filtros.get('data_ate') else '—',
+            'cliente': cliente_nome or 'Todos',
+            'balanca': filtros.get('balanca') or 'Todas',
+            'q': filtros.get('q') or '',
+        },
+        gerado_em=datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
     )
 
 
@@ -402,6 +606,11 @@ def api_receber_leitura():
             balanca.porta_com = str(d.get('porta_com'))[:20]
 
     cliente_id, cliente_nome = _resolver_cliente_leitura(d)
+    if not cliente_id:
+        return jsonify({
+            'ok': False,
+            'error': 'Cliente selecionado é obrigatório e deve estar cadastrado.',
+        }), 400
 
     leitura = PesagemLeitura(
         balanca_id=balanca.id,
@@ -416,7 +625,7 @@ def api_receber_leitura():
         observacao=(d.get('observacao') or '')[:255] or None,
         cliente_id=cliente_id,
         cliente_nome=cliente_nome,
-        data_leitura=datetime.utcnow(),
+        data_leitura=_resolver_data_leitura(d),
     )
     db.session.add(leitura)
     if d.get('porta_com'):
@@ -428,12 +637,26 @@ def api_receber_leitura():
 @pesagem.route('/api/pesagem/leituras', methods=['GET'])
 @login_required
 def api_listar_leituras():
-    limit = min(int(request.args.get('limit', 100) or 100), 500)
-    codigo = (request.args.get('balanca') or '').strip().upper()
-    q = PesagemLeitura.query
-    if codigo:
-        q = q.filter_by(balanca_codigo=codigo)
-    rows = q.order_by(PesagemLeitura.data_leitura.desc()).limit(limit).all()
+    filtros = {
+        'data_de': _parse_date_arg(request.args.get('data_de')),
+        'data_ate': _parse_date_arg(request.args.get('data_ate')),
+        'cliente_id': None,
+        'balanca': (request.args.get('balanca') or '').strip().upper() or None,
+        'q': (request.args.get('q') or '').strip() or None,
+        'limit': min(int(request.args.get('limit', 100) or 100), 500),
+    }
+    raw_cli = request.args.get('cliente_id')
+    if raw_cli not in (None, '', '0'):
+        try:
+            filtros['cliente_id'] = int(raw_cli)
+        except (TypeError, ValueError):
+            pass
+    rows = (
+        _aplicar_filtros_leituras(PesagemLeitura.query, filtros)
+        .order_by(PesagemLeitura.data_leitura.desc())
+        .limit(filtros['limit'])
+        .all()
+    )
     return jsonify({'ok': True, 'leituras': [r.to_dict() for r in rows]})
 
 

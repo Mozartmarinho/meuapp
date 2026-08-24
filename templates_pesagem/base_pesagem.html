@@ -45,9 +45,9 @@
             </li>
             {% if usuario_atual and usuario_atual.tem_menu('pesagem', 'dashboard') %}
             <li>
-                <a href="{{ url_for('pesagem.dashboard') }}" class="{% if active_page == 'dashboard' %}active{% endif %}" title="Leituras">
+                <a href="{{ url_for('pesagem.dashboard') }}" class="{% if active_page == 'dashboard' %}active{% endif %}" title="Dashboard">
                     <i class="fas fa-weight-scale menu-icon"></i>
-                    <span class="menu-label">Leituras</span>
+                    <span class="menu-label">Dashboard</span>
                 </a>
             </li>
             {% endif %}

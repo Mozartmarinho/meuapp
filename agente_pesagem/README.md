@@ -5,7 +5,7 @@ Lê o peso da balança pela porta serial (ex.: **FT232R USB UART** → COMx) e e
 ## Uso rápido
 
 1. Edite `config.json`:
-   - `servidor_url`: URL do servidor (ex. `http://192.168.0.125` ou `http://127.0.0.1`)
+   - `servidor_url`: URL do servidor (ex. `http://192.168.0.253`)
    - `api_key`: mesma chave do servidor (`saogeraldo-pesagem-2025`)
    - `porta_com`: `AUTO` ou `COM3`, `COM4`, etc.
    - `baudrate`: geralmente `9600`

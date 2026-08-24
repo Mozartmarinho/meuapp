@@ -85,9 +85,7 @@ HINT_CONEXAO = (
     'COM = visor ao vivo (Urano RS-232). '
     'Ethernet 33581/UDP 33583-33584 = etiqueta: só envia ao [Imprimir] ou [Modo Autom.].'
 )
-SERVIDOR_PADRAO = 'http://192.168.1.179'
-# Linux Nginx (192.168.0.253) ainda não tem /api/pesagem/clientes — 404 HTML.
-# O Cadastro de Cliente (ANGRA POOL, CPL, …) está neste Flask Windows.
+SERVIDOR_PADRAO = 'http://192.168.0.253'
 # Urano BA37 Ethernet (manual spec):
 #   166 porta modo servidor (a balança ESCUTA) = 33581
 #   167 porta modo cliente  (a balança CONECTA no PC) = 33582
@@ -105,7 +103,7 @@ PORTA_UDP_BROADCAST = 33584
 # Manual não documenta bytes de login TCP — só a topologia UDP 168/169.
 HANDSHAKE_UDP_CONNECT = b'\x00\x00'
 PORTAS_TCP_COMUNS = (33581, 4001, 23, 2222, 8000, 9000, 33582, 10001, 9100)
-APP_VERSION = '1.2.0'
+APP_VERSION = '1.2.1'
 ICON_NAME = 'sao_geraldo.ico'
 
 # Aceita formatos WT1000, Urano ST/GS e genéricos
@@ -273,13 +271,6 @@ def load_config() -> dict:
     if not str(cfg.get('servidor_url') or '').strip():
         cfg['servidor_url'] = SERVIDOR_PADRAO
     cfg['servidor_url'] = str(cfg['servidor_url']).strip().rstrip('/')
-    # serverlinux tem /api/pesagem/health mas NÃO tem /api/pesagem/clientes (404 HTML).
-    if _host_de_url(cfg['servidor_url']) == '192.168.0.253':
-        cfg['servidor_url'] = SERVIDOR_PADRAO
-        try:
-            save_config(cfg)
-        except Exception:
-            pass
     tipo = str(cfg.get('conexao_tipo') or 'serial').strip().lower()
     if tipo in ('escuta', 'listen', 'cliente', 'modo_cliente'):
         cfg['conexao_tipo'] = 'escuta'
@@ -2088,33 +2079,24 @@ class AgenteApp:
 
         def work():
             # Cadastro de Cliente da pesagem (pesagem_clientes), não clientes de Chamados
-            primary = (cfg.get('servidor_url') or SERVIDOR_PADRAO).rstrip('/')
-            bases = [primary]
-            alt = SERVIDOR_PADRAO.rstrip('/')
-            if _host_de_url(primary) != _host_de_url(alt):
-                bases.append(alt)
+            base = (cfg.get('servidor_url') or SERVIDOR_PADRAO).rstrip('/')
+            url = base + '/api/pesagem/clientes'
             headers = {'X-API-Key': cfg.get('api_key', '')}
             params = {'api_key': cfg.get('api_key', '')}
-            last_err = 'Falha ao listar clientes'
-            for base in bases:
-                url = base + '/api/pesagem/clientes'
-                try:
-                    r = requests.get(url, headers=headers, params=params, timeout=8)
-                except requests.RequestException as exc:
-                    last_err = f'Servidor inacessível ({base}): {exc}'
-                    continue
+            try:
+                r = requests.get(url, headers=headers, params=params, timeout=8)
+            except requests.RequestException as exc:
+                self.q.put(('clientes_erro', f'Servidor inacessível ({base}): {exc}'))
+                return
+            data = {}
+            try:
+                data = r.json()
+            except Exception:
                 data = {}
-                try:
-                    data = r.json()
-                except Exception:
-                    data = {}
-                if r.status_code == 200 and data.get('ok'):
-                    if base != primary:
-                        self.cfg['servidor_url'] = base
-                    self.q.put(('clientes', data.get('clientes') or []))
-                    return
-                last_err = _resumo_http_erro(r, url)
-            self.q.put(('clientes_erro', last_err))
+            if r.status_code == 200 and data.get('ok'):
+                self.q.put(('clientes', data.get('clientes') or []))
+                return
+            self.q.put(('clientes_erro', _resumo_http_erro(r, url)))
 
         threading.Thread(target=work, daemon=True).start()
         self._set_status(f'Buscando Cadastro de Cliente em {cfg.get("servidor_url") or SERVIDOR_PADRAO}...')
@@ -2335,7 +2317,12 @@ class AgenteApp:
             agora = time.time()
             intervalo = float(self.cfg.get('intervalo_envio_seg', 2.0))
             mudou = self.ultimo_peso_enviado is None or abs(peso - self.ultimo_peso_enviado) >= 0.02
-            if mudou and (agora - self.ultimo_envio) >= intervalo and abs(peso) >= float(self.cfg.get('peso_minimo', 0.01)):
+            if (
+                mudou
+                and (agora - self.ultimo_envio) >= intervalo
+                and abs(peso) >= float(self.cfg.get('peso_minimo', 0.01))
+                and self._cliente_selecionado()
+            ):
                 self.enviar_peso(silencioso=True)
 
     def enviar_peso(self, silencioso: bool = False):
@@ -2344,6 +2331,16 @@ class AgenteApp:
         if self.peso_atual is None:
             if not silencioso:
                 messagebox.showwarning('Sem peso', 'Aguarde o peso aparecer na tela.', parent=self.root)
+            return
+        cliente = self._cliente_selecionado()
+        if not cliente:
+            if not silencioso:
+                messagebox.showwarning(
+                    'Cliente obrigatório',
+                    'Selecione um cliente antes de enviar para o servidor.',
+                    parent=self.root,
+                )
+            self._set_status('Selecione um cliente para enviar.')
             return
 
         peso = float(self.peso_atual)
@@ -2355,7 +2352,6 @@ class AgenteApp:
         bruto = self.bruto_atual
         estavel = self.estavel_atual
         porta = self.porta_atual
-        cliente = self._cliente_selecionado()
 
         def work():
             url = cfg['servidor_url'].rstrip('/') + '/api/pesagem/leituras'
@@ -2371,11 +2367,10 @@ class AgenteApp:
                 'computador': socket.gethostname(),
                 'porta_com': porta,
                 'observacao': cfg.get('balanca_local') or '',
+                'cliente_id': cliente.get('id'),
+                'cliente_nome': cliente.get('nome') or '',
+                'data_hora': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             }
-            cli = cliente
-            if cli:
-                payload['cliente_id'] = cli.get('id')
-                payload['cliente_nome'] = cli.get('nome') or ''
             headers = {'Content-Type': 'application/json', 'X-API-Key': cfg.get('api_key', '')}
             try:
                 r = requests.post(url, json=payload, headers=headers, timeout=8)

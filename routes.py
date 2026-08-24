@@ -3154,6 +3154,14 @@ def _dados_equipamento_form(data):
 @login_required
 def api_equipamentos():
     if request.method == 'GET':
+        codigo = (request.args.get('codigo') or request.args.get('patrimonio') or '').strip()
+        if codigo:
+            eq = (
+                Equipamento.query.options(joinedload(Equipamento.cliente))
+                .filter(Equipamento.patrimonio == codigo)
+                .first()
+            )
+            return jsonify({'ok': True, 'equipamento': eq.to_dict() if eq else None})
         cliente_id = request.args.get('cliente_id', type=int)
         q = Equipamento.query.options(joinedload(Equipamento.cliente))
         if cliente_id:

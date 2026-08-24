@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Controle de Pesagem — {{ filtros.cliente }}</title>
+  <style>
+    @page { margin: 12mm; size: A4 portrait; }
+    body {
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      color: #152238;
+      margin: 0;
+      padding: 14px 18px 24px;
+      font-size: 11px;
+    }
+    h1 { font-size: 16px; margin: 0 0 2px; color: #0f2a5c; }
+    .sub { color: #64748b; margin-bottom: 10px; }
+    .meta {
+      margin-bottom: 12px;
+      padding: 8px 10px;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      line-height: 1.5;
+    }
+    .meta strong { color: #0f2a5c; }
+    .stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .stat {
+      border: 1px solid #94a3b8;
+      padding: 6px 12px;
+      min-width: 110px;
+      background: #fff;
+    }
+    .stat .lbl { color: #64748b; font-size: 10px; }
+    .stat .val { font-size: 14px; font-weight: 700; color: #0f2a5c; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      border: 1px solid #64748b;
+      padding: 4px 6px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #e8eef6; font-size: 10px; }
+    td.num, th.num { text-align: right; }
+    tfoot td { font-weight: 700; background: #f8fafc; }
+    .no-print { margin-bottom: 10px; }
+    .no-print button {
+      font-family: inherit;
+      font-size: 13px;
+      padding: 6px 14px;
+      cursor: pointer;
+      margin-right: 6px;
+    }
+    .foot { margin-top: 12px; color: #64748b; font-size: 10px; }
+    @media print {
+      .no-print { display: none !important; }
+      body { padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <button type="button" onclick="window.print()">Imprimir</button>
+    <button type="button" onclick="window.close()">Fechar</button>
+  </div>
+
+  <h1>Controle de Pesagem — Relatório de Leituras</h1>
+  <div class="sub">São Geraldo Service</div>
+
+  <div class="meta">
+    <div><strong>Filtros aplicados:</strong> {{ filtros_rotulo }}</div>
+    <div>
+      <strong>Período:</strong> {{ filtros.data_de }} a {{ filtros.data_ate }}
+      &nbsp;|&nbsp; <strong>Cliente:</strong> {{ filtros.cliente }}
+      &nbsp;|&nbsp; <strong>Balança:</strong> {{ filtros.balanca }}
+      {% if filtros.q %}&nbsp;|&nbsp; <strong>Busca:</strong> {{ filtros.q }}{% endif %}
+    </div>
+    <div><strong>Gerado em:</strong> {{ gerado_em }}</div>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="lbl">Leituras</div>
+      <div class="val">{{ total }}</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Soma</div>
+      <div class="val">{{ '%.2f'|format(soma) }} kg</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Média</div>
+      <div class="val">{{ '%.3f'|format(media) }} kg</div>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Data/Hora</th>
+        <th>Cliente</th>
+        <th class="num">Peso (kg)</th>
+        <th>Balança</th>
+        <th>Estável</th>
+        <th>PC / COM</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in leituras %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ l.data_leitura }}</td>
+        <td>{{ l.cliente_nome or '-' }}</td>
+        <td class="num">{{ '%.3f'|format(l.peso) }}</td>
+        <td>{{ l.balanca_codigo }}</td>
+        <td>{{ 'Sim' if l.estavel else 'Não' }}</td>
+        <td>{{ l.computador or '-' }}{% if l.porta_com %} / {{ l.porta_com }}{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="7" style="text-align:center;padding:1rem;">Nenhuma leitura neste filtro.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% if leituras %}
+    <tfoot>
+      <tr>
+        <td colspan="3">Total ({{ total }} leitura{{ 's' if total != 1 else '' }})</td>
+        <td class="num">{{ '%.2f'|format(soma) }}</td>
+        <td colspan="3"></td>
+      </tr>
+    </tfoot>
+    {% endif %}
+  </table>
+
+  <div class="foot">
+    Relatório gerado pelo Controle de Pesagem. Dados recebidos do agente externo e armazenados no servidor.
+  </div>
+
+  <script>
+    window.addEventListener('load', function () {
+      setTimeout(function () { window.print(); }, 250);
+    });
+  </script>
+</body>
+</html>
