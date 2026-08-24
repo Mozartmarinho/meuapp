@@ -2288,6 +2288,8 @@ def garantir_mapa_do_dia(data_ref=None):
 
     alteradas += _copiar_ativos_dia_anterior(data_ref)
     alteradas += _garantir_ausentes_desde_historico(data_ref)
+    # Acompanhantes acompanham o paciente enquanto ele permanece no mapa
+    alteradas += garantir_acompanhantes_do_dia(data_ref, commit=False)
 
     if alteradas:
         db.session.commit()
@@ -2482,8 +2484,146 @@ def resolver_partes_acompanhante(data_ref, fl_almoco=True, fl_jantar=True, agora
     return partes
 
 
+def paciente_ativo_no_mapa(paciente_id):
+    """True se o paciente ainda tem linha ativa no mapa de refeições (qualquer dia)."""
+    if not paciente_id:
+        return False
+    return (
+        NutMapaRefeicao.query
+        .filter_by(paciente_id=paciente_id, ativo=True)
+        .first()
+        is not None
+    )
+
+
+MSG_ACOMP_SO_SAIDA_MAPA = (
+    'A refeição do acompanhante só é removida quando o paciente sair do mapa '
+    '(alta médica, óbito ou transferência).'
+)
+
+
+def _chave_acompanhante(row):
+    """Identidade estável do lançamento (paciente + nome) para copiar entre dias."""
+    nome = (getattr(row, 'nome_acompanhante', None) or '').strip().lower()
+    return (getattr(row, 'paciente_id', None), nome)
+
+
+def _clonar_acompanhante_no_dia(src, data_ref):
+    """Cria cópia ativa do acompanhante em data_ref (sem commit)."""
+    return NutRefeicaoAcompanhante(
+        cliente_id=src.cliente_id,
+        nome_acompanhante=src.nome_acompanhante,
+        paciente_id=src.paciente_id,
+        dieta_id=src.dieta_id,
+        refeicao=src.refeicao,
+        quantidade=int(src.quantidade or 1),
+        data_refeicao=data_ref,
+        fl_almoco=True if src.fl_almoco is None else bool(src.fl_almoco),
+        fl_jantar=True if src.fl_jantar is None else bool(src.fl_jantar),
+        ativo=True,
+    )
+
+
+def garantir_acompanhantes_do_dia(data_ref=None, commit=True):
+    """Copia refeições de acompanhante para o dia (e preenche dias intermediários).
+
+    Enquanto o paciente permanecer no mapa, o acompanhante aparece em cada dia
+    desde o lançamento até a saída com motivo — inclusive dias que foram pulados.
+    """
+    data_ref = data_ref or date.today()
+    since = data_ref - timedelta(days=_MAPA_LOOKBACK_DIAS)
+
+    # Pacientes ativos no mapa em qualquer dia do período (até data_ref)
+    mapa_rows = (
+        db.session.query(NutMapaRefeicao.paciente_id, NutMapaRefeicao.data_refeicao)
+        .filter(
+            NutMapaRefeicao.ativo.is_(True),
+            NutMapaRefeicao.paciente_id.isnot(None),
+            NutMapaRefeicao.data_refeicao >= since,
+            NutMapaRefeicao.data_refeicao <= data_ref,
+        )
+        .distinct()
+        .all()
+    )
+    dias_por_paciente = {}
+    for pid, dmapa in mapa_rows:
+        if not pid or not dmapa:
+            continue
+        dias_por_paciente.setdefault(pid, set()).add(dmapa)
+    if not dias_por_paciente:
+        return 0
+
+    pids = list(dias_por_paciente.keys())
+
+    # Todas as linhas de acompanhante do período (ativas e inativas no dia)
+    ac_rows = (
+        NutRefeicaoAcompanhante.query
+        .filter(
+            NutRefeicaoAcompanhante.paciente_id.in_(pids),
+            db.or_(
+                NutRefeicaoAcompanhante.data_refeicao.is_(None),
+                db.and_(
+                    NutRefeicaoAcompanhante.data_refeicao >= since,
+                    NutRefeicaoAcompanhante.data_refeicao <= data_ref,
+                ),
+            ),
+        )
+        .all()
+    )
+
+    # chave -> {data: row} e fontes ativas mais recentes por chave
+    por_chave_dias = {}
+    fontes = {}  # chave -> melhor fonte ativa (data mais recente <= data_ref)
+    for r in ac_rows:
+        key = _chave_acompanhante(r)
+        if not key[0] or not key[1]:
+            continue
+        d = r.data_refeicao
+        por_chave_dias.setdefault(key, {})
+        if d is not None:
+            por_chave_dias[key][d] = r
+        if not r.ativo:
+            continue
+        # fonte: preferir a mais recente com data, senão NULL conta como origem antiga
+        cur = fontes.get(key)
+        if cur is None:
+            fontes[key] = r
+            continue
+        cd = cur.data_refeicao
+        if d is None:
+            continue
+        if cd is None or d >= cd:
+            fontes[key] = r
+
+    criadas = 0
+    for key, src in fontes.items():
+        pid = key[0]
+        dias_mapa = dias_por_paciente.get(pid) or set()
+        if not dias_mapa:
+            continue
+        # A partir do primeiro lançamento (ou do 1º dia do paciente no mapa no lookback)
+        inicio = src.data_refeicao
+        if inicio is None:
+            inicio = min(dias_mapa)
+        for dia in sorted(dias_mapa):
+            if dia < inicio or dia > data_ref:
+                continue
+            existentes_dia = por_chave_dias.get(key) or {}
+            if dia in existentes_dia:
+                # já tem linha (ativa ou baixa do dia) — não recria
+                continue
+            clone = _clonar_acompanhante_no_dia(src, dia)
+            db.session.add(clone)
+            por_chave_dias.setdefault(key, {})[dia] = clone
+            criadas += 1
+
+    if criadas and commit:
+        db.session.commit()
+    return criadas
+
+
 def baixar_acompanhantes_do_paciente(paciente_id, motivo=None, data_saida=None):
-    """Baixa (soft) todos os acompanhantes ativos do paciente."""
+    """Baixa (soft) todos os acompanhantes ativos do paciente (saída do mapa)."""
     if not paciente_id:
         return 0
     motivo = ((motivo or 'Baixa paciente').strip() or 'Baixa paciente')[:40]

@@ -31,6 +31,9 @@ echo [2/3] Definindo interpretador Python...
 if exist "%~dp0.venv\Scripts\python.exe" (
     set "PYTHON=%~dp0.venv\Scripts\python.exe"
     echo       Usando: .venv\Scripts\python.exe
+) else if exist "%LocalAppData%\Programs\Python\Python312\python.exe" (
+    set "PYTHON=%LocalAppData%\Programs\Python\Python312\python.exe"
+    echo       Usando: Python312 (instalacao local)
 ) else (
     set "PYTHON=python"
     echo       Usando: python (PATH)

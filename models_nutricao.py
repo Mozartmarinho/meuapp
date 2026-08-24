@@ -954,7 +954,7 @@ class NutRefeicaoAcompanhante(db.Model):
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     data_atualizacao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    def to_dict(self):
+    def to_dict(self, exclusao_bloqueada=None):
         pac = self.paciente
         dieta = self.dieta_rel
         refeicao = (self.refeicao or '').strip() or (dieta.nome if dieta else '')
@@ -973,6 +973,7 @@ class NutRefeicaoAcompanhante(db.Model):
             'ativo': bool(self.ativo),
             'data_saida': self.data_saida.isoformat() if self.data_saida else '',
             'motivo_saida': self.motivo_saida or '',
+            'exclusao_bloqueada': bool(exclusao_bloqueada) if exclusao_bloqueada is not None else False,
         }
 
 

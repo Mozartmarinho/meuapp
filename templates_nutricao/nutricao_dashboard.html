@@ -2635,9 +2635,9 @@ async function confirmarSaidaLinhaMapa(){
     return;
   }
   fecharModal();
-  if (motivo === 'transferencia') showToast('Transferência registrada — paciente removido do mapa','success');
-  else if (motivo === 'obito') showToast('Óbito registrado — paciente removido do mapa','success');
-  else showToast('Alta médica registrada — paciente removido do mapa','success');
+  if (motivo === 'transferencia') showToast('Transferência registrada — paciente e refeição do acompanhante removidos','success');
+  else if (motivo === 'obito') showToast('Óbito registrado — paciente e refeição do acompanhante removidos','success');
+  else showToast('Alta médica registrada — paciente e refeição do acompanhante removidos','success');
   await carregarMapa();
 }
 

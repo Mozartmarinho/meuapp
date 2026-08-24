@@ -51,7 +51,8 @@
             data-refeicao="{{ a.refeicao or '' }}"
             data-quantidade="{{ a.quantidade if a.quantidade is not none else 1 }}"
             data-fl-almoco="{{ 1 if a.fl_almoco else 0 }}"
-            data-fl-jantar="{{ 1 if a.fl_jantar else 0 }}">
+            data-fl-jantar="{{ 1 if a.fl_jantar else 0 }}"
+            data-exclusao-bloqueada="{{ 1 if a.exclusao_bloqueada else 0 }}">
           <td><strong>{{ a.nome_acompanhante }}</strong></td>
           <td>{{ a.nome_paciente or '-' }}</td>
           <td><span class="status status-info">{{ a.refeicao or '-' }}</span></td>
@@ -62,9 +63,16 @@
             <button class="btn btn-ghost btn-sm" type="button" onclick="editarAcompLinha(this)" title="Editar">
               <i class="fas fa-edit"></i>
             </button>
+            {% if a.exclusao_bloqueada %}
+            <button class="btn btn-ghost btn-sm" type="button" disabled
+                    title="Só é removido quando o paciente sair do mapa (alta, óbito ou transferência)">
+              <i class="fas fa-trash" style="opacity:.35"></i>
+            </button>
+            {% else %}
             <button class="btn btn-ghost btn-sm" type="button" onclick="excluirAcomp({{ a.id }})" title="Excluir">
               <i class="fas fa-trash"></i>
             </button>
+            {% endif %}
           </td>
         </tr>
         {% else %}
@@ -348,9 +356,13 @@ async function salvarAcomp(){
 async function excluirAcomp(id){
   if (!confirm('Excluir este acompanhante?')) return;
   const r = await fetch(`/nutricao/api/refeicao-acompanhantes/${id}`, { method:'DELETE' });
-  const j = await r.json();
+  const j = await r.json().catch(() => ({}));
   if (!r.ok || j.ok === false){
-    showToast((j && j.error) || 'Falha ao excluir','error');
+    showToast(
+      (j && j.error) ||
+      'A refeição do acompanhante só é removida quando o paciente sair do mapa.',
+      'error'
+    );
     return;
   }
   showToast('Acompanhante excluído','success');

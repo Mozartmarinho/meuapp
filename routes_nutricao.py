@@ -31,6 +31,9 @@ from nutricao_service import (
     MSG_LEITO_OCUPADO,
     list_leitos_vagos,
     baixar_acompanhantes_do_paciente,
+    paciente_ativo_no_mapa,
+    MSG_ACOMP_SO_SAIDA_MAPA,
+    garantir_acompanhantes_do_dia,
     list_clinicas,
     list_enfermarias,
     list_leitos,
@@ -418,6 +421,10 @@ def _resolve_dieta_refeicao(d):
 
 
 def _list_acompanhantes_db(ativos_only=True, q=None, data_ref=None):
+    if data_ref is not None:
+        # Garante que o mapa do dia exista e acompanha os acompanhantes
+        garantir_mapa_do_dia(data_ref)
+        garantir_acompanhantes_do_dia(data_ref)
     query = scoped_query(NutRefeicaoAcompanhante)
     if ativos_only:
         query = query.filter_by(ativo=True)
@@ -437,7 +444,23 @@ def _list_acompanhantes_db(ativos_only=True, q=None, data_ref=None):
             )
         )
     query = query.order_by(NutRefeicaoAcompanhante.nome_acompanhante)
-    return [r.to_dict() for r in query.all()]
+    rows = query.all()
+    # Pré-calcula pacientes ainda no mapa (1 query) para bloquear exclusão na UI
+    pids = {r.paciente_id for r in rows if r.paciente_id}
+    no_mapa = set()
+    if pids:
+        no_mapa = {
+            mid for (mid,) in (
+                db.session.query(NutMapaRefeicao.paciente_id)
+                .filter(
+                    NutMapaRefeicao.paciente_id.in_(pids),
+                    NutMapaRefeicao.ativo.is_(True),
+                )
+                .distinct()
+                .all()
+            )
+        }
+    return [r.to_dict(exclusao_bloqueada=(r.paciente_id in no_mapa)) for r in rows]
 
 
 def _list_funcionarios_refeicao_db(ativos_only=True, q=None, data_ref=None):
@@ -578,6 +601,13 @@ def api_refeicao_acompanhante_ops(aid):
     if not row:
         return jsonify({'ok': False, 'error': 'Não encontrado'}), 404
     if request.method == 'DELETE':
+        # Lançado com paciente: só sai quando o paciente sair do mapa
+        if row.paciente_id and paciente_ativo_no_mapa(row.paciente_id):
+            return jsonify({
+                'ok': False,
+                'error': MSG_ACOMP_SO_SAIDA_MAPA,
+                'exclusao_bloqueada': True,
+            }), 409
         row.ativo = False
         row.data_saida = date.today()
         row.motivo_saida = 'Exclusão'
