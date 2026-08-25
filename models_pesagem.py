@@ -53,6 +53,9 @@ class PesagemLeitura(db.Model):
     balanca_codigo = db.Column(db.String(40), nullable=False, index=True)
     peso = db.Column(db.Float, nullable=False)
     unidade = db.Column(db.String(10), default='kg')
+    tara = db.Column(db.Float)
+    peso_bruto = db.Column(db.Float)
+    peso_liquido = db.Column(db.Float)
     bruto_serial = db.Column(db.String(255))
     estavel = db.Column(db.Boolean, default=True)
     origem = db.Column(db.String(40), default='agente')  # agente | manual | teste
@@ -71,6 +74,9 @@ class PesagemLeitura(db.Model):
             'balanca_codigo': self.balanca_codigo,
             'peso': self.peso,
             'unidade': self.unidade or 'kg',
+            'tara': self.tara if self.tara is not None else 0.0,
+            'peso_bruto': self.peso_bruto if self.peso_bruto is not None else self.peso,
+            'peso_liquido': self.peso_liquido if self.peso_liquido is not None else self.peso,
             'bruto_serial': self.bruto_serial or '',
             'estavel': bool(self.estavel),
             'origem': self.origem or 'agente',

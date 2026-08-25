@@ -2,11 +2,13 @@ Agente de Pesagem — São Geraldo Service
 =====================================
 
 O programa abre uma janela com:
-- Peso atual da balança (tempo real no visor)
+- Peso atual da balança (visor = líquido após a tara)
+- Bruto, tara e líquido (ao pressionar Tara na balança)
 - Seleção de cliente e foto cadastrada (servidor http://192.168.1.179)
 - Botão ENVIAR PARA O SERVIDOR
 - Registro (log) da conexão
-- Configuração (F2)
+- Configuração (F2) — a URL do servidor fica salva neste computador
+  (AppData\SaoGeraldoService\AgentePesagem\config.json)
 
 Arquivos:
 - AgentePesagem.exe

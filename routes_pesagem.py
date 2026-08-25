@@ -585,6 +585,22 @@ def api_receber_leitura():
     if peso is None:
         return jsonify({'ok': False, 'error': 'Campo peso é obrigatório e numérico'}), 400
 
+    tara = _parse_float(d.get('tara'))
+    if tara is None:
+        tara = 0.0
+    peso_liquido = _parse_float(d.get('peso_liquido'))
+    if peso_liquido is None:
+        peso_liquido = _parse_float(d.get('liquido') or d.get('peso_liq'))
+    if peso_liquido is None:
+        peso_liquido = peso
+    peso_bruto = _parse_float(d.get('peso_bruto'))
+    if peso_bruto is None:
+        peso_bruto = _parse_float(d.get('bruto'))
+    if peso_bruto is None:
+        peso_bruto = round(peso_liquido + tara, 4) if abs(tara) >= 0.0005 else peso_liquido
+    # Peso gravado = líquido (produto), não o total da balança
+    peso = peso_liquido
+
     codigo = (d.get('balanca_codigo') or d.get('balanca') or 'BAL-01').strip().upper()
     balanca = PesagemBalanca.query.filter_by(codigo=codigo).first()
     if not balanca:
@@ -617,6 +633,9 @@ def api_receber_leitura():
         balanca_codigo=codigo,
         peso=peso,
         unidade=(d.get('unidade') or 'kg')[:10],
+        tara=tara,
+        peso_bruto=peso_bruto,
+        peso_liquido=peso_liquido,
         bruto_serial=(d.get('bruto_serial') or d.get('raw') or '')[:255] or None,
         estavel=bool(d.get('estavel', True)),
         origem=(d.get('origem') or 'agente')[:40],

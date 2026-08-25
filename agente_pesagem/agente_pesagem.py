@@ -5,6 +5,7 @@ Peso ao vivo da balança + menu Configuração para múltiplos controladores.
 from __future__ import annotations
 
 import json
+import os
 import queue
 import re
 import select
@@ -103,7 +104,7 @@ PORTA_UDP_BROADCAST = 33584
 # Manual não documenta bytes de login TCP — só a topologia UDP 168/169.
 HANDSHAKE_UDP_CONNECT = b'\x00\x00'
 PORTAS_TCP_COMUNS = (33581, 4001, 23, 2222, 8000, 9000, 33582, 10001, 9100)
-APP_VERSION = '1.2.1'
+APP_VERSION = '1.3.0'
 ICON_NAME = 'sao_geraldo.ico'
 
 # Aceita formatos WT1000, Urano ST/GS e genéricos
@@ -145,12 +146,41 @@ PESO_DECIMAL_RE = re.compile(
     r'(?P<sign>[-+])?\s*(?P<value>\d{1,4}[.,]\d{1,4})\s*(?P<unit>kg|g|lb)?',
     re.IGNORECASE,
 )
+# Etiqueta / visor: PESO BRUTO, TARA, PESO LIQ
+TARA_LABEL_RE = re.compile(
+    r'(?:^|[\s,;])(?:PESO\s*)?TARA\b\s*[:.\-]?\s*(?P<sign>[-+])?\s*(?P<value>\d+[.,]?\d*)\s*(?P<unit>kg|g|lb)?',
+    re.IGNORECASE,
+)
+BRUTO_LABEL_RE = re.compile(
+    r'(?:PESO\s*)?BRUTO\b\s*[:.\-]?\s*(?P<sign>[-+])?\s*(?P<value>\d+[.,]?\d*)\s*(?P<unit>kg|g|lb)?',
+    re.IGNORECASE,
+)
+LIQ_LABEL_RE = re.compile(
+    r'(?:PESO\s*)?(?:LIQ(?:UIDO)?|NET)\b\s*[:.\-]?\s*(?P<sign>[-+])?\s*(?P<value>\d+[.,]?\d*)\s*(?P<unit>kg|g|lb)?',
+    re.IGNORECASE,
+)
 
 
 def app_dir() -> Path:
     if getattr(sys, 'frozen', False):
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent
+
+
+def user_config_dir() -> Path:
+    """Pasta gravável do usuário — a URL do servidor sobrevive à troca do .exe."""
+    if sys.platform == 'win32':
+        base = os.environ.get('APPDATA') or str(Path.home() / 'AppData' / 'Roaming')
+        return Path(base) / 'SaoGeraldoService' / 'AgentePesagem'
+    return Path.home() / '.config' / 'saogeraldo-agente-pesagem'
+
+
+def user_config_path() -> Path:
+    return user_config_dir() / 'config.json'
+
+
+def bundled_config_path() -> Path:
+    return app_dir() / 'config.json'
 
 
 def _bundle_dir() -> Path:
@@ -256,18 +286,29 @@ def _host_de_url(url: str) -> str:
     return raw.split('/')[0].split(':')[0]
 
 
+def _ler_json_config(path: Path) -> dict:
+    try:
+        saved = json.loads(path.read_text(encoding='utf-8'))
+    except Exception:
+        return {}
+    return saved if isinstance(saved, dict) else {}
+
+
 def load_config() -> dict:
-    cfg_path = app_dir() / 'config.json'
     cfg = default_config()
-    if cfg_path.exists():
+    # 1) config.json ao lado do .exe (instalação / download)
+    # 2) AppData (o que o usuário salvou na tela Configuração — tem prioridade)
+    bundled = bundled_config_path()
+    user = user_config_path()
+    if bundled.exists():
+        cfg.update(_ler_json_config(bundled))
+    if user.exists():
+        cfg.update(_ler_json_config(user))
+    elif not bundled.exists():
         try:
-            saved = json.loads(cfg_path.read_text(encoding='utf-8'))
-        except Exception:
-            saved = {}
-        if isinstance(saved, dict):
-            cfg.update(saved)
-    else:
-        save_config(cfg)
+            save_config(cfg)
+        except OSError:
+            pass
     if not str(cfg.get('servidor_url') or '').strip():
         cfg['servidor_url'] = SERVIDOR_PADRAO
     cfg['servidor_url'] = str(cfg['servidor_url']).strip().rstrip('/')
@@ -343,10 +384,29 @@ def portas_para_testar(preferida: int) -> list[int]:
     return out
 
 
-def save_config(cfg: dict) -> None:
-    (app_dir() / 'config.json').write_text(
-        json.dumps(cfg, indent=2, ensure_ascii=False), encoding='utf-8'
-    )
+def save_config(cfg: dict) -> Path:
+    """Grava no AppData (sempre) e tenta copiar ao lado do .exe."""
+    text = json.dumps(cfg, indent=2, ensure_ascii=False)
+    salvo = None
+    erros = []
+    try:
+        dest_dir = user_config_dir()
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / 'config.json'
+        dest.write_text(text, encoding='utf-8')
+        salvo = dest
+    except OSError as exc:
+        erros.append(f'AppData: {exc}')
+    try:
+        bundled = bundled_config_path()
+        bundled.write_text(text, encoding='utf-8')
+        if salvo is None:
+            salvo = bundled
+    except OSError as exc:
+        erros.append(f'pasta do programa: {exc}')
+    if salvo is None:
+        raise OSError('Não foi possível salvar a configuração. ' + '; '.join(erros))
+    return salvo
 
 
 def listar_portas_detalhe() -> list[tuple[str, str]]:
@@ -507,55 +567,104 @@ def _peso_de_digitos(digits: str) -> float | None:
     return peso
 
 
-def parse_peso(linha: str) -> tuple[float | None, str, bool]:
+def _leitura(bruto: str, estavel: bool = False, **kw) -> dict:
+    out = {
+        'peso': None,
+        'bruto': bruto,
+        'estavel': estavel,
+        'peso_bruto': None,
+        'tara': None,
+        'peso_liquido': None,
+        'tipo': None,
+    }
+    out.update(kw)
+    return out
+
+
+def _float_grupo(m) -> float | None:
+    if m is None:
+        return None
+    try:
+        peso = float(m.group('value').replace(',', '.'))
+    except (ValueError, AttributeError):
+        return None
+    unit = m.group('unit') if 'unit' in m.re.groupindex else 'kg'
+    sign = m.group('sign') if 'sign' in m.re.groupindex else None
+    return _aplicar_unidade(peso, unit, sign)
+
+
+def parse_leitura(linha: str) -> dict:
+    """Extrai peso líquido, bruto e tara do telegrama da balança."""
     original = linha or ''
-    # 7-bit ASCII (algumas Urano/Toledo ligam o bit 7)
     raw = ''.join(chr(ord(c) & 0x7F) for c in original).replace('\x00', ' ')
-    # Urano RS-232/TCP: STX ... ETX (pode vir sem CR/LF)
     if '\x02' in raw and '\x03' in raw:
         inner = raw.split('\x02', 1)[1].split('\x03', 1)[0]
         compact = inner.strip().upper()
         if compact in ('IIIII', 'IIIIII', 'NNNNN', 'NNNNNN', 'SSSSS', 'SSSSSS'):
-            return None, original.strip(), False
+            return _leitura(original.strip(), False)
         if inner.strip():
             compact_inner = inner.strip()
             only = re.sub(r'\D', '', compact_inner)
             if only and only == re.sub(r'\s+', '', compact_inner):
                 peso = _peso_de_digitos(only)
                 if peso is not None:
-                    return peso, original.strip(), True
-            peso, _, estavel = parse_peso(inner)
-            if peso is not None:
-                return peso, original.strip(), estavel
+                    return _leitura(original.strip(), True, peso=peso, peso_liquido=peso)
+            inner_d = parse_leitura(inner)
+            if inner_d.get('peso') is not None or inner_d.get('tara') is not None or inner_d.get('peso_bruto') is not None:
+                inner_d['bruto'] = original.strip()
+                return inner_d
             peso = _peso_de_digitos(only)
             if peso is not None:
-                return peso, original.strip(), True
+                return _leitura(original.strip(), True, peso=peso, peso_liquido=peso)
     raw = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', ' ', raw).strip()
     if not raw:
-        return None, original.strip(), False
+        return _leitura(original.strip(), False)
 
     m = URANO_STGS_RE.search(raw)
     if m:
         stab = (m.group('stab') or '').upper()
         if stab == 'OL':
-            return None, raw, False
-        try:
-            peso = float(m.group('value').replace(',', '.'))
-        except ValueError:
-            peso = None
+            return _leitura(raw, False)
+        peso = _float_grupo(m)
         if peso is not None:
-            peso = _aplicar_unidade(peso, m.group('unit'), m.group('sign'))
-            return peso, original.strip(), stab == 'ST'
+            tipo = (m.group('tipo') or 'GS').upper()
+            estavel = stab == 'ST'
+            if tipo == 'TR':
+                return _leitura(original.strip(), estavel, tara=peso, tipo='TR')
+            if tipo == 'NT':
+                return _leitura(
+                    original.strip(), estavel, peso=peso, peso_liquido=peso, tipo='NT'
+                )
+            return _leitura(
+                original.strip(), estavel, peso=peso, peso_bruto=peso, tipo='GS'
+            )
+
+    m_tara = TARA_LABEL_RE.search(raw)
+    m_bruto = BRUTO_LABEL_RE.search(raw)
+    m_liq = LIQ_LABEL_RE.search(raw)
+    if m_tara or m_bruto or m_liq:
+        out = _leitura(original.strip(), True)
+        if m_tara:
+            out['tara'] = _float_grupo(m_tara)
+            out['tipo'] = 'TR'
+        if m_bruto:
+            out['peso_bruto'] = _float_grupo(m_bruto)
+            if out['tipo'] is None:
+                out['tipo'] = 'GS'
+                out['peso'] = out['peso_bruto']
+        if m_liq:
+            out['peso_liquido'] = _float_grupo(m_liq)
+            out['peso'] = out['peso_liquido']
+            out['tipo'] = 'NT'
+        if out['tipo'] == 'TR' and out['peso'] is None:
+            pass
+        return out
 
     m = URANO_N0_RE.search(raw)
     if m:
-        try:
-            peso = float(m.group('value').replace(',', '.'))
-        except ValueError:
-            peso = None
+        peso = _float_grupo(m)
         if peso is not None:
-            peso = _aplicar_unidade(peso, m.group('unit'), m.group('sign'))
-            return peso, original.strip(), True
+            return _leitura(original.strip(), True, peso=peso, peso_liquido=peso)
 
     compact9 = re.sub(r'[\r\n]', '', raw)
     m9 = URANO9_RE.match(compact9)
@@ -566,32 +675,40 @@ def parse_peso(linha: str) -> tuple[float | None, str, bool]:
             if m9.group('sign') == '-':
                 peso = -peso
             if abs(peso) <= 500:
-                return peso, original.strip(), compact9[:1] in ('*', ' ')
+                return _leitura(
+                    original.strip(),
+                    compact9[:1] in ('*', ' '),
+                    peso=peso,
+                    peso_liquido=peso,
+                )
         except ValueError:
             pass
 
     m = PESO_LABEL_RE.search(raw)
     if m:
-        try:
-            peso = float(m.group('value').replace(',', '.'))
-        except ValueError:
-            peso = None
+        peso = _float_grupo(m)
         if peso is not None:
-            peso = _aplicar_unidade(peso, m.group('unit'), m.group('sign'))
-            return peso, original.strip(), True
+            return _leitura(original.strip(), True, peso=peso, peso_liquido=peso)
 
-    # WT1000 contínuo completo: S, bruto, tara, liquido
     m = WT1000_CONTINUOUS_RE.search(raw)
     if m:
         try:
-            peso = float(m.group('liq').replace(',', '.'))
+            bruto = float(m.group('bruto').replace(',', '.'))
+            tara = float(m.group('tara').replace(',', '.'))
+            liq = float(m.group('liq').replace(',', '.'))
         except ValueError:
-            peso = None
-        if peso is not None:
-            estavel = m.group('stab') == '0'
-            return peso, raw, estavel
+            bruto = tara = liq = None
+        if liq is not None:
+            return _leitura(
+                raw,
+                m.group('stab') == '0',
+                peso=liq,
+                peso_bruto=bruto,
+                tara=tara,
+                peso_liquido=liq,
+                tipo='NT',
+            )
 
-    # WT1000 modo comando: ww010.000kg / Wn010.000kg
     m = WT1000_CMD_RE.search(raw)
     if m:
         try:
@@ -600,7 +717,10 @@ def parse_peso(linha: str) -> tuple[float | None, str, bool]:
             peso = None
         if peso is not None:
             peso = _aplicar_unidade(peso, m.group('unit'), None)
-            return peso, raw, True
+            tipo_cmd = (m.group('tipo') or 'wn').lower()
+            if tipo_cmd == 'ww':
+                return _leitura(raw, True, peso=peso, peso_bruto=peso, tipo='GS')
+            return _leitura(raw, True, peso=peso, peso_liquido=peso, tipo='NT')
 
     estavel = True
     low = raw.lower()
@@ -609,18 +729,13 @@ def parse_peso(linha: str) -> tuple[float | None, str, bool]:
     if any(x in low for x in ('stab', 'stable', 'estavel', 'st,', 'st ')):
         estavel = True
     if 'o l' in low or 'ol' == low.replace(' ', ''):
-        return None, raw, estavel
+        return _leitura(raw, estavel)
 
     m = PESO_DECIMAL_RE.search(raw)
     if m:
-        try:
-            peso = float(m.group('value').replace(',', '.'))
-        except ValueError:
-            peso = None
-        if peso is not None:
-            peso = _aplicar_unidade(peso, m.group('unit'), m.group('sign'))
-            if abs(peso) <= 500000:
-                return peso, raw, estavel
+        peso = _float_grupo(m)
+        if peso is not None and abs(peso) <= 500000:
+            return _leitura(raw, estavel, peso=peso, peso_liquido=peso)
 
     matches = list(WEIGHT_RE.finditer(raw.replace('\x00', ' ')))
     if not matches:
@@ -629,8 +744,8 @@ def parse_peso(linha: str) -> tuple[float | None, str, bool]:
     if not matches:
         peso = _peso_de_digitos(re.sub(r'\D', '', raw))
         if peso is not None:
-            return peso, raw, estavel
-        return None, raw, estavel
+            return _leitura(raw, estavel, peso=peso, peso_liquido=peso)
+        return _leitura(raw, estavel)
 
     m = matches[-1]
     val = m.group('value') or ''
@@ -639,20 +754,25 @@ def parse_peso(linha: str) -> tuple[float | None, str, bool]:
     if '.' not in val and ',' not in val and not unit:
         peso = _peso_de_digitos(digits)
         if peso is not None:
-            return peso, raw, estavel
+            return _leitura(raw, estavel, peso=peso, peso_liquido=peso)
         if len(digits) < 4:
             peso = _peso_de_digitos(re.sub(r'\D', '', raw))
             if peso is not None:
-                return peso, raw, estavel
-            return None, raw, estavel
+                return _leitura(raw, estavel, peso=peso, peso_liquido=peso)
+            return _leitura(raw, estavel)
     try:
         peso = float(val.replace(',', '.'))
     except ValueError:
-        return None, raw, estavel
+        return _leitura(raw, estavel)
     peso = _aplicar_unidade(peso, unit or 'kg', m.group('sign'))
     if abs(peso) > 500000:
-        return None, raw, estavel
-    return peso, raw, estavel
+        return _leitura(raw, estavel)
+    return _leitura(raw, estavel, peso=peso, peso_liquido=peso)
+
+
+def parse_peso(linha: str) -> tuple[float | None, str, bool]:
+    d = parse_leitura(linha)
+    return d.get('peso'), d.get('bruto') or '', bool(d.get('estavel'))
 
 
 def formatar_peso_ui(peso: float | None) -> str:
@@ -788,6 +908,9 @@ class BalancaReader(threading.Thread):
         self.out_q = out_q
         self.stop_event = stop_event
         self._rx_ethernet = 0
+        self._tara = 0.0
+        self._peso_bruto = None
+        self._peso_liquido = None
 
     def run(self):
         if self.cfg.get('modo_simulacao'):
@@ -1281,24 +1404,91 @@ class BalancaReader(threading.Thread):
                 time.sleep(0.03)
 
     def _emit(self, linha: str, porta: str) -> bool:
-        peso, bruto, estavel = parse_peso(linha)
+        d = parse_leitura(linha)
+        if d.get('tara') is not None:
+            self._tara = float(d['tara'])
+        if d.get('peso_bruto') is not None:
+            self._peso_bruto = float(d['peso_bruto'])
+        if d.get('peso_liquido') is not None:
+            self._peso_liquido = float(d['peso_liquido'])
+
+        tipo = d.get('tipo')
+        peso = d.get('peso')
+
+        if tipo == 'GS' and self._peso_bruto is not None:
+            if abs(self._tara or 0.0) > 0.0005:
+                self._peso_liquido = round(self._peso_bruto - self._tara, 4)
+                peso = self._peso_liquido
+            else:
+                peso = self._peso_bruto
+                self._peso_liquido = self._peso_bruto
+        elif tipo == 'NT':
+            if self._peso_liquido is not None:
+                peso = self._peso_liquido
+            if self._peso_bruto is not None and peso is not None:
+                if abs(self._peso_bruto - peso) < 0.01:
+                    self._tara = 0.0
+                elif self._peso_bruto > peso + 0.005:
+                    self._tara = round(self._peso_bruto - peso, 4)
+        elif tipo == 'TR':
+            if self._peso_bruto is not None:
+                self._peso_liquido = round(self._peso_bruto - (self._tara or 0.0), 4)
+                peso = self._peso_liquido
+            elif peso is None:
+                self.out_q.put(('tara', {
+                    'tara': float(self._tara or 0.0),
+                    'peso_bruto': self._peso_bruto,
+                    'peso_liquido': self._peso_liquido,
+                    'porta': porta,
+                }))
+                return True
+        elif peso is not None:
+            self._peso_liquido = float(peso)
+            if self._peso_bruto is not None:
+                if abs(self._peso_bruto - self._peso_liquido) < 0.01:
+                    self._tara = 0.0
+                elif self._peso_bruto > self._peso_liquido + 0.005:
+                    self._tara = round(self._peso_bruto - self._peso_liquido, 4)
+            elif abs(self._tara or 0.0) > 0.0005:
+                self._peso_bruto = round(self._peso_liquido + self._tara, 4)
+            else:
+                self._peso_bruto = self._peso_liquido
+
         if peso is None:
             return False
+
+        if self._peso_bruto is None:
+            self._peso_bruto = round(float(peso) + float(self._tara or 0.0), 4)
+        if self._peso_liquido is None:
+            self._peso_liquido = float(peso)
+
         self.out_q.put(('peso', {
-            'peso': peso, 'bruto': bruto, 'estavel': estavel, 'porta': porta
+            'peso': float(self._peso_liquido),
+            'peso_bruto': float(self._peso_bruto),
+            'tara': float(self._tara or 0.0),
+            'peso_liquido': float(self._peso_liquido),
+            'bruto': d.get('bruto') or '',
+            'estavel': bool(d.get('estavel', True)),
+            'porta': porta,
         }))
         return True
 
     def _run_sim(self):
         self.out_q.put(('porta', 'SIM'))
-        self.out_q.put(('status', 'Simulação — peso muda sozinho'))
+        self.out_q.put(('status', 'Simulação — peso muda sozinho (tara 1.25 kg)'))
         n = 0
+        tara = 1.25
         while not self.stop_event.is_set():
             n += 1
-            peso = round(5.0 + (n % 20) * 0.375, 3)
+            peso_bruto = round(5.0 + (n % 20) * 0.375, 3)
+            peso_liq = round(peso_bruto - tara, 3)
             self.out_q.put(('peso', {
-                'peso': peso, 'bruto': f'SIM {peso:.3f} kg',
-                'estavel': True, 'porta': 'SIM'
+                'peso': peso_liq,
+                'peso_bruto': peso_bruto,
+                'tara': tara,
+                'peso_liquido': peso_liq,
+                'bruto': f'SIM B={peso_bruto:.3f} T={tara:.3f} L={peso_liq:.3f}',
+                'estavel': True, 'porta': 'SIM',
             }))
             time.sleep(0.9)
 
@@ -1452,6 +1642,12 @@ class ConfigDialog(tk.Toplevel):
         self._section(nb, 'Servidor')
         self.var_url = self._field(nb, 'URL do servidor', self.cfg.get('servidor_url', SERVIDOR_PADRAO))
         self.var_key = self._field(nb, 'API Key', self.cfg.get('api_key', ''))
+        tk.Label(
+            nb,
+            text='A URL e a API Key ficam salvas neste computador (OK). '
+                 f'Arquivo: {user_config_path()}',
+            font=('Tahoma', 8), fg=CLR_DARK, bg=CLR_BG, anchor='w', justify='left', wraplength=500,
+        ).pack(fill='x', pady=(0, 4))
         self.var_auto = tk.BooleanVar(value=bool(self.cfg.get('envio_automatico', False)))
         tk.Checkbutton(
             nb, text='Enviar automaticamente ao estabilizar o peso',
@@ -1831,7 +2027,15 @@ class ConfigDialog(tk.Toplevel):
             self.cfg['intervalo_consulta_seg'] = 0.3
         else:
             self.cfg['consultar_balanca'] = False
-        save_config(self.cfg)
+        try:
+            save_config(self.cfg)
+        except OSError as exc:
+            messagebox.showerror(
+                'Configuração',
+                f'Não foi possível salvar a URL do servidor.\n{exc}',
+                parent=self,
+            )
+            return
         self.on_save(self.cfg)
         self.destroy()
 
@@ -1848,6 +2052,9 @@ class AgenteApp:
         self.ultimo_peso_enviado = None
 
         self.peso_atual = None
+        self.tara_atual = 0.0
+        self.peso_bruto_atual = None
+        self.peso_liquido_atual = None
         self.bruto_atual = ''
         self.estavel_atual = False
         self.porta_atual = self.cfg.get('porta_com', 'COM3')
@@ -1951,6 +2158,12 @@ class AgenteApp:
         self.porta_var = tk.StringVar(value='')
         tk.Label(meta, textvariable=self.estavel_var, font=FONT_UI, bg=CLR_BG, anchor='w').pack(side='left')
         tk.Label(meta, textvariable=self.porta_var, font=FONT_UI, bg=CLR_BG, anchor='e').pack(side='right')
+        self.detalhe_peso_var = tk.StringVar(
+            value='Bruto 000.00 kg   Tara 000.00 kg   Líquido 000.00 kg'
+        )
+        tk.Label(
+            grp2, textvariable=self.detalhe_peso_var, font=FONT_UI, bg=CLR_BG, anchor='w'
+        ).pack(fill='x', pady=(4, 0))
 
         # GroupBox: combo + miniatura (não cresce no maximize)
         grp_cli = tk.LabelFrame(row_meio, text=' Cliente ', font=FONT_UI, bg=CLR_BG, fg=CLR_BLACK, padx=8, pady=6)
@@ -2210,7 +2423,7 @@ class AgenteApp:
     def _aplicar_config(self, cfg: dict):
         self.cfg = cfg
         self._refresh_info()
-        self._set_status('Configuração salva. Reconectando...')
+        self._set_status(f'Configuração salva em {user_config_path()}. Reconectando...')
         self._reconectar()
         self.carregar_clientes()
 
@@ -2250,7 +2463,8 @@ class AgenteApp:
         messagebox.showinfo(
             'Sobre',
             f'Controle de Pesagem\nSão Geraldo Service\nVersão {APP_VERSION}\n\n'
-            'Lê o peso da balança e envia ao servidor.',
+            'Lê o peso e a tara da balança e envia ao servidor.\n'
+            f'Configuração salva em:\n{user_config_path()}',
             parent=self.root,
         )
 
@@ -2267,6 +2481,8 @@ class AgenteApp:
                     pass
                 elif kind == 'peso':
                     self._update_peso(payload)
+                elif kind == 'tara':
+                    self._update_tara(payload)
                 elif kind == 'envio_ok':
                     self.enviando = False
                     self.btn_enviar.configure(state='normal', text='Enviar para o servidor')
@@ -2294,9 +2510,35 @@ class AgenteApp:
             pass
         self.root.after(80, self._poll_queue)
 
+    def _texto_detalhe_peso(self) -> str:
+        return (
+            f'Bruto {formatar_peso_ui(self.peso_bruto_atual)} kg   '
+            f'Tara {formatar_peso_ui(self.tara_atual)} kg   '
+            f'Líquido {formatar_peso_ui(self.peso_liquido_atual if self.peso_liquido_atual is not None else self.peso_atual)} kg'
+        )
+
+    def _update_tara(self, data: dict):
+        self.tara_atual = float(data.get('tara') or 0.0)
+        if data.get('peso_bruto') is not None:
+            self.peso_bruto_atual = float(data['peso_bruto'])
+        if data.get('peso_liquido') is not None:
+            self.peso_liquido_atual = float(data['peso_liquido'])
+        if hasattr(self, 'detalhe_peso_var'):
+            self.detalhe_peso_var.set(self._texto_detalhe_peso())
+        self._set_status(f'tara {formatar_peso_ui(self.tara_atual)} kg (botão Tara da balança)')
+
     def _update_peso(self, data: dict):
         peso = float(data['peso'])
         self.peso_atual = peso
+        self.tara_atual = float(data.get('tara') or 0.0)
+        self.peso_bruto_atual = data.get('peso_bruto')
+        if self.peso_bruto_atual is not None:
+            self.peso_bruto_atual = float(self.peso_bruto_atual)
+        self.peso_liquido_atual = data.get('peso_liquido')
+        if self.peso_liquido_atual is not None:
+            self.peso_liquido_atual = float(self.peso_liquido_atual)
+        else:
+            self.peso_liquido_atual = peso
         self.bruto_atual = data.get('bruto') or ''
         self.estavel_atual = bool(data.get('estavel', True))
         self.porta_atual = data.get('porta') or self.porta_atual
@@ -2304,6 +2546,8 @@ class AgenteApp:
         self.peso_var.set(formatar_peso_ui(peso))
         if hasattr(self, 'led_peso'):
             self.led_peso.set_peso(peso, aceso=True)
+        if hasattr(self, 'detalhe_peso_var'):
+            self.detalhe_peso_var.set(self._texto_detalhe_peso())
         self.estavel_var.set('Estável' if self.estavel_atual else 'Em movimento...')
         self.porta_var.set(self._rotulo_conexao(self.porta_atual))
         visor = formatar_peso_ui(peso)
@@ -2311,7 +2555,8 @@ class AgenteApp:
         ultimo = getattr(self, '_ultimo_log_peso', None)
         if ultimo is None or abs(peso - ultimo[0]) >= 0.01 or (agora_log - ultimo[1]) >= 1.5:
             self._ultimo_log_peso = (peso, agora_log)
-            self._set_status(f'peso {visor} kg')
+            tara_txt = formatar_peso_ui(self.tara_atual)
+            self._set_status(f'líquido {visor} kg  tara {tara_txt} kg  bruto {formatar_peso_ui(self.peso_bruto_atual)} kg')
 
         if self.cfg.get('envio_automatico') and self.estavel_atual and not self.enviando:
             agora = time.time()
@@ -2344,9 +2589,16 @@ class AgenteApp:
             return
 
         peso = float(self.peso_atual)
+        tara = float(self.tara_atual or 0.0)
+        peso_bruto = self.peso_bruto_atual
+        if peso_bruto is None:
+            peso_bruto = round(peso + tara, 4)
+        else:
+            peso_bruto = float(peso_bruto)
+        peso_liquido = float(self.peso_liquido_atual if self.peso_liquido_atual is not None else peso)
         self.enviando = True
         self.btn_enviar.configure(state='disabled', text='Enviando...')
-        self._set_status(f'Enviando {peso:.3f} kg...')
+        self._set_status(f'Enviando líquido {peso_liquido:.3f} kg (tara {tara:.3f} kg)...')
 
         cfg = dict(self.cfg)
         bruto = self.bruto_atual
@@ -2356,7 +2608,10 @@ class AgenteApp:
         def work():
             url = cfg['servidor_url'].rstrip('/') + '/api/pesagem/leituras'
             payload = {
-                'peso': peso,
+                'peso': peso_liquido,
+                'peso_liquido': peso_liquido,
+                'peso_bruto': peso_bruto,
+                'tara': tara,
                 'unidade': 'kg',
                 'balanca_codigo': cfg.get('balanca_codigo', 'BAL-01'),
                 'balanca_nome': cfg.get('balanca_nome') or '',
@@ -2381,7 +2636,7 @@ class AgenteApp:
                     pass
                 if r.status_code == 200 and data.get('ok'):
                     self.ultimo_envio = time.time()
-                    self.ultimo_peso_enviado = peso
+                    self.ultimo_peso_enviado = peso_liquido
                     self.q.put(('envio_ok', data.get('id')))
                 else:
                     self.q.put(('envio_erro', _resumo_http_erro(r, url)))

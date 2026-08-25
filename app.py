@@ -423,6 +423,15 @@ def ensure_pesagem_schema():
             db.session.execute(text('ALTER TABLE pesagem_leituras ADD COLUMN cliente_nome VARCHAR(120) NULL'))
             db.session.commit()
             cols.add('cliente_nome')
+        for col, ddl in (
+            ('tara', 'FLOAT NULL'),
+            ('peso_bruto', 'FLOAT NULL'),
+            ('peso_liquido', 'FLOAT NULL'),
+        ):
+            if col not in cols:
+                db.session.execute(text(f'ALTER TABLE pesagem_leituras ADD COLUMN {col} {ddl}'))
+                db.session.commit()
+                cols.add(col)
     except Exception:
         db.session.rollback()
 

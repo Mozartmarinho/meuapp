@@ -104,7 +104,9 @@
         <th>#</th>
         <th>Data/Hora</th>
         <th>Cliente</th>
-        <th class="num">Peso (kg)</th>
+        <th class="num">Líquido (kg)</th>
+        <th class="num">Tara (kg)</th>
+        <th class="num">Bruto (kg)</th>
         <th>Balança</th>
         <th>Estável</th>
         <th>PC / COM</th>
@@ -116,14 +118,16 @@
         <td>{{ loop.index }}</td>
         <td>{{ l.data_leitura }}</td>
         <td>{{ l.cliente_nome or '-' }}</td>
-        <td class="num">{{ '%.3f'|format(l.peso) }}</td>
+        <td class="num">{{ '%.3f'|format(l.peso_liquido if l.peso_liquido is not none else l.peso) }}</td>
+        <td class="num">{{ '%.3f'|format(l.tara if l.tara is not none else 0) }}</td>
+        <td class="num">{{ '%.3f'|format(l.peso_bruto if l.peso_bruto is not none else l.peso) }}</td>
         <td>{{ l.balanca_codigo }}</td>
         <td>{{ 'Sim' if l.estavel else 'Não' }}</td>
         <td>{{ l.computador or '-' }}{% if l.porta_com %} / {{ l.porta_com }}{% endif %}</td>
       </tr>
       {% else %}
       <tr>
-        <td colspan="7" style="text-align:center;padding:1rem;">Nenhuma leitura neste filtro.</td>
+        <td colspan="9" style="text-align:center;padding:1rem;">Nenhuma leitura neste filtro.</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -132,7 +136,7 @@
       <tr>
         <td colspan="3">Total ({{ total }} leitura{{ 's' if total != 1 else '' }})</td>
         <td class="num">{{ '%.2f'|format(soma) }}</td>
-        <td colspan="3"></td>
+        <td colspan="5"></td>
       </tr>
     </tfoot>
     {% endif %}

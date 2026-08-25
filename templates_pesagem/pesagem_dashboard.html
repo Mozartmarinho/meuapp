@@ -114,7 +114,9 @@
         <tr>
           <th>Data/Hora</th>
           <th>Cliente</th>
-          <th>Peso</th>
+          <th>Líquido</th>
+          <th>Tara</th>
+          <th>Bruto</th>
           <th>Balança</th>
           <th>Estável</th>
           <th>Origem</th>
@@ -127,7 +129,9 @@
         <tr>
           <td style="white-space:nowrap;">{{ l.data_leitura }}</td>
           <td>{{ l.cliente_nome or '-' }}</td>
-          <td><strong>{{ '%.3f'|format(l.peso) }}</strong> {{ l.unidade }}</td>
+          <td><strong>{{ '%.3f'|format(l.peso_liquido if l.peso_liquido is not none else l.peso) }}</strong> {{ l.unidade }}</td>
+          <td>{{ '%.3f'|format(l.tara if l.tara is not none else 0) }} {{ l.unidade }}</td>
+          <td>{{ '%.3f'|format(l.peso_bruto if l.peso_bruto is not none else l.peso) }} {{ l.unidade }}</td>
           <td>{{ l.balanca_codigo }}</td>
           <td>{{ 'Sim' if l.estavel else 'Não' }}</td>
           <td>{{ l.origem }}</td>
@@ -136,7 +140,7 @@
         </tr>
         {% else %}
         <tr>
-          <td colspan="8" style="text-align:center;padding:1.5rem;color:#64748b;">
+          <td colspan="10" style="text-align:center;padding:1.5rem;color:#64748b;">
             Nenhuma leitura no filtro selecionado. Envie pesos pelo agente com cliente selecionado.
           </td>
         </tr>
