@@ -1,18 +1,18 @@
 @echo off
 chcp 65001 >nul
-cd /d "%~dp0"
+title São Geraldo Service
 setlocal EnableDelayedExpansion
 
 echo ========================================
-echo   MeuApp - Inicializacao
+echo   São Geraldo Service
 echo ========================================
 echo.
 
-REM Atalho da area de trabalho deve apontar para ESTE arquivo na pasta do
-REM repositorio meuapp (nao uma copia solta). Assim o git pull funciona.
+REM Atalho da area de trabalho: "São Geraldo Service"
+REM Sempre trabalha na pasta do clone git (nao numa copia solta).
 
 REM --- Encerrar instancia antiga (porta 80 continua servindo o codigo velho) ---
-echo [1/5] Encerrando app.py antigo na porta 80...
+echo [1/6] Encerrando app.py antigo na porta 80...
 call :parar_app
 if "!PAROU!"=="1" (
     echo       Instancia anterior encerrada. Aguardando a porta 80 liberar...
@@ -21,8 +21,63 @@ if "!PAROU!"=="1" (
     echo       Nenhuma instancia anterior encontrada.
 )
 
-REM --- Git no PATH do atalho da area de trabalho (muitas vezes nao vem) ---
+REM --- Pasta do repositorio (atalho da area de trabalho pode estar em outro lugar) ---
+echo [2/6] Localizando pasta do MeuApp...
+set "APP_DIR="
 set "PATH=%PATH%;C:\Program Files\Git\cmd;C:\Program Files\Git\bin;C:\Program Files (x86)\Git\cmd"
+
+set "HERE=%~dp0"
+if "%HERE:~-1%"=="\" set "HERE=%HERE:~0,-1%"
+if exist "%HERE%\scripts\desktop_sao_geraldo.ps1" (
+    for /f "usebackq delims=" %%D in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%HERE%\scripts\desktop_sao_geraldo.ps1" -AppDir "%HERE%"`) do (
+        if not defined APP_DIR set "APP_DIR=%%D"
+    )
+)
+
+if not defined APP_DIR if exist "%HERE%\app.py" if exist "%HERE%\.git" set "APP_DIR=%HERE%"
+if not defined APP_DIR if exist "%LOCALAPPDATA%\MeuApp\repo_path.txt" (
+    set /p APP_DIR=<"%LOCALAPPDATA%\MeuApp\repo_path.txt"
+)
+if defined APP_DIR (
+    set "APP_DIR=!APP_DIR:"=!"
+    if "!APP_DIR:~-1!"=="\" set "APP_DIR=!APP_DIR:~0,-1!"
+)
+if defined APP_DIR if not exist "!APP_DIR!\app.py" set "APP_DIR="
+if defined APP_DIR if not exist "!APP_DIR!\.git" set "APP_DIR="
+
+if not defined APP_DIR (
+    for %%D in (
+        "%USERPROFILE%\meuapp"
+        "%USERPROFILE%\Documents\meuapp"
+        "%USERPROFILE%\Downloads\meuapp"
+        "%USERPROFILE%\Desktop\meuapp"
+        "%USERPROFILE%\OneDrive\Desktop\meuapp"
+        "C:\meuapp"
+        "D:\meuapp"
+    ) do (
+        if exist "%%~D\app.py" if exist "%%~D\.git" if not defined APP_DIR set "APP_DIR=%%~D"
+    )
+)
+
+if not defined APP_DIR (
+    echo       ERRO: nao achei o clone git do meuapp.
+    echo               O atalho "São Geraldo Service" precisa apontar para
+    echo               iniciar_meuapp.bat DENTRO da pasta do repositorio
+    echo               (onde existem app.py e a pasta .git).
+    echo.
+    pause
+    exit /b 1
+)
+
+cd /d "!APP_DIR!"
+echo       Pasta: !APP_DIR!
+
+if exist "!APP_DIR!\scripts\desktop_sao_geraldo.ps1" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "!APP_DIR!\scripts\desktop_sao_geraldo.ps1" -AppDir "!APP_DIR!" >nul
+    echo       Atalho da area de trabalho: São Geraldo Service
+)
+
+REM --- Git no PATH do atalho da area de trabalho (muitas vezes nao vem) ---
 set "GIT="
 where git >nul 2>&1 && for /f "delims=" %%G in ('where git 2^>nul') do (
     if not defined GIT set "GIT=%%G"
@@ -31,46 +86,41 @@ if not defined GIT if exist "C:\Program Files\Git\cmd\git.exe" set "GIT=C:\Progr
 if not defined GIT if exist "C:\Program Files\Git\bin\git.exe" set "GIT=C:\Program Files\Git\bin\git.exe"
 if not defined GIT if exist "C:\Program Files (x86)\Git\cmd\git.exe" set "GIT=C:\Program Files (x86)\Git\cmd\git.exe"
 
-REM --- Codigo do GitHub (atalho e servidor usam a main) ---
-echo [2/5] Atualizando codigo do GitHub (branch main)...
+REM --- Codigo do GitHub ---
+echo [3/6] Atualizando codigo do GitHub (branch main)...
 set "GIT_OK=0"
-if not exist "%~dp0.git" (
-    echo       ERRO: esta pasta nao e um clone git.
-    echo               Aponte o atalho da area de trabalho para iniciar_meuapp.bat
-    echo               DENTRO da pasta do repositorio meuapp (onde existe a pasta .git).
-    echo               Sem isso o http://127.0.0.1/nutricao fica na versao antiga.
-) else if not defined GIT (
-    echo       ERRO: git nao encontrado. Instale o Git for Windows ou coloque git.exe no PATH.
+if not defined GIT (
+    echo       ERRO: git nao encontrado. Instale o Git for Windows.
     echo               O app vai subir com o codigo que ja esta nesta pasta.
 ) else (
     set "GIT_TERMINAL_PROMPT=0"
-    "%GIT%" -C "%~dp0" fetch origin main
+    "%GIT%" -C "!APP_DIR!" fetch origin main
     if errorlevel 1 (
         echo       AVISO: nao consegui buscar origin/main (rede ou login do GitHub).
         echo               O app vai subir com o codigo que ja esta nesta pasta.
     ) else (
-            "%GIT%" -C "%~dp0" checkout --force -B main origin/main
+        "%GIT%" -C "!APP_DIR!" checkout --force -B main origin/main
+        if errorlevel 1 (
+            echo       AVISO: nao deu para ir para a main. Feche arquivos abertos e tente de novo.
+        ) else (
+            "%GIT%" -C "!APP_DIR!" reset --hard origin/main
             if errorlevel 1 (
-                echo       AVISO: nao deu para ir para a main. Feche o app e arquivos abertos e tente de novo.
+                echo       AVISO: nao deu para alinhar com origin/main.
             ) else (
-                "%GIT%" -C "%~dp0" reset --hard origin/main
-                if errorlevel 1 (
-                    echo       AVISO: nao deu para alinhar com origin/main.
-                ) else (
-                    set "GIT_OK=1"
-                    echo       Atualizado para origin/main.
-                )
+                set "GIT_OK=1"
+                echo       Atualizado para origin/main.
             )
+        )
     )
-    echo       Git: %GIT%
+    echo       Git: !GIT!
     echo       Branch:
-    "%GIT%" -C "%~dp0" rev-parse --abbrev-ref HEAD
+    "%GIT%" -C "!APP_DIR!" rev-parse --abbrev-ref HEAD
     echo       Commit:
-    "%GIT%" -C "%~dp0" log -1 --oneline
+    "%GIT%" -C "!APP_DIR!" log -1 --oneline
 )
 
 REM --- MySQL84 ---
-echo [3/5] Verificando MySQL84...
+echo [4/6] Verificando MySQL84...
 sc query MySQL84 | findstr /i "RUNNING" >nul 2>&1
 if %errorlevel%==0 (
     echo       MySQL84 ja esta em execucao.
@@ -89,9 +139,9 @@ if %errorlevel%==0 (
 )
 
 REM --- Python ---
-echo [4/5] Definindo interpretador Python...
-if exist "%~dp0.venv\Scripts\python.exe" (
-    set "PYTHON=%~dp0.venv\Scripts\python.exe"
+echo [5/6] Definindo interpretador Python...
+if exist "!APP_DIR!\.venv\Scripts\python.exe" (
+    set "PYTHON=!APP_DIR!\.venv\Scripts\python.exe"
     echo       Usando: .venv\Scripts\python.exe
 ) else if exist "%LocalAppData%\Programs\Python\Python312\python.exe" (
     set "PYTHON=%LocalAppData%\Programs\Python\Python312\python.exe"
@@ -101,19 +151,19 @@ if exist "%~dp0.venv\Scripts\python.exe" (
     echo       Usando: python (PATH)
 )
 
-REM --- Browser (cache-buster para nao reabrir a tela antiga) ---
-echo [5/5] Abrindo http://127.0.0.1/nutricao em alguns segundos...
+REM --- Browser ---
+echo [6/6] Abrindo http://127.0.0.1/nutricao em alguns segundos...
 for /f %%T in ('powershell -NoProfile -Command "Get-Date -UFormat %%s"') do set "TS=%%T"
 if not defined TS set "TS=%RANDOM%"
 start "" cmd /c "timeout /t 3 /nobreak >nul & start http://127.0.0.1/nutricao?v=!TS!"
 
 echo.
 if "!GIT_OK!"=="1" (
-    echo Codigo alinhado com o GitHub. Iniciando app.py...
+    echo Codigo alinhado com o GitHub. Iniciando São Geraldo Service...
 ) else (
-    echo ATENCAO: nao atualizei do GitHub. Se a tela continuar antiga,
-    echo          feche esta janela, rode parar_meuapp.bat e tente de novo
-    echo          com internet e Git instalado.
+    echo ATENCAO: nao atualizei do GitHub. Se a tela continuar antiga:
+    echo          1. Feche esta janela preta
+    echo          2. Clique de novo no atalho São Geraldo Service
 )
 echo Logs abaixo. Feche esta janela ou use parar_meuapp.bat para encerrar.
 echo ========================================
@@ -140,7 +190,6 @@ for %%I in (python.exe pythonw.exe) do (
         )
     )
 )
-REM Libera a porta 80 se ainda houver python escutando (codigo velho no 127.0.0.1)
 for /f "tokens=5" %%A in ('netstat -aon 2^>nul ^| findstr /R /C:":80 .*LISTENING"') do (
     set "PPID=%%A"
     if defined PPID (
