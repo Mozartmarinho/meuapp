@@ -1,0 +1,96 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="imp-mapa">
+<div class="page-header">
+  <h1>Impressão mapa da nutrição</h1>
+  <p>Imprime o mapa de produção filtrado por clínica e período</p>
+</div>
+
+<div class="card imp-panel">
+  <fieldset class="imp-box">
+    <legend>Filtros</legend>
+    <div class="imp-grid">
+      <div class="form-group">
+        <label class="form-label" for="fClinica">Clínica</label>
+        <select class="form-control" id="fClinica">
+          <option value="">Todas</option>
+          {% for c in clinicas or [] %}
+          <option value="{{ c.nome }}">{{ c.nome }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="fDe">Período de</label>
+        <input class="form-control" type="date" id="fDe" value="{{ data_padrao }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="fAte">até</label>
+        <input class="form-control" type="date" id="fAte" value="{{ data_padrao }}">
+      </div>
+    </div>
+  </fieldset>
+
+  <div class="imp-actions">
+    <button type="button" class="btn btn-primary" onclick="imprimirMapa()">
+      <i class="fas fa-print"></i> Imprimir
+    </button>
+    <button type="button" class="btn btn-ghost" onclick="location.href='{{ url_for('nutricao.dashboard') }}'">
+      <i class="fas fa-times"></i> Fechar
+    </button>
+  </div>
+</div>
+</div>
+
+<style>
+.imp-mapa .page-header { margin-bottom: 1rem; }
+.imp-mapa .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.imp-mapa .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.imp-mapa .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.imp-mapa .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+.imp-mapa .form-control {
+  padding: 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+.imp-mapa .imp-panel { padding: 0.88rem 1rem 1.12rem; max-width: 640px; }
+.imp-mapa .imp-box {
+  border: 1px solid #dbe3ee;
+  border-radius: 6px;
+  padding: 0.6rem 0.72rem 0.76rem;
+  margin: 0 0 0.8rem;
+  background: #f8fafc;
+}
+.imp-mapa .imp-box legend { font-size: 0.66rem; font-weight: 700; color: #334155; padding: 0 0.28rem; }
+.imp-mapa .imp-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 0.7rem;
+}
+.imp-mapa .imp-actions { display: flex; gap: 0.44rem; flex-wrap: wrap; }
+@media (max-width: 700px) {
+  .imp-mapa .imp-grid { grid-template-columns: 1fr; }
+}
+</style>
+
+<script>
+function imprimirMapa(){
+  const de = document.getElementById('fDe').value;
+  const ate = document.getElementById('fAte').value;
+  if (!de || !ate){
+    showToast('Informe o período','error');
+    return;
+  }
+  if (ate < de){
+    showToast('A data final não pode ser menor que a inicial','error');
+    return;
+  }
+  const qs = new URLSearchParams({ data_de: de, data_ate: ate });
+  const clinica = document.getElementById('fClinica').value || '';
+  if (clinica) qs.set('clinica', clinica);
+  window.open('{{ url_for("nutricao.impressao_mapa_imprimir") }}?' + qs.toString(), '_blank');
+}
+</script>
+{% endblock %}

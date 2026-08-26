@@ -183,6 +183,12 @@
                 </a>
             </li>
             <li>
+                <a href="{{ url_for('nutricao.impressao_mapa') }}" class="{% if active_page == 'impressao_mapa' %}active{% endif %}" title="Impressão mapa da nutrição">
+                    <i class="fas fa-file-alt menu-icon"></i>
+                    <span class="menu-label">Impressão mapa da nutrição</span>
+                </a>
+            </li>
+            <li>
                 <a href="/nutricao/totalizacao-dietas" class="{% if active_page == 'totalizacao_dietas' %}active{% endif %}" title="Totalização de Dietas">
                     <i class="fas fa-calculator menu-icon"></i>
                     <span class="menu-label">Totalização de Dietas</span>

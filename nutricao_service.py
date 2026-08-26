@@ -4392,3 +4392,120 @@ def gerar_impressao_etiquetas(
         'paginas': paginas,
         'total': len(etiquetas),
     }
+
+
+def _fmt_data_br(valor):
+    if not valor:
+        return ''
+    if isinstance(valor, datetime):
+        valor = valor.date() if hasattr(valor, 'date') else valor
+    if isinstance(valor, date):
+        return valor.strftime('%d/%m/%Y')
+    s = str(valor).strip()
+    if len(s) >= 10 and s[4] == '-' and s[7] == '-':
+        return f'{s[8:10]}/{s[5:7]}/{s[0:4]}'
+    return s
+
+
+def _marca_x(valor):
+    return 'X' if valor else ''
+
+
+def _marca_isolamento(row):
+    """Coluna I do mapa impresso: isolamento indicado em diagnóstico/obs."""
+    texto = ' '.join([
+        row.diagnostico or '',
+        row.observacoes or '',
+        row.obs_etiqueta or '',
+    ]).upper()
+    return any(chave in texto for chave in ('ISOLAMENTO', 'ISOLADO', 'ISOL.'))
+
+
+def gerar_impressao_mapa(data_de=None, data_ate=None, clinica_nome=None):
+    """Relatório do mapa de produção: linhas do período com totais de dietas e refeições."""
+    data_de = data_de or date.today()
+    data_ate = data_ate or data_de
+    if data_ate < data_de:
+        data_de, data_ate = data_ate, data_de
+
+    q = apply_cliente_filter(
+        NutMapaRefeicao.query.filter(
+            NutMapaRefeicao.data_refeicao >= data_de,
+            NutMapaRefeicao.data_refeicao <= data_ate,
+        ),
+        NutMapaRefeicao,
+    )
+    nome_cli = (clinica_nome or '').strip()
+    if nome_cli and nome_cli != '__todas__':
+        q = q.filter(db.func.upper(NutMapaRefeicao.clinica) == nome_cli.upper())
+    rows = q.order_by(
+        NutMapaRefeicao.data_refeicao,
+        NutMapaRefeicao.clinica,
+        NutMapaRefeicao.enfermaria,
+        NutMapaRefeicao.leito,
+        NutMapaRefeicao.nome,
+    ).all()
+
+    linhas = []
+    totais_refeicao = {
+        'desjejum': 0, 'colacao': 0, 'almoco': 0,
+        'merenda': 0, 'jantar': 0, 'ceia': 0,
+    }
+    dietas = {}
+    for row in rows:
+        if not (row.nome or '').strip() and not (row.leito or '').strip():
+            continue
+        fl = {
+            'desjejum': bool(row.fl_desjejum),
+            'colacao': bool(row.fl_colacao),
+            'almoco': bool(row.fl_almoco),
+            'merenda': bool(row.fl_merenda),
+            'jantar': bool(row.fl_jantar),
+            'ceia': bool(row.fl_ceia),
+        }
+        for chave, on in fl.items():
+            if on:
+                totais_refeicao[chave] += 1
+        dieta = (row.dieta or '').strip() or '(sem dieta)'
+        dietas[dieta] = dietas.get(dieta, 0) + 1
+        linhas.append({
+            'data': row.data_refeicao.isoformat() if row.data_refeicao else '',
+            'data_label': _fmt_data_br(row.data_refeicao),
+            'clinica': row.clinica or '',
+            'enfermaria': row.enfermaria or '',
+            'admissao': _fmt_data_br(row.adm),
+            'leito': row.leito or '',
+            'prontuario': row.prontuario or '',
+            'nome': row.nome or '',
+            'idade': row.idade if row.idade is not None else '',
+            'diagnostico': row.diagnostico or '',
+            'dieta': dieta if dieta != '(sem dieta)' else '',
+            'isolamento': _marca_x(_marca_isolamento(row)),
+            'obs': row.observacoes or '',
+            'd': _marca_x(fl['desjejum']),
+            'c': _marca_x(fl['colacao']),
+            'a': _marca_x(fl['almoco']),
+            'm': _marca_x(fl['merenda']),
+            'j': _marca_x(fl['jantar']),
+            'ceia': _marca_x(fl['ceia']),
+            'saida': _fmt_data_br(row.data_saida),
+        })
+
+    soma_dietas = [
+        {'nome': nome, 'qtd': qtd}
+        for nome, qtd in sorted(dietas.items(), key=lambda item: item[0].upper())
+    ]
+    return {
+        'data_de': data_de.isoformat(),
+        'data_ate': data_ate.isoformat(),
+        'data_de_label': _fmt_data_br(data_de),
+        'data_ate_label': _fmt_data_br(data_ate),
+        'periodo_unico': data_de == data_ate,
+        'clinica': nome_cli if nome_cli and nome_cli != '__todas__' else '',
+        'clinica_label': nome_cli if nome_cli and nome_cli != '__todas__' else 'Todas',
+        'data_hora_relatorio': fmt_brasilia(now_brasilia(), '%d/%m/%Y %H:%M'),
+        'linhas': linhas,
+        'total_dietas': len(linhas),
+        'soma_dietas': soma_dietas,
+        'totais_refeicao': totais_refeicao,
+    }

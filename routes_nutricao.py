@@ -67,6 +67,7 @@ from nutricao_service import (
     registrar_saida_mapa,
     list_modelos_etiqueta_impressao,
     gerar_impressao_etiquetas,
+    gerar_impressao_mapa,
     get_mapa_substituicoes,
     save_mapa_substituicoes,
     importar_substituicoes_anteriores,
@@ -2692,6 +2693,35 @@ def impressao_etiquetas_imprimir():
         'nutricao_impressao_etiquetas_print.html',
         r=rel,
         **active('impressao_etiquetas')
+    )
+
+
+@nutricao.route('/nutricao/impressao-mapa')
+def impressao_mapa():
+    seed_nutricao()
+    return render_template(
+        'nutricao_impressao_mapa.html',
+        clinicas=_list_clinicas_db(somente_ativas=True),
+        data_padrao=date.today().isoformat(),
+        **active('impressao_mapa')
+    )
+
+
+@nutricao.route('/nutricao/impressao-mapa/imprimir')
+def impressao_mapa_imprimir():
+    seed_nutricao()
+    data_de = _parse_date(request.args.get('data_de')) or date.today()
+    data_ate = _parse_date(request.args.get('data_ate')) or data_de
+    clinica = (request.args.get('clinica') or '').strip()
+    rel = gerar_impressao_mapa(
+        data_de=data_de,
+        data_ate=data_ate,
+        clinica_nome=clinica or None,
+    )
+    return render_template(
+        'nutricao_impressao_mapa_print.html',
+        r=rel,
+        **active('impressao_mapa')
     )
 
 

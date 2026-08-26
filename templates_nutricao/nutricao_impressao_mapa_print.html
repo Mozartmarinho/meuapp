@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Impressão mapa da nutrição — {{ r.data_de_label }}</title>
+  <style>
+    @page { margin: 8mm; size: A4 landscape; }
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      color: #000;
+      margin: 0;
+      padding: 10px 12px 20px;
+      font-size: 10px;
+    }
+    .head-top {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+      font-size: 11px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 14px;
+      margin: 2px 0 8px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .filtros {
+      font-size: 10px;
+      margin-bottom: 8px;
+      line-height: 1.35;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: auto;
+    }
+    th, td {
+      border: 1px solid #000;
+      padding: 2px 4px;
+      vertical-align: middle;
+      font-size: 9px;
+    }
+    th {
+      text-align: center;
+      background: #f3f3f3;
+      font-weight: 700;
+    }
+    td.flag, th.flag { text-align: center; width: 18px; font-weight: 700; }
+    td.nome { text-align: left; }
+    td.num { text-align: center; }
+    tr.grupo td {
+      background: #0f2a56;
+      color: #fff;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    tr.totais td { font-weight: 700; background: #eee; }
+    .resumo {
+      margin-top: 10px;
+      display: flex;
+      gap: 24px;
+      align-items: flex-start;
+    }
+    .resumo table { width: auto; min-width: 280px; }
+    .no-print { margin-bottom: 8px; }
+    @media print {
+      .no-print { display: none !important; }
+      body { padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <button onclick="window.print()">Imprimir</button>
+    <button onclick="window.close()" style="margin-left:6px">Fechar</button>
+  </div>
+
+  <div class="head-top">
+    <span>Período: {{ r.data_de_label }}{% if not r.periodo_unico %} a {{ r.data_ate_label }}{% endif %}</span>
+    <span>Data/hora relatório: {{ r.data_hora_relatorio }}</span>
+  </div>
+  <h1>São Geraldo Refeições e Alimentos — MAPA DA NUTRIÇÃO</h1>
+  <div class="filtros">
+    <strong>Clínica:</strong> {{ r.clinica_label }}
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        {% if not r.periodo_unico %}<th>Data</th>{% endif %}
+        <th>Admissão</th>
+        <th>Leito</th>
+        <th>Prontuário</th>
+        <th>Nome</th>
+        <th>Idade</th>
+        <th>Diagnóstico</th>
+        <th>Dieta</th>
+        <th class="flag">I</th>
+        <th>Obs</th>
+        <th class="flag">D</th>
+        <th class="flag">C</th>
+        <th class="flag">A</th>
+        <th class="flag">M</th>
+        <th class="flag">J</th>
+        <th class="flag">C</th>
+        <th>Saída</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% set ns = namespace(last='') %}
+      {% for row in r.linhas %}
+        {% set chave = row.data ~ '|' ~ row.clinica %}
+        {% if chave != ns.last %}
+          {% set ns.last = chave %}
+          <tr class="grupo">
+            <td colspan="{% if r.periodo_unico %}16{% else %}17{% endif %}">
+              {% if not r.periodo_unico %}{{ row.data_label }} — {% endif %}{{ row.clinica or 'Sem clínica' }}
+            </td>
+          </tr>
+        {% endif %}
+        <tr>
+          {% if not r.periodo_unico %}<td>{{ row.data_label }}</td>{% endif %}
+          <td>{{ row.admissao }}</td>
+          <td>{{ row.leito }}</td>
+          <td>{{ row.prontuario }}</td>
+          <td class="nome">{{ row.nome }}</td>
+          <td class="num">{{ row.idade }}</td>
+          <td>{{ row.diagnostico }}</td>
+          <td>{{ row.dieta }}</td>
+          <td class="flag">{{ row.isolamento }}</td>
+          <td>{{ row.obs }}</td>
+          <td class="flag">{{ row.d }}</td>
+          <td class="flag">{{ row.c }}</td>
+          <td class="flag">{{ row.a }}</td>
+          <td class="flag">{{ row.m }}</td>
+          <td class="flag">{{ row.j }}</td>
+          <td class="flag">{{ row.ceia }}</td>
+          <td>{{ row.saida }}</td>
+        </tr>
+      {% else %}
+        <tr>
+          <td colspan="{% if r.periodo_unico %}16{% else %}17{% endif %}" style="text-align:center;padding:14px;">
+            Nenhum paciente no mapa para os filtros selecionados.
+          </td>
+        </tr>
+      {% endfor %}
+      {% if r.linhas %}
+      <tr class="totais">
+        <td colspan="{% if r.periodo_unico %}7{% else %}8{% endif %}" style="text-align:right">TOTAL DIETAS: {{ r.total_dietas }}</td>
+        <td class="flag"></td>
+        <td></td>
+        <td class="flag">{{ r.totais_refeicao.desjejum }}</td>
+        <td class="flag">{{ r.totais_refeicao.colacao }}</td>
+        <td class="flag">{{ r.totais_refeicao.almoco }}</td>
+        <td class="flag">{{ r.totais_refeicao.merenda }}</td>
+        <td class="flag">{{ r.totais_refeicao.jantar }}</td>
+        <td class="flag">{{ r.totais_refeicao.ceia }}</td>
+        <td></td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  {% if r.soma_dietas %}
+  <div class="resumo">
+    <table>
+      <thead>
+        <tr>
+          <th style="text-align:left">Soma total dietas</th>
+          <th>Qtd</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in r.soma_dietas %}
+        <tr>
+          <td class="nome">{{ d.nome }}</td>
+          <td class="num">{{ d.qtd }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="totais">
+          <td class="nome">TOTAL</td>
+          <td class="num">{{ r.total_dietas }}</td>
+        </tr>
+        <tr class="totais">
+          <td class="nome">D / C / A / M / J / C</td>
+          <td class="num">{{ r.totais_refeicao.desjejum }} / {{ r.totais_refeicao.colacao }} / {{ r.totais_refeicao.almoco }} / {{ r.totais_refeicao.merenda }} / {{ r.totais_refeicao.jantar }} / {{ r.totais_refeicao.ceia }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <script>
+    window.addEventListener('load', function(){ setTimeout(function(){ window.print(); }, 350); });
+  </script>
+</body>
+</html>
