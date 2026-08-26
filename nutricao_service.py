@@ -4130,6 +4130,34 @@ HORARIO_ETIQUETA = {
     'ceia': {'flag': 'fl_ceia', 'label': 'Ceia', 'valido_ate': '22:30'},
 }
 
+# Gabarito oficial Pimaco (cm → mm). 6080/6180: Carta 3×10, 66,7×25,4 mm.
+GEOMETRIA_ETIQUETA = {
+    '6080': {
+        'page': 'letter', 'page_w': 215.9, 'page_h': 279.4,
+        'm_top': 12.7, 'm_left': 4.8, 'm_right': 4.8, 'm_bottom': 12.7,
+        'label_w': 66.7, 'label_h': 25.4, 'gap_x': 3.1, 'gap_y': 0,
+        'pad_t': 3.4, 'pad_x': 3.6, 'pad_b': 1.6,
+    },
+    '6082': {
+        'page': 'letter', 'page_w': 215.9, 'page_h': 279.4,
+        'm_top': 21.2, 'm_left': 4.0, 'm_right': 4.0, 'm_bottom': 21.2,
+        'label_w': 101.6, 'label_h': 33.9, 'gap_x': 5.2, 'gap_y': 0,
+        'pad_t': 3.2, 'pad_x': 3.5, 'pad_b': 1.6,
+    },
+    'A4350': {
+        'page': 'A4', 'page_w': 210.0, 'page_h': 297.0,
+        'm_top': 9.0, 'm_left': 4.7, 'm_right': 4.7, 'm_bottom': 9.0,
+        'label_w': 99.0, 'label_h': 55.8, 'gap_x': 2.6, 'gap_y': 0,
+        'pad_t': 4.0, 'pad_x': 4.0, 'pad_b': 2.0,
+    },
+    'A4356': {
+        'page': 'A4', 'page_w': 210.0, 'page_h': 297.0,
+        'm_top': 8.8, 'm_left': 7.2, 'm_right': 7.2, 'm_bottom': 8.8,
+        'label_w': 63.5, 'label_h': 25.4, 'gap_x': 2.6, 'gap_y': 0,
+        'pad_t': 3.2, 'pad_x': 3.2, 'pad_b': 1.5,
+    },
+}
+
 MODELOS_ETIQUETA_PRE = [
     {'id': '6080', 'nome': '6080 (30 etiquetas)', 'cols': 3, 'rows': 10, 'fonte': 7},
     {'id': '6082', 'nome': '6082 (14 etiquetas)', 'cols': 2, 'rows': 7, 'fonte': 8},
@@ -4172,6 +4200,14 @@ def list_modelos_etiqueta_impressao():
             'fonte': int(e.get('tamanho_fonte') or 7),
             'num_colunas': int(e.get('num_colunas') or 0) or None,
             'altura_etiqueta_mm': e.get('altura_etiqueta_mm') or 0,
+            'margem_superior': e.get('margem_superior') or 0,
+            'margem_esquerda': e.get('margem_esquerda') or 0,
+            'margem_direita': e.get('margem_direita') or 0,
+            'margem_inferior': e.get('margem_inferior') or 0,
+            'dist_colunas_mm': e.get('dist_colunas_mm') or 0,
+            'folha_largura_mm': e.get('folha_largura_mm') or 0,
+            'folha_altura_mm': e.get('folha_altura_mm') or 0,
+            'tamanho_folha': e.get('tamanho_folha') or '',
         })
         nomes_vistos.add(display.upper())
         nomes_vistos.add(nome_u)
@@ -4188,24 +4224,87 @@ def list_modelos_etiqueta_impressao():
     }
 
 
+def _geometria_etiqueta(base_id, extra=None):
+    """Medidas oficiais do modelo + overrides do cadastro (mm)."""
+    geom = dict(GEOMETRIA_ETIQUETA.get(base_id) or GEOMETRIA_ETIQUETA['6080'])
+    extra = extra or {}
+    mapa = {
+        'm_top': extra.get('margem_superior') or extra.get('m_top'),
+        'm_left': extra.get('margem_esquerda') or extra.get('m_left'),
+        'm_right': extra.get('margem_direita') or extra.get('m_right'),
+        'm_bottom': extra.get('margem_inferior') or extra.get('m_bottom'),
+        'label_h': extra.get('altura_etiqueta_mm') or extra.get('label_h'),
+        'gap_x': extra.get('dist_colunas_mm') or extra.get('gap_x'),
+        'page_w': extra.get('folha_largura_mm') or extra.get('page_w'),
+        'page_h': extra.get('folha_altura_mm') or extra.get('page_h'),
+    }
+    for chave, valor in mapa.items():
+        try:
+            num = float(valor or 0)
+        except (TypeError, ValueError):
+            num = 0
+        if num > 0:
+            geom[chave] = num
+    folha = (extra.get('tamanho_folha') or extra.get('page') or geom.get('page') or 'letter').strip().lower()
+    if folha in ('a4', 'letter', 'carta'):
+        geom['page'] = 'A4' if folha == 'a4' else 'letter'
+        if folha == 'a4' and not extra.get('folha_largura_mm'):
+            geom['page_w'] = 210.0
+            geom['page_h'] = 297.0
+    cols = int(extra.get('cols') or extra.get('num_colunas') or 0)
+    cadastro_alterou = any(
+        extra.get(k)
+        for k in ('margem_esquerda', 'folha_largura_mm', 'dist_colunas_mm', 'margem_direita')
+    )
+    if cadastro_alterou and cols >= 2 and geom.get('page_w'):
+        resto = geom['page_w'] - geom['m_left'] - geom['m_right'] - geom['gap_x'] * (cols - 1)
+        largura = resto / cols
+        if 20 <= largura <= 120:
+            geom['label_w'] = round(largura, 2)
+    return geom
+
+
+def _posicoes_etiquetas(geom, cols, rows):
+    pitch_x = geom['label_w'] + geom['gap_x']
+    pitch_y = geom['label_h'] + geom['gap_y']
+    posicoes = []
+    for i in range(cols * rows):
+        col = i % cols
+        row = i // cols
+        posicoes.append({
+            'top': round(geom['m_top'] + row * pitch_y, 2),
+            'left': round(geom['m_left'] + col * pitch_x, 2),
+        })
+    return posicoes
+
+
 def _resolver_modelo_etiqueta(modelo_id):
     modelos = list_modelos_etiqueta_impressao()
     mid = (modelo_id or '6080').strip()
-    def _pack(m):
+
+    def _pack(m, extra=None):
         fonte = int(m.get('fonte') or 7)
-        return {
+        cols = int(m.get('cols') or 3)
+        rows = int(m.get('rows') or 10)
+        extra = dict(extra or {})
+        extra['cols'] = cols
+        geom = _geometria_etiqueta(m.get('base') or m.get('id') or '6080', extra)
+        packed = {
             'id': m['id'],
             'nome': m['nome'],
-            'cols': m['cols'],
-            'rows': m['rows'],
+            'cols': cols,
+            'rows': rows,
             'fonte': fonte,
             'fonte_obs': max(fonte - 1, 5),
-            'por_pagina': m['cols'] * m['rows'],
+            'por_pagina': cols * rows,
         }
+        packed.update(geom)
+        packed['posicoes'] = _posicoes_etiquetas(geom, cols, rows)
+        return packed
 
     for m in modelos['preconfigurados']:
         if m['id'] == mid:
-            return _pack(m)
+            return _pack(m, m)
     for m in modelos['personalizados']:
         if m['id'] == mid:
             base = next((p for p in MODELOS_ETIQUETA_PRE if p['id'] == m.get('base')), MODELOS_ETIQUETA_PRE[0])
@@ -4213,14 +4312,19 @@ def _resolver_modelo_etiqueta(modelo_id):
             rows = base['rows']
             if cols == 3 and base['id'] == '6080':
                 rows = 10
+            extra = dict(m)
+            extra['id'] = base['id']
+            extra['base'] = base['id']
+            extra['cols'] = cols
             return _pack({
                 'id': m['id'],
                 'nome': m['nome'],
                 'cols': cols,
                 'rows': rows,
                 'fonte': int(m.get('fonte') or base['fonte']),
-            })
-    return _pack(MODELOS_ETIQUETA_PRE[0])
+                'base': base['id'],
+            }, extra)
+    return _pack(MODELOS_ETIQUETA_PRE[0], MODELOS_ETIQUETA_PRE[0])
 
 
 def _obs_linha_etiqueta(row):
