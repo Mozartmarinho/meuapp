@@ -25,6 +25,8 @@ from nutricao_service import (
     seed_nutricao,
     paciente_from_payload,
     mapa_from_paciente,
+    criar_lancamento_dieta_desde_linha,
+    garantir_grupo_lancamento,
     garantir_mapa_do_dia,
     marcar_alteracao_mapa,
     leito_ocupado_no_mapa,
@@ -35,6 +37,7 @@ from nutricao_service import (
     paciente_ativo_no_mapa,
     MSG_ACOMP_SO_SAIDA_MAPA,
     garantir_acompanhantes_do_dia,
+    normalizar_tipo_lancamento,
     list_clinicas,
     list_enfermarias,
     list_leitos,
@@ -332,7 +335,7 @@ def api_pacientes():
             clinica_m = (d.get('clinica') or p.clinica or '').strip()
             enfermaria_m = (d.get('enfermaria') or '').strip()
             leito_m = (d.get('leito') or p.leito or '').strip()
-            if leito_ocupado_no_mapa(data_mapa, clinica_m, enfermaria_m, leito_m):
+            if leito_ocupado_no_mapa(data_mapa, clinica_m, enfermaria_m, leito_m, paciente_id=p.id):
                 db.session.rollback()
                 return jsonify({'ok': False, 'error': MSG_LEITO_OCUPADO}), 400
             flags = {fl: bool(d.get(fl, True)) for fl in FLAG_FIELDS}
@@ -342,6 +345,8 @@ def api_pacientes():
                 'prontuario': d.get('prontuario'),
                 'diagnostico': d.get('diagnostico'),
                 'dieta': d.get('dieta'),
+                'dieta_id': d.get('dieta_id'),
+                'tipo_lancamento': 'principal',
                 'observacoes': d.get('observacoes'),
                 'clinica': d.get('clinica'),
                 'enfermaria': d.get('enfermaria'),
@@ -354,6 +359,8 @@ def api_pacientes():
             }
             linha = mapa_from_paciente(p, data_mapa, flags=flags, extras=extras, usuario=_usuario_sessao())
             db.session.add(linha)
+            db.session.flush()
+            garantir_grupo_lancamento(linha)
         db.session.commit()
         payload = {'ok': True, 'id': p.id, 'paciente': p.to_dict()}
         if linha:
@@ -385,20 +392,23 @@ def api_paciente(pid):
     d = request.get_json(force=True) or {}
     paciente_from_payload(d, p)
     db.session.commit()
-    # sincroniza snapshot do mapa de hoje se existir
+    # sincroniza snapshot cadastral de TODAS as linhas ativas de hoje (não sobrescreve dieta extra)
     hoje = date.today()
-    linha = NutMapaRefeicao.query.filter_by(data_refeicao=hoje, paciente_id=p.id, ativo=True).first()
-    if linha:
+    linhas = NutMapaRefeicao.query.filter_by(data_refeicao=hoje, paciente_id=p.id, ativo=True).all()
+    for linha in linhas:
         linha.adm = p.admissao
         linha.leito = p.leito
         linha.prontuario = p.prontuario
         linha.nome = p.nome
         linha.idade = p.idade(hoje)
         linha.diagnostico = p.diagnostico
-        linha.dieta = p.dieta
         linha.observacoes = p.observacoes
         linha.clinica = p.clinica
+        tipo = (linha.tipo_lancamento or 'principal')
+        if tipo == 'principal':
+            linha.dieta = p.dieta
         marcar_alteracao_mapa(linha, _usuario_sessao())
+    if linhas:
         db.session.commit()
     return jsonify({'ok': True, 'paciente': p.to_dict()})
 
@@ -424,7 +434,7 @@ def _resolve_dieta_refeicao(d):
     return None, refeicao or None
 
 
-def _list_acompanhantes_db(ativos_only=True, q=None, data_ref=None):
+def _list_acompanhantes_db(ativos_only=True, q=None, data_ref=None, paciente_id=None):
     if data_ref is not None:
         # Garante que o mapa do dia exista e acompanha os acompanhantes
         garantir_mapa_do_dia(data_ref)
@@ -432,6 +442,11 @@ def _list_acompanhantes_db(ativos_only=True, q=None, data_ref=None):
     query = scoped_query(NutRefeicaoAcompanhante)
     if ativos_only:
         query = query.filter_by(ativo=True)
+    if paciente_id:
+        try:
+            query = query.filter(NutRefeicaoAcompanhante.paciente_id == int(paciente_id))
+        except (TypeError, ValueError):
+            pass
     if data_ref is not None:
         query = query.filter(db.or_(
             NutRefeicaoAcompanhante.data_refeicao == data_ref,
@@ -592,9 +607,10 @@ def api_refeicao_acompanhantes():
     q = request.args.get('q') or ''
     ativos = str(request.args.get('ativos', '1')).lower() not in ('0', 'false', 'nao', 'não')
     data_ref = _parse_date(request.args.get('data'))
+    paciente_id = request.args.get('paciente_id', type=int)
     return jsonify({
         'ok': True,
-        'acompanhantes': _list_acompanhantes_db(ativos, q=q, data_ref=data_ref),
+        'acompanhantes': _list_acompanhantes_db(ativos, q=q, data_ref=data_ref, paciente_id=paciente_id),
     })
 
 
@@ -846,24 +862,60 @@ def api_mapa_inserir():
         p.admissao = _parse_date(d.get('admissao')) or p.admissao
 
     data_mapa = _parse_date(d.get('data_mapa')) or date.today()
+    tipo = normalizar_tipo_lancamento(
+        d.get('tipo_lancamento') or ('substituicao' if d.get('substituicao') else None),
+        'principal',
+    )
+    nova_dieta = bool(d.get('nova_dieta') or d.get('substituicao') or tipo in ('adicional', 'substituicao'))
     existe = NutMapaRefeicao.query.filter_by(
         data_refeicao=data_mapa, paciente_id=p.id, ativo=True
     ).first()
-    if existe:
+    if existe and not nova_dieta:
         return jsonify({'ok': False, 'error': 'Paciente já está no mapa deste dia'}), 400
+    if nova_dieta and not existe:
+        return jsonify({'ok': False, 'error': 'Paciente ainda não está no mapa deste dia'}), 400
 
-    clinica = (d.get('clinica') or '').strip()
-    enfermaria = (d.get('enfermaria') or '').strip()
-    leito = (d.get('leito') or '').strip()
-    if not clinica:
-        return jsonify({'ok': False, 'error': 'Informe a clínica'}), 400
-    if not enfermaria:
-        return jsonify({'ok': False, 'error': 'Informe a enfermaria'}), 400
-    if not leito:
-        return jsonify({'ok': False, 'error': 'Informe o leito'}), 400
+    clinica = (d.get('clinica') or '').strip() or (existe.clinica if existe else '')
+    enfermaria = (d.get('enfermaria') or '').strip() or (existe.enfermaria if existe else '')
+    leito = (d.get('leito') or '').strip() or (existe.leito if existe else '')
+    if not nova_dieta:
+        if not clinica:
+            return jsonify({'ok': False, 'error': 'Informe a clínica'}), 400
+        if not enfermaria:
+            return jsonify({'ok': False, 'error': 'Informe a enfermaria'}), 400
+        if not leito:
+            return jsonify({'ok': False, 'error': 'Informe o leito'}), 400
 
-    if leito_ocupado_no_mapa(data_mapa, clinica, enfermaria, leito):
+    if leito_ocupado_no_mapa(data_mapa, clinica, enfermaria, leito, paciente_id=p.id):
         return jsonify({'ok': False, 'error': MSG_LEITO_OCUPADO}), 400
+
+    if nova_dieta:
+        src = existe
+        origem_id = d.get('origem_mapa_id') or d.get('mapa_id')
+        if origem_id:
+            src = _get_scoped_or_404(NutMapaRefeicao, origem_id) or src
+            if src and (src.paciente_id and int(src.paciente_id) != int(p.id)):
+                return jsonify({'ok': False, 'error': 'Lançamento de origem não pertence a este paciente'}), 400
+        flags = {fl: bool(d.get(fl, False)) for fl in FLAG_FIELDS}
+        extras = {
+            'dieta': d.get('dieta'),
+            'dieta_id': d.get('dieta_id'),
+            'observacoes': d.get('observacoes'),
+            'obs_etiqueta': d.get('obs_etiqueta'),
+            'extras': d.get('extras'),
+            'suplementos': d.get('suplementos'),
+            'enteral': d.get('enteral'),
+            'formula_infantil': d.get('formula_infantil'),
+            'lve': d.get('lve'),
+        }
+        linha = criar_lancamento_dieta_desde_linha(
+            src, flags=flags, extras=extras, usuario=_usuario_sessao(), tipo_lancamento=tipo,
+        )
+        db.session.add(linha)
+        db.session.flush()
+        garantir_grupo_lancamento(linha)
+        db.session.commit()
+        return jsonify({'ok': True, 'linha': linha.to_dict(), 'paciente': p.to_dict(), 'novo_lancamento': True})
 
     # Reinserção no mapa: limpa saída anterior para o paciente voltar a persistir nos dias seguintes
     p.ativo = True
@@ -878,6 +930,8 @@ def api_mapa_inserir():
         'prontuario': d.get('prontuario', p.prontuario),
         'diagnostico': d.get('diagnostico', p.diagnostico),
         'dieta': d.get('dieta', p.dieta),
+        'dieta_id': d.get('dieta_id'),
+        'tipo_lancamento': 'principal',
         'observacoes': d.get('observacoes', p.observacoes),
         'clinica': clinica,
         'enfermaria': enfermaria,
@@ -890,8 +944,59 @@ def api_mapa_inserir():
     }
     linha = mapa_from_paciente(p, data_mapa, flags=flags, extras=extras, usuario=_usuario_sessao())
     db.session.add(linha)
+    db.session.flush()
+    garantir_grupo_lancamento(linha)
     db.session.commit()
     return jsonify({'ok': True, 'linha': linha.to_dict(), 'paciente': p.to_dict()})
+
+
+@nutricao.route('/nutricao/api/mapa/<int:mid>/lancamento', methods=['POST'])
+def api_mapa_novo_lancamento(mid):
+    """Cria nova dieta ou substituição vinculada ao mesmo paciente/leito."""
+    seed_nutricao()
+    src = _get_scoped_or_404(NutMapaRefeicao, mid)
+    if not src or not src.ativo:
+        return jsonify({'ok': False, 'error': 'Linha não encontrada'}), 404
+    if not src.paciente_id:
+        return jsonify({'ok': False, 'error': 'Lançamento sem paciente cadastrado'}), 400
+    d = request.get_json(force=True) or {}
+    tipo = normalizar_tipo_lancamento(
+        d.get('tipo_lancamento') or ('substituicao' if d.get('substituicao') else 'adicional'),
+        'adicional',
+    )
+    if tipo == 'principal':
+        tipo = 'adicional'
+    dieta_nome = (d.get('dieta') or '').strip()
+    if not dieta_nome and not d.get('dieta_id'):
+        return jsonify({'ok': False, 'error': 'Selecione a dieta do novo lançamento'}), 400
+    flags = {fl: bool(d.get(fl, False)) for fl in FLAG_FIELDS}
+    if not any(flags.values()):
+        return jsonify({'ok': False, 'error': 'Marque ao menos uma refeição (D C A M J C)'}), 400
+    extras = {
+        'dieta': dieta_nome,
+        'dieta_id': d.get('dieta_id'),
+        'observacoes': d.get('observacoes'),
+        'obs_etiqueta': d.get('obs_etiqueta'),
+        'extras': d.get('extras'),
+        'suplementos': d.get('suplementos'),
+        'enteral': d.get('enteral'),
+        'formula_infantil': d.get('formula_infantil'),
+        'lve': d.get('lve'),
+    }
+    linha = criar_lancamento_dieta_desde_linha(
+        src, flags=flags, extras=extras, usuario=_usuario_sessao(), tipo_lancamento=tipo,
+    )
+    db.session.add(linha)
+    db.session.flush()
+    garantir_grupo_lancamento(linha)
+    db.session.commit()
+    return jsonify({
+        'ok': True,
+        'linha': linha.to_dict(),
+        'origem_id': src.id,
+        'paciente_id': src.paciente_id,
+        'novo_lancamento': True,
+    })
 
 
 @nutricao.route('/nutricao/api/mapa/avisos-alta', methods=['GET', 'POST'])
@@ -945,7 +1050,8 @@ def api_mapa_put(mid):
     enfermaria_f = _campo_loc('enfermaria')
     leito_f = _campo_loc('leito')
     if leito_ocupado_no_mapa(
-        row.data_refeicao, clinica_f, enfermaria_f, leito_f, exclude_id=row.id
+        row.data_refeicao, clinica_f, enfermaria_f, leito_f,
+        exclude_id=row.id, paciente_id=row.paciente_id,
     ):
         return jsonify({'ok': False, 'error': MSG_LEITO_OCUPADO}), 400
 

@@ -302,10 +302,25 @@ def _ensure_nutricao_columns(force=False):
                 'usuario_alteracao': 'VARCHAR(80)',
                 'motivo_saida': 'VARCHAR(40)',
                 'hospital_transferencia': 'VARCHAR(200)',
+                'dieta_id': 'INTEGER',
+                'tipo_lancamento': "VARCHAR(20) DEFAULT 'principal'",
+                'lancamento_grupo_id': 'INTEGER',
             }
             for col, tipo in alteracoes.items():
                 if col not in cols:
                     db.session.execute(text(f'ALTER TABLE nut_mapa_refeicoes ADD COLUMN {col} {tipo}'))
+            db.session.commit()
+            cols = {c['name'] for c in insp.get_columns('nut_mapa_refeicoes')}
+            if 'tipo_lancamento' in cols:
+                db.session.execute(text(
+                    "UPDATE nut_mapa_refeicoes SET tipo_lancamento = 'principal' "
+                    "WHERE tipo_lancamento IS NULL OR tipo_lancamento = ''"
+                ))
+            if 'lancamento_grupo_id' in cols:
+                db.session.execute(text(
+                    'UPDATE nut_mapa_refeicoes SET lancamento_grupo_id = id '
+                    'WHERE lancamento_grupo_id IS NULL'
+                ))
             db.session.commit()
         if 'nut_pacientes' in tables:
             cols = {c['name'] for c in insp.get_columns('nut_pacientes')}
@@ -743,20 +758,37 @@ def info_lancamento_refeicoes(data_mapa, agora=None):
 
 
 def buscar_linha_mapa_dia(src, data_alvo):
-    """Localiza a linha do paciente em data_alvo (não cria)."""
+    """Localiza a linha do mesmo lançamento em data_alvo (não cria)."""
     if not src or not data_alvo:
         return None
     if src.data_refeicao == data_alvo:
         return src
-    if src.paciente_id:
+    gid = getattr(src, 'lancamento_grupo_id', None)
+    if gid:
         row = (
             NutMapaRefeicao.query
-            .filter_by(data_refeicao=data_alvo, paciente_id=src.paciente_id, ativo=True)
+            .filter_by(data_refeicao=data_alvo, lancamento_grupo_id=gid, ativo=True)
             .order_by(NutMapaRefeicao.id.desc())
             .first()
         )
         if row:
             return row
+    if src.paciente_id:
+        tipo = normalizar_tipo_lancamento(getattr(src, 'tipo_lancamento', None))
+        dieta = (src.dieta or '').strip().upper()
+        q = (
+            NutMapaRefeicao.query
+            .filter_by(data_refeicao=data_alvo, paciente_id=src.paciente_id, ativo=True)
+            .order_by(NutMapaRefeicao.id.desc())
+        )
+        candidatos = q.all()
+        for row in candidatos:
+            if normalizar_tipo_lancamento(getattr(row, 'tipo_lancamento', None)) == tipo and (
+                (row.dieta or '').strip().upper() == dieta
+            ):
+                return row
+        if len(candidatos) == 1:
+            return candidatos[0]
     chave = _chave_linha_mapa(src)
     for r in NutMapaRefeicao.query.filter_by(data_refeicao=data_alvo, ativo=True).all():
         if not r.paciente_id and _chave_linha_mapa(r) == chave:
@@ -780,7 +812,14 @@ def obter_ou_criar_linha_mapa_dia(src, data_alvo, usuario=None):
     if existing:
         return existing
 
-    if src.paciente_id:
+    if getattr(src, 'lancamento_grupo_id', None):
+        existing = (
+            NutMapaRefeicao.query
+            .filter_by(data_refeicao=data_alvo, lancamento_grupo_id=src.lancamento_grupo_id)
+            .order_by(NutMapaRefeicao.id.desc())
+            .first()
+        )
+    elif src.paciente_id:
         existing = (
             NutMapaRefeicao.query
             .filter_by(data_refeicao=data_alvo, paciente_id=src.paciente_id)
@@ -804,9 +843,9 @@ def obter_ou_criar_linha_mapa_dia(src, data_alvo, usuario=None):
         return existing
 
     clone = _clonar_linha_mapa(src, data_alvo, usuario=usuario)
-    clone.substituicoes = None
     db.session.add(clone)
     db.session.flush()
+    garantir_grupo_lancamento(clone)
     return clone
 
 
@@ -987,7 +1026,7 @@ def get_mapa_substituicoes(mapa_row):
         subs_meal = (subs_por_data.get(dest_iso) or subs_hoje).get(meal) or {
             'pares': [], 'justificativa': ''
         }
-        card = find_cardapio_for_meal(dieta, meal, data_meal)
+        card = find_cardapio_for_meal(dieta, meal, data_meal, dieta_id=getattr(mapa_row, 'dieta_id', None))
         pratos = pratos_from_itens(card.get_itens() if card else {}, card.tipo if card else None)
         pares = subs_meal.get('pares') or []
         refeicoes[meal] = {
@@ -2056,11 +2095,89 @@ def paciente_from_payload(d, paciente=None):
     return paciente
 
 
+TIPOS_LANCAMENTO_MAPA = ('principal', 'adicional', 'substituicao')
+ROTULOS_TIPO_LANCAMENTO = {
+    'principal': 'Principal',
+    'adicional': 'Adicional',
+    'substituicao': 'Substituição',
+}
+
+
+def normalizar_tipo_lancamento(valor, default='principal'):
+    raw = (valor or '').strip().lower()
+    aliases = {
+        'principal': 'principal',
+        'dieta_principal': 'principal',
+        'adicional': 'adicional',
+        'extra': 'adicional',
+        'nova': 'adicional',
+        'nova_dieta': 'adicional',
+        'substituicao': 'substituicao',
+        'substituição': 'substituicao',
+        'subst': 'substituicao',
+    }
+    return aliases.get(raw, default if default in TIPOS_LANCAMENTO_MAPA else 'principal')
+
+
+def rotulo_tipo_lancamento(tipo):
+    return ROTULOS_TIPO_LANCAMENTO.get(normalizar_tipo_lancamento(tipo), 'Principal')
+
+
+def ordem_tipo_lancamento(tipo):
+    return {'principal': 0, 'substituicao': 1, 'adicional': 2}.get(
+        normalizar_tipo_lancamento(tipo), 9
+    )
+
+
+def resolver_dieta_mapa(dieta_id=None, dieta_nome=None):
+    """Resolve NutDieta ativa por id ou nome (sem criar cadastro)."""
+    dieta = None
+    if dieta_id not in (None, ''):
+        try:
+            dieta = _q(NutDieta).filter_by(id=int(dieta_id)).first()
+        except (TypeError, ValueError):
+            dieta = None
+    nome = (dieta_nome or '').strip()
+    if not dieta and nome:
+        dieta = _q(NutDieta).filter(
+            db.func.upper(NutDieta.nome) == nome.upper(),
+            NutDieta.ativo.is_(True),
+        ).first()
+        if not dieta:
+            dieta = _q(NutDieta).filter(db.func.upper(NutDieta.nome) == nome.upper()).first()
+    return dieta
+
+
+def garantir_grupo_lancamento(row):
+    """Garante lancamento_grupo_id = id na primeira persistência do lançamento."""
+    if row is None:
+        return row
+    if row.id and not row.lancamento_grupo_id:
+        row.lancamento_grupo_id = row.id
+    return row
+
+
+def _chave_grupo_lancamento(row):
+    gid = getattr(row, 'lancamento_grupo_id', None)
+    if gid:
+        return ('grupo', int(gid))
+    tipo = normalizar_tipo_lancamento(getattr(row, 'tipo_lancamento', None))
+    dieta = (getattr(row, 'dieta', None) or '').strip().upper()
+    pid = getattr(row, 'paciente_id', None)
+    rid = int(getattr(row, 'id', 0) or 0)
+    if pid:
+        return ('pid', int(pid), tipo, dieta, rid)
+    return ('chave',) + _chave_linha_mapa(row) + (tipo, dieta, rid)
+
+
 def mapa_from_paciente(paciente, data_ref=None, flags=None, extras=None, usuario=None):
     data_ref = data_ref or date.today()
     flags = flags or {}
     extras = extras or {}
     agora = now_brasilia()
+    dieta_nome = extras.get('dieta') if 'dieta' in extras else paciente.dieta
+    dieta_obj = resolver_dieta_mapa(extras.get('dieta_id'), dieta_nome)
+    tipo = normalizar_tipo_lancamento(extras.get('tipo_lancamento'), 'principal')
     return NutMapaRefeicao(
         cliente_id=getattr(paciente, 'cliente_id', None) or write_cliente_id(),
         data_refeicao=data_ref,
@@ -2071,7 +2188,9 @@ def mapa_from_paciente(paciente, data_ref=None, flags=None, extras=None, usuario
         nome=paciente.nome,
         idade=paciente.idade(data_ref),
         diagnostico=(extras.get('diagnostico') if 'diagnostico' in extras else paciente.diagnostico),
-        dieta=(extras.get('dieta') if 'dieta' in extras else paciente.dieta),
+        dieta=(dieta_obj.nome if dieta_obj else (dieta_nome or None)),
+        dieta_id=dieta_obj.id if dieta_obj else extras.get('dieta_id'),
+        tipo_lancamento=tipo,
         observacoes=(extras.get('observacoes') if 'observacoes' in extras else paciente.observacoes),
         clinica=(extras.get('clinica') if 'clinica' in extras else paciente.clinica),
         enfermaria=(extras.get('enfermaria') or None),
@@ -2097,6 +2216,58 @@ def mapa_from_paciente(paciente, data_ref=None, flags=None, extras=None, usuario
     )
 
 
+def criar_lancamento_dieta_desde_linha(src, flags=None, extras=None, usuario=None, tipo_lancamento='adicional'):
+    """Novo lançamento de dieta no mesmo paciente/leito, sem duplicar o cadastro."""
+    if not src:
+        return None
+    flags = flags or {}
+    extras = extras or {}
+    tipo = normalizar_tipo_lancamento(tipo_lancamento, 'adicional')
+    if tipo == 'principal':
+        tipo = 'adicional'
+    dieta_nome = extras.get('dieta') if extras.get('dieta') not in (None, '') else src.dieta
+    dieta_obj = resolver_dieta_mapa(extras.get('dieta_id'), dieta_nome)
+    agora = now_brasilia()
+    linha = NutMapaRefeicao(
+        cliente_id=getattr(src, 'cliente_id', None) or write_cliente_id(),
+        data_refeicao=src.data_refeicao,
+        paciente_id=src.paciente_id,
+        adm=src.adm,
+        leito=src.leito,
+        prontuario=src.prontuario,
+        nome=src.nome,
+        idade=src.idade,
+        diagnostico=src.diagnostico,
+        dieta=(dieta_obj.nome if dieta_obj else (dieta_nome or src.dieta)),
+        dieta_id=dieta_obj.id if dieta_obj else None,
+        tipo_lancamento=tipo,
+        observacoes=(extras.get('observacoes') if 'observacoes' in extras else src.observacoes),
+        clinica=src.clinica,
+        enfermaria=src.enfermaria,
+        fl_desjejum=bool(flags.get('fl_desjejum', False)),
+        fl_colacao=bool(flags.get('fl_colacao', False)),
+        fl_almoco=bool(flags.get('fl_almoco', False)),
+        fl_merenda=bool(flags.get('fl_merenda', False)),
+        fl_jantar=bool(flags.get('fl_jantar', False)),
+        fl_ceia=bool(flags.get('fl_ceia', False)),
+        obs_etiqueta=(extras.get('obs_etiqueta') if 'obs_etiqueta' in extras else None),
+        extras=(extras.get('extras') if 'extras' in extras else None),
+        suplementos=(extras.get('suplementos') if 'suplementos' in extras else None),
+        enteral=(extras.get('enteral') if 'enteral' in extras else None),
+        formula_infantil=(extras.get('formula_infantil') if 'formula_infantil' in extras else None),
+        lve=(extras.get('lve') if 'lve' in extras else None),
+        substituicoes=None,
+        data_inclusao=agora,
+        usuario_alteracao=(usuario or 'sistema')[:80],
+        data_atualizacao=agora,
+        data_saida=None,
+        motivo_saida=None,
+        hospital_transferencia=None,
+        ativo=True,
+    )
+    return linha
+
+
 def _chave_linha_mapa(row):
     """Chave de identidade para linhas sem paciente_id."""
     return (
@@ -2116,6 +2287,7 @@ def _clonar_linha_mapa(src, data_ref, usuario=None):
         except Exception:
             pass
     return NutMapaRefeicao(
+        cliente_id=getattr(src, 'cliente_id', None),
         data_refeicao=data_ref,
         paciente_id=src.paciente_id,
         adm=src.adm,
@@ -2125,6 +2297,9 @@ def _clonar_linha_mapa(src, data_ref, usuario=None):
         idade=idade,
         diagnostico=src.diagnostico,
         dieta=src.dieta,
+        dieta_id=getattr(src, 'dieta_id', None),
+        tipo_lancamento=normalizar_tipo_lancamento(getattr(src, 'tipo_lancamento', None)),
+        lancamento_grupo_id=getattr(src, 'lancamento_grupo_id', None),
         observacoes=src.observacoes,
         clinica=src.clinica,
         enfermaria=src.enfermaria,
@@ -2140,6 +2315,7 @@ def _clonar_linha_mapa(src, data_ref, usuario=None):
         enteral=src.enteral,
         formula_infantil=src.formula_infantil,
         lve=src.lve,
+        substituicoes=src.substituicoes,
         data_inclusao=src.data_inclusao or agora,
         usuario_alteracao=(usuario or src.usuario_alteracao or 'sistema')[:80],
         data_atualizacao=agora,
@@ -2184,13 +2360,14 @@ def _sanear_baixas_incompletas(data_ref):
     return sanadas
 
 
-def _upsert_linha_no_dia(src, data_ref, by_pid, by_chave):
-    """Garante linha de src em data_ref (cria ou reativa). Retorna 1 se alterou."""
+def _upsert_linha_no_dia(src, data_ref, by_grupo, by_chave):
+    """Garante o lançamento de src em data_ref (cria ou reativa). Retorna 1 se alterou."""
     if not _linha_mapa_ativa_para_copia(src):
         return 0
 
-    if src.paciente_id:
-        existing = by_pid.get(src.paciente_id)
+    grupo = getattr(src, 'lancamento_grupo_id', None)
+    if grupo:
+        existing = by_grupo.get(int(grupo))
         if existing:
             if _linha_com_baixa(existing):
                 return 0
@@ -2204,10 +2381,12 @@ def _upsert_linha_no_dia(src, data_ref, by_pid, by_chave):
             return 0
         clone = _clonar_linha_mapa(src, data_ref)
         db.session.add(clone)
-        by_pid[src.paciente_id] = clone
+        db.session.flush()
+        garantir_grupo_lancamento(clone)
+        by_grupo[int(grupo)] = clone
         return 1
 
-    chave = _chave_linha_mapa(src)
+    chave = _chave_grupo_lancamento(src)
     existing = by_chave.get(chave)
     if existing:
         if _linha_com_baixa(existing):
@@ -2222,12 +2401,28 @@ def _upsert_linha_no_dia(src, data_ref, by_pid, by_chave):
         return 0
     clone = _clonar_linha_mapa(src, data_ref)
     db.session.add(clone)
+    db.session.flush()
+    garantir_grupo_lancamento(clone)
     by_chave[chave] = clone
+    if clone.lancamento_grupo_id:
+        by_grupo[int(clone.lancamento_grupo_id)] = clone
     return 1
 
 
+def _indices_linhas_mapa(existentes):
+    by_grupo = {}
+    by_chave = {}
+    for r in existentes:
+        gid = getattr(r, 'lancamento_grupo_id', None)
+        if gid:
+            by_grupo[int(gid)] = r
+        else:
+            by_chave[_chave_grupo_lancamento(r)] = r
+    return by_grupo, by_chave
+
+
 def _copiar_ativos_dia_anterior(data_ref):
-    """Merge: cada paciente ativo (sem baixa com motivo) de data_ref-1 passa a existir em data_ref.
+    """Merge: cada lançamento ativo (sem baixa com motivo) de data_ref-1 passa a existir em data_ref.
 
     Não pula o dia só porque já há algumas linhas (ex.: Ana em 09/08 não bloqueia os demais).
     """
@@ -2236,8 +2431,7 @@ def _copiar_ativos_dia_anterior(data_ref):
     alteradas += _sanear_baixas_incompletas(data_origem)
 
     existentes = NutMapaRefeicao.query.filter_by(data_refeicao=data_ref).all()
-    by_pid = {r.paciente_id: r for r in existentes if r.paciente_id}
-    by_chave = {_chave_linha_mapa(r): r for r in existentes if not r.paciente_id}
+    by_grupo, by_chave = _indices_linhas_mapa(existentes)
 
     fontes = (
         NutMapaRefeicao.query
@@ -2249,7 +2443,7 @@ def _copiar_ativos_dia_anterior(data_ref):
         return alteradas
 
     for src in fontes:
-        alteradas += _upsert_linha_no_dia(src, data_ref, by_pid, by_chave)
+        alteradas += _upsert_linha_no_dia(src, data_ref, by_grupo, by_chave)
     return alteradas
 
 
@@ -2260,8 +2454,7 @@ def _garantir_ausentes_desde_historico(data_ref):
     Limita o lookback para não carregar o histórico inteiro do banco.
     """
     existentes = NutMapaRefeicao.query.filter_by(data_refeicao=data_ref).all()
-    by_pid = {r.paciente_id: r for r in existentes if r.paciente_id}
-    by_chave = {_chave_linha_mapa(r): r for r in existentes if not r.paciente_id}
+    by_grupo, by_chave = _indices_linhas_mapa(existentes)
 
     since = data_ref - timedelta(days=_MAPA_LOOKBACK_DIAS)
     priors = (
@@ -2273,23 +2466,24 @@ def _garantir_ausentes_desde_historico(data_ref):
         .order_by(NutMapaRefeicao.data_refeicao.desc(), NutMapaRefeicao.id.desc())
         .all()
     )
-    seen_pids = set()
+    seen_grupos = set()
     seen_chaves = set()
     alteradas = 0
     for src in priors:
-        if src.paciente_id:
-            if src.paciente_id in seen_pids:
+        gid = getattr(src, 'lancamento_grupo_id', None)
+        if gid:
+            if int(gid) in seen_grupos:
                 continue
-            seen_pids.add(src.paciente_id)
+            seen_grupos.add(int(gid))
         else:
-            chave = _chave_linha_mapa(src)
+            chave = _chave_grupo_lancamento(src)
             if chave in seen_chaves:
                 continue
             seen_chaves.add(chave)
         # Último estado anterior: se foi baixa com motivo, não ressuscita
         if _linha_com_baixa(src):
             continue
-        alteradas += _upsert_linha_no_dia(src, data_ref, by_pid, by_chave)
+        alteradas += _upsert_linha_no_dia(src, data_ref, by_grupo, by_chave)
     return alteradas
 
 
@@ -2341,8 +2535,8 @@ def marcar_alteracao_mapa(row, usuario=None):
 MSG_LEITO_OCUPADO = 'Leito ocupado. Escolha outro leito.'
 
 
-def leito_ocupado_no_mapa(data_ref, clinica, enfermaria, leito, exclude_id=None):
-    """True se já existe linha ativa no mapa do dia com a mesma clínica+enfermaria+leito."""
+def leito_ocupado_no_mapa(data_ref, clinica, enfermaria, leito, exclude_id=None, paciente_id=None):
+    """True se o leito já tem outro paciente ativo (mesmo paciente pode ter várias dietas)."""
     clinica_n = (clinica or '').strip().upper()
     enfermaria_n = (enfermaria or '').strip().upper()
     leito_n = (leito or '').strip().upper()
@@ -2355,12 +2549,21 @@ def leito_ocupado_no_mapa(data_ref, clinica, enfermaria, leito, exclude_id=None)
             NutMapaRefeicao.ativo.is_(True),
             db.func.upper(NutMapaRefeicao.clinica) == clinica_n,
             db.func.upper(NutMapaRefeicao.enfermaria) == enfermaria_n,
-            db.func.upper(NutMapaRefeicao.leito) == leito_n,
         )
     )
     if exclude_id is not None:
         q = q.filter(NutMapaRefeicao.id != int(exclude_id))
-    return q.first() is not None
+    rows = q.all()
+    chaves_alvo = _chaves_ocupacao_leito(leito)
+    if not chaves_alvo:
+        return False
+    for row in rows:
+        if not (_chaves_ocupacao_leito(row.leito) & chaves_alvo):
+            continue
+        if paciente_id and row.paciente_id and int(row.paciente_id) == int(paciente_id):
+            continue
+        return True
+    return False
 
 
 def _chaves_ocupacao_leito(valor):
@@ -2552,18 +2755,28 @@ def montar_grade_leitos_mapa(data_ref, clinica_nome=None):
                     | _chaves_ocupacao_leito(leito.nome)
                     | _chaves_ocupacao_leito(valor)
                 )
-                match = None
+                matches = []
                 for item in bucket:
                     if item['usado'] or not item['keys']:
                         continue
                     if item['keys'] & keys:
-                        item['usado'] = True
-                        match = item['linha']
-                        break
-                grade.append(_slot(
-                    cli_nome, clinica.id, enf_nome, enf.id,
-                    rotulo, valor, leito.id, leito.numero, match, False,
+                        matches.append(item)
+                if not matches:
+                    grade.append(_slot(
+                        cli_nome, clinica.id, enf_nome, enf.id,
+                        rotulo, valor, leito.id, leito.numero, None, False,
+                    ))
+                    continue
+                matches.sort(key=lambda it: (
+                    ordem_tipo_lancamento(getattr(it['linha'], 'tipo_lancamento', None)),
+                    it['linha'].id or 0,
                 ))
+                for item in matches:
+                    item['usado'] = True
+                    grade.append(_slot(
+                        cli_nome, clinica.id, enf_nome, enf.id,
+                        rotulo, valor, leito.id, leito.numero, item['linha'], False,
+                    ))
 
     for (_cli_u, _enf_u), bucket in idx.items():
         for item in bucket:
