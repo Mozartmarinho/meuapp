@@ -68,6 +68,8 @@ from nutricao_service import (
     list_modelos_etiqueta_impressao,
     gerar_impressao_etiquetas,
     gerar_impressao_mapa,
+    gerar_impressao_mapa_distribuicao,
+    list_tipos_refeicao_impressao,
     get_mapa_substituicoes,
     save_mapa_substituicoes,
     importar_substituicoes_anteriores,
@@ -2722,6 +2724,42 @@ def impressao_mapa_imprimir():
         'nutricao_impressao_mapa_print.html',
         r=rel,
         **active('impressao_mapa')
+    )
+
+
+@nutricao.route('/nutricao/impressao-mapa-distribuicao')
+def impressao_mapa_distribuicao():
+    seed_nutricao()
+    return render_template(
+        'nutricao_impressao_mapa_distribuicao.html',
+        clinicas=_list_clinicas_db(somente_ativas=True),
+        tipos=list_tipos_refeicao_impressao(),
+        data_padrao=date.today().isoformat(),
+        **active('impressao_mapa_distribuicao')
+    )
+
+
+@nutricao.route('/nutricao/impressao-mapa-distribuicao/imprimir')
+def impressao_mapa_distribuicao_imprimir():
+    seed_nutricao()
+    data_de = _parse_date(request.args.get('data_de')) or date.today()
+    data_ate = _parse_date(request.args.get('data_ate')) or data_de
+    tipo = (request.args.get('tipo') or request.args.get('tipo_refeicao') or 'almoco').strip()
+    clinicas = [c.strip() for c in request.args.getlist('clinica') if (c or '').strip()]
+    if not clinicas:
+        unica = (request.args.get('clinicas') or '').strip()
+        if unica:
+            clinicas = [p.strip() for p in unica.split(',') if p.strip()]
+    rel = gerar_impressao_mapa_distribuicao(
+        data_de=data_de,
+        data_ate=data_ate,
+        clinica_nomes=clinicas or None,
+        tipo_refeicao=tipo,
+    )
+    return render_template(
+        'nutricao_impressao_mapa_distribuicao_print.html',
+        r=rel,
+        **active('impressao_mapa_distribuicao')
     )
 
 

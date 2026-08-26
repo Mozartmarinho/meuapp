@@ -620,23 +620,58 @@ _TIPO_NOME_TO_MEAL = {
     'JANTAR': 'jantar',
     'CEIA': 'ceia',
 }
+
+
+def tipo_refeicao_para_meal(valor):
+    """Aceita chave (almoco), sigla (ALM) ou nome (Almoço) e devolve a chave interna."""
+    import unicodedata
+    if not valor:
+        return ''
+    s = str(valor).strip()
+    low = s.lower()
+    if low in MEAL_FLAG_FIELD:
+        return low
+    up = s.upper()
+    meal = _TIPO_SIGLA_TO_MEAL.get(up) or _TIPO_NOME_TO_MEAL.get(up)
+    if meal:
+        return meal
+    nome_n = ''.join(
+        c for c in unicodedata.normalize('NFKD', up)
+        if not unicodedata.combining(c)
+    ).strip()
+    return {
+        'DESJEJUM': 'desjejum', 'COLACAO': 'colacao', 'ALMOCO': 'almoco',
+        'MERENDA': 'merenda', 'JANTAR': 'jantar', 'CEIA': 'ceia',
+    }.get(nome_n, '')
+
+
+def list_tipos_refeicao_impressao():
+    """Tipos ativos do cadastro com chave interna para filtros de impressão."""
+    tipos = []
+    vistos = set()
+    for t in list_tipos_refeicao(somente_ativos=True):
+        meal = tipo_refeicao_para_meal(t.get('sigla') or t.get('nome'))
+        if not meal or meal in vistos:
+            continue
+        vistos.add(meal)
+        tipos.append({
+            'chave': meal,
+            'nome': t.get('nome') or MEAL_LABELS.get(meal, meal),
+            'sigla': t.get('sigla') or '',
+        })
+    if not tipos:
+        tipos = [
+            {'chave': chave, 'nome': nome, 'sigla': ''}
+            for chave, nome in MEAL_LABELS.items()
+        ]
+    return tipos
+
+
 def mapa_horas_limite():
     """Retorna {meal_key: 'HH:MM'} a partir do cadastro de tipos de refeição."""
-    import unicodedata
     out = {}
     for t in NutTipoRefeicao.query.filter_by(ativo=True).all():
-        meal = _TIPO_SIGLA_TO_MEAL.get((t.sigla or '').strip().upper())
-        if not meal:
-            meal = _TIPO_NOME_TO_MEAL.get((t.nome or '').strip().upper())
-        if not meal:
-            nome_n = ''.join(
-                c for c in unicodedata.normalize('NFKD', (t.nome or '').upper())
-                if not unicodedata.combining(c)
-            ).strip()
-            meal = {
-                'DESJEJUM': 'desjejum', 'COLACAO': 'colacao', 'ALMOCO': 'almoco',
-                'MERENDA': 'merenda', 'JANTAR': 'jantar', 'CEIA': 'ceia',
-            }.get(nome_n)
+        meal = tipo_refeicao_para_meal(t.sigla) or tipo_refeicao_para_meal(t.nome)
         hora = normalizar_hora_limite(getattr(t, 'hora_limite', None))
         if meal and hora:
             out[meal] = hora
@@ -4508,4 +4543,92 @@ def gerar_impressao_mapa(data_de=None, data_ate=None, clinica_nome=None):
         'total_dietas': len(linhas),
         'soma_dietas': soma_dietas,
         'totais_refeicao': totais_refeicao,
+    }
+
+
+def gerar_impressao_mapa_distribuicao(
+    data_de=None,
+    data_ate=None,
+    clinica_nomes=None,
+    tipo_refeicao='almoco',
+):
+    """Lista de distribuição: pacientes da refeição, agrupados por clínica."""
+    data_de = data_de or date.today()
+    data_ate = data_ate or data_de
+    if data_ate < data_de:
+        data_de, data_ate = data_ate, data_de
+
+    meal = tipo_refeicao_para_meal(tipo_refeicao) or 'almoco'
+    flag = MEAL_FLAG_FIELD.get(meal) or 'fl_almoco'
+    meal_label = MEAL_LABELS.get(meal, meal).upper()
+
+    nomes_cli = []
+    if isinstance(clinica_nomes, str):
+        clinica_nomes = [clinica_nomes]
+    for nome in clinica_nomes or []:
+        n = (nome or '').strip()
+        if n and n != '__todas__':
+            nomes_cli.append(n)
+
+    q = apply_cliente_filter(
+        NutMapaRefeicao.query.filter(
+            NutMapaRefeicao.data_refeicao >= data_de,
+            NutMapaRefeicao.data_refeicao <= data_ate,
+            getattr(NutMapaRefeicao, flag).is_(True),
+        ),
+        NutMapaRefeicao,
+    )
+    if nomes_cli:
+        nomes_up = [n.upper() for n in nomes_cli]
+        q = q.filter(db.func.upper(NutMapaRefeicao.clinica).in_(nomes_up))
+    rows = q.order_by(
+        NutMapaRefeicao.data_refeicao,
+        NutMapaRefeicao.clinica,
+        NutMapaRefeicao.leito,
+        NutMapaRefeicao.nome,
+    ).all()
+
+    grupos = []
+    atual = None
+    for row in rows:
+        nome = (row.nome or '').strip()
+        if not nome and not (row.leito or '').strip():
+            continue
+        data_iso = row.data_refeicao.isoformat() if row.data_refeicao else ''
+        clinica = (row.clinica or '').strip() or 'Sem clínica'
+        chave = data_iso + '|' + clinica
+        if atual is None or atual['chave'] != chave:
+            atual = {
+                'chave': chave,
+                'data': data_iso,
+                'data_label': _fmt_data_br(row.data_refeicao),
+                'clinica': clinica,
+                'linhas': [],
+            }
+            grupos.append(atual)
+        atual['linhas'].append({
+            'nome': nome,
+            'prontuario': row.prontuario or '',
+            'leito': row.leito or '',
+            'dieta': (row.dieta or '').strip(),
+            'obs': row.observacoes or '',
+        })
+
+    for g in grupos:
+        g['total'] = len(g['linhas'])
+
+    return {
+        'titulo': 'MAPA DISTRIBUIÇÃO',
+        'data_de': data_de.isoformat(),
+        'data_ate': data_ate.isoformat(),
+        'data_de_label': _fmt_data_br(data_de),
+        'data_ate_label': _fmt_data_br(data_ate),
+        'periodo_unico': data_de == data_ate,
+        'clinicas': nomes_cli,
+        'clinica_label': ', '.join(nomes_cli) if nomes_cli else 'Todas',
+        'tipo': meal,
+        'tipo_label': meal_label,
+        'data_hora_relatorio': fmt_brasilia(now_brasilia(), '%d/%m/%Y %H:%M'),
+        'grupos': grupos,
+        'total': sum(g['total'] for g in grupos),
     }
