@@ -7,18 +7,19 @@ echo   MeuApp - Inicializacao
 echo ========================================
 echo.
 
-REM --- Codigo do GitHub (o atalho da area de trabalho so sobe o que esta nesta pasta) ---
-echo [1/4] Atualizando codigo do mapa de producao...
+REM --- Codigo do GitHub (atalho da area de trabalho e servidor usam a main) ---
+echo [1/4] Atualizando codigo do GitHub (branch main)...
 if exist "%~dp0.git" (
-    git -C "%~dp0" fetch origin cursor/mapa-producao-clinica-leitos-7e7c 2>nul
+    git -C "%~dp0" fetch origin main
     if errorlevel 1 (
-        echo       AVISO: nao consegui buscar origin/cursor/mapa-producao-clinica-leitos-7e7c
+        echo       AVISO: nao consegui buscar origin/main
         echo               O app vai subir com o codigo que ja esta nesta pasta.
     ) else (
-        git -C "%~dp0" checkout -B cursor/mapa-producao-clinica-leitos-7e7c origin/cursor/mapa-producao-clinica-leitos-7e7c
+        git -C "%~dp0" checkout main
         if errorlevel 1 (
-            echo       AVISO: nao deu para trocar de branch. Feche arquivos abertos e tente de novo.
+            echo       AVISO: nao deu para ir para a main. Feche arquivos abertos e tente de novo.
         ) else (
+            git -C "%~dp0" pull --ff-only origin main
             echo       Branch:
             git -C "%~dp0" rev-parse --abbrev-ref HEAD
             echo       Commit:
@@ -26,7 +27,7 @@ if exist "%~dp0.git" (
         )
     )
 ) else (
-    echo       AVISO: esta pasta nao e um clone git. O .bat nao consegue puxar o PR.
+    echo       AVISO: esta pasta nao e um clone git. O .bat nao consegue atualizar do GitHub.
     echo               Aponte o atalho da area de trabalho para a pasta do repositorio meuapp.
 )
 
