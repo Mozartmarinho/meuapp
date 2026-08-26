@@ -30,6 +30,7 @@ from nutricao_service import (
     leito_ocupado_no_mapa,
     MSG_LEITO_OCUPADO,
     list_leitos_vagos,
+    montar_grade_leitos_mapa,
     baixar_acompanhantes_do_paciente,
     paciente_ativo_no_mapa,
     MSG_ACOMP_SO_SAIDA_MAPA,
@@ -278,7 +279,7 @@ def _tag_cliente(obj):
 def dashboard():
     seed_nutricao()
     data_ref = date.today()
-    # Grade só carrega no cliente após filtro de clínica/enfermaria
+    # Grade só carrega no cliente após filtro de clínica (uma linha por leito)
     return render_template(
         'nutricao_dashboard.html',
         mapa_linhas=[],
@@ -810,10 +811,14 @@ def api_mapa_get():
     seed_nutricao()
     data_ref = _parse_date(request.args.get('data')) or date.today()
     _seed_aviso_alta_demo(data_ref)
+    linhas = _mapa_linhas(data_ref)
+    clinica = (request.args.get('clinica') or '').strip()
+    grade = montar_grade_leitos_mapa(data_ref, clinica_nome=clinica or None) if clinica else []
     return jsonify({
         'ok': True,
         'data': data_ref.isoformat(),
-        'linhas': _mapa_linhas(data_ref),
+        'linhas': linhas,
+        'grade': grade,
         'clinicas': _list_clinicas_db(somente_ativas=True),
         'enfermarias': list_enfermarias(somente_ativas=True),
         'avisos_alta': listar_avisos_alta_mapa(data_ref),

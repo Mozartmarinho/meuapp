@@ -23,14 +23,6 @@
     </select>
   </div>
 
-  <div class="mapa-filtro-clinica">
-    <label for="filtroEnfermaria">Enfermaria:</label>
-    <select id="filtroEnfermaria" class="form-control" autocomplete="off" disabled onchange="onFiltroEnfermariaChange()">
-      <option value="" selected>Selecione enfermaria...</option>
-      <option value="__todas__">Todas</option>
-    </select>
-  </div>
-
   <div class="card" style="padding:6px 10px;display:flex;align-items:center;gap:8px;margin:0;">
     <button class="btn btn-ghost btn-sm" type="button" onclick="alterarData(-1)" aria-label="Dia anterior">
       <i class="fas fa-chevron-left"></i>
@@ -41,7 +33,7 @@
     </button>
   </div>
 
-  <button class="btn btn-primary btn-sm" type="button" onclick="abrirInserirPaciente()">
+  <button class="btn btn-primary btn-sm" type="button" onclick="window._leitoInserirPrefill=null; abrirInserirPaciente()">
     <i class="fas fa-user-plus"></i> Inserir paciente
   </button>
 </div>
@@ -51,6 +43,7 @@
     <table id="mapaProducao" class="mapa-table">
       <thead>
         <tr>
+          <th class="col-enfermaria">Enfermaria</th>
           <th style="width:90px">Adm</th>
           <th style="width:80px">Leito</th>
           <th style="width:90px">Pront</th>
@@ -79,7 +72,7 @@
         </tr>
       </thead>
       <tbody id="mapaBody">
-        <tr id="mapaVazio"><td colspan="25" style="text-align:center;padding:1.5rem;color:#64748b">Selecione clínica e/ou enfermaria para ver o mapa</td></tr>
+        <tr id="mapaVazio"><td colspan="26" style="text-align:center;padding:1.5rem;color:#64748b">Selecione a clínica para ver o mapa</td></tr>
       </tbody>
     </table>
   </div>
@@ -272,7 +265,7 @@
 }
 .mapa-table {
   width: max-content;
-  min-width: max(100%, 2580px);
+  min-width: max(100%, 2720px);
   max-width: none;
   border-collapse: collapse;
   table-layout: auto;
@@ -322,6 +315,49 @@
 }
 .flag-btn:disabled { opacity: 0.5; cursor: wait; }
 .linha-mapa:hover td { background: #dbeafe !important; }
+.mapa-grupo-clinica td {
+  background: #0f2a56 !important;
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 0.5rem 0.75rem;
+  white-space: nowrap;
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  border-color: #0c2348;
+}
+.mapa-grupo-clinica .mapa-clinica-nome {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.mapa-table th.col-enfermaria,
+.mapa-table td.cell-enfermaria {
+  min-width: 160px;
+  max-width: 220px;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #dbeafe;
+  color: #1e3a8a;
+  font-weight: 700;
+  box-shadow: inset 3px 0 0 #1d4ed8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mapa-table th.col-enfermaria {
+  z-index: 4;
+  background: #1f4f9c;
+  color: #fff;
+  box-shadow: none;
+}
+.linha-vaga td { color: #94a3b8; }
+.linha-vaga .cell-leito { color: #0f2a56; font-weight: 600; }
+.linha-vaga .cell-enfermaria { color: #1e3a8a; }
+.linha-vaga:hover td { background: #f1f5f9 !important; }
 /* Destaque da linha no clique direito — verde São Geraldo (--brand-lime) */
 .linha-mapa.selected td,
 .linha-mapa.selected:hover td {
@@ -914,8 +950,9 @@ const CAMPOS_TEXTO = {
   lve: 'LVE'
 };
 const FILTRO_TODAS = '__todas__';
-const MSG_MAPA_SELECIONE = 'Selecione clínica e/ou enfermaria para ver o mapa';
-const MSG_MAPA_VAZIO = 'Nenhum paciente no mapa deste dia. Use Inserir paciente.';
+const MAPA_COLSPAN = 26;
+const MSG_MAPA_SELECIONE = 'Selecione a clínica para ver o mapa';
+const MSG_MAPA_VAZIO = 'Nenhum leito cadastrado para esta clínica. Cadastre leitos nas enfermarias vinculadas.';
 let dataAtual = DATA_INICIAL ? new Date(DATA_INICIAL + 'T12:00:00') : new Date();
 let ctxLinha = null;
 let ctxCampo = null;
@@ -974,65 +1011,18 @@ async function alterarData(deltaDias){
 
 function temFiltroMapa(){
   const cli = document.getElementById('filtroClinica')?.value || '';
-  const enf = document.getElementById('filtroEnfermaria')?.value || '';
-  return cli !== '' || enf !== '';
-}
-
-function filtroEhTodas(v){
-  return !v || v === FILTRO_TODAS;
+  return cli !== '';
 }
 
 function mostrarMapaPlaceholder(msg){
   const body = document.getElementById('mapaBody');
   if (!body) return;
   linhasMapaCache = {};
-  body.innerHTML = `<tr id="mapaVazio"><td colspan="25" style="text-align:center;padding:1.5rem;color:#64748b">${msg}</td></tr>`;
+  body.innerHTML = `<tr id="mapaVazio"><td colspan="${MAPA_COLSPAN}" style="text-align:center;padding:1.5rem;color:#64748b">${msg}</td></tr>`;
 }
 
-function montarOpcoesEnfermaria(lista, manterValor){
-  const sel = document.getElementById('filtroEnfermaria');
-  if (!sel) return;
-  const prev = manterValor ? (sel.value || '') : '';
-  const opts = [`<option value="">Selecione enfermaria...</option>`, `<option value="${FILTRO_TODAS}">Todas</option>`];
-  (lista || []).forEach(e => {
-    const nome = typeof e === 'string' ? e : (e.nome || '');
-    if (!nome) return;
-    opts.push(`<option value="${esc(nome)}">${esc(nome)}</option>`);
-  });
-  sel.innerHTML = opts.join('');
-  if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
-  else sel.value = '';
-}
-
-async function popularEnfermariasFiltro(){
-  const selCli = document.getElementById('filtroClinica');
-  const selEnf = document.getElementById('filtroEnfermaria');
-  if (!selCli || !selEnf) return;
-  const cliVal = selCli.value || '';
-  if (!cliVal){
-    selEnf.disabled = true;
-    montarOpcoesEnfermaria([], false);
-    return;
-  }
-  selEnf.disabled = false;
-  if (cliVal === FILTRO_TODAS){
-    montarOpcoesEnfermaria(ENFERMARIAS_MAPA || [], false);
-    return;
-  }
-  const opt = selCli.selectedOptions[0];
-  const cid = opt?.dataset?.id || (CLINICAS_MAPA || []).find(c => c.nome === cliVal)?.id;
-  if (!cid){
-    montarOpcoesEnfermaria(ENFERMARIAS_MAPA || [], false);
-    return;
-  }
-  try {
-    const r = await fetch(`/nutricao/api/clinicas/${cid}/enfermarias`);
-    const j = await r.json();
-    const lista = (j.clinica && j.clinica.enfermarias) || [];
-    montarOpcoesEnfermaria(lista.length ? lista : (ENFERMARIAS_MAPA || []), false);
-  } catch (e) {
-    montarOpcoesEnfermaria(ENFERMARIAS_MAPA || [], false);
-  }
+function clinicaFiltroAtual(){
+  return document.getElementById('filtroClinica')?.value || '';
 }
 
 function flagCell(campo, on){
@@ -1044,53 +1034,94 @@ function textoCell(campo, valor){
   return `<td class="cell-texto" data-campo="${campo}">${v ? '<button type="button" class="ver-texto" onclick="abrirTextoCampo(this)"> (Ver Texto)</button>' : ''}</td>`;
 }
 
-function renderLinhas(linhas){
+function renderCabecalhoClinica(nome){
+  const rotulo = (nome || '').trim() || 'Sem clínica';
+  return `<tr class="mapa-grupo-clinica" data-clinica="${esc(rotulo)}"><td colspan="${MAPA_COLSPAN}"><span class="mapa-clinica-nome"><i class="fas fa-hospital"></i> ${esc(rotulo)}</span></td></tr>`;
+}
+
+function renderSlotGrade(slot){
+  const l = slot.linha || {};
+  const clinica = slot.clinica || l.clinica || '';
+  const enfermaria = slot.enfermaria || l.enfermaria || '';
+  const leito = slot.leito || l.leito || '';
+  const vago = !!slot.vago;
+  const id = l.id || '';
+  if (id) linhasMapaCache[id] = l;
+  const txt = [leito, l.prontuario, l.nome, l.dieta, l.diagnostico, l.observacoes, clinica, enfermaria].join(' ').toLowerCase();
+  const leitoValor = slot.leito_valor || leito;
+  const acoes = vago
+    ? `<button type="button" class="btn btn-ghost btn-sm" title="Inserir paciente neste leito" onclick="inserirNoLeitoVago(this.closest('tr').dataset.clinica, this.closest('tr').dataset.enfermaria, this.closest('tr').dataset.leito)"><i class="fas fa-user-plus"></i></button>`
+    : `<button type="button" class="btn btn-ghost btn-sm" title="Editar" onclick="editarLinhaMapa(${id})"><i class="fas fa-pen"></i></button>
+        <button type="button" class="btn btn-ghost btn-sm" title="Excluir" onclick="abrirExcluirLinhaMapa(${id})"><i class="fas fa-trash"></i></button>`;
+  const flag = (campo, on) => vago
+    ? `<td class="col-flag"><button type="button" class="flag-btn" disabled>○</button></td>`
+    : flagCell(campo, on);
+  return `<tr class="linha-mapa${vago ? ' linha-vaga' : ''}${slot.fora_cadastro ? ' linha-fora-cadastro' : ''}" data-id="${id}" data-vago="${vago ? '1' : ''}"
+      data-clinica="${esc(clinica)}" data-enfermaria="${esc(enfermaria)}" data-leito="${esc(leitoValor)}" data-nome="${esc(l.nome || '')}" data-text="${esc(txt)}"
+      data-obs_etiqueta="${esc(l.obs_etiqueta)}" data-extras="${esc(l.extras)}" data-suplementos="${esc(l.suplementos)}"
+      data-enteral="${esc(l.enteral)}" data-formula_infantil="${esc(l.formula_infantil)}" data-lve="${esc(l.lve)}">
+      <td class="cell-enfermaria" title="${esc(enfermaria)}">${esc(enfermaria) || '-'}</td>
+      <td>${vago ? '-' : (l.adm || '-')}</td>
+      <td class="cell-leito">${esc(leito) || '-'}</td>
+      <td>${vago ? '' : (l.prontuario || '-')}</td>
+      <td>${vago ? '' : (l.nome || '-')}</td>
+      <td>${vago ? '' : (l.idade != null ? l.idade : '-')}</td>
+      <td title="${esc(l.diagnostico)}">${vago ? '' : (l.diagnostico || '-')}</td>
+      <td title="${esc(l.dieta)}">${vago ? '' : (l.dieta || '-')}</td>
+      <td title="${esc(l.observacoes)}">${vago ? '' : (l.observacoes || '-')}</td>
+      ${flag('fl_desjejum', !!l.fl_desjejum)}
+      ${flag('fl_colacao', !!l.fl_colacao)}
+      ${flag('fl_almoco', !!l.fl_almoco)}
+      ${flag('fl_merenda', !!l.fl_merenda)}
+      ${flag('fl_jantar', !!l.fl_jantar)}
+      ${flag('fl_ceia', !!l.fl_ceia)}
+      <td>${vago ? '' : (l.data_saida || '-')}</td>
+      ${textoCell('obs_etiqueta', vago ? '' : l.obs_etiqueta)}
+      ${textoCell('extras', vago ? '' : l.extras)}
+      ${textoCell('suplementos', vago ? '' : l.suplementos)}
+      ${textoCell('enteral', vago ? '' : l.enteral)}
+      ${textoCell('formula_infantil', vago ? '' : l.formula_infantil)}
+      ${textoCell('lve', vago ? '' : l.lve)}
+      <td>${vago ? '' : (l.data_inclusao || '-')}</td>
+      <td title="${esc(l.ultima_alteracao)}">${vago ? '' : (l.ultima_alteracao || '-')}</td>
+      <td class="cell-motivo">${vago ? '' : (l.motivo_saida || '-')}</td>
+      <td class="cell-acoes">${acoes}</td>
+    </tr>`;
+}
+
+function renderGrade(grade){
   const body = document.getElementById('mapaBody');
   if (!body) return;
   linhasMapaCache = {};
-  if (!linhas || !linhas.length){
-    body.innerHTML = `<tr id="mapaVazio"><td colspan="25" style="text-align:center;padding:1.5rem;color:#64748b">${MSG_MAPA_VAZIO}</td></tr>`;
+  if (!grade || !grade.length){
+    body.innerHTML = `<tr id="mapaVazio"><td colspan="${MAPA_COLSPAN}" style="text-align:center;padding:1.5rem;color:#64748b">${MSG_MAPA_VAZIO}</td></tr>`;
     return;
   }
-  body.innerHTML = linhas.map(l => {
-    linhasMapaCache[l.id] = l;
-    const clinica = l.clinica || '';
-    const enfermaria = l.enfermaria || '';
-    const txt = [l.leito, l.prontuario, l.nome, l.dieta, l.diagnostico, l.observacoes, clinica, enfermaria].join(' ').toLowerCase();
-    return `<tr class="linha-mapa" data-id="${l.id}" data-clinica="${esc(clinica)}" data-enfermaria="${esc(enfermaria)}" data-text="${esc(txt)}"
-      data-obs_etiqueta="${esc(l.obs_etiqueta)}" data-extras="${esc(l.extras)}" data-suplementos="${esc(l.suplementos)}"
-      data-enteral="${esc(l.enteral)}" data-formula_infantil="${esc(l.formula_infantil)}" data-lve="${esc(l.lve)}">
-      <td>${l.adm || '-'}</td>
-      <td class="cell-leito">${l.leito || '-'}</td>
-      <td>${l.prontuario || '-'}</td>
-      <td>${l.nome || '-'}</td>
-      <td>${l.idade != null ? l.idade : '-'}</td>
-      <td title="${esc(l.diagnostico)}">${l.diagnostico || '-'}</td>
-      <td title="${esc(l.dieta)}">${l.dieta || '-'}</td>
-      <td title="${esc(l.observacoes)}">${l.observacoes || '-'}</td>
-      ${flagCell('fl_desjejum', !!l.fl_desjejum)}
-      ${flagCell('fl_colacao', !!l.fl_colacao)}
-      ${flagCell('fl_almoco', !!l.fl_almoco)}
-      ${flagCell('fl_merenda', !!l.fl_merenda)}
-      ${flagCell('fl_jantar', !!l.fl_jantar)}
-      ${flagCell('fl_ceia', !!l.fl_ceia)}
-      <td>${l.data_saida || '-'}</td>
-      ${textoCell('obs_etiqueta', l.obs_etiqueta)}
-      ${textoCell('extras', l.extras)}
-      ${textoCell('suplementos', l.suplementos)}
-      ${textoCell('enteral', l.enteral)}
-      ${textoCell('formula_infantil', l.formula_infantil)}
-      ${textoCell('lve', l.lve)}
-      <td>${l.data_inclusao || '-'}</td>
-      <td title="${esc(l.ultima_alteracao)}">${l.ultima_alteracao || '-'}</td>
-      <td class="cell-motivo">${l.motivo_saida || '-'}</td>
-      <td class="cell-acoes">
-        <button type="button" class="btn btn-ghost btn-sm" title="Editar" onclick="editarLinhaMapa(${l.id})"><i class="fas fa-pen"></i></button>
-        <button type="button" class="btn btn-ghost btn-sm" title="Excluir" onclick="abrirExcluirLinhaMapa(${l.id})"><i class="fas fa-trash"></i></button>
-      </td>
-    </tr>`;
-  }).join('');
+  const parts = [];
+  let lastClinica = null;
+  grade.forEach(slot => {
+    const cli = (slot.clinica || '').trim() || 'Sem clínica';
+    if (cli !== lastClinica){
+      parts.push(renderCabecalhoClinica(cli));
+      lastClinica = cli;
+    }
+    parts.push(renderSlotGrade(slot));
+  });
+  body.innerHTML = parts.join('');
   filtrarTabelaPrincipal();
+}
+
+function renderLinhas(linhas){
+  const grade = (linhas || []).map(l => ({
+    clinica: l.clinica || '',
+    enfermaria: l.enfermaria || '',
+    leito: l.leito || '',
+    leito_valor: l.leito || '',
+    vago: false,
+    fora_cadastro: false,
+    linha: l,
+  }));
+  renderGrade(grade);
 }
 
 async function carregarMapa(opts){
@@ -1102,14 +1133,18 @@ async function carregarMapa(opts){
     return;
   }
   try {
-    const r = await fetch('/nutricao/api/mapa?data=' + encodeURIComponent(iso));
+    const qs = new URLSearchParams({ data: iso });
+    const cliVal = clinicaFiltroAtual();
+    if (cliVal) qs.set('clinica', cliVal);
+    const r = await fetch('/nutricao/api/mapa?' + qs.toString());
     const j = await r.json();
     if (!r.ok || j.ok === false){
       showToast((j && j.error) || 'Falha ao carregar mapa','error');
       return;
     }
     mapaCarregadoParaData = iso;
-    renderLinhas(j.linhas || []);
+    if (Array.isArray(j.grade)) renderGrade(j.grade);
+    else renderLinhas(j.linhas || []);
     abrirAvisoAlta(j.avisos_alta || []);
   } catch (e) {
     showToast('Erro ao carregar mapa','error');
@@ -1186,7 +1221,7 @@ async function confirmarAvisoAlta(){
       return;
     }
     document.getElementById('avisoAltaOverlay').hidden = true;
-    renderLinhas(j.linhas || []);
+    await carregarMapa({ forcar: true });
     const n = j.excluidos || 0;
     if (n > 0) showToast(`${n} paciente(s) excluído(s) do mapa`, 'success');
     else showToast('Nenhum paciente excluído do mapa', 'success');
@@ -1197,7 +1232,7 @@ async function confirmarAvisoAlta(){
 
 async function toggleFlag(btn){
   const tr = btn.closest('tr.linha-mapa');
-  if (!tr) return;
+  if (!tr || tr.dataset.vago === '1' || !tr.dataset.id) return;
   const id = tr.dataset.id;
   const campo = btn.dataset.campo;
   btn.disabled = true;
@@ -1235,32 +1270,32 @@ function filtrarTabelaPrincipal(){
     return;
   }
   const q = (document.getElementById('filtroPrincipal')?.value || '').toLowerCase().trim();
-  const clinicaFiltroRaw = document.getElementById('filtroClinica')?.value || '';
-  const enfermariaFiltroRaw = document.getElementById('filtroEnfermaria')?.value || '';
-  const clinicaFiltro = filtroEhTodas(clinicaFiltroRaw) ? '' : clinicaFiltroRaw.toLowerCase().trim();
-  const enfermariaFiltro = filtroEhTodas(enfermariaFiltroRaw) ? '' : enfermariaFiltroRaw.toLowerCase().trim();
   let visiveis = 0;
-  document.querySelectorAll('#mapaBody tr.linha-mapa').forEach(tr => {
+  let lastHeader = null;
+  let headerHasVisible = false;
+  document.querySelectorAll('#mapaBody tr').forEach(tr => {
+    if (tr.classList.contains('mapa-grupo-clinica')){
+      if (lastHeader) lastHeader.style.display = headerHasVisible ? '' : 'none';
+      lastHeader = tr;
+      headerHasVisible = false;
+      return;
+    }
+    if (!tr.classList.contains('linha-mapa')) return;
     const txt = (tr.dataset.text || tr.textContent || '').toLowerCase();
-    const clinica = (tr.dataset.clinica || '').toLowerCase().trim();
-    const enfermaria = (tr.dataset.enfermaria || '').toLowerCase().trim();
-    const okTexto = !q || txt.includes(q);
-    const okClinica = !clinicaFiltro || clinica === clinicaFiltro;
-    const okEnfermaria = !enfermariaFiltro || enfermaria === enfermariaFiltro;
-    const show = okTexto && okClinica && okEnfermaria;
+    const show = !q || txt.includes(q);
     tr.style.display = show ? '' : 'none';
-    if (show) visiveis++;
+    if (show){
+      visiveis++;
+      headerHasVisible = true;
+    }
   });
+  if (lastHeader) lastHeader.style.display = headerHasVisible ? '' : 'none';
   const vazio = document.getElementById('mapaVazio');
   if (vazio) vazio.style.display = visiveis ? 'none' : '';
 }
 
 async function onFiltroClinicaChange(){
-  await popularEnfermariasFiltro();
-  await garantirMapaVisivel();
-}
-
-async function onFiltroEnfermariaChange(){
+  mapaCarregadoParaData = null;
   await garantirMapaVisivel();
 }
 
@@ -1275,6 +1310,7 @@ function limparSelecaoMapa(){
 
 function abrirContextMenu(e, tr, campo){
   e.preventDefault();
+  if (!tr || tr.dataset.vago === '1' || !tr.dataset.id) return;
   ctxLinha = tr;
   ctxCampo = campo || null;
   limparSelecaoMapa();
@@ -1472,12 +1508,13 @@ async function confirmarTransferirLeito(){
 function salvarMapaArquivo(){
   const linhas = [];
   document.querySelectorAll('#mapaBody tr.linha-mapa').forEach(tr => {
-    if (tr.style.display === 'none') return;
+    if (tr.style.display === 'none' || tr.dataset.vago === '1' || !tr.dataset.id) return;
     linhas.push({
       id: tr.dataset.id,
       clinica: tr.dataset.clinica || '',
+      enfermaria: tr.dataset.enfermaria || '',
       leito: tr.querySelector('.cell-leito')?.textContent || '',
-      nome: tr.children[3]?.textContent || '',
+      nome: tr.dataset.nome || '',
       obs_etiqueta: tr.dataset.obs_etiqueta || '',
       extras: tr.dataset.extras || '',
       suplementos: tr.dataset.suplementos || '',
@@ -2020,6 +2057,15 @@ function abrirInserirPaciente(nomePreenchido){
   }, 30);
 }
 
+function inserirNoLeitoVago(clinica, enfermaria, leito){
+  window._leitoInserirPrefill = {
+    clinica: clinica || '',
+    enfermaria: enfermaria || '',
+    leito: leito || '',
+  };
+  abrirInserirPaciente();
+}
+
 /** Fecha a tela "Inserir paciente"; sem dieta vinculada, confirma antes. */
 function fecharTelaInserirPaciente(){
   const p = pacienteSelecionadoInserir || pacienteUnicoDaBusca();
@@ -2190,9 +2236,7 @@ async function salvarCadastroPacienteRapido(){
   }
   showToast('Paciente cadastrado','success');
   const pac = (j && j.paciente) || { id: j.id, nome };
-  perguntarIncluirAcompanhante(pac, function(){
-    abrirInserirPaciente(nome);
-  });
+  perguntarIncluirAcompanhante(pac);
 }
 
 function selecionarPacienteInserir(id){
@@ -2218,11 +2262,13 @@ function selecionarPacienteInserir(id){
 function abrirFormularioInserirMapa(p){
   pacienteSelecionadoInserir = p;
   fluxoIncompleto = true;
+  const prefill = window._leitoInserirPrefill || {};
+  const clinicaPref = (prefill.clinica || p.clinica || '').trim();
   const dietasOpts = (DIETAS_MAPA || []).map(d =>
     `<option value="${esc(d.nome)}" ${String(d.nome).toUpperCase() === String(p.dieta || '').toUpperCase() ? 'selected' : ''}>${esc(d.nome)}</option>`
   ).join('');
   const clinicasOpts = (CLINICAS_MAPA || []).map(c =>
-    `<option value="${esc(c.nome)}" data-id="${c.id}" ${c.nome === (p.clinica || '') ? 'selected' : ''}>${esc(c.nome)}</option>`
+    `<option value="${esc(c.nome)}" data-id="${c.id}" ${c.nome === clinicaPref ? 'selected' : ''}>${esc(c.nome)}</option>`
   ).join('');
   const agora = formatDateTimeBR(new Date());
   const obs = String(p.observacoes || '').replace(/</g,'&lt;');
@@ -2292,11 +2338,11 @@ function abrirFormularioInserirMapa(p){
   `;
   abrirModal('Inserir paciente no mapa', html, 'Salvar no mapa', salvarInserirPacienteMapa);
   setTimeout(() => {
-    if (p.clinica) carregarEnfermariasInserir();
+    if (clinicaPref) carregarEnfermariasInserir(prefill.enfermaria, prefill.leito);
   }, 40);
 }
 
-async function carregarEnfermariasInserir(){
+async function carregarEnfermariasInserir(preEnf, preLeito){
   const selCli = document.getElementById('ins-clinica');
   const selEnf = document.getElementById('ins-enfermaria');
   const selLei = document.getElementById('ins-leito');
@@ -2317,15 +2363,18 @@ async function carregarEnfermariasInserir(){
       selEnf.innerHTML = '<option value="">Nenhuma enfermaria vinculada</option>';
       return;
     }
-    selEnf.innerHTML = '<option value="">Selecione</option>' + lista.map(e =>
-      `<option value="${esc(e.nome)}" data-id="${e.id}">${esc(e.nome)}</option>`
-    ).join('');
+    const pref = (preEnf || '').trim().toUpperCase();
+    selEnf.innerHTML = '<option value="">Selecione</option>' + lista.map(e => {
+      const selAttr = pref && String(e.nome || '').toUpperCase() === pref ? ' selected' : '';
+      return `<option value="${esc(e.nome)}" data-id="${e.id}"${selAttr}>${esc(e.nome)}</option>`;
+    }).join('');
+    if (selEnf.value) await carregarLeitosInserir(preLeito);
   } catch (e) {
     selEnf.innerHTML = '<option value="">Erro ao carregar</option>';
   }
 }
 
-async function carregarLeitosInserir(){
+async function carregarLeitosInserir(preLeito){
   const selEnf = document.getElementById('ins-enfermaria');
   const selLei = document.getElementById('ins-leito');
   if (!selEnf || !selLei) return;
@@ -2346,9 +2395,15 @@ async function carregarLeitosInserir(){
     }
     selLei.innerHTML = '<option value="">Selecione</option>' + lista.map(l => {
       const rotulo = l.numero || l.nome || ('Leito ' + l.id);
-      const valor = l.numero || l.nome || rotulo;
-      return `<option value="${esc(valor)}">${esc(rotulo)}${l.nome && l.numero ? ' — ' + esc(l.nome) : ''}</option>`;
+      const valor = String(l.numero || l.nome || rotulo);
+      const atual = preLeito != null ? String(preLeito).trim() : '';
+      const selAttr = atual && (valor === atual || String(l.numero || '') === atual || String(l.nome || '') === atual) ? ' selected' : '';
+      return `<option value="${esc(valor)}"${selAttr}>${esc(rotulo)}${l.nome && l.numero ? ' — ' + esc(l.nome) : ''}</option>`;
     }).join('');
+    const atual = preLeito != null ? String(preLeito).trim() : '';
+    if (atual && ![...selLei.options].some(o => o.value === atual)){
+      selLei.insertAdjacentHTML('beforeend', `<option value="${esc(atual)}" selected>${esc(atual)}</option>`);
+    }
   } catch (e) {
     selLei.innerHTML = '<option value="">Erro ao carregar</option>';
   }
@@ -2405,6 +2460,7 @@ async function salvarInserirPacienteMapa(){
   }
   fluxoIncompleto = false;
   pacienteSelecionadoInserir = null;
+  window._leitoInserirPrefill = null;
   fecharModal();
   showToast('Paciente inserido no mapa','success');
   await carregarMapa();
@@ -2645,6 +2701,10 @@ document.addEventListener('DOMContentLoaded', function(){
   const _fecharModalBase = window.fecharModal;
   window._fecharModalBase = _fecharModalBase;
   window.fecharModal = function(){
+    if (document.getElementById('modal-acomp-nome')) {
+      if (_fecharModalBase) _fecharModalBase();
+      return;
+    }
     // Tela de busca "Inserir paciente": sem dieta → confirmar; Não abre o mapa
     const naBuscaInserir = !!document.getElementById('busca-pac-nome');
     if (naBuscaInserir){
@@ -2660,7 +2720,6 @@ document.addEventListener('DOMContentLoaded', function(){
   };
 
   atualizarLabelData();
-  popularEnfermariasFiltro();
   mostrarMapaPlaceholder(MSG_MAPA_SELECIONE);
 
   const body = document.getElementById('mapaBody');
@@ -2675,8 +2734,12 @@ document.addEventListener('DOMContentLoaded', function(){
   body?.addEventListener('dblclick', function(e){
     if (e.target.closest('button, a, input, select, textarea, .flag-btn, .ver-texto, .cell-acoes')) return;
     const tr = e.target.closest('tr.linha-mapa');
-    if (!tr || !tr.dataset.id) return;
+    if (!tr) return;
     e.preventDefault();
+    if (tr.dataset.vago === '1' || !tr.dataset.id){
+      inserirNoLeitoVago(tr.dataset.clinica || '', tr.dataset.enfermaria || '', tr.dataset.leito || '');
+      return;
+    }
     editarLinhaMapa(tr.dataset.id);
   });
 
