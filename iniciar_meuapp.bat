@@ -3,7 +3,7 @@ chcp 65001 >nul
 cd /d "%~dp0"
 
 echo ========================================
-echo   MeuApp - Inicializacao
+echo   Sao Geraldo Service - Inicializacao
 echo ========================================
 echo.
 
