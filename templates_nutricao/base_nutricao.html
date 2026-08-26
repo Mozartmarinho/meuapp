@@ -310,7 +310,11 @@
         var pac = window._acompPacientePosCadastro;
         var done = window._acompOnDone;
         if (!sim) {
-            fecharModal();
+            if (typeof window._fecharModalBase === 'function') {
+                window._fecharModalBase();
+            } else {
+                fecharModal();
+            }
             window._acompPacientePosCadastro = null;
             window._acompOnDone = null;
             if (done) done(pac);
@@ -409,9 +413,13 @@
                 return;
             }
             showToast('Acompanhante cadastrado', 'success');
-            fecharModal();
             window._acompPacientePosCadastro = null;
             window._acompOnDone = null;
+            if (typeof window._fecharModalBase === 'function') {
+                window._fecharModalBase();
+            } else {
+                fecharModal();
+            }
             if (done) done(pac);
         } catch (e) {
             showToast('Falha ao salvar acompanhante', 'error');

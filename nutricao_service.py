@@ -2330,8 +2330,11 @@ def leito_ocupado_no_mapa(data_ref, clinica, enfermaria, leito, exclude_id=None)
 
 def _chaves_ocupacao_leito(valor):
     """Normaliza rótulos de leito para comparação (nº, nome, '1 — Janela')."""
-    s = (valor or '').strip().upper()
+    if valor is None:
+        return set()
+    s = str(valor).strip().upper()
     if not s:
+        return set()
         return set()
     keys = {s}
     for sep in ('—', ' - ', '–'):
@@ -2426,6 +2429,127 @@ def list_leitos_vagos(
         'data': data_ref.isoformat(),
         'clinica': clinica_n,
     }
+
+
+def _rotulo_valor_leito(leito):
+    """Rótulo de exibição e valor canônico de um leito cadastrado."""
+    numero = leito.numero
+    nome = (leito.nome or '').strip()
+    if numero is not None and nome and nome != str(numero) and nome != str(numero).zfill(2):
+        return str(numero), f'{numero} — {nome}'
+    rotulo = nome or (str(numero) if numero is not None else f'Leito {leito.id}')
+    valor = str(numero) if numero is not None else rotulo
+    return valor, rotulo
+
+
+def montar_grade_leitos_mapa(data_ref, clinica_nome=None):
+    """Uma linha por leito cadastrado da clínica, com paciente do mapa se ocupado.
+
+    A grade segue as enfermarias vinculadas à clínica e os leitos ativos de cada
+    uma. Pacientes no mapa cujo leito não está no cadastro entram no fim do grupo.
+    """
+    from collections import defaultdict
+
+    data_ref = data_ref or date.today()
+    nome_filtro = (clinica_nome or '').strip()
+    todas = (not nome_filtro) or nome_filtro == '__todas__'
+
+    q_cli = _q(NutClinica).filter_by(ativo=True)
+    if not todas:
+        q_cli = q_cli.filter(db.func.upper(NutClinica.nome) == nome_filtro.upper())
+    clinicas = q_cli.order_by(NutClinica.nome).all()
+
+    linhas_q = apply_cliente_filter(
+        NutMapaRefeicao.query.filter_by(data_refeicao=data_ref, ativo=True),
+        NutMapaRefeicao,
+    )
+    if not todas:
+        linhas_q = linhas_q.filter(
+            db.func.upper(NutMapaRefeicao.clinica) == nome_filtro.upper()
+        )
+    linhas_mapa = linhas_q.all()
+
+    idx = defaultdict(list)
+    for row in linhas_mapa:
+        cli_u = (row.clinica or '').strip().upper()
+        enf_u = (row.enfermaria or '').strip().upper()
+        idx[(cli_u, enf_u)].append({
+            'keys': _chaves_ocupacao_leito(row.leito),
+            'linha': row,
+            'usado': False,
+        })
+
+    def _slot(clinica_nome_s, clinica_id, enf_nome, enf_id, leito_rotulo, leito_valor,
+              leito_id=None, leito_numero=None, linha=None, fora_cadastro=False):
+        return {
+            'clinica': clinica_nome_s or '',
+            'clinica_id': clinica_id,
+            'enfermaria': enf_nome or '',
+            'enfermaria_id': enf_id,
+            'leito': leito_rotulo or '',
+            'leito_valor': leito_valor or leito_rotulo or '',
+            'leito_id': leito_id,
+            'leito_numero': leito_numero,
+            'vago': linha is None,
+            'fora_cadastro': bool(fora_cadastro),
+            'linha': linha.to_dict() if linha is not None else None,
+        }
+
+    grade = []
+    for clinica in clinicas:
+        cli_nome = clinica.nome or ''
+        cli_u = cli_nome.strip().upper()
+        enfermarias = [e for e in (clinica.enfermarias or []) if getattr(e, 'ativo', True)]
+        enfermarias.sort(key=lambda e: (e.nome or '').upper())
+        for enf in enfermarias:
+            enf_nome = enf.nome or ''
+            enf_u = enf_nome.strip().upper()
+            leitos = (
+                NutLeito.query
+                .filter_by(enfermaria_id=enf.id, ativo=True)
+                .order_by(NutLeito.numero, NutLeito.nome)
+                .all()
+            )
+            bucket = idx.get((cli_u, enf_u), [])
+            for leito in leitos:
+                valor, rotulo = _rotulo_valor_leito(leito)
+                keys = (
+                    _chaves_ocupacao_leito(leito.numero)
+                    | _chaves_ocupacao_leito(leito.nome)
+                    | _chaves_ocupacao_leito(valor)
+                )
+                match = None
+                for item in bucket:
+                    if item['usado'] or not item['keys']:
+                        continue
+                    if item['keys'] & keys:
+                        item['usado'] = True
+                        match = item['linha']
+                        break
+                grade.append(_slot(
+                    cli_nome, clinica.id, enf_nome, enf.id,
+                    rotulo, valor, leito.id, leito.numero, match, False,
+                ))
+
+    for (_cli_u, _enf_u), bucket in idx.items():
+        for item in bucket:
+            if item['usado']:
+                continue
+            row = item['linha']
+            grade.append(_slot(
+                row.clinica, None, row.enfermaria, None,
+                row.leito or '', row.leito or '', None, None, row, True,
+            ))
+
+    grade.sort(key=lambda item: (
+        (item.get('clinica') or '').upper(),
+        (item.get('enfermaria') or '').upper(),
+        1 if item.get('fora_cadastro') else 0,
+        item.get('leito_numero') if item.get('leito_numero') is not None else 10 ** 9,
+        (item.get('leito') or '').upper(),
+        (item.get('linha') or {}).get('nome') or '',
+    ))
+    return grade
 
 
 def _aplicar_baixa_linha(row, motivo, usuario=None, data_saida=None, hospital_transferencia=None):
