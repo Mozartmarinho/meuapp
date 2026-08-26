@@ -150,6 +150,14 @@ h1, h2, h3, h4, .brand-title {
     opacity: 0.8;
 }
 
+.sidebar-logo .module-revision {
+    margin-top: 0.15rem;
+    font-size: 0.65rem;
+    letter-spacing: 0.04em;
+    color: rgba(255, 255, 255, 0.45);
+    font-family: var(--font-body);
+}
+
 .sidebar-logo .module-cliente {
     margin-top: 0.35rem;
     padding: 0.35rem 0.45rem;
@@ -529,6 +537,8 @@ textarea:focus {
 
     body[data-sidebar-collapse].sidebar-collapsed .brand-tagline,
     body[data-sidebar-collapse].sidebar-collapsed .module-label,
+    body[data-sidebar-collapse].sidebar-collapsed .module-cliente,
+    body[data-sidebar-collapse].sidebar-collapsed .module-revision,
     body[data-sidebar-collapse].sidebar-collapsed .menu-label,
     body[data-sidebar-collapse].sidebar-collapsed .chevron,
     body[data-sidebar-collapse].sidebar-collapsed .chev,
