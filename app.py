@@ -24,6 +24,8 @@ def create_app():
     app.config['SESSION_COOKIE_SECURE'] = False
     app.config['REMEMBER_COOKIE_SECURE'] = False
     app.config['TEMPLATES_AUTO_RELOAD'] = True
+    app.jinja_env.auto_reload = True
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
     db.init_app(app)
     app.register_blueprint(main)
@@ -41,9 +43,43 @@ def create_app():
         user = None
         if session.get('user_id'):
             user = Usuario.query.get(session['user_id'])
-        return {'usuario_atual': user}
+        return {
+            'usuario_atual': user,
+            'app_revision': _app_revision(),
+        }
+
+    @app.after_request
+    def _html_no_store(response):
+        ctype = response.headers.get('Content-Type', '')
+        if 'text/html' in ctype:
+            response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+        return response
 
     return app
+
+
+_APP_REVISION_CACHE = None
+
+
+def _app_revision():
+    """Short git SHA so /nutricao shows which code is actually running."""
+    global _APP_REVISION_CACHE
+    if _APP_REVISION_CACHE is not None:
+        return _APP_REVISION_CACHE
+    try:
+        import subprocess
+        root = os.path.dirname(os.path.abspath(__file__))
+        _APP_REVISION_CACHE = subprocess.check_output(
+            ['git', 'rev-parse', '--short', 'HEAD'],
+            cwd=root,
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+        ).decode('utf-8', 'replace').strip()
+    except Exception:
+        _APP_REVISION_CACHE = ''
+    return _APP_REVISION_CACHE
 
 
 def _port_available(host: str, port: int) -> bool:
@@ -716,7 +752,7 @@ if __name__ == '__main__':
             print("Default admin user created: email=admin@example.com, password=admin")
 
     host = os.environ.get('HOST', '0.0.0.0')
-    port = 80
+    port = int(os.environ.get('PORT', '80'))
     https_port = int(os.environ.get('HTTPS_PORT', '443'))
     enable_https = os.environ.get('ENABLE_HTTPS', '1').strip().lower() not in ('0', 'false', 'no')
 
