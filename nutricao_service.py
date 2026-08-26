@@ -2330,8 +2330,11 @@ def leito_ocupado_no_mapa(data_ref, clinica, enfermaria, leito, exclude_id=None)
 
 def _chaves_ocupacao_leito(valor):
     """Normaliza rótulos de leito para comparação (nº, nome, '1 — Janela')."""
-    s = (valor or '').strip().upper()
+    if valor is None:
+        return set()
+    s = str(valor).strip().upper()
     if not s:
+        return set()
         return set()
     keys = {s}
     for sep in ('—', ' - ', '–'):
