@@ -80,8 +80,17 @@
 </div>
 
 <nav id="mapaContextMenu" class="mapa-ctx" hidden>
+  <button type="button" data-acao="editar_paciente">Editar <u>p</u>aciente</button>
+  <button type="button" data-acao="editar_acompanhante">Editar acom<u>p</u>anhante</button>
+  <button type="button" data-acao="nova_dieta"><u>N</u>ova dieta</button>
+  <button type="button" data-acao="substituicao_dieta">Criar substituição de dieta</button>
+  <button type="button" data-acao="editar_cardapio">Editar <u>c</u>ardápio</button>
+  <button type="button" data-acao="visualizar_cardapio"><u>V</u>isualizar cardápio</button>
+  <button type="button" data-acao="observacao"><u>O</u>bservação</button>
+  <button type="button" data-acao="encerrar_dieta">Excluir/encerrar dieta</button>
+  <hr>
   <button type="button" data-acao="alimentos"><u>A</u>limentos complementares</button>
-  <button type="button" data-acao="substituicoes"><u>S</u>ubstituições</button>
+  <button type="button" data-acao="substituicoes"><u>S</u>ubstituições (cardápio)</button>
   <button type="button" data-acao="avaliacao"><u>A</u>valiação Nutricional</button>
   <hr>
   <button type="button" data-acao="transferir"><u>T</u>ransferir de leito</button>
@@ -358,12 +367,28 @@
 .linha-vaga .cell-leito { color: #0f2a56; font-weight: 600; }
 .linha-vaga .cell-enfermaria { color: #1e3a8a; }
 .linha-vaga:hover td { background: #f1f5f9 !important; }
-/* Destaque da linha no clique direito — verde São Geraldo (--brand-lime) */
+/* Destaque da linha no clique esquerdo — verde São Geraldo (--brand-lime) */
 .linha-mapa.selected td,
 .linha-mapa.selected:hover td {
   background: var(--brand-lime, #A8C53A) !important;
   color: var(--brand-ink, #0F2A56);
 }
+.badge-tipo-dieta {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: #e2e8f0;
+  color: #0f2a56;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.badge-tipo-dieta.substituicao { background: #fef3c7; color: #92400e; }
+.badge-tipo-dieta.adicional { background: #dbeafe; color: #1e3a8a; }
+.linha-mapa.selected .badge-tipo-dieta { background: #fff; color: #0f2a56; }
 .ver-texto {
   border: none;
   background: transparent;
@@ -1049,15 +1074,22 @@ function renderSlotGrade(slot){
   if (id) linhasMapaCache[id] = l;
   const txt = [leito, l.prontuario, l.nome, l.dieta, l.diagnostico, l.observacoes, clinica, enfermaria].join(' ').toLowerCase();
   const leitoValor = slot.leito_valor || leito;
+  const tipo = (l.tipo_lancamento || 'principal');
+  const tipoLabel = l.tipo_lancamento_label || '';
+  const badge = (!vago && tipo && tipo !== 'principal')
+    ? `<span class="badge-tipo-dieta ${esc(tipo)}">${esc(tipoLabel || tipo)}</span>`
+    : '';
   const acoes = vago
     ? `<button type="button" class="btn btn-ghost btn-sm" title="Inserir paciente neste leito" onclick="inserirNoLeitoVago(this.closest('tr').dataset.clinica, this.closest('tr').dataset.enfermaria, this.closest('tr').dataset.leito)"><i class="fas fa-user-plus"></i></button>`
     : `<button type="button" class="btn btn-ghost btn-sm" title="Editar" onclick="editarLinhaMapa(${id})"><i class="fas fa-pen"></i></button>
+        <button type="button" class="btn btn-ghost btn-sm" title="Nova dieta" onclick="abrirNovaDieta(${id}, 'adicional')"><i class="fas fa-plus"></i></button>
         <button type="button" class="btn btn-ghost btn-sm" title="Excluir" onclick="abrirExcluirLinhaMapa(${id})"><i class="fas fa-trash"></i></button>`;
   const flag = (campo, on) => vago
     ? `<td class="col-flag"><button type="button" class="flag-btn" disabled>○</button></td>`
     : flagCell(campo, on);
-  return `<tr class="linha-mapa${vago ? ' linha-vaga' : ''}${slot.fora_cadastro ? ' linha-fora-cadastro' : ''}" data-id="${id}" data-vago="${vago ? '1' : ''}"
+  return `<tr class="linha-mapa${vago ? ' linha-vaga' : ''}${slot.fora_cadastro ? ' linha-fora-cadastro' : ''}${tipo && tipo !== 'principal' ? ' linha-dieta-extra' : ''}" data-id="${id}" data-vago="${vago ? '1' : ''}"
       data-clinica="${esc(clinica)}" data-enfermaria="${esc(enfermaria)}" data-leito="${esc(leitoValor)}" data-nome="${esc(l.nome || '')}" data-text="${esc(txt)}"
+      data-paciente-id="${esc(l.paciente_id || '')}" data-tipo-lancamento="${esc(tipo)}"
       data-obs_etiqueta="${esc(l.obs_etiqueta)}" data-extras="${esc(l.extras)}" data-suplementos="${esc(l.suplementos)}"
       data-enteral="${esc(l.enteral)}" data-formula_infantil="${esc(l.formula_infantil)}" data-lve="${esc(l.lve)}">
       <td class="cell-enfermaria" title="${esc(enfermaria)}">${esc(enfermaria) || '-'}</td>
@@ -1067,7 +1099,7 @@ function renderSlotGrade(slot){
       <td>${vago ? '' : (l.nome || '-')}</td>
       <td>${vago ? '' : (l.idade != null ? l.idade : '-')}</td>
       <td title="${esc(l.diagnostico)}">${vago ? '' : (l.diagnostico || '-')}</td>
-      <td title="${esc(l.dieta)}">${vago ? '' : (l.dieta || '-')}</td>
+      <td title="${esc(l.dieta)}">${vago ? '' : (esc(l.dieta || '-') + badge)}</td>
       <td title="${esc(l.observacoes)}">${vago ? '' : (l.observacoes || '-')}</td>
       ${flag('fl_desjejum', !!l.fl_desjejum)}
       ${flag('fl_colacao', !!l.fl_colacao)}
@@ -1308,13 +1340,19 @@ function limparSelecaoMapa(){
   document.querySelectorAll('#mapaBody tr.linha-mapa.selected').forEach(r => r.classList.remove('selected'));
 }
 
+function selecionarLinhaMapa(tr){
+  if (!tr || !tr.classList.contains('linha-mapa')) return;
+  limparSelecaoMapa();
+  tr.classList.add('selected');
+  if (tr.dataset.vago !== '1' && tr.dataset.id) ctxLinha = tr;
+}
+
 function abrirContextMenu(e, tr, campo){
   e.preventDefault();
   if (!tr || tr.dataset.vago === '1' || !tr.dataset.id) return;
   ctxLinha = tr;
   ctxCampo = campo || null;
-  limparSelecaoMapa();
-  tr.classList.add('selected');
+  selecionarLinhaMapa(tr);
   const menu = document.getElementById('mapaContextMenu');
   menu.hidden = false;
   const x = Math.min(e.clientX, window.innerWidth - 270);
@@ -1357,6 +1395,9 @@ async function salvarCampoTexto(){
     td.innerHTML = valor.trim()
       ? '<button type="button" class="ver-texto" onclick="abrirTextoCampo(this)"> (Ver Texto)</button>'
       : '';
+  } else if (edit.campo === 'observacoes' && linhasMapaCache[edit.id]) {
+    linhasMapaCache[edit.id].observacoes = valor;
+    await carregarMapa();
   }
   fecharModal();
   showToast(j.aviso || 'Campo atualizado','success');
@@ -1786,6 +1827,11 @@ function substRenderMeal(){
   just.value = m.justificativa || '';
   just.oninput = () => { if (substState) substState._dirty = true; };
   substRefreshCardapioList();
+  if (substState.readonly) {
+    body.querySelectorAll('input').forEach(i => { i.readOnly = true; });
+    just.readOnly = true;
+    just.oninput = null;
+  }
 }
 
 async function substSalvarAtual(){
@@ -1818,6 +1864,7 @@ async function substSalvarAtual(){
 }
 
 async function substSalvarClick(){
+  if (substState?.readonly) return;
   const ok = await substSalvarAtual();
   if (!ok) return;
   substRenderMeal();
@@ -1831,14 +1878,16 @@ async function substSalvarClick(){
 
 async function substTrocarMeal(meal){
   if (!substState || meal === substState.meal) return;
-  const ok = await substSalvarAtual();
-  if (!ok) return;
+  if (!substState.readonly) {
+    const ok = await substSalvarAtual();
+    if (!ok) return;
+  }
   substState.meal = meal;
   substRenderMeal();
 }
 
 function substAplicarSelecao(){
-  if (!substState) return;
+  if (!substState || substState.readonly) return;
   const prato = (substState.pratoSel || '').trim();
   if (!prato) {
     showToast('Selecione um item do Cardápio', 'error');
@@ -1981,12 +2030,13 @@ function fecharImportarJustificativa(){
   window._substJustCache = null;
 }
 
-async function abrirSubstituicoes(mapaId){
+async function abrirSubstituicoes(mapaId, opts){
   const id = parseInt(mapaId, 10);
   if (!id) {
     showToast('Selecione uma linha', 'error');
     return;
   }
+  const readonly = !!(opts && opts.readonly);
   try {
     const r = await fetch(`/nutricao/api/mapa/${id}/substituicoes`);
     const j = await r.json();
@@ -1994,10 +2044,17 @@ async function abrirSubstituicoes(mapaId){
       showToast((j && j.error) || 'Falha ao carregar substituições', 'error');
       return;
     }
-    substState = { mapaId: id, meal: 'desjejum', data: j, pratoSel: '', gridRow: null, _dirty: false };
+    substState = { mapaId: id, meal: 'desjejum', data: j, pratoSel: '', gridRow: null, _dirty: false, readonly };
+    document.getElementById('substTitulo').textContent = readonly ? 'Visualizar cardápio' : 'Editar cardápio';
     document.getElementById('substHeader').textContent = j.header || '—';
     document.getElementById('substDieta').textContent = j.dieta || '—';
     document.getElementById('substOverlay').hidden = false;
+    document.querySelectorAll('#substOverlay .subst-footer .btn, #substOverlay .subst-icon-btn').forEach(btn => {
+      if (btn.getAttribute('onclick') && String(btn.getAttribute('onclick')).includes('fecharSubstituicoes')) return;
+      btn.style.display = readonly ? 'none' : '';
+    });
+    const just = document.getElementById('substJustificativa');
+    if (just) just.readOnly = readonly;
     substRenderMeal();
   } catch (e) {
     showToast('Erro ao abrir substituições', 'error');
@@ -2014,6 +2071,13 @@ async function fecharSubstituicoes(salvar){
   }
   fecharImportarJustificativa();
   document.getElementById('substOverlay').hidden = true;
+  const titulo = document.getElementById('substTitulo');
+  if (titulo) titulo.textContent = 'Substituições';
+  document.querySelectorAll('#substOverlay .subst-footer .btn, #substOverlay .subst-icon-btn').forEach(btn => {
+    btn.style.display = '';
+  });
+  const just = document.getElementById('substJustificativa');
+  if (just) just.readOnly = false;
   substState = null;
 }
 
@@ -2024,6 +2088,14 @@ function acaoContextMenu(acao){
     return;
   }
   switch(acao){
+    case 'editar_paciente': editarLinhaMapa(ctxLinha?.dataset?.id); break;
+    case 'editar_acompanhante': editarAcompanhanteLinha(ctxLinha); break;
+    case 'nova_dieta': abrirNovaDieta(ctxLinha?.dataset?.id, 'adicional'); break;
+    case 'substituicao_dieta': abrirNovaDieta(ctxLinha?.dataset?.id, 'substituicao'); break;
+    case 'editar_cardapio': abrirSubstituicoes(ctxLinha?.dataset?.id); break;
+    case 'visualizar_cardapio': abrirSubstituicoes(ctxLinha?.dataset?.id, { readonly: true }); break;
+    case 'observacao': editarObservacaoLinha(ctxLinha); break;
+    case 'encerrar_dieta': abrirExcluirLinhaMapa(ctxLinha?.dataset?.id); break;
     case 'alimentos': editarCampoTexto(ctxLinha, 'obs_etiqueta', 'Alimentos complementares'); break;
     case 'substituicoes': abrirSubstituicoes(ctxLinha?.dataset?.id); break;
     case 'avaliacao': showToast('Avaliação nutricional em breve'); break;
@@ -2035,6 +2107,194 @@ function acaoContextMenu(acao){
     case 'importar_formula': editarCampoTexto(ctxLinha, 'formula_infantil'); break;
     case 'importar_lve': editarCampoTexto(ctxLinha, 'lve'); break;
   }
+}
+
+function editarObservacaoLinha(tr){
+  const id = tr?.dataset?.id;
+  const l = linhasMapaCache[id];
+  if (!l){ showToast('Selecione uma linha','error'); return; }
+  const valor = String(l.observacoes || '').replace(/</g,'&lt;');
+  window._mapaEdit = { id, campo: 'observacoes', tr };
+  abrirModal('Observação', `<div class="form-group"><label class="form-label">Observação</label>
+    <textarea class="form-control" id="f-mapa-texto" rows="5">${valor}</textarea></div>`, 'Salvar', salvarCampoTexto);
+}
+
+function abrirNovaDieta(mapaId, tipo){
+  const id = parseInt(mapaId, 10);
+  const l = linhasMapaCache[id];
+  if (!l){ showToast('Selecione um paciente na grade','error'); return; }
+  const tipoNorm = tipo === 'substituicao' ? 'substituicao' : 'adicional';
+  const titulo = tipoNorm === 'substituicao' ? 'Criar substituição de dieta' : 'Nova dieta';
+  window._novaDieta = { mapaId: id, tipo: tipoNorm, pacienteId: l.paciente_id };
+  const dietasOpts = (DIETAS_MAPA || []).map(d =>
+    `<option value="${esc(d.nome)}" data-id="${d.id || ''}">${esc(d.nome)}</option>`
+  ).join('');
+  const html = `
+    <p style="margin:0 0 0.75rem;color:#475569;font-size:0.88rem;">
+      Paciente: <strong>${esc(l.nome)}</strong> · Pront: ${esc(l.prontuario || '-')} · Leito: ${esc(l.leito || '-')}
+      <br>A dieta original <strong>${esc(l.dieta || '-')}</strong> permanece. Este lançamento reutiliza o mesmo cadastro.
+    </p>
+    <div class="form-group"><label class="form-label">Dieta *</label>
+      <select class="form-control" id="nova-dieta-nome">
+        <option value="">Selecione</option>
+        ${dietasOpts}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Refeições deste lançamento (D C A M J C) *</label>
+      <div class="flags-grid">
+        <label><input type="checkbox" id="nova-fl_desjejum"> D</label>
+        <label><input type="checkbox" id="nova-fl_colacao"> C</label>
+        <label><input type="checkbox" id="nova-fl_almoco"> A</label>
+        <label><input type="checkbox" id="nova-fl_merenda"> M</label>
+        <label><input type="checkbox" id="nova-fl_jantar"> J</label>
+        <label><input type="checkbox" id="nova-fl_ceia"> C</label>
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">Observação</label>
+      <textarea class="form-control" id="nova-dieta-obs" rows="2"></textarea>
+    </div>
+  `;
+  abrirModal(titulo, html, 'Salvar lançamento', salvarNovaDieta);
+}
+
+async function salvarNovaDieta(){
+  const ctx = window._novaDieta;
+  if (!ctx || !ctx.mapaId){ showToast('Linha inválida','error'); return; }
+  const sel = document.getElementById('nova-dieta-nome');
+  const dieta = (sel?.value || '').trim();
+  const dietaId = sel?.selectedOptions?.[0]?.dataset?.id || '';
+  if (!dieta){ showToast('Selecione a dieta','error'); return; }
+  const flags = {
+    fl_desjejum: !!document.getElementById('nova-fl_desjejum')?.checked,
+    fl_colacao: !!document.getElementById('nova-fl_colacao')?.checked,
+    fl_almoco: !!document.getElementById('nova-fl_almoco')?.checked,
+    fl_merenda: !!document.getElementById('nova-fl_merenda')?.checked,
+    fl_jantar: !!document.getElementById('nova-fl_jantar')?.checked,
+    fl_ceia: !!document.getElementById('nova-fl_ceia')?.checked
+  };
+  if (!Object.values(flags).some(Boolean)){
+    showToast('Marque ao menos uma refeição','error');
+    return;
+  }
+  const body = {
+    tipo_lancamento: ctx.tipo,
+    dieta,
+    dieta_id: dietaId || null,
+    observacoes: document.getElementById('nova-dieta-obs')?.value || '',
+    ...flags
+  };
+  const r = await fetch(`/nutricao/api/mapa/${ctx.mapaId}/lancamento`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){
+    showToast((j && j.error) || 'Falha ao criar lançamento','error');
+    return;
+  }
+  fecharModal();
+  window._novaDieta = null;
+  showToast(ctx.tipo === 'substituicao' ? 'Substituição de dieta criada' : 'Nova dieta lançada','success');
+  await carregarMapa();
+  if (j.linha && j.linha.id){
+    const tr = document.querySelector(`#mapaBody tr.linha-mapa[data-id="${j.linha.id}"]`);
+    if (tr) selecionarLinhaMapa(tr);
+  }
+}
+
+async function editarAcompanhanteLinha(tr){
+  const id = tr?.dataset?.id;
+  const l = linhasMapaCache[id];
+  if (!l){ showToast('Selecione uma linha','error'); return; }
+  const pid = l.paciente_id;
+  if (!pid){
+    showToast('Esta linha não tem paciente cadastrado','error');
+    return;
+  }
+  const pac = { id: pid, nome: l.nome };
+  try {
+    const iso = formatDateISO(dataAtual);
+    const r = await fetch(`/nutricao/api/refeicao-acompanhantes?paciente_id=${pid}&data=${encodeURIComponent(iso)}`);
+    const j = await r.json();
+    const lista = (j && j.acompanhantes) || [];
+    if (!lista.length){
+      perguntarIncluirAcompanhante(pac);
+      return;
+    }
+    const html = `
+      <p style="margin:0 0 0.6rem;color:#475569;font-size:0.88rem;">Paciente: <strong>${esc(l.nome)}</strong></p>
+      <div class="busca-pac-lista">
+        ${lista.map(a => `
+          <button type="button" class="busca-pac-item" onclick="abrirEdicaoAcompanhante(${a.id})">
+            <strong>${esc(a.nome_acompanhante)}</strong>
+            <small>Dieta: ${esc(a.dieta || a.refeicao || '-')}</small>
+          </button>
+        `).join('')}
+      </div>
+      <div style="margin-top:0.75rem">
+        <button type="button" class="btn btn-primary btn-sm" onclick="perguntarIncluirAcompanhante({id:${pid}, nome:${JSON.stringify(l.nome || '')}})">Cadastrar novo</button>
+      </div>
+    `;
+    abrirModal('Acompanhante', html, 'Fechar', fecharModal);
+  } catch (e) {
+    perguntarIncluirAcompanhante(pac);
+  }
+}
+
+async function abrirEdicaoAcompanhante(aid){
+  try {
+    const r = await fetch(`/nutricao/api/refeicao-acompanhantes?ativos=1`);
+    const j = await r.json();
+    const a = ((j && j.acompanhantes) || []).find(x => Number(x.id) === Number(aid));
+    if (!a){ showToast('Acompanhante não encontrado','error'); return; }
+    const dietas = await (typeof _dietasParaAcompanhante === 'function' ? _dietasParaAcompanhante() : Promise.resolve(DIETAS_MAPA || []));
+    const opts = (dietas || []).map(d =>
+      `<option value="${d.id}" ${Number(d.id) === Number(a.dieta_id) ? 'selected' : ''}>${esc(d.nome)}</option>`
+    ).join('');
+    window._editAcompId = aid;
+    const html = `
+      <div class="form-group"><label class="form-label">Nome do acompanhante *</label>
+        <input class="form-control" id="edit-acomp-nome" value="${esc(a.nome_acompanhante || '')}"></div>
+      <div class="form-group"><label class="form-label">Dieta</label>
+        <select class="form-control" id="edit-acomp-dieta"><option value="">Selecione</option>${opts}</select></div>
+      <div class="form-group"><label class="form-label">Refeições</label>
+        <div class="flags-grid">
+          <label><input type="checkbox" id="edit-acomp-almoco" ${a.fl_almoco !== false ? 'checked' : ''}> Almoço</label>
+          <label><input type="checkbox" id="edit-acomp-jantar" ${a.fl_jantar !== false ? 'checked' : ''}> Jantar</label>
+        </div>
+      </div>
+    `;
+    abrirModal('Editar acompanhante', html, 'Salvar', salvarEdicaoAcompanhante);
+  } catch (e) {
+    showToast('Falha ao abrir acompanhante','error');
+  }
+}
+
+async function salvarEdicaoAcompanhante(){
+  const aid = window._editAcompId;
+  if (!aid) return;
+  const nome = (document.getElementById('edit-acomp-nome')?.value || '').trim();
+  if (!nome){ showToast('Informe o nome do acompanhante','error'); return; }
+  const sel = document.getElementById('edit-acomp-dieta');
+  const body = {
+    nome_acompanhante: nome,
+    dieta_id: sel?.value || null,
+    refeicao: sel?.selectedOptions?.[0]?.textContent || '',
+    fl_almoco: !!document.getElementById('edit-acomp-almoco')?.checked,
+    fl_jantar: !!document.getElementById('edit-acomp-jantar')?.checked
+  };
+  const r = await fetch(`/nutricao/api/refeicao-acompanhantes/${aid}`, {
+    method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+  });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){
+    showToast((j && j.error) || 'Falha ao salvar acompanhante','error');
+    return;
+  }
+  fecharModal();
+  showToast('Acompanhante atualizado','success');
 }
 
 function abrirInserirPaciente(nomePreenchido){
@@ -2236,7 +2496,11 @@ async function salvarCadastroPacienteRapido(){
   }
   showToast('Paciente cadastrado','success');
   const pac = (j && j.paciente) || { id: j.id, nome };
-  perguntarIncluirAcompanhante(pac);
+  window._buscaPacientesCache = window._buscaPacientesCache || {};
+  window._buscaPacientesCache[pac.id] = pac;
+  perguntarIncluirAcompanhante(pac, function(){
+    abrirFormularioInserirMapa(pac);
+  });
 }
 
 function selecionarPacienteInserir(id){
@@ -2459,11 +2723,13 @@ async function salvarInserirPacienteMapa(){
     return;
   }
   fluxoIncompleto = false;
+  const pacInserido = (j && j.paciente) || p;
   pacienteSelecionadoInserir = null;
   window._leitoInserirPrefill = null;
   fecharModal();
   showToast('Paciente inserido no mapa','success');
   await carregarMapa();
+  perguntarIncluirAcompanhante(pacInserido);
 }
 
 function editarLinhaMapa(id){
@@ -2730,7 +2996,14 @@ document.addEventListener('DOMContentLoaded', function(){
     abrirContextMenu(e, tr, td?.dataset.campo || null);
   });
 
-  // Duplo clique esquerdo → editar cadastro do paciente no mapa
+  // Clique esquerdo → seleciona a linha (verde padrão)
+  body?.addEventListener('click', function(e){
+    const tr = e.target.closest('tr.linha-mapa');
+    if (!tr) return;
+    selecionarLinhaMapa(tr);
+  });
+
+  // Duplo clique esquerdo → leito vago cadastra/seleciona paciente; ocupado edita
   body?.addEventListener('dblclick', function(e){
     if (e.target.closest('button, a, input, select, textarea, .flag-btn, .ver-texto, .cell-acoes')) return;
     const tr = e.target.closest('tr.linha-mapa');
@@ -2752,7 +3025,8 @@ document.addEventListener('DOMContentLoaded', function(){
   document.addEventListener('click', function(e){
     if (e.target.closest('#mapaContextMenu')) return;
     fecharContextMenu();
-    if (!e.target.closest('tr.linha-mapa.selected')) limparSelecaoMapa();
+    if (e.target.closest('tr.linha-mapa')) return;
+    limparSelecaoMapa();
   });
   document.addEventListener('keydown', function(e){
     if (e.key === 'Escape') {

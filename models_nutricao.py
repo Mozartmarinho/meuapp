@@ -239,6 +239,12 @@ class NutMapaRefeicao(db.Model):
     idade = db.Column(db.Integer)
     diagnostico = db.Column(db.Text)
     dieta = db.Column(db.String(200))
+    dieta_id = db.Column(db.Integer, db.ForeignKey('nut_dietas.id'), nullable=True, index=True)
+    dieta_ref = db.relationship('NutDieta', lazy='select', foreign_keys=[dieta_id])
+    # principal | adicional | substituicao — vários lançamentos no mesmo paciente/leito
+    tipo_lancamento = db.Column(db.String(20), default='principal', index=True)
+    # Identidade estável do lançamento entre dias (cópia do mapa)
+    lancamento_grupo_id = db.Column(db.Integer, index=True)
     observacoes = db.Column(db.Text)
     clinica = db.Column(db.String(120))
     enfermaria = db.Column(db.String(120))
@@ -305,6 +311,13 @@ class NutMapaRefeicao(db.Model):
             'idade': self.idade,
             'diagnostico': self.diagnostico or '',
             'dieta': self.dieta or '',
+            'dieta_id': self.dieta_id,
+            'tipo_lancamento': (self.tipo_lancamento or 'principal'),
+            'tipo_lancamento_label': {
+                'adicional': 'Adicional',
+                'substituicao': 'Substituição',
+            }.get((self.tipo_lancamento or 'principal'), 'Principal'),
+            'lancamento_grupo_id': self.lancamento_grupo_id,
             'observacoes': self.observacoes or '',
             'clinica': self.clinica or '',
             'enfermaria': self.enfermaria or '',
