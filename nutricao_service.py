@@ -2335,7 +2335,6 @@ def _chaves_ocupacao_leito(valor):
     s = str(valor).strip().upper()
     if not s:
         return set()
-        return set()
     keys = {s}
     for sep in ('—', ' - ', '–'):
         if sep in s:
