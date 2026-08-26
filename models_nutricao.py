@@ -202,6 +202,9 @@ class NutPaciente(db.Model):
             'id': self.id,
             'nome': self.nome,
             'sexo': self.sexo or '',
+            'sexo_label': {'M': 'Masculino', 'F': 'Feminino', 'O': 'Outros'}.get(
+                (self.sexo or '').strip().upper(), self.sexo or ''
+            ),
             'nascimento': self.nascimento.isoformat() if self.nascimento else '',
             'prontuario': self.prontuario or '',
             'clinica': self.clinica or '',
