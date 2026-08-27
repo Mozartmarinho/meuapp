@@ -188,10 +188,14 @@
                             {{ 'Ativo' if s.ativo else 'Inativo' }}
                         </span>
                     </td>
-                    <td>
+                    <td class="setor-acoes">
                         <button type="button" class="btn tec-btn-sm tec-btn-muted"
-                                onclick="toggleSetorEq({{ s.id }})">
-                            <i class="fas fa-toggle-on"></i> Alternar
+                                onclick="ChamadoSetorCadastro.editar({{ s.id }})">
+                            <i class="fas fa-edit"></i> Editar
+                        </button>
+                        <button type="button" class="btn tec-btn-sm tec-btn-danger"
+                                onclick="ChamadoSetorCadastro.excluir({{ s.id }})">
+                            <i class="fas fa-trash"></i> Excluir
                         </button>
                     </td>
                 </tr>
@@ -207,13 +211,14 @@
 </div>
 
 <!-- ── MODAL ADICIONAR SETOR ──────────────────────────────────── -->
-<div class="tec-overlay" id="modalSetorOverlay" style="display:none" onclick="fecharModalSetor()"></div>
+<div class="tec-overlay" id="modalSetorOverlay" style="display:none" onclick="ChamadoSetorCadastro.fechar()"></div>
 <div class="tec-modal" id="modalSetor" style="display:none">
     <div class="tec-modal-head">
-        <span>Adicionar Setor</span>
-        <button type="button" class="tec-modal-close" onclick="fecharModalSetor()"><i class="fas fa-times"></i></button>
+        <span id="modalSetorTitulo">Adicionar Setor</span>
+        <button type="button" class="tec-modal-close" onclick="ChamadoSetorCadastro.fechar()"><i class="fas fa-times"></i></button>
     </div>
     <div class="tec-modal-body">
+        <input type="hidden" id="setorId" value="">
         <div class="form-group">
             <label>Nome do Setor *</label>
             <input type="text" id="setorNome" placeholder="Ex: Informática" maxlength="80">
@@ -221,8 +226,8 @@
         <div id="setorErro" class="tec-erro" style="display:none"></div>
     </div>
     <div class="tec-modal-foot">
-        <button type="button" class="btn tec-btn-sm tec-btn-muted" onclick="fecharModalSetor()">Fechar</button>
-        <button type="button" class="btn btn-success tec-btn-sm" onclick="salvarSetorEq()">Salvar</button>
+        <button type="button" class="btn tec-btn-sm tec-btn-muted" onclick="ChamadoSetorCadastro.fechar()">Fechar</button>
+        <button type="button" class="btn btn-success tec-btn-sm" onclick="ChamadoSetorCadastro.salvar()">Salvar</button>
     </div>
 </div>
 
@@ -259,6 +264,7 @@
 .tec-modal-body input { width: 100%; box-sizing: border-box; padding: 0.42rem 0.55rem; font-size: 0.8rem; border: 1px solid var(--gray-300); border-radius: 0.3rem; }
 .tec-modal-foot { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid var(--gray-200); }
 .tec-erro { color: #b91c1c; font-size: 0.75rem; margin-top: 0.4rem; }
+.setor-acoes { white-space: nowrap; }
 #modalSetorOverlay, #modalSetor { z-index: 1100; }
 #modalSetor { z-index: 1101; }
 .chamados-page h1 { margin: 0; font-size: 1.6rem; }
@@ -382,6 +388,7 @@ body.modal-open { overflow: hidden; }
 }
 </style>
 
+<script src="{{ url_for('static', filename='js/chamado-setores.js') }}?v=1"></script>
 <script>
 (function () {
     const overlay = document.getElementById('modalEquipamento');
@@ -534,7 +541,7 @@ body.modal-open { overflow: hidden; }
             const addSetor = document.getElementById('modalSetor');
             const listaSetores = document.getElementById('modalListaSetores');
             if (addSetor && addSetor.style.display !== 'none') {
-                fecharModalSetor();
+                ChamadoSetorCadastro.fechar();
                 return;
             }
             if (listaSetores && listaSetores.style.display !== 'none') {
@@ -729,90 +736,12 @@ function fecharModalListaSetores() {
     document.getElementById('modalListaSetoresOverlay').style.display = 'none';
     document.getElementById('modalListaSetores').style.display = 'none';
 }
-function abrirModalSetor() {
-    document.getElementById('setorNome').value = '';
-    document.getElementById('setorErro').style.display = 'none';
-    document.getElementById('modalSetorOverlay').style.display = '';
-    document.getElementById('modalSetor').style.display = '';
-    document.getElementById('setorNome').focus();
-}
-function fecharModalSetor() {
-    document.getElementById('modalSetorOverlay').style.display = 'none';
-    document.getElementById('modalSetor').style.display = 'none';
-}
-function _appendSetorNomeOption(selectEl, nome) {
-    if (!selectEl || !nome) return;
-    const exists = Array.from(selectEl.options).some(function (o) { return o.value === nome; });
-    if (exists) return;
-    const opt = document.createElement('option');
-    opt.value = nome;
-    opt.textContent = nome;
-    selectEl.appendChild(opt);
-}
-function _syncEqSetorSelect(sid, nome, ativo) {
-    const sel = document.getElementById('eq_setor');
-    if (!sel) return;
-    const opt = Array.from(sel.options).find(function (o) { return o.value === nome; });
-    if (!ativo && opt) {
-        opt.remove();
-        return;
-    }
-    if (ativo) _appendSetorNomeOption(sel, nome);
-}
-function salvarSetorEq() {
-    const nome = document.getElementById('setorNome').value.trim();
-    const erro = document.getElementById('setorErro');
-    if (!nome) { erro.textContent = 'Informe o nome do setor.'; erro.style.display = ''; return; }
-    const fd = new FormData();
-    fd.append('nome', nome);
-    fetch('/equipamentos/setor/adicionar', { method: 'POST', body: fd })
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-            if (!d.ok) { erro.textContent = d.error || 'Erro ao salvar.'; erro.style.display = ''; return; }
-            fecharModalSetor();
-            const tbody = document.querySelector('#tabSetores tbody');
-            const vazio = document.getElementById('setores-vazio');
-            if (vazio) vazio.remove();
-            const tr = document.createElement('tr');
-            tr.id = 'setor-row-' + d.id;
-            tr.setAttribute('data-nome', d.nome);
-            tr.innerHTML =
-                '<td>' + d.nome + '</td>' +
-                '<td><span class="tec-badge tec-badge-ok" id="setor-status-' + d.id + '">Ativo</span></td>' +
-                '<td><button type="button" class="btn tec-btn-sm tec-btn-muted" onclick="toggleSetorEq(' + d.id + ')">' +
-                '<i class="fas fa-toggle-on"></i> Alternar</button></td>';
-            tbody.appendChild(tr);
-            _appendSetorNomeOption(document.getElementById('filtroSetor'), d.nome);
-            _syncEqSetorSelect(d.id, d.nome, true);
-        })
-        .catch(function () {
-            erro.textContent = 'Erro de comunicação.';
-            erro.style.display = '';
-        });
-}
-function toggleSetorEq(sid) {
-    fetch('/equipamentos/setor/' + sid + '/toggle', { method: 'POST' })
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-            if (!d.ok) return;
-            const span = document.getElementById('setor-status-' + sid);
-            if (span) {
-                span.textContent = d.ativo ? 'Ativo' : 'Inativo';
-                span.className = 'tec-badge ' + (d.ativo ? 'tec-badge-ok' : 'tec-badge-off');
-            }
-            const row = document.getElementById('setor-row-' + sid);
-            const nome = row ? (row.getAttribute('data-nome') || row.cells[0].textContent.trim()) : '';
-            if (nome) {
-                _appendSetorNomeOption(document.getElementById('filtroSetor'), nome);
-                _syncEqSetorSelect(sid, nome, d.ativo);
-            }
-        });
-}
 
 document.getElementById('btnAdicionarSetorEq').addEventListener('click', abrirModalListaSetores);
-document.getElementById('btnNovoSetorEq').addEventListener('click', abrirModalSetor);
-document.getElementById('setorNome').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); salvarSetorEq(); }
+document.getElementById('btnNovoSetorEq').addEventListener('click', function () { ChamadoSetorCadastro.novo(); });
+ChamadoSetorCadastro.init({
+    addUrl: '/equipamentos/setor/adicionar',
+    nomeSelects: ['eq_setor', 'filtroSetor'],
 });
 </script>
 {% endblock %}

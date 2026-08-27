@@ -2318,6 +2318,97 @@ def tecnicos():
     )
 
 
+def _pode_gerenciar_chamado_setor(user):
+    if not user:
+        return False
+    return any(
+        user.tem_menu('chamados', chave)
+        for chave in (
+            'tecnicos',
+            'equipamentos',
+            'recursos',
+            'cameras',
+            'portoes',
+            'telefones_ramais',
+        )
+    )
+
+
+def _renomear_chamado_setor(sid, nome):
+    nome = (nome or '').strip()
+    if not nome:
+        raise ValueError('Informe o nome do setor.')
+    if len(nome) > 80:
+        raise ValueError('Nome muito longo (máximo 80 caracteres).')
+    s = ChamadoSetor.query.get(sid)
+    if not s:
+        raise ValueError('Setor não encontrado.')
+    outro = ChamadoSetor.query.filter(ChamadoSetor.nome == nome, ChamadoSetor.id != sid).first()
+    if outro:
+        raise ValueError('Setor já cadastrado.')
+    antigo = s.nome
+    s.nome = nome
+    if antigo != nome:
+        Equipamento.query.filter_by(setor=antigo).update({Equipamento.setor: nome}, synchronize_session=False)
+    db.session.commit()
+    return s
+
+
+def _excluir_chamado_setor(sid):
+    s = ChamadoSetor.query.get(sid)
+    if not s:
+        raise ValueError('Setor não encontrado.')
+    usos = []
+    if ChamadoTecnico.query.filter_by(setor_id=sid).first():
+        usos.append('técnicos')
+    if ChamadoCamera.query.filter_by(setor_id=sid).first():
+        usos.append('câmeras')
+    if ChamadoRamal.query.filter_by(setor_id=sid).first():
+        usos.append('ramais')
+    if ChamadoPortao.query.filter_by(setor_id=sid).first():
+        usos.append('portões')
+    if Chamado.query.filter_by(setor_tecnico_id=sid).first():
+        usos.append('chamados')
+    if Equipamento.query.filter_by(setor=s.nome).first():
+        usos.append('equipamentos')
+    if usos:
+        raise ValueError(
+            'Não é possível excluir: há ' + ', '.join(usos) + ' vinculados a este setor.'
+        )
+    db.session.delete(s)
+    db.session.commit()
+
+
+@main.route('/chamados/setores/<int:sid>/editar', methods=['POST'])
+@login_required
+def editar_chamado_setor(sid):
+    user = Usuario.query.get(session['user_id'])
+    if not _pode_gerenciar_chamado_setor(user):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    data = request.get_json(silent=True) or request.form
+    try:
+        s = _renomear_chamado_setor(sid, data.get('nome'))
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': 'Setor já cadastrado.'}), 400
+    return jsonify({'ok': True, 'id': s.id, 'nome': s.nome, 'ativo': s.ativo})
+
+
+@main.route('/chamados/setores/<int:sid>/excluir', methods=['POST'])
+@login_required
+def excluir_chamado_setor(sid):
+    user = Usuario.query.get(session['user_id'])
+    if not _pode_gerenciar_chamado_setor(user):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    try:
+        _excluir_chamado_setor(sid)
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+    return jsonify({'ok': True})
+
+
 @main.route('/tecnicos/setor/adicionar', methods=['POST'])
 @login_required
 def adicionar_chamado_setor():
