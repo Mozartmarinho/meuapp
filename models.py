@@ -2,6 +2,7 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
+from sqlalchemy import event, text
 
 db = SQLAlchemy()
 
@@ -551,6 +552,18 @@ class Equipamento(db.Model):
     def __repr__(self):
         return f'<Equipamento {self.nome_equipamento}>'
 
+    # True quando o MySQL ainda tem a coluna legado `equipamento`.
+    _tem_coluna_legado = False
+
+    @classmethod
+    def consulta(cls):
+        """SELECT sem a coluna legado, mesmo se algum código antigo ainda a mapear."""
+        q = cls.query
+        if 'equipamento' in cls.__mapper__.column_attrs:
+            from sqlalchemy.orm import defer
+            q = q.options(defer('equipamento'))
+        return q
+
     @property
     def equipamento(self):
         """Compat: o banco usa nome_equipamento; alguns DBs não têm a coluna legado."""
@@ -588,6 +601,19 @@ class Equipamento(db.Model):
             'is_agente': bool(self.is_agente),
             'atualizado_em': self.atualizado_em.strftime('%d/%m/%Y %H:%M') if self.atualizado_em else None,
         }
+
+
+@event.listens_for(Equipamento, 'after_insert')
+@event.listens_for(Equipamento, 'after_update')
+def _espelha_nome_na_coluna_legado(mapper, connection, target):
+    """Mantém a coluna legado preenchida só se ela existir no banco."""
+    if not getattr(Equipamento, '_tem_coluna_legado', False):
+        return
+    nome = (target.nome_equipamento or '')[:100]
+    connection.execute(
+        text('UPDATE equipamentos SET equipamento = :n WHERE id = :i'),
+        {'n': nome, 'i': target.id},
+    )
 
 
 class ChamadoAtendimento(db.Model):

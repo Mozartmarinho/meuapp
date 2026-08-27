@@ -82,7 +82,7 @@ from models import (
 from permissions_sistemas import SISTEMAS, aplicar_permissoes_formulario, conceder_acesso_total
 from sqlalchemy.orm import joinedload
 from sqlalchemy import func, or_, and_
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from datetime import date, datetime, timedelta
 from collections import Counter
 from pathlib import Path
@@ -281,11 +281,11 @@ def _vincular_equipamento_chamado(chamado, form, cliente_id):
     nome_form = (form.get('equipamento') or '').strip()
     eq = None
     if eq_id_raw.isdigit():
-        eq = Equipamento.query.filter_by(id=int(eq_id_raw), cliente_id=cliente_id).first()
+        eq = Equipamento.consulta().filter_by(id=int(eq_id_raw), cliente_id=cliente_id).first()
     if not eq and codigo:
-        eq = Equipamento.query.filter_by(patrimonio=codigo, cliente_id=cliente_id).first()
+        eq = Equipamento.consulta().filter_by(patrimonio=codigo, cliente_id=cliente_id).first()
         if not eq:
-            eq = Equipamento.query.filter_by(patrimonio=codigo).first()
+            eq = Equipamento.consulta().filter_by(patrimonio=codigo).first()
     if eq:
         chamado.equipamento_id = eq.id
         chamado.patrimonio = eq.patrimonio
@@ -2404,7 +2404,7 @@ def _excluir_chamado_setor(sid):
         usos.append('portões')
     if Chamado.query.filter_by(setor_tecnico_id=sid).first():
         usos.append('chamados')
-    if Equipamento.query.filter_by(setor=s.nome).first():
+    if Equipamento.consulta().filter_by(setor=s.nome).first():
         usos.append('equipamentos')
     if usos:
         raise ValueError(
@@ -3176,15 +3176,43 @@ def excluir_estoque(eid):
     return jsonify({'ok': True})
 
 
+def _query_equipamentos():
+    """Listagem/consulta de equipamentos sem a coluna legado `equipamento`."""
+    return Equipamento.consulta().options(joinedload(Equipamento.cliente))
+
+
+def _listar_equipamentos_cadastrados():
+    from app import ensure_equipamentos_schema, is_missing_equipamentos_equipamento_column
+    try:
+        ensure_equipamentos_schema()
+    except Exception as exc:
+        print(f'Aviso ao ajustar schema de equipamentos: {exc}')
+
+    def _carregar():
+        return (
+            _query_equipamentos()
+            .order_by(Equipamento.patrimonio.asc(), Equipamento.nome_equipamento.asc())
+            .all()
+        )
+
+    try:
+        return _carregar()
+    except OperationalError as exc:
+        db.session.rollback()
+        if not is_missing_equipamentos_equipamento_column(exc):
+            raise
+        try:
+            ensure_equipamentos_schema()
+        except Exception as inner:
+            print(f'Aviso ao criar equipamentos.equipamento: {inner}')
+        return _carregar()
+
+
 @main.route('/equipamentos')
 @login_required
 def listar_equipamentos():
     """Cadastro de equipamentos (patrimônios) vinculados ao cliente."""
-    equipamentos = (
-        Equipamento.query.options(joinedload(Equipamento.cliente))
-        .order_by(Equipamento.patrimonio.asc(), Equipamento.nome_equipamento.asc())
-        .all()
-    )
+    equipamentos = _listar_equipamentos_cadastrados()
     clientes = _clientes_para_chamados()
     setores = ChamadoSetor.query.order_by(ChamadoSetor.nome).all()
     return render_template(
@@ -3282,13 +3310,13 @@ def api_equipamentos():
         codigo = (request.args.get('codigo') or request.args.get('patrimonio') or '').strip()
         if codigo:
             eq = (
-                Equipamento.query.options(joinedload(Equipamento.cliente))
+                _query_equipamentos()
                 .filter(Equipamento.patrimonio == codigo)
                 .first()
             )
             return jsonify({'ok': True, 'equipamento': eq.to_dict() if eq else None})
         cliente_id = request.args.get('cliente_id', type=int)
-        q = Equipamento.query.options(joinedload(Equipamento.cliente))
+        q = _query_equipamentos()
         if cliente_id:
             q = q.filter_by(cliente_id=cliente_id)
         itens = q.order_by(Equipamento.patrimonio.asc()).all()
@@ -3322,7 +3350,7 @@ def api_equipamentos():
 @main.route('/api/equipamentos/<int:id>', methods=['GET', 'PUT', 'DELETE'])
 @login_required
 def api_equipamento(id):
-    equipamento = Equipamento.query.get_or_404(id)
+    equipamento = Equipamento.consulta().get_or_404(id)
     if request.method == 'GET':
         return jsonify({'ok': True, 'equipamento': equipamento.to_dict()})
     if request.method == 'DELETE':
@@ -3389,7 +3417,7 @@ def novo_equipamento():
     setores = ChamadoSetor.query.order_by(ChamadoSetor.nome).all()
     return render_template(
         'equipamentos.html',
-        equipamentos=Equipamento.query.all(),
+        equipamentos=_listar_equipamentos_cadastrados(),
         clientes=clientes,
         setores=setores,
     )
@@ -3401,7 +3429,7 @@ def editar_equipamento(id):
     """Editar equipamento existente (popup na listagem)."""
     if request.method == 'GET':
         return redirect(url_for('main.listar_equipamentos'))
-    equipamento = Equipamento.query.get_or_404(id)
+    equipamento = Equipamento.consulta().get_or_404(id)
     try:
         campos = _dados_equipamento_form(request.form)
         equipamento.patrimonio = campos['patrimonio']
@@ -4100,7 +4128,7 @@ def automacoes():
 @login_required
 def equipamentos_por_cliente(cliente_ref):
     """Patrimônios vinculados ao cliente selecionado no chamado."""
-    q = Equipamento.query
+    q = Equipamento.consulta()
     if str(cliente_ref).isdigit():
         q = q.filter_by(cliente_id=int(cliente_ref))
     else:
