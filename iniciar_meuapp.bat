@@ -17,7 +17,7 @@ setlocal EnableDelayedExpansion
 set "PATH=%PATH%;C:\Program Files\Git\cmd;C:\Program Files\Git\bin;C:\Program Files (x86)\Git\cmd"
 
 REM --- Encerrar instancia antiga (porta 80 continua servindo o codigo velho) ---
-echo [1/6] Encerrando app.py antigo na porta 80...
+echo [1/8] Encerrando app.py antigo na porta 80...
 call :parar_app
 if "!PAROU!"=="1" (
     echo       Instancia anterior encerrada. Aguardando a porta 80 liberar...
@@ -27,7 +27,7 @@ if "!PAROU!"=="1" (
 )
 
 REM --- Pasta do repositorio ---
-echo [2/6] Localizando pasta do MeuApp...
+echo [2/8] Localizando pasta do MeuApp...
 set "APP_DIR="
 
 set "HERE=%~dp0"
@@ -91,7 +91,7 @@ if not defined GIT if exist "C:\Program Files\Git\bin\git.exe" set "GIT=C:\Progr
 if not defined GIT if exist "C:\Program Files (x86)\Git\cmd\git.exe" set "GIT=C:\Program Files (x86)\Git\cmd\git.exe"
 
 REM --- Codigo do GitHub ---
-echo [3/6] Atualizando codigo do GitHub (branch main)...
+echo [3/8] Atualizando codigo do GitHub (branch main)...
 set "GIT_OK=0"
 if not defined GIT (
     echo       ERRO: git nao encontrado. Instale o Git for Windows.
@@ -136,15 +136,39 @@ if defined MEUAPP_DIR (
     cd /d "%~dp0"
 )
 
+REM Garante que o Flask antigo morreu mesmo se o .bat antigo fez o kill da 1a metade.
+echo [4/8] Encerrando app.py antigo e liberando a porta 80...
+if exist "%CD%\scripts\liberar_porta80.ps1" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\scripts\liberar_porta80.ps1"
+    set "PORTA80_RC=!errorlevel!"
+    if "!PORTA80_RC!"=="2" (
+        echo       ERRO: outro programa esta na porta 80. /nutricao continuaria no sistema velho.
+        echo               Feche esse programa e clique de novo no atalho.
+        pause
+        exit /b 2
+    )
+    if "!PORTA80_RC!"=="1" (
+        echo       ERRO: nao consegui derrubar o Python da porta 80.
+        pause
+        exit /b 1
+    )
+) else (
+    call :parar_app
+)
+
+echo [5/8] Limpando cache Python ^(templates/pyc velhos^)...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "Get-ChildItem -LiteralPath '%CD%' -Filter '__pycache__' -Recurse -Directory -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '\\.venv\\' } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue"
+
 REM --- MySQL84 ---
-echo [4/6] Verificando MySQL84...
+echo [6/8] Verificando MySQL84...
 sc query MySQL84 | findstr /i "RUNNING" >nul 2>&1
-if %errorlevel%==0 (
+if !errorlevel!==0 (
     echo       MySQL84 ja esta em execucao.
 ) else (
     echo       Tentando iniciar MySQL84...
     net start MySQL84 2>nul
-    if %errorlevel%==0 (
+    if !errorlevel!==0 (
         echo       MySQL84 iniciado com sucesso.
     ) else (
         echo.
@@ -156,7 +180,7 @@ if %errorlevel%==0 (
 )
 
 REM --- Python ---
-echo [5/6] Definindo interpretador Python...
+echo [7/8] Definindo interpretador Python...
 if exist "%CD%\.venv\Scripts\python.exe" (
     set "PYTHON=%CD%\.venv\Scripts\python.exe"
     echo       Usando: .venv\Scripts\python.exe
@@ -168,11 +192,27 @@ if exist "%CD%\.venv\Scripts\python.exe" (
     echo       Usando: python (PATH)
 )
 
-REM --- Browser ---
-echo [6/6] Abrindo http://127.0.0.1/nutricao em alguns segundos...
-for /f %%T in ('powershell -NoProfile -Command "Get-Date -UFormat %%s"') do set "TS=%%T"
-if not defined TS set "TS=%RANDOM%"
-start "" cmd /c "timeout /t 3 /nobreak >nul & start http://127.0.0.1/nutricao?v=!TS!"
+REM --- Browser: so abre quando /nutricao/versao confirmar o commit deste clone ---
+echo [8/8] Aguardando o Flask novo em http://127.0.0.1/nutricao ...
+set "PATH=%PATH%;C:\Program Files\Git\cmd;C:\Program Files\Git\bin;C:\Program Files (x86)\Git\cmd"
+set "GIT="
+where git >nul 2>&1 && for /f "delims=" %%G in ('where git 2^>nul') do (
+    if not defined GIT set "GIT=%%G"
+)
+if not defined GIT if exist "C:\Program Files\Git\cmd\git.exe" set "GIT=C:\Program Files\Git\cmd\git.exe"
+if not defined GIT if exist "C:\Program Files\Git\bin\git.exe" set "GIT=C:\Program Files\Git\bin\git.exe"
+if not defined GIT if exist "C:\Program Files (x86)\Git\cmd\git.exe" set "GIT=C:\Program Files (x86)\Git\cmd\git.exe"
+set "REV_ESPERADO="
+if defined GIT (
+    for /f "delims=" %%R in ('"%GIT%" -C "%CD%" rev-parse --short HEAD 2^>nul') do set "REV_ESPERADO=%%R"
+)
+if exist "%CD%\scripts\abrir_nutricao_quando_pronto.ps1" (
+    start "" powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\scripts\abrir_nutricao_quando_pronto.ps1" -ExpectedRev "!REV_ESPERADO!"
+) else (
+    for /f %%T in ('powershell -NoProfile -Command "Get-Date -UFormat %%s"') do set "TS=%%T"
+    if not defined TS set "TS=%RANDOM%"
+    start "" cmd /c "timeout /t 5 /nobreak >nul & start http://127.0.0.1/nutricao?v=!TS!"
+)
 
 echo.
 echo Codigo deste projeto (meuapp). Iniciando São Geraldo Service...
@@ -190,7 +230,12 @@ goto :eof
 
 :parar_app
 set "PAROU=0"
-REM wmic some vezes nao existe no Windows 11; PowerShell mata app.py e python na porta 80.
+if exist "%CD%\scripts\liberar_porta80.ps1" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\scripts\liberar_porta80.ps1"
+    if not errorlevel 1 set "PAROU=1"
+    goto :eof
+)
+REM Fallback se o script ainda nao existir neste clone.
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ErrorActionPreference='SilentlyContinue'; $killed=$false;" ^
   "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'python' -and $_.CommandLine -match 'app.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force; $killed=$true; Write-Host ('       Encerrando PID ' + $_.ProcessId) };" ^

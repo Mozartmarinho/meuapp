@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, request
 from routes import main
 from routes_nutricao import nutricao
 from routes_pesagem import pesagem
@@ -25,6 +25,7 @@ def create_app():
     app.config['REMEMBER_COOKIE_SECURE'] = False
     app.config['TEMPLATES_AUTO_RELOAD'] = True
     app.jinja_env.auto_reload = True
+    app.jinja_env.cache = None
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
     db.init_app(app)
@@ -36,6 +37,15 @@ def create_app():
 
     from audit_service import register_audit_hooks
     register_audit_hooks(app)
+
+    @app.url_defaults
+    def _static_cache_bust(endpoint, values):
+        """Todo CSS/JS leva ?v=<git sha> para o navegador não reusar arquivo velho."""
+        if values.get('v'):
+            return
+        if endpoint == 'static' or str(endpoint).endswith('.static'):
+            if values.get('filename'):
+                values['v'] = _app_revision() or 'dev'
 
     @app.context_processor
     def inject_acesso():
@@ -49,12 +59,18 @@ def create_app():
         }
 
     @app.after_request
-    def _html_no_store(response):
+    def _no_store_html_e_revisao(response):
+        rev = _app_revision() or 'sem-git'
+        response.headers['X-App-Revision'] = rev
         ctype = response.headers.get('Content-Type', '')
+        path = request.path or ''
         if 'text/html' in ctype:
             response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
             response.headers['Pragma'] = 'no-cache'
             response.headers['Expires'] = '0'
+        elif path.startswith('/static/'):
+            # Query string ?v=sha já isola a versão; no-cache evita heurística do Chrome.
+            response.headers['Cache-Control'] = 'no-cache, must-revalidate, max-age=0'
         return response
 
     @app.route('/nutricao/versao')
@@ -65,6 +81,7 @@ def create_app():
         return corpo, 200, {
             'Content-Type': 'text/plain; charset=utf-8',
             'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            'X-App-Revision': rev,
         }
 
     return app

@@ -41,9 +41,14 @@ class NutricaoPaginaTest(unittest.TestCase):
         self.assertNotIn('filtroEnfermaria', html)
         self.assertIn('São Geraldo Service · meuapp', html)
         self.assertIn('projeto-versao-bar', html)
+        self.assertIn('nutricao-stale-check', html)
+        self.assertIn('/nutricao/versao', html)
+        self.assertNotIn('?v=mapa34', html)
+        self.assertRegex(html, r'/static/css/style\.css\?v=')
         cache = (resp.headers.get('Cache-Control') or '').lower()
         self.assertIn('no-store', cache)
         self.assertIn('text/html', resp.headers.get('Content-Type', ''))
+        self.assertTrue(resp.headers.get('X-App-Revision'))
 
     def test_rota_versao_nao_e_404(self):
         resp = self.client.get('/nutricao/versao')
@@ -51,6 +56,18 @@ class NutricaoPaginaTest(unittest.TestCase):
         texto = resp.get_data(as_text=True)
         self.assertIn('meuapp', texto)
         self.assertIn('pasta', texto)
+        self.assertTrue(resp.headers.get('X-App-Revision'))
+
+    def test_css_estatico_leva_revisao_e_nao_cacheia_no_browser(self):
+        pagina = self.client.get('/nutricao')
+        html = pagina.get_data(as_text=True)
+        match = __import__('re').search(r'/static/css/style\.css\?v=([^"\'&\s]+)', html)
+        self.assertIsNotNone(match)
+        rev = match.group(1)
+        resp = self.client.get('/static/css/style.css', query_string={'v': rev})
+        self.assertEqual(resp.status_code, 200)
+        cache = (resp.headers.get('Cache-Control') or '').lower()
+        self.assertTrue('no-cache' in cache or 'max-age=0' in cache)
 
     def test_rotas_de_impressao_existem(self):
         mapa = self.client.get('/nutricao/impressao-mapa')
