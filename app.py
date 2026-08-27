@@ -456,6 +456,12 @@ def ensure_pesagem_schema():
     """Garante tabela pesagem_clientes e colunas de cliente nas leituras."""
     from sqlalchemy import inspect, text
     try:
+        from models_pesagem import PesagemWhatsAppDestino, PesagemWhatsAppEnvio
+        PesagemWhatsAppDestino.__table__.create(db.engine, checkfirst=True)
+        PesagemWhatsAppEnvio.__table__.create(db.engine, checkfirst=True)
+    except Exception:
+        db.session.rollback()
+    try:
         insp = inspect(db.engine)
         tables = set(insp.get_table_names())
         if 'pesagem_leituras' not in tables:
@@ -768,6 +774,9 @@ if __name__ == '__main__':
             db.session.add(admin)
             db.session.commit()
             print("Default admin user created: email=admin@example.com, password=admin")
+
+    from whatsapp_pesagem import start_background
+    start_background(app)
 
     host = os.environ.get('HOST', '0.0.0.0')
     port = int(os.environ.get('PORT', '80'))
