@@ -163,10 +163,7 @@ def load_app_and_db():
     else:
         raise RuntimeError("app.py não expõe create_app() nem app")
 
-    try:
-        from models import db
-    except Exception:
-        from models_updated import db
+    from models import db
 
     return flask_app, db
 

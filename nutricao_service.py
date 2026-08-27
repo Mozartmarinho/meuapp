@@ -45,6 +45,43 @@ _SEED_NUTRICAO_DONE = False
 # Histórico do mapa: olha no máximo N dias atrás ao preencher buracos (evita carregar anos).
 _MAPA_LOOKBACK_DIAS = 60
 
+SEXO_LABELS = {
+    'M': 'Masculino',
+    'F': 'Feminino',
+    'O': 'Outros',
+}
+SEXO_ALIASES = {
+    'm': 'M',
+    'masculino': 'M',
+    'male': 'M',
+    'f': 'F',
+    'feminino': 'F',
+    'female': 'F',
+    'o': 'O',
+    'outro': 'O',
+    'outros': 'O',
+    'other': 'O',
+}
+
+
+def normalizar_sexo(valor):
+    """Aceita M/F/O ou os nomes masculino/feminino/outros."""
+    raw = (valor or '').strip()
+    if not raw:
+        return None
+    alias = SEXO_ALIASES.get(raw.lower())
+    if alias:
+        return alias
+    up = raw.upper()
+    if up in SEXO_LABELS:
+        return up
+    return None
+
+
+def sexo_label(valor):
+    codigo = normalizar_sexo(valor) or (valor or '').strip().upper()
+    return SEXO_LABELS.get(codigo, valor or '')
+
 
 def _q(model, cliente_id=None):
     """Query scoped to current nutrition client when applicable."""
@@ -2070,7 +2107,7 @@ def paciente_from_payload(d, paciente=None):
     is_new = paciente is None
     paciente = paciente or NutPaciente()
     paciente.nome = (d.get('nome') or '').strip()
-    paciente.sexo = (d.get('sexo') or '').strip()[:1] or None
+    paciente.sexo = normalizar_sexo(d.get('sexo'))
     paciente.nascimento = _parse_date(d.get('nascimento'))
     paciente.prontuario = (d.get('prontuario') or '').strip() or None
     paciente.clinica = (d.get('clinica') or '').strip() or None

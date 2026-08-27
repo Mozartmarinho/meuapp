@@ -2,17 +2,17 @@
 
 ## Visão Geral
 Este é um sistema web de gestão de pedidos e ordens de serviço, desenvolvido em Flask (Python) com MySQL. O projeto segue uma arquitetura MVC simplificada:
-- **app.py**: ponto de entrada, inicializa o app Flask, registra rotas e configurações.
-- **models.py**: define os modelos de dados (ORM SQLAlchemy).
-- **routes.py**: implementa as rotas e lógica de negócio.
-- **config.py**: centraliza configurações, incluindo a string de conexão do banco.
+- **app.py**: único ponto de entrada. Não recriar `app_updated.py` nem `config.py` como segundo Flask app.
+- **db_config.py**: string de conexão MySQL (`SQLALCHEMY_DATABASE_URI`).
+- **models.py** / **routes.py**: modelos e rotas do núcleo (chamados).
+- **routes_nutricao.py**, **routes_pesagem.py**, **routes_acesso.py**: módulos extras.
 - **static/**: arquivos estáticos (CSS, JS, imagens).
-- **templates/**: templates HTML Jinja2.
+- **templates/** e **templates_nutricao/**: templates HTML Jinja2.
 
 ## Fluxos de Trabalho
-- **Execução local**: `python app.py` (aplicação roda em http://localhost:5000)
-- **Inicialização do banco**: execute `mysql -u root -p < init_db.sql` para criar as tabelas.
-- **Configuração do banco**: ajuste a string `SQLALCHEMY_DATABASE_URI` em `config.py`.
+- **Execução local**: atalho **São Geraldo Service** (`iniciar_meuapp.bat`) ou `python app.py`
+- **Inicialização do banco**: execute `python init_db.py` / `scripts/run_migrations.py`.
+- **Configuração do banco**: ajuste `SQLALCHEMY_DATABASE_URI` em `db_config.py`.
 - **Dependências**: instale com `pip install -r requirements.txt`.
 
 ## Convenções e Padrões
@@ -26,8 +26,8 @@ Este é um sistema web de gestão de pedidos e ordens de serviço, desenvolvido 
 ## Integrações e Pontos Críticos
 - **Banco de dados**: MySQL, conexão via SQLAlchemy.
 - **Login/autenticação**: (verifique se implementado, pode estar em `routes.py` ou `models.py`).
-- **Scripts auxiliares**: `init_db.py` para inicialização, `migrar_sistema.py` para migrações.
-- **Arquivos *_updated.py**: versões alternativas/experimentais, não sobrescrever sem análise.
+- **Scripts auxiliares**: `init_db.py` para inicialização, `scripts/run_migrations.py` para migrações.
+- **Um único projeto**: este repositório `meuapp`. Não criar `*_updated.py` nem um segundo app Flask.
 - **Backup**: diretório `bkp/` contém versões antigas de arquivos críticos.
 
 ## Exemplos de Padrão

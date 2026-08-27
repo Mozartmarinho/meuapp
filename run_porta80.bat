@@ -1,7 +1,4 @@
 @echo off
-REM Inicia o MeuApp na porta 80 (requer Administrador no Windows)
+REM Encaminha para o unico ponto de entrada do projeto.
 cd /d "%~dp0"
-echo Iniciando Sao Geraldo Service na porta 80...
-echo Se der erro de permissao, clique direito neste arquivo e "Executar como administrador".
-".venv\Scripts\python.exe" app.py
-pause
+call "%~dp0iniciar_meuapp.bat"
