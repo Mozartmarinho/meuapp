@@ -33,6 +33,9 @@ class ProjetoUnicoTest(unittest.TestCase):
         self.assertIn('reset --hard origin/main', texto)
         self.assertIn('http://127.0.0.1/nutricao', texto)
         self.assertIn('MEUAPP_BOOTSTRAPPED', texto)
+        self.assertIn('source\\repos\\Mozartmarinho\\meuapp', texto)
+        self.assertTrue(os.path.exists(os.path.join(ROOT, 'scripts', 'alinhar_tabela_equipamentos.sql')))
+        self.assertTrue(os.path.exists(os.path.join(ROOT, 'scripts', 'alinhar_tabela_equipamentos.py')))
         self.assertTrue(os.path.exists(os.path.join(ROOT, 'app.py')))
         self.assertTrue(os.path.exists(os.path.join(ROOT, 'scripts', 'desktop_sao_geraldo.ps1')))
 

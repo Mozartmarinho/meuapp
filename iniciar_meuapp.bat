@@ -51,6 +51,8 @@ if defined APP_DIR if not exist "!APP_DIR!\.git" set "APP_DIR="
 
 if not defined APP_DIR (
     for %%D in (
+        "%USERPROFILE%\source\repos\Mozartmarinho\meuapp"
+        "%USERPROFILE%\source\repos\meuapp"
         "%USERPROFILE%\meuapp"
         "%USERPROFILE%\Documents\meuapp"
         "%USERPROFILE%\Downloads\meuapp"

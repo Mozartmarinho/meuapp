@@ -1,3 +1,5 @@
+from sqlalchemy import event
+
 from flask_sqlalchemy import SQLAlchemy
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -526,6 +528,8 @@ class Equipamento(db.Model):
     __tablename__ = 'equipamentos'
 
     id = db.Column(db.Integer, primary_key=True)
+    # Espelho de nome_equipamento. O app cria essa coluna no MySQL se faltar (1054).
+    equipamento = db.Column(db.String(100), nullable=True, default='')
     nome_equipamento = db.Column(db.String(100), nullable=False)
     marca = db.Column(db.String(100))
     modelo = db.Column(db.String(100))
@@ -551,14 +555,14 @@ class Equipamento(db.Model):
     def __repr__(self):
         return f'<Equipamento {self.nome_equipamento}>'
 
-    @property
-    def equipamento(self):
-        """Compat: o banco usa nome_equipamento; alguns DBs não têm a coluna legado."""
-        return self.nome_equipamento
-
-    @equipamento.setter
-    def equipamento(self, value):
-        self.nome_equipamento = value
+    @classmethod
+    def consulta(cls):
+        """Query que omite equipamentos.equipamento se o ALTER ainda não rodou."""
+        from sqlalchemy.orm import defer
+        q = cls.query
+        if 'equipamento' in cls.__table__.c:
+            q = q.options(defer('equipamento'))
+        return q
 
     def to_dict(self):
         return {
@@ -588,6 +592,17 @@ class Equipamento(db.Model):
             'is_agente': bool(self.is_agente),
             'atualizado_em': self.atualizado_em.strftime('%d/%m/%Y %H:%M') if self.atualizado_em else None,
         }
+
+
+@event.listens_for(Equipamento, 'before_insert')
+@event.listens_for(Equipamento, 'before_update')
+def _espelhar_equipamento_nome(mapper, connection, target):
+    """Mantém equipamento e nome_equipamento iguais; não apaga cadastros antigos."""
+    nome = (getattr(target, 'nome_equipamento', None) or getattr(target, 'equipamento', None) or '')
+    nome = (nome or '').strip()
+    if nome:
+        target.nome_equipamento = nome
+        target.equipamento = nome
 
 
 class ChamadoAtendimento(db.Model):

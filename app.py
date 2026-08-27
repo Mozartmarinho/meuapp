@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, request, redirect, g
 from routes import main
 from routes_nutricao import nutricao
 from routes_pesagem import pesagem
@@ -37,11 +37,53 @@ def create_app():
     from audit_service import register_audit_hooks
     register_audit_hooks(app)
 
+    @app.before_request
+    def _reparo_automatico_equipamentos():
+        path = request.path or ''
+        if path.startswith('/static') or request.args.get('__debugger__'):
+            return
+        if not (
+            path.startswith('/equipamentos')
+            or path.startswith('/api/equipamentos')
+            or path.startswith('/api/equipamentos_por_cliente')
+            or path.startswith('/novo_equipamento')
+        ):
+            return
+        try:
+            ensure_equipamentos_schema()
+        except Exception as exc:
+            print(f'Aviso no reparo automático de equipamentos: {exc}')
+
+    from sqlalchemy.exc import OperationalError
+
+    @app.errorhandler(OperationalError)
+    def _reparar_1054_equipamentos(exc):
+        """Se faltar coluna, ALTER e recarrega a página (sem tela amarela do debugger)."""
+        if not is_missing_equipamentos_column(exc):
+            raise exc
+        if getattr(g, '_equipamentos_1054_retry', False):
+            raise exc
+        g._equipamentos_1054_retry = True
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        print('Reparo automático: tabela equipamentos incompleta, criando colunas...')
+        try:
+            ensure_equipamentos_schema()
+        except Exception as repair_exc:
+            print(f'Aviso no reparo automático de equipamentos: {repair_exc}')
+        if request.method in ('GET', 'HEAD'):
+            return redirect(request.url)
+        raise exc
+
     with app.app_context():
         try:
             ensure_equipamentos_schema()
         except Exception as exc:
             print(f"Aviso ao ajustar schema de equipamentos: {exc}")
+            import traceback
+            traceback.print_exc()
 
     @app.context_processor
     def inject_acesso():
@@ -334,50 +376,102 @@ def ensure_chamados_schema():
         db.session.rollback()
 
 
+def is_missing_equipamentos_column(exc):
+    """True quando falta alguma coluna de equipamentos (MySQL 1054 / SQLite)."""
+    blob = ' '.join(
+        str(parte)
+        for parte in (exc, getattr(exc, 'orig', None), getattr(exc, 'orig', exc))
+        if parte is not None
+    )
+    lower = blob.lower()
+    return (
+        "Unknown column 'equipamentos." in blob
+        or ('1054' in blob and 'equipamentos.' in blob)
+        or 'no such column: equipamentos.' in lower
+    )
+
+
+def is_missing_equipamentos_equipamento_column(exc):
+    """Compat: 1054 específico de equipamentos.equipamento."""
+    blob = ' '.join(
+        str(parte)
+        for parte in (exc, getattr(exc, 'orig', None), getattr(exc, 'orig', exc))
+        if parte is not None
+    )
+    return is_missing_equipamentos_column(exc) and 'equipamentos.equipamento' in blob
+
+
+def equipamentos_column_names():
+    """Colunas reais de equipamentos, sem o cache do Inspector do SQLAlchemy."""
+    from sqlalchemy import text
+    names = set()
+    engine = db.engine
+    conn = engine.connect()
+    try:
+        if engine.dialect.name == 'sqlite':
+            rows = conn.execute(text('PRAGMA table_info(equipamentos)'))
+            for row in rows:
+                names.add(str(row[1]))
+        else:
+            rows = conn.execute(text(
+                "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+                "WHERE TABLE_SCHEMA = DATABASE() "
+                "AND LOWER(TABLE_NAME) = 'equipamentos'"
+            ))
+            for row in rows:
+                names.add(str(row[0]))
+    finally:
+        conn.close()
+    return names
+
+
+def _exec_ddl(sql):
+    """DDL fora da transação da sessão (MySQL faz commit implícito no ALTER)."""
+    from sqlalchemy import text
+    conn = db.engine.connect().execution_options(isolation_level='AUTOCOMMIT')
+    try:
+        conn.execute(text(sql))
+    finally:
+        conn.close()
+
+
 def ensure_equipamentos_schema():
-    """Garante tabela/colunas de equipamentos (patrimônio vinculado ao cliente)."""
+    """Cria na tabela equipamentos as colunas do model que ainda não existem."""
     from sqlalchemy import inspect, text
+    from db_config import EQUIPAMENTOS_COLUNAS_DDL, forcar_colunas_equipamentos
+    try:
+        forcar_colunas_equipamentos()
+    except Exception as exc:
+        print(f'Aviso ao forçar colunas de equipamentos no MySQL: {exc}')
     try:
         insp = inspect(db.engine)
+        try:
+            insp.clear_cache()
+        except Exception:
+            pass
         tables = set(insp.get_table_names())
-        if 'recurso_grupos' not in tables:
+        tables_l = {t.lower() for t in tables}
+        if 'recurso_grupos' not in tables_l:
             from models import RecursoGrupo
             RecursoGrupo.__table__.create(db.engine, checkfirst=True)
-        if 'equipamentos' not in tables:
+        if 'equipamentos' not in tables_l:
             return
-        cols = {c['name'] for c in insp.get_columns('equipamentos')}
-        extras = {
-            'setor': 'VARCHAR(100) NULL',
-            'cliente_id': 'INT NULL',
-            'patrimonio': 'VARCHAR(50) NULL',
-            'localizacao': 'VARCHAR(100) NULL',
-            'local': 'VARCHAR(200) NULL',
-            'data_compra': 'DATE NULL',
-            'data_manutencao': 'DATE NULL',
-            'data_criacao': 'DATETIME NULL',
-            'ativo': 'TINYINT(1) NOT NULL DEFAULT 1',
-            'equipamento': 'VARCHAR(100) NULL',
-            'nome_equipamento': 'VARCHAR(100) NULL',
-            'marca': 'VARCHAR(100) NULL',
-            'modelo': 'VARCHAR(100) NULL',
-            'numero_serie': 'VARCHAR(50) NULL',
-            'tipo_recurso': "VARCHAR(40) NULL DEFAULT 'Estação'",
-            'grupo_id': 'INT NULL',
-            'usuario_equipamento': 'VARCHAR(120) NULL',
-            'ip': 'VARCHAR(45) NULL',
-            'is_agente': 'TINYINT(1) NOT NULL DEFAULT 0',
-            'atualizado_em': 'DATETIME NULL',
-        }
+        try:
+            cols = {c.lower() for c in equipamentos_column_names()}
+        except Exception:
+            cols = {c['name'].lower() for c in insp.get_columns('equipamentos')}
+        extras = dict(EQUIPAMENTOS_COLUNAS_DDL)
         for col, ddl in extras.items():
             if col not in cols:
                 try:
-                    db.session.execute(text(
-                        f'ALTER TABLE equipamentos ADD COLUMN `{col}` {ddl}'
-                    ))
-                    db.session.commit()
+                    _exec_ddl(f'ALTER TABLE equipamentos ADD COLUMN `{col}` {ddl}')
                     cols.add(col)
+                    print(f'Reparo automático: criada equipamentos.{col}')
                 except Exception as exc:
-                    db.session.rollback()
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
                     print(f'Aviso: não foi possível criar equipamentos.{col}: {exc}')
         if 'equipamento' in cols and 'nome_equipamento' in cols:
             try:
@@ -438,8 +532,12 @@ def ensure_equipamentos_schema():
                         db.session.commit()
                     except Exception:
                         db.session.rollback()
-    except Exception:
-        db.session.rollback()
+    except Exception as exc:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        print(f'Aviso ao ajustar schema de equipamentos: {exc}')
 
 
 def ensure_clientes_schema():
