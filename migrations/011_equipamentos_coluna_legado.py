@@ -1,4 +1,6 @@
-"""Garante a coluna legado equipamentos.equipamento (MySQL 1054 na listagem)."""
+"""Cria no MySQL todas as colunas do model Equipamento que a tabela ainda não tem."""
+
+from db_config import EQUIPAMENTOS_COLUNAS_DDL
 
 
 def run(engine):
@@ -26,38 +28,37 @@ def run(engine):
         if not names:
             print('SKIP: tabela equipamentos não existe')
             return
-        if 'equipamento' not in names:
+        for col, ddl in EQUIPAMENTOS_COLUNAS_DDL.items():
+            if col.lower() in names:
+                continue
             trans = conn.begin()
             try:
-                if dialect == 'sqlite':
-                    conn.execute(text(
-                        "ALTER TABLE equipamentos ADD COLUMN equipamento VARCHAR(100) DEFAULT ''"
-                    ))
-                else:
-                    conn.execute(text(
-                        "ALTER TABLE equipamentos ADD COLUMN equipamento "
-                        "VARCHAR(100) NULL DEFAULT ''"
-                    ))
+                conn.execute(text(
+                    f'ALTER TABLE equipamentos ADD COLUMN `{col}` {ddl}'
+                ))
                 trans.commit()
-                print('OK: ADD equipamentos.equipamento')
+                names.add(col.lower())
+                print('OK: ADD equipamentos.' + col)
             except Exception as exc:
                 trans.rollback()
                 msg = str(exc)
                 if 'Duplicate' in msg or '1060' in msg or 'duplicate column' in msg.lower():
-                    print('SKIP (já existe): equipamentos.equipamento')
+                    print('SKIP (já existe): equipamentos.' + col)
+                    names.add(col.lower())
                 else:
                     raise
-        trans = conn.begin()
-        try:
-            conn.execute(text(
-                "UPDATE equipamentos SET equipamento = nome_equipamento "
-                "WHERE (equipamento IS NULL OR equipamento = '') "
-                "AND nome_equipamento IS NOT NULL AND nome_equipamento != ''"
-            ))
-            trans.commit()
-            print('OK: sync equipamentos.equipamento')
-        except Exception as exc:
-            trans.rollback()
-            print('SKIP sync equipamento:', exc)
+        if 'equipamento' in names and 'nome_equipamento' in names:
+            trans = conn.begin()
+            try:
+                conn.execute(text(
+                    "UPDATE equipamentos SET equipamento = nome_equipamento "
+                    "WHERE (equipamento IS NULL OR equipamento = '') "
+                    "AND nome_equipamento IS NOT NULL AND nome_equipamento != ''"
+                ))
+                trans.commit()
+                print('OK: sync equipamentos.equipamento')
+            except Exception as exc:
+                trans.rollback()
+                print('SKIP sync equipamento:', exc)
     finally:
         conn.close()

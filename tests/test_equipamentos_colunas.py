@@ -78,31 +78,49 @@ class EquipamentosColunasTest(unittest.TestCase):
             src = fh.read()
         self.assertIn("'cliente_endereco': (self.cliente.endereco or '') if self.cliente else ''", src)
 
-    def test_modelo_nao_seleciona_coluna_legado_equipamento(self):
+    def test_modelo_e_ddl_tem_as_mesmas_colunas(self):
+        from db_config import EQUIPAMENTOS_COLUNAS_DDL
         from models import Equipamento
         colunas = {c.name for c in Equipamento.__table__.columns}
-        self.assertNotIn('equipamento', colunas)
+        self.assertIn('equipamento', colunas)
         self.assertIn('nome_equipamento', colunas)
-        sql = str(Equipamento.__table__.select().compile())
-        self.assertNotIn('equipamentos.equipamento,', sql)
-        self.assertNotIn('equipamentos.equipamento ', sql)
+        self.assertTrue(
+            colunas - {'id'} <= set(EQUIPAMENTOS_COLUNAS_DDL),
+            'ensure/DDL precisa criar toda coluna do model: %s' % (colunas - {'id'} - set(EQUIPAMENTOS_COLUNAS_DDL)),
+        )
 
     def test_listagem_usa_consulta_com_retry(self):
         with open(os.path.join(ROOT, 'routes.py'), encoding='utf-8') as fh:
             src = fh.read()
         self.assertIn('def _listar_equipamentos_cadastrados', src)
         self.assertIn('ensure_equipamentos_schema()', src)
-        self.assertIn('is_missing_equipamentos_equipamento_column', src)
+        self.assertIn('is_missing_equipamentos_column', src)
         self.assertIn('equipamentos = _listar_equipamentos_cadastrados()', src)
 
     def test_detecta_erro_coluna_ausente(self):
-        from app import is_missing_equipamentos_equipamento_column
+        from app import (
+            is_missing_equipamentos_column,
+            is_missing_equipamentos_equipamento_column,
+        )
         self.assertTrue(is_missing_equipamentos_equipamento_column(
             Exception("(1054, \"Unknown column 'equipamentos.equipamento' in 'field list'\")")
+        ))
+        self.assertTrue(is_missing_equipamentos_column(
+            Exception("(1054, \"Unknown column 'equipamentos.marca' in 'field list'\")")
         ))
         self.assertFalse(is_missing_equipamentos_equipamento_column(
             Exception("(1054, \"Unknown column 'equipamentos.marca' in 'field list'\")")
         ))
+
+    def test_forcar_coluna_nao_mexe_em_sqlite(self):
+        from db_config import forcar_colunas_equipamentos
+        import db_config
+        old = db_config.SQLALCHEMY_DATABASE_URI
+        db_config.SQLALCHEMY_DATABASE_URI = SQLITE_URI
+        try:
+            self.assertFalse(forcar_colunas_equipamentos())
+        finally:
+            db_config.SQLALCHEMY_DATABASE_URI = old
 
     def test_consulta_funciona_sem_coluna_legado(self):
         from sqlalchemy import text
@@ -120,7 +138,6 @@ class EquipamentosColunasTest(unittest.TestCase):
             itens = Equipamento.consulta().all()
             self.assertEqual(len(itens), 1)
             self.assertEqual(itens[0].nome_equipamento, 'PC Recepção')
-            self.assertEqual(itens[0].equipamento, 'PC Recepção')
 
     def test_listagem_abre_mesmo_se_alter_falhar(self):
         from sqlalchemy import text
@@ -184,7 +201,10 @@ class EquipamentosColunasTest(unittest.TestCase):
             app_mod.ensure_equipamentos_schema()
             cols = {c.lower() for c in app_mod.equipamentos_column_names()}
             self.assertIn('equipamento', cols)
-            eq = Equipamento.consulta().first()
+            from models import Equipamento as EqModel
+            for nome in {c.name for c in EqModel.__table__.columns if c.name != 'id'}:
+                self.assertIn(nome, cols, 'faltou criar equipamentos.' + nome)
+            eq = Equipamento.query.first()
             self.assertIsNotNone(eq)
             self.assertEqual(eq.nome_equipamento, 'PC Recepção')
             self.assertEqual(eq.equipamento, 'PC Recepção')
@@ -196,6 +216,7 @@ class EquipamentosColunasTest(unittest.TestCase):
             db.session.add(novo)
             db.session.commit()
             self.assertEqual(novo.equipamento, 'Notebook')
+            self.assertEqual(novo.nome_equipamento, 'Notebook')
 
 
 if __name__ == '__main__':

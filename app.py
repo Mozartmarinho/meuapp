@@ -336,8 +336,8 @@ def ensure_chamados_schema():
         db.session.rollback()
 
 
-def is_missing_equipamentos_equipamento_column(exc):
-    """True quando o banco não tem equipamentos.equipamento (MySQL 1054 / SQLite)."""
+def is_missing_equipamentos_column(exc):
+    """True quando falta alguma coluna de equipamentos (MySQL 1054 / SQLite)."""
     blob = ' '.join(
         str(parte)
         for parte in (exc, getattr(exc, 'orig', None), getattr(exc, 'orig', exc))
@@ -345,10 +345,20 @@ def is_missing_equipamentos_equipamento_column(exc):
     )
     lower = blob.lower()
     return (
-        "Unknown column 'equipamentos.equipamento'" in blob
-        or ('1054' in blob and 'equipamentos.equipamento' in blob)
-        or 'no such column: equipamentos.equipamento' in lower
+        "Unknown column 'equipamentos." in blob
+        or ('1054' in blob and 'equipamentos.' in blob)
+        or 'no such column: equipamentos.' in lower
     )
+
+
+def is_missing_equipamentos_equipamento_column(exc):
+    """Compat: 1054 específico de equipamentos.equipamento."""
+    blob = ' '.join(
+        str(parte)
+        for parte in (exc, getattr(exc, 'orig', None), getattr(exc, 'orig', exc))
+        if parte is not None
+    )
+    return is_missing_equipamentos_column(exc) and 'equipamentos.equipamento' in blob
 
 
 def equipamentos_column_names():
@@ -386,8 +396,13 @@ def _exec_ddl(sql):
 
 
 def ensure_equipamentos_schema():
-    """Garante tabela/colunas de equipamentos (patrimônio vinculado ao cliente)."""
+    """Cria na tabela equipamentos as colunas do model que ainda não existem."""
     from sqlalchemy import inspect, text
+    from db_config import EQUIPAMENTOS_COLUNAS_DDL, forcar_colunas_equipamentos
+    try:
+        forcar_colunas_equipamentos()
+    except Exception as exc:
+        print(f'Aviso ao forçar colunas de equipamentos no MySQL: {exc}')
     try:
         insp = inspect(db.engine)
         try:
@@ -405,28 +420,7 @@ def ensure_equipamentos_schema():
             cols = {c.lower() for c in equipamentos_column_names()}
         except Exception:
             cols = {c['name'].lower() for c in insp.get_columns('equipamentos')}
-        extras = {
-            'setor': 'VARCHAR(100) NULL',
-            'cliente_id': 'INT NULL',
-            'patrimonio': 'VARCHAR(50) NULL',
-            'localizacao': 'VARCHAR(100) NULL',
-            'local': 'VARCHAR(200) NULL',
-            'data_compra': 'DATE NULL',
-            'data_manutencao': 'DATE NULL',
-            'data_criacao': 'DATETIME NULL',
-            'ativo': 'TINYINT(1) NOT NULL DEFAULT 1',
-            'equipamento': "VARCHAR(100) NULL DEFAULT ''",
-            'nome_equipamento': 'VARCHAR(100) NULL',
-            'marca': 'VARCHAR(100) NULL',
-            'modelo': 'VARCHAR(100) NULL',
-            'numero_serie': 'VARCHAR(50) NULL',
-            'tipo_recurso': "VARCHAR(40) NULL DEFAULT 'Estação'",
-            'grupo_id': 'INT NULL',
-            'usuario_equipamento': 'VARCHAR(120) NULL',
-            'ip': 'VARCHAR(45) NULL',
-            'is_agente': 'TINYINT(1) NOT NULL DEFAULT 0',
-            'atualizado_em': 'DATETIME NULL',
-        }
+        extras = dict(EQUIPAMENTOS_COLUNAS_DDL)
         for col, ddl in extras.items():
             if col not in cols:
                 try:
@@ -438,14 +432,6 @@ def ensure_equipamentos_schema():
                     except Exception:
                         pass
                     print(f'Aviso: não foi possível criar equipamentos.{col}: {exc}')
-        if db.engine.dialect.name != 'sqlite' and 'equipamento' in cols:
-            try:
-                _exec_ddl(
-                    "ALTER TABLE equipamentos MODIFY COLUMN equipamento "
-                    "VARCHAR(100) NULL DEFAULT ''"
-                )
-            except Exception as exc:
-                print(f'Aviso: não foi possível ajustar default de equipamentos.equipamento: {exc}')
         if 'equipamento' in cols and 'nome_equipamento' in cols:
             try:
                 db.session.execute(text(

@@ -3177,14 +3177,17 @@ def excluir_estoque(eid):
 
 
 def _listar_equipamentos_cadastrados():
-    """Lista patrimônios sem SELECT em equipamentos.equipamento (MySQL 1054)."""
-    from app import ensure_equipamentos_schema, is_missing_equipamentos_equipamento_column
+    """Alinha o schema com o model e lista patrimônios (cria colunas que faltarem)."""
+    from app import (
+        ensure_equipamentos_schema,
+        is_missing_equipamentos_column,
+    )
     try:
         ensure_equipamentos_schema()
     except Exception as exc:
         print(f'Aviso ao ajustar schema de equipamentos: {exc}')
     q = (
-        Equipamento.consulta()
+        Equipamento.query
         .options(joinedload(Equipamento.cliente))
         .order_by(Equipamento.patrimonio.asc(), Equipamento.nome_equipamento.asc())
     )
@@ -3192,7 +3195,7 @@ def _listar_equipamentos_cadastrados():
         return q.all()
     except (OperationalError, Exception) as exc:
         db.session.rollback()
-        if not is_missing_equipamentos_equipamento_column(exc):
+        if not is_missing_equipamentos_column(exc):
             raise
         ensure_equipamentos_schema()
         return (
@@ -3281,6 +3284,7 @@ def _dados_equipamento_form(data):
     return {
         'patrimonio': codigo,
         'nome_equipamento': nome,
+        'equipamento': nome,
         'marca': marca or None,
         'modelo': modelo or None,
         'setor': setor or None,
