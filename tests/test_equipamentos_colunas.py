@@ -38,6 +38,42 @@ class EquipamentosColunasTest(unittest.TestCase):
             src = fh.read()
         self.assertIn("'cliente_endereco': (self.cliente.endereco or '') if self.cliente else ''", src)
 
+    def test_ensure_adiciona_coluna_equipamento_ausente(self):
+        from sqlalchemy import inspect, text
+        from app import create_app, ensure_equipamentos_schema
+        from models import Equipamento, db
+
+        os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
+        app = create_app()
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+        app.config['TESTING'] = True
+        with app.app_context():
+            db.session.execute(text('DROP TABLE IF EXISTS equipamentos'))
+            db.session.execute(text(
+                'CREATE TABLE equipamentos ('
+                'id INTEGER PRIMARY KEY,'
+                'nome_equipamento VARCHAR(100) NOT NULL,'
+                'patrimonio VARCHAR(50),'
+                'cliente_id INTEGER NOT NULL,'
+                'ativo INTEGER DEFAULT 1,'
+                'is_agente INTEGER DEFAULT 0'
+                ')'
+            ))
+            db.session.execute(text(
+                "INSERT INTO equipamentos (nome_equipamento, patrimonio, cliente_id) "
+                "VALUES ('PC Recepção', 'EQ-1', 1)"
+            ))
+            db.session.commit()
+            cols = {c['name'] for c in inspect(db.engine).get_columns('equipamentos')}
+            self.assertNotIn('equipamento', cols)
+            ensure_equipamentos_schema()
+            cols = {c['name'] for c in inspect(db.engine).get_columns('equipamentos')}
+            self.assertIn('equipamento', cols)
+            eq = Equipamento.query.first()
+            self.assertIsNotNone(eq)
+            self.assertEqual(eq.nome_equipamento, 'PC Recepção')
+            self.assertEqual(eq.equipamento, 'PC Recepção')
+
 
 if __name__ == '__main__':
     unittest.main()
