@@ -122,11 +122,12 @@
           <th>Origem</th>
           <th>PC / COM</th>
           <th>Bruto serial</th>
+          <th class="col-excluir">Excluir</th>
         </tr>
       </thead>
       <tbody>
         {% for l in leituras %}
-        <tr>
+        <tr data-leitura-id="{{ l.id }}">
           <td style="white-space:nowrap;">{{ l.data_leitura }}</td>
           <td>{{ l.cliente_nome or '-' }}</td>
           <td><strong>{{ '%.3f'|format(l.peso_liquido if l.peso_liquido is not none else l.peso) }}</strong> {{ l.unidade }}</td>
@@ -137,10 +138,16 @@
           <td>{% if l.origem == 'ja_pesado' %}Já pesado{% elif l.origem == 'agente' %}Agente{% else %}{{ l.origem or '-' }}{% endif %}</td>
           <td>{{ l.computador or '-' }}{% if l.porta_com %} / {{ l.porta_com }}{% endif %}</td>
           <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;" title="{{ l.bruto_serial }}">{{ l.bruto_serial or '-' }}</td>
+          <td class="col-excluir">
+            <button class="btn btn-ghost btn-sm btn-excluir-leitura" type="button"
+                    title="Excluir lançamento" onclick="excluirLeitura({{ l.id }}, this)">
+              <i class="fas fa-trash"></i> Excluir
+            </button>
+          </td>
         </tr>
         {% else %}
         <tr>
-          <td colspan="10" style="text-align:center;padding:1.5rem;color:#64748b;">
+          <td colspan="11" style="text-align:center;padding:1.5rem;color:#64748b;">
             Nenhuma leitura no filtro selecionado. Envie pesos pelo agente com cliente selecionado.
           </td>
         </tr>
@@ -149,4 +156,30 @@
     </table>
   </div>
 </div>
+<style>
+.col-excluir { width: 1%; white-space: nowrap; text-align: right; }
+.btn-excluir-leitura { color: #b45309; }
+.btn-excluir-leitura:hover { color: #991b1b; }
+</style>
+<script>
+async function excluirLeitura(id, btn){
+  if (!id) return;
+  if (!confirm('Excluir este lançamento de pesagem?\nEsta ação não pode ser desfeita.')) return;
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/api/pesagem/leituras/' + id, { method: 'DELETE' });
+    const j = await r.json().catch(function(){ return {}; });
+    if (!r.ok || j.ok === false){
+      if (btn) btn.disabled = false;
+      showToast((j && j.error) || 'Falha ao excluir', 'error');
+      return;
+    }
+    showToast('Lançamento excluído', 'success');
+    location.reload();
+  } catch (e) {
+    if (btn) btn.disabled = false;
+    showToast('Erro ao excluir', 'error');
+  }
+}
+</script>
 {% endblock %}

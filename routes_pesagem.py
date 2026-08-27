@@ -51,6 +51,7 @@ _PESAGEM_ENDPOINT_MENUS = {
     'pesagem.auditoria': 'auditoria',
     'pesagem.download_agente_arquivo': 'dashboard',
     'pesagem.api_listar_leituras': 'dashboard',
+    'pesagem.api_excluir_leitura': 'dashboard',
     'pesagem.api_balancas': 'balancas',
     'pesagem.api_balanca': 'balancas',
     'pesagem.api_listar_clientes': 'clientes',
@@ -677,6 +678,18 @@ def api_listar_leituras():
         .all()
     )
     return jsonify({'ok': True, 'leituras': [r.to_dict() for r in rows]})
+
+
+@pesagem.route('/api/pesagem/leituras/<int:lid>', methods=['DELETE'])
+@login_required
+def api_excluir_leitura(lid):
+    """Remove um lançamento de pesagem da listagem."""
+    leitura = PesagemLeitura.query.get(lid)
+    if not leitura:
+        return jsonify({'ok': False, 'error': 'Lançamento não encontrado'}), 404
+    db.session.delete(leitura)
+    db.session.commit()
+    return jsonify({'ok': True, 'id': lid})
 
 
 @pesagem.route('/api/pesagem/balancas', methods=['GET', 'POST'])
