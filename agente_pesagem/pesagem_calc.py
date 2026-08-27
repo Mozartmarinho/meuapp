@@ -1,6 +1,8 @@
 """Cálculo de bruto / tara / líquido do agente de pesagem (sem GUI)."""
 from __future__ import annotations
 
+from datetime import datetime
+
 
 def parse_peso_digitado(texto) -> float | None:
     """Converte texto do operador (12,5 / 12.5 / 5 kg) em kg."""
@@ -70,3 +72,50 @@ def bruto_da_leitura(data: dict) -> float | None:
         except (TypeError, ValueError):
             continue
     return None
+
+
+def formatar_peso_ui(peso: float | None) -> str:
+    """Somente o visor: 3 dígitos inteiros + 2 decimais (000.00). Não altera o valor gravado."""
+    if peso is None:
+        return '000.00'
+    try:
+        p = float(peso)
+    except (TypeError, ValueError):
+        return '000.00'
+    if p < 0:
+        return f'-{abs(p):06.2f}'
+    return f'{p:06.2f}'
+
+
+def formatar_data_hora_envio(valor) -> str:
+    """Data/hora compacta para a grade de envios do dia (27/08 10:57)."""
+    text = str(valor or '').strip()
+    if not text:
+        return '—'
+    trecho = text.replace('T', ' ')[:19]
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%d/%m/%Y %H:%M:%S', '%d/%m/%Y %H:%M'):
+        try:
+            return datetime.strptime(trecho, fmt).strftime('%d/%m %H:%M')
+        except ValueError:
+            continue
+    return text[:16]
+
+
+def celulas_envio(leitura: dict) -> tuple:
+    """Valores da linha: data/hora, cliente, bruto, tara, líquido, ação excluir."""
+    bruto = leitura.get('peso_bruto')
+    if bruto is None:
+        bruto = leitura.get('peso')
+    tara = leitura.get('tara')
+    liquido = leitura.get('peso_liquido')
+    if liquido is None:
+        liquido = leitura.get('peso')
+    cliente = (leitura.get('cliente_nome') or '').strip() or '—'
+    return (
+        formatar_data_hora_envio(leitura.get('data_leitura') or leitura.get('data_hora')),
+        cliente,
+        formatar_peso_ui(bruto),
+        formatar_peso_ui(tara),
+        formatar_peso_ui(liquido),
+        'Excluir',
+    )

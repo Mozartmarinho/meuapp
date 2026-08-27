@@ -7,6 +7,7 @@ Na tela:
 - **Bruto**: peso ao vivo da plataforma
 - **Líquido**: bruto − tara (visor vermelho e valor enviado)
 - **Roupa já pesada**: informa o líquido sem usar a balança (tara opcional no diálogo)
+- **Envios do dia**: grade à direita com data/hora, cliente, bruto, tara, líquido e **Excluir** (peso enviado errado)
 
 ## Uso rápido
 
@@ -37,4 +38,8 @@ No `config.json` defina `"modo_simulacao": true` e execute:
 
 ## Endpoint
 
-`POST /api/pesagem/leituras` com header `X-API-Key`.
+`POST /api/pesagem/leituras` com header `X-API-Key` envia o peso.
+
+`GET /api/pesagem/leituras?data_de=AAAA-MM-DD&data_ate=AAAA-MM-DD&balanca=BAL-01` lista os envios do dia.
+
+`DELETE /api/pesagem/leituras/<id>` remove um lançamento enviado por engano.

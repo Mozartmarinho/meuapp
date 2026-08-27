@@ -8,6 +8,7 @@ O programa abre uma janela com:
 - Botão ENVIAR PARA O SERVIDOR (envia o líquido da balança)
 - Botão ENVIAR ROUPA JÁ PESADA (digite o líquido — e tara se quiser — sem usar a balança)
 - Seleção de cliente e foto cadastrada
+- Envios do dia (à direita): data/hora, cliente, bruto, tara, líquido e Excluir
 - Registro (log) da conexão
 - Configuração (F2) — a URL do servidor fica salva neste computador
   (AppData\SaoGeraldoService\AgentePesagem\config.json)
@@ -22,7 +23,7 @@ Passos:
 2) Ajuste config.json se precisar.
    servidor_url padrão: http://192.168.1.179
 3) Abra AgentePesagem.exe, escolha o cliente, confira o peso e clique em ENVIAR.
-   Versão atual: 1.5.0 (tara digitável + Enviar roupa já pesada).
+   Versão atual: 1.6.0 (lista de envios do dia + excluir peso enviado errado).
 4) (Opcional) rode instalar_inicio_windows.bat para iniciar com o Windows.
 
 Para testar sem balança: no config.json use "modo_simulacao": true
