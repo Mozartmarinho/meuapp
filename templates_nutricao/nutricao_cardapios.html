@@ -51,7 +51,7 @@
             </button>
             <button class="btn btn-ghost btn-sm" type="button" data-action="excluir-cardapios"
                     data-dieta-id="{{ d.id }}" data-dieta-nome="{{ (d.nome or '')|e }}"
-                    title="Excluir cardápios">
+                    title="Excluir dieta e cardápio">
               <i class="fas fa-trash"></i> Excluir
             </button>
           </td>
@@ -81,7 +81,7 @@
           <button type="button" class="btn btn-primary btn-sm btn-modo" onclick="modoPrato('selecao')">Prato principal/Sobremesa Seleção</button>
           <button type="button" class="btn btn-primary btn-sm btn-modo" onclick="modoPrato('padrao')">Prato principal/Sobremesa Padrão</button>
           <button type="button" class="btn btn-primary btn-sm btn-modo" onclick="modoPrato('principal')">Prato principal</button>
-          <button type="button" class="btn btn-ghost btn-sm" onclick="excluirCardapioAtual()" title="Excluir" style="margin-left:auto"><i class="fas fa-trash"></i></button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="excluirDietaECardapio()" title="Excluir dieta e cardápio" style="margin-left:auto"><i class="fas fa-trash"></i></button>
         </div>
 
         <div class="tabs" style="margin-bottom:0.85rem;">
@@ -123,41 +123,20 @@
         </div>
 
         <div id="painel-grandes" class="painel-tipo">
-          <div class="form-row radio-block">
-            <div class="form-group">
-              <label class="form-label">Entrada</label>
-              <div class="radio-row">
-                <label><input type="radio" name="entrada_tipo" value="Salada"> Salada</label>
-                <label><input type="radio" name="entrada_tipo" value="Sopa"> Sopa</label>
-              </div>
-            </div>
-            <div class="form-group" style="flex:1.6">
-              <label class="form-label">Proteína</label>
-              <div class="radio-row wrap">
-                <label><input type="radio" name="proteina_tipo" value="Bovino"> Bovino</label>
-                <label><input type="radio" name="proteina_tipo" value="Suíno"> Suíno</label>
-                <label><input type="radio" name="proteina_tipo" value="Aves"> Aves</label>
-                <label><input type="radio" name="proteina_tipo" value="Vísceras"> Vísceras</label>
-                <label><input type="radio" name="proteina_tipo" value="Embutidos"> Embutidos</label>
-                <label><input type="radio" name="proteina_tipo" value="Peixes"> Peixes</label>
-              </div>
-            </div>
-          </div>
-
           <div class="form-row two-cols campos-prato">
             <div class="col-left">
-              <div class="form-group"><label class="form-label">Acompanhamento</label><select class="form-control" id="g-acompanhamento"></select></div>
-              <div class="form-group"><label class="form-label">Prato base</label><select class="form-control" id="g-prato_base"></select></div>
-              <div class="form-group"><label class="form-label">Proteína opcional</label><select class="form-control" id="g-proteina_opcional"></select></div>
-              <div class="form-group"><label class="form-label">Guarnição</label><select class="form-control" id="g-guarnicao"></select></div>
-              <div class="form-group"><label class="form-label">Docinho / Salada</label><select class="form-control" id="g-docinho_salada"></select></div>
+              <div class="form-group"><label class="form-label">Acompanhamento</label><input class="form-control" id="g-acompanhamento" type="text" autocomplete="off"></div>
+              <div class="form-group"><label class="form-label">Prato base</label><input class="form-control" id="g-prato_base" type="text" autocomplete="off"></div>
+              <div class="form-group"><label class="form-label">Proteína opcional</label><input class="form-control" id="g-proteina_opcional" type="text" autocomplete="off"></div>
+              <div class="form-group"><label class="form-label">Guarnição</label><input class="form-control" id="g-guarnicao" type="text" autocomplete="off"></div>
+              <div class="form-group"><label class="form-label">Salada</label><input class="form-control" id="g-docinho_salada" type="text" autocomplete="off"></div>
             </div>
             <div class="col-right">
-              <div class="form-group"><label class="form-label">Sobremesa</label><select class="form-control" id="g-sobremesa"></select></div>
-              <div class="form-group"><label class="form-label">Fruta</label><select class="form-control" id="g-fruta"></select></div>
-              <div class="form-group"><label class="form-label">Suco</label><select class="form-control" id="g-suco"></select></div>
-              <div class="form-group"><label class="form-label">Vitamina / Suco</label><select class="form-control" id="g-vitamina_suco"></select></div>
-              <div class="form-group"><label class="form-label">Outros</label><select class="form-control" id="g-outros"></select></div>
+              <div class="form-group"><label class="form-label">Sobremesa</label><input class="form-control" id="g-sobremesa" type="text" autocomplete="off"></div>
+              <div class="form-group"><label class="form-label">Fruta</label><input class="form-control" id="g-fruta" type="text" autocomplete="off"></div>
+              <div class="form-group"><label class="form-label">Suco</label><input class="form-control" id="g-suco" type="text" autocomplete="off"></div>
+              <div class="form-group"><label class="form-label">Vitamina</label><input class="form-control" id="g-vitamina_suco" type="text" autocomplete="off"></div>
+              <div class="form-group"><label class="form-label">Outros</label><input class="form-control" id="g-outros" type="text" autocomplete="off"></div>
             </div>
           </div>
         </div>
@@ -165,17 +144,17 @@
         <div id="painel-pequenas" class="painel-tipo" hidden>
           <div class="form-row two-cols">
             <div>
-              <div class="form-group"><label class="form-label">Bebida</label><select class="form-control" id="p-bebida"></select></div>
-              <div class="form-group"><label class="form-label">Prato 1</label><select class="form-control" id="p-prato1"></select></div>
-              <div class="form-group"><label class="form-label">Prato 2</label><select class="form-control" id="p-prato2"></select></div>
-              <div class="form-group"><label class="form-label">Prato 3</label><select class="form-control" id="p-prato3"></select></div>
-              <div class="form-group"><label class="form-label">Prato 4</label><select class="form-control" id="p-prato4"></select></div>
+              <div class="form-group"><label class="form-label">Bebida</label><input class="form-control" id="p-bebida" type="text" autocomplete="off"></div>
+              <div class="form-group"><label class="form-label">Prato 1</label><input class="form-control" id="p-prato1" type="text" autocomplete="off"></div>
+              <div class="form-group"><label class="form-label">Prato 2</label><input class="form-control" id="p-prato2" type="text" autocomplete="off"></div>
+              <div class="form-group"><label class="form-label">Prato 3</label><input class="form-control" id="p-prato3" type="text" autocomplete="off"></div>
+              <div class="form-group"><label class="form-label">Prato 4</label><input class="form-control" id="p-prato4" type="text" autocomplete="off"></div>
             </div>
             <div>
-              <div class="form-group"><label class="form-label">Prato 5</label><select class="form-control" id="p-prato5"></select></div>
-              <div class="form-group"><label class="form-label">Prato 6</label><select class="form-control" id="p-prato6"></select></div>
-              <div class="form-group"><label class="form-label">Prato 7</label><select class="form-control" id="p-prato7"></select></div>
-              <div class="form-group"><label class="form-label">Sobremesa</label><select class="form-control" id="p-sobremesa"></select></div>
+              <div class="form-group"><label class="form-label">Prato 5</label><input class="form-control" id="p-prato5" type="text" autocomplete="off"></div>
+              <div class="form-group"><label class="form-label">Prato 6</label><input class="form-control" id="p-prato6" type="text" autocomplete="off"></div>
+              <div class="form-group"><label class="form-label">Prato 7</label><input class="form-control" id="p-prato7" type="text" autocomplete="off"></div>
+              <div class="form-group"><label class="form-label">Sobremesa</label><input class="form-control" id="p-sobremesa" type="text" autocomplete="off"></div>
             </div>
           </div>
         </div>
@@ -183,11 +162,11 @@
         <div id="painel-liquidas" class="painel-tipo" hidden>
           <div class="form-row two-cols">
             <div>
-              <div class="form-group"><label class="form-label">Principal</label><select class="form-control" id="l-principal"></select></div>
-              <div class="form-group"><label class="form-label">Bebida</label><select class="form-control" id="l-bebida"></select></div>
-              <div class="form-group"><label class="form-label">Sobremesa</label><select class="form-control" id="l-sobremesa"></select></div>
-              <div class="form-group"><label class="form-label">Gelado</label><select class="form-control" id="l-gelado"></select></div>
-              <div class="form-group"><label class="form-label">Outros</label><select class="form-control" id="l-outros"></select></div>
+              <div class="form-group"><label class="form-label">Principal</label><input class="form-control" id="l-principal" type="text" autocomplete="off"></div>
+              <div class="form-group"><label class="form-label">Bebida</label><input class="form-control" id="l-bebida" type="text" autocomplete="off"></div>
+              <div class="form-group"><label class="form-label">Sobremesa</label><input class="form-control" id="l-sobremesa" type="text" autocomplete="off"></div>
+              <div class="form-group"><label class="form-label">Gelado</label><input class="form-control" id="l-gelado" type="text" autocomplete="off"></div>
+              <div class="form-group"><label class="form-label">Outros</label><input class="form-control" id="l-outros" type="text" autocomplete="off"></div>
             </div>
             <div>
               <div class="conv-box">
@@ -205,20 +184,6 @@
         </div>
 
         <div class="cardapio-footer">
-          <div class="form-row" style="align-items:flex-end">
-            <div class="form-group" style="max-width:110px">
-              <label class="form-label">V.N.T.</label>
-              <input class="form-control" type="number" step="0.01" id="f-vet" value="0">
-            </div>
-            <div class="form-group" style="max-width:130px">
-              <label class="form-label">Custo (R$)</label>
-              <input class="form-control" type="number" step="0.01" id="f-custo" value="0">
-            </div>
-            <div class="form-group" style="flex:1">
-              <label class="form-label">Organizar por</label>
-              <div class="radio-row wrap" id="organizarRadios"></div>
-            </div>
-          </div>
           <p class="cardapio-hook-note">
             Preços das refeições serão vinculados depois (dieta × tipo de refeição).
           </p>
@@ -453,33 +418,6 @@ function initCombos(){
   if (combosProntos) return;
   fillSelect(document.getElementById('f-grupo'), OPCOES.grupos, false);
   fillSelect(document.getElementById('f-dia-semana'), OPCOES.dias_semana, false);
-
-  fillSelect(document.getElementById('g-acompanhamento'), OPCOES.acompanhamentos);
-  fillSelect(document.getElementById('g-prato_base'), OPCOES.pratos_base);
-  fillSelect(document.getElementById('g-proteina_opcional'), OPCOES.proteinas_opcionais || OPCOES.proteicos_opcionais);
-  fillSelect(document.getElementById('g-guarnicao'), OPCOES.guarnicoes);
-  fillSelect(document.getElementById('g-docinho_salada'), OPCOES.docinhos_saladas || []);
-  fillSelect(document.getElementById('g-sobremesa'), OPCOES.sobremesas);
-  fillSelect(document.getElementById('g-fruta'), OPCOES.frutas || OPCOES.bebidas);
-  fillSelect(document.getElementById('g-suco'), OPCOES.sucos || []);
-  fillSelect(document.getElementById('g-vitamina_suco'), OPCOES.vitaminas_sucos || OPCOES.entradas_sopas);
-  fillSelect(document.getElementById('g-outros'), OPCOES.outros);
-
-  ['p-bebida','p-prato1','p-prato2','p-prato3','p-prato4','p-prato5','p-prato6','p-prato7'].forEach(id => {
-    fillSelect(document.getElementById(id), id==='p-bebida' ? OPCOES.bebidas : OPCOES.pratos_pequenos);
-  });
-  fillSelect(document.getElementById('p-sobremesa'), OPCOES.sobremesas);
-
-  fillSelect(document.getElementById('l-principal'), OPCOES.principais_liquidos);
-  fillSelect(document.getElementById('l-bebida'), OPCOES.bebidas);
-  fillSelect(document.getElementById('l-sobremesa'), OPCOES.sobremesas);
-  fillSelect(document.getElementById('l-gelado'), OPCOES.bebidas);
-  fillSelect(document.getElementById('l-outros'), OPCOES.outros);
-
-  const box = document.getElementById('organizarRadios');
-  box.innerHTML = (OPCOES.organizar_opcoes || []).map((o,i) =>
-    `<label><input type="radio" name="organizar_por" value="${o}" ${i===0?'checked':''}> ${o}</label>`
-  ).join('');
   combosProntos = true;
 }
 
@@ -510,20 +448,23 @@ function limparForm(){
   ['hr_desjejum','hr_colacao','hr_almoco','hr_merenda','hr_jantar','hr_ceia'].forEach(id => {
     document.getElementById(id).checked = false;
   });
-  document.querySelectorAll('input[name="entrada_tipo"]').forEach(r => r.checked = false);
-  document.querySelectorAll('input[name="proteina_tipo"]').forEach(r => r.checked = false);
-  document.querySelectorAll('#painel-grandes select, #painel-pequenas select, #painel-liquidas select, #painel-liquidas input').forEach(el => {
-    if (el.tagName === 'SELECT') el.value = '';
-    else el.value = '';
+  document.querySelectorAll('#painel-grandes input, #painel-pequenas input, #painel-liquidas input').forEach(el => {
+    el.value = '';
   });
-  document.getElementById('f-vet').value = 0;
-  document.getElementById('f-custo').value = 0;
-  const org = document.querySelector('input[name="organizar_por"]');
-  if (org) org.checked = true;
 }
 
 function setRadio(name, value){
   document.querySelectorAll(`input[name="${name}"]`).forEach(r => { r.checked = r.value === value; });
+}
+
+function setTexto(id, value){
+  const el = document.getElementById(id);
+  if (el) el.value = value || '';
+}
+
+function valCampo(id){
+  const el = document.getElementById(id);
+  return el ? (el.value || '').trim() : '';
 }
 
 function itemGet(it, ...keys){
@@ -552,85 +493,69 @@ function preencher(c){
   document.getElementById('hr_merenda').checked = !!c.hr_merenda;
   document.getElementById('hr_jantar').checked = !!c.hr_jantar;
   document.getElementById('hr_ceia').checked = !!c.hr_ceia;
-  document.getElementById('f-vet').value = c.vet || 0;
-  document.getElementById('f-custo').value = c.custo || 0;
-
-  const orgVal = c.organizar_por || 'Ord, Dieta, Horário';
-  let matched = false;
-  document.querySelectorAll('input[name="organizar_por"]').forEach(r => {
-    const ok = r.value === orgVal || r.value.replace(/,/g,';') === orgVal.replace(/;/g, ',');
-    r.checked = ok;
-    if (ok) matched = true;
-  });
-  if (!matched){
-    const first = document.querySelector('input[name="organizar_por"]');
-    if (first) first.checked = true;
-  }
 
   const it = c.itens || {};
   if (c.tipo === 'grandes'){
-    setRadio('entrada_tipo', it.entrada_tipo || '');
-    setRadio('proteina_tipo', itemGet(it, 'proteina_tipo', 'proteico_tipo'));
-    ensureOption(document.getElementById('g-acompanhamento'), it.acompanhamento || '');
-    ensureOption(document.getElementById('g-prato_base'), it.prato_base || '');
-    ensureOption(document.getElementById('g-proteina_opcional'), itemGet(it, 'proteina_opcional', 'proteico_opcional'));
-    ensureOption(document.getElementById('g-guarnicao'), it.guarnicao || '');
-    ensureOption(document.getElementById('g-docinho_salada'), itemGet(it, 'docinho_salada', 'diversos_salada'));
-    ensureOption(document.getElementById('g-sobremesa'), it.sobremesa || '');
-    ensureOption(document.getElementById('g-fruta'), itemGet(it, 'fruta', 'bebida'));
-    ensureOption(document.getElementById('g-suco'), it.suco || '');
-    ensureOption(document.getElementById('g-vitamina_suco'), itemGet(it, 'vitamina_suco', 'entrada_sopa'));
-    ensureOption(document.getElementById('g-outros'), it.outros || '');
+    setTexto('g-acompanhamento', it.acompanhamento || '');
+    setTexto('g-prato_base', it.prato_base || '');
+    setTexto('g-proteina_opcional', itemGet(it, 'proteina_opcional', 'proteico_opcional'));
+    setTexto('g-guarnicao', it.guarnicao || '');
+    setTexto('g-docinho_salada', itemGet(it, 'docinho_salada', 'diversos_salada', 'salada'));
+    setTexto('g-sobremesa', it.sobremesa || '');
+    setTexto('g-fruta', itemGet(it, 'fruta', 'bebida'));
+    setTexto('g-suco', it.suco || '');
+    setTexto('g-vitamina_suco', itemGet(it, 'vitamina_suco', 'entrada_sopa', 'vitamina'));
+    setTexto('g-outros', it.outros || '');
   } else if (c.tipo === 'pequenas'){
-    ensureOption(document.getElementById('p-bebida'), it.bebida || '');
-    for (let i=1;i<=7;i++) ensureOption(document.getElementById('p-prato'+i), it['prato'+i] || '');
-    ensureOption(document.getElementById('p-sobremesa'), it.sobremesa || '');
+    setTexto('p-bebida', it.bebida || '');
+    for (let i=1;i<=7;i++) setTexto('p-prato'+i, it['prato'+i] || '');
+    setTexto('p-sobremesa', it.sobremesa || '');
   } else {
-    ensureOption(document.getElementById('l-principal'), it.principal || '');
-    ensureOption(document.getElementById('l-bebida'), it.bebida || '');
-    ensureOption(document.getElementById('l-sobremesa'), it.sobremesa || '');
-    ensureOption(document.getElementById('l-gelado'), it.gelado || '');
-    ensureOption(document.getElementById('l-outros'), it.outros || '');
-    document.getElementById('l-conv_bebida_coluna').value = it.conv_bebida_coluna || '';
-    document.getElementById('l-conv_bebida_quant').value = it.conv_bebida_quant || '';
-    document.getElementById('l-conv_gelado_coluna').value = it.conv_gelado_coluna || '';
-    document.getElementById('l-conv_gelado_quant').value = it.conv_gelado_quant || '';
+    setTexto('l-principal', it.principal || '');
+    setTexto('l-bebida', it.bebida || '');
+    setTexto('l-sobremesa', it.sobremesa || '');
+    setTexto('l-gelado', it.gelado || '');
+    setTexto('l-outros', it.outros || '');
+    setTexto('l-conv_bebida_coluna', it.conv_bebida_coluna || '');
+    setTexto('l-conv_bebida_quant', it.conv_bebida_quant || '');
+    setTexto('l-conv_gelado_coluna', it.conv_gelado_coluna || '');
+    setTexto('l-conv_gelado_quant', it.conv_gelado_quant || '');
   }
 }
 
 function coletarItens(){
   if (tipoAtual === 'grandes'){
     return {
-      entrada_tipo: document.querySelector('input[name="entrada_tipo"]:checked')?.value || '',
-      proteina_tipo: document.querySelector('input[name="proteina_tipo"]:checked')?.value || '',
-      acompanhamento: document.getElementById('g-acompanhamento').value,
-      prato_base: document.getElementById('g-prato_base').value,
-      proteina_opcional: document.getElementById('g-proteina_opcional').value,
-      guarnicao: document.getElementById('g-guarnicao').value,
-      docinho_salada: document.getElementById('g-docinho_salada').value,
-      sobremesa: document.getElementById('g-sobremesa').value,
-      fruta: document.getElementById('g-fruta').value,
-      suco: document.getElementById('g-suco').value,
-      vitamina_suco: document.getElementById('g-vitamina_suco').value,
-      outros: document.getElementById('g-outros').value,
+      acompanhamento: valCampo('g-acompanhamento'),
+      prato_base: valCampo('g-prato_base'),
+      proteina_opcional: valCampo('g-proteina_opcional'),
+      guarnicao: valCampo('g-guarnicao'),
+      docinho_salada: valCampo('g-docinho_salada'),
+      salada: valCampo('g-docinho_salada'),
+      sobremesa: valCampo('g-sobremesa'),
+      fruta: valCampo('g-fruta'),
+      suco: valCampo('g-suco'),
+      vitamina_suco: valCampo('g-vitamina_suco'),
+      vitamina: valCampo('g-vitamina_suco'),
+      outros: valCampo('g-outros'),
       modo_prato: modoAtual,
     };
   }
   if (tipoAtual === 'pequenas'){
-    const o = { bebida: document.getElementById('p-bebida').value, sobremesa: document.getElementById('p-sobremesa').value };
-    for (let i=1;i<=7;i++) o['prato'+i] = document.getElementById('p-prato'+i).value;
+    const o = { bebida: valCampo('p-bebida'), sobremesa: valCampo('p-sobremesa') };
+    for (let i=1;i<=7;i++) o['prato'+i] = valCampo('p-prato'+i);
     return o;
   }
   return {
-    principal: document.getElementById('l-principal').value,
-    bebida: document.getElementById('l-bebida').value,
-    sobremesa: document.getElementById('l-sobremesa').value,
-    gelado: document.getElementById('l-gelado').value,
-    outros: document.getElementById('l-outros').value,
-    conv_bebida_coluna: document.getElementById('l-conv_bebida_coluna').value,
-    conv_bebida_quant: document.getElementById('l-conv_bebida_quant').value,
-    conv_gelado_coluna: document.getElementById('l-conv_gelado_coluna').value,
-    conv_gelado_quant: document.getElementById('l-conv_gelado_quant').value,
+    principal: valCampo('l-principal'),
+    bebida: valCampo('l-bebida'),
+    sobremesa: valCampo('l-sobremesa'),
+    gelado: valCampo('l-gelado'),
+    outros: valCampo('l-outros'),
+    conv_bebida_coluna: valCampo('l-conv_bebida_coluna'),
+    conv_bebida_quant: valCampo('l-conv_bebida_quant'),
+    conv_gelado_coluna: valCampo('l-conv_gelado_coluna'),
+    conv_gelado_quant: valCampo('l-conv_gelado_quant'),
   };
 }
 
@@ -650,9 +575,6 @@ function payloadAtual(){
     hr_jantar: document.getElementById('hr_jantar').checked,
     hr_ceia: document.getElementById('hr_ceia').checked,
     itens: coletarItens(),
-    vet: document.getElementById('f-vet').value,
-    custo: document.getElementById('f-custo').value,
-    organizar_por: document.querySelector('input[name="organizar_por"]:checked')?.value || 'Ord, Dieta, Horário',
     ativo: true
   };
 }
@@ -715,32 +637,22 @@ async function salvarCardapio(){
   }
 }
 
-async function excluirCardapioAtual(){
-  if (!editId){ showToast('Nenhum cardápio selecionado','error'); return; }
-  if (!confirm('Excluir este cardápio?')) return;
-  const r = await fetch(`/nutricao/api/cardapios/${editId}`, { method:'DELETE' });
+async function excluirDietaECardapio(dietaId, dietaNome){
+  const id = Number(dietaId || dietaAtual.id || 0) || null;
+  const nome = dietaNome || dietaAtual.nome || '';
+  if (!id){ showToast('Nenhuma dieta selecionada','error'); return; }
+  if (!confirm(`Excluir a dieta "${nome}" e o cardápio vinculado?`)) return;
+  const r = await fetch(`/nutricao/api/dietas/${id}`, { method:'DELETE' });
   const j = await r.json();
   if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao excluir','error'); return; }
-  showToast('Cardápio excluído','success');
-  await carregarAba();
+  const n = Number(j.cardapios || 0);
+  showToast(n ? `Dieta e ${n} cardápio(s) excluídos` : 'Dieta excluída','success');
+  fecharCardapioModal();
+  setTimeout(() => location.reload(), 450);
 }
 
 async function excluirCardapiosDieta(dietaId, dietaNome){
-  if (!confirm(`Excluir todos os cardápios da dieta "${dietaNome || ''}"?`)) return;
-  const r = await fetch('/nutricao/api/cardapios?dieta_id=' + encodeURIComponent(dietaId));
-  let rows = await r.json();
-  if (!Array.isArray(rows)) rows = [];
-  if (!rows.length){
-    showToast('Nenhum cardápio para esta dieta','error');
-    return;
-  }
-  let ok = 0;
-  for (const c of rows){
-    const del = await fetch(`/nutricao/api/cardapios/${c.id}`, { method:'DELETE' });
-    const j = await del.json();
-    if (del.ok && j.ok !== false) ok++;
-  }
-  showToast(ok ? `${ok} cardápio(s) excluído(s)` : 'Falha ao excluir','success');
+  await excluirDietaECardapio(dietaId, dietaNome);
 }
 
 async function abrirCardapioModal(dietaId, dietaNome){

@@ -627,6 +627,20 @@ def list_cardapios(tipo=None, dieta_id=None):
     ]
 
 
+def excluir_dieta_e_cardapios(dieta):
+    """Desativa a dieta e todos os cardápios vinculados (por id ou nome)."""
+    dieta.ativo = False
+    nome = (dieta.nome or '').strip().upper()
+    qtd = 0
+    for card in _q(NutCardapio).filter_by(ativo=True).all():
+        mesmo_id = dieta.id and card.dieta_id == dieta.id
+        mesmo_nome = nome and (card.dieta or '').strip().upper() == nome
+        if mesmo_id or mesmo_nome:
+            card.ativo = False
+            qtd += 1
+    return qtd
+
+
 MEALS_SUBST = (
     'desjejum', 'colacao', 'almoco', 'merenda', 'jantar', 'ceia'
 )

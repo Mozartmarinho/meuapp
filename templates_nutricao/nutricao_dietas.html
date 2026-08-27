@@ -284,11 +284,11 @@ async function toggleDietaAtivo(id, ativo){
 }
 
 async function excluirDieta(id){
-  if (!confirm('Excluir esta dieta? Ela será desativada (soft-delete).')) return;
+  if (!confirm('Excluir esta dieta e o cardápio vinculado?')) return;
   const r = await fetch(`/nutricao/api/dietas/${id}`, { method:'DELETE' });
   const j = await r.json();
   if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao excluir','error'); return; }
-  showToast('Dieta excluída','success');
+  showToast('Dieta e cardápio excluídos','success');
   setTimeout(() => location.reload(), 450);
 }
 </script>

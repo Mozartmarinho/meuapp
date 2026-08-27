@@ -56,9 +56,9 @@ function editarDieta(id){
 }
 
 function excluirDieta(id){
-  if(confirm('Excluir dieta #'+id+'?')){
+  if(confirm('Excluir dieta e o cardápio vinculado?')){
     fetch('/nutricao/api/dietas/'+id,{method:'DELETE'})
-    .then(function(r){return r.json();}).then(function(){showToast('Dieta exclu\u00edda');setTimeout(function(){location.reload();},800);});
+    .then(function(r){return r.json();}).then(function(){showToast('Dieta e cardápio excluídos');setTimeout(function(){location.reload();},800);});
   }
 }
 

@@ -46,6 +46,7 @@ from nutricao_service import (
     list_tipos_refeicao,
     normalizar_hora_limite,
     list_cardapios,
+    excluir_dieta_e_cardapios,
     list_tabelas_nutrientes,
     list_alimentos,
     import_tabela_fdc,
@@ -1666,9 +1667,9 @@ def api_dieta_ops(did):
         return jsonify({'ok': False, 'error': 'Dieta não encontrada'}), 404
 
     if request.method == 'DELETE':
-        row.ativo = False
+        qtd_cardapios = excluir_dieta_e_cardapios(row)
         db.session.commit()
-        return jsonify({'ok': True})
+        return jsonify({'ok': True, 'cardapios': qtd_cardapios})
 
     d = request.get_json(force=True) or {}
     if 'nome' in d:
@@ -1946,7 +1947,7 @@ def cardapios():
     seed_nutricao()
     dieta_id = request.args.get('dieta_id', type=int)
     dieta_sel = _get_scoped_or_404(NutDieta, dieta_id) if dieta_id else None
-    dietas_list = _list_dietas_db(somente_ativas=False)
+    dietas_list = _list_dietas_db(somente_ativas=True)
     return render_template(
         'nutricao_cardapios.html',
         cardapios=list_cardapios(dieta_id=dieta_id) if dieta_id else list_cardapios(),
