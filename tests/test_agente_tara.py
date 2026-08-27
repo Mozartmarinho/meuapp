@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tara fixa, líquido = bruto − tara, e envio de produto já pesado (sem GUI)."""
+"""Tara digitável, líquido = bruto − tara, e envio de roupa já pesada (sem GUI)."""
 import os
 import sys
 import unittest
@@ -62,15 +62,21 @@ class TaraFixaTest(unittest.TestCase):
         pesos = pesos_ja_pesado(10.0, tara=1.5)
         self.assertEqual(pesos['peso_liquido'], 10.0)
         self.assertEqual(pesos['peso_bruto'], 11.5)
+        self.assertEqual(pesos['tara'], 1.5)
 
     def test_visor_e_botao_no_codigo(self):
         with open(AGENTE_PY, encoding='utf-8') as fh:
             src = fh.read()
         self.assertIn("text='Líquido'", src)
-        self.assertIn("text='Já pesado...'", src)
-        self.assertIn("text='Fixar tara'", src)
+        self.assertIn("text='Enviar roupa já pesada'", src)
+        self.assertIn("text='Aplicar tara'", src)
+        self.assertIn("self.ent_tara = tk.Entry(", src)
+        self.assertIn('_preview_tara_digitada', src)
+        self.assertIn('_selecionar_campo_tara', src)
         self.assertIn("origem='ja_pesado'", src)
-        self.assertIn("APP_VERSION = '1.4.0'", src)
+        self.assertIn("APP_VERSION = '1.5.0'", src)
+        self.assertIn("self.title('Roupa já pesada')", src)
+        self.assertIn("self.var_tara = tk.StringVar", src)
         led = src.split('class LedPesoDisplay', 1)[1][:900]
         self.assertIn("text='Líquido'", led)
         self.assertNotIn("text='Peso'", led)
@@ -79,6 +85,12 @@ class TaraFixaTest(unittest.TestCase):
         with open(AGENTE_PY, encoding='utf-8') as fh:
             src = fh.read()
         self.assertIn("'tara_fixa': 0.0", src)
+
+    def test_dashboard_mostra_origem_roupa_ja_pesada(self):
+        path = os.path.join(ROOT, 'templates_pesagem', 'pesagem_dashboard.html')
+        with open(path, encoding='utf-8') as fh:
+            html = fh.read()
+        self.assertIn('Roupa já pesada', html)
 
 
 if __name__ == '__main__':
