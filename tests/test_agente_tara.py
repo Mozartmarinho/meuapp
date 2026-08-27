@@ -12,6 +12,8 @@ sys.path.insert(0, AGENTE_DIR)
 from pesagem_calc import (  # noqa: E402
     bruto_da_leitura,
     calcular_pesos,
+    celulas_envio,
+    formatar_data_hora_envio,
     parse_peso_digitado,
     pesos_ja_pesado,
 )
@@ -90,12 +92,12 @@ class TaraFixaTest(unittest.TestCase):
         self.assertIn('self.tree_envios', src)
         self.assertIn('carregar_envios_hoje', src)
         self.assertIn('_excluir_envio', src)
+        self.assertIn('_foco_eh', src)
+        self.assertIn('_tratar_fila', src)
         self.assertIn('/api/pesagem/leituras', src)
         self.assertIn("requests.delete(", src)
 
     def test_formatar_linha_envio(self):
-        from agente_pesagem import celulas_envio, formatar_data_hora_envio
-
         self.assertEqual(formatar_data_hora_envio('2026-08-27 10:57:07'), '27/08 10:57')
         self.assertEqual(formatar_data_hora_envio(''), '—')
         cells = celulas_envio({

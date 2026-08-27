@@ -28,6 +28,8 @@ if _APP_DIR not in sys.path:
 from pesagem_calc import (  # noqa: E402
     bruto_da_leitura,
     calcular_pesos,
+    celulas_envio,
+    formatar_peso_ui,
     parse_peso_digitado,
     pesos_ja_pesado,
 )
@@ -787,53 +789,6 @@ def parse_leitura(linha: str) -> dict:
 def parse_peso(linha: str) -> tuple[float | None, str, bool]:
     d = parse_leitura(linha)
     return d.get('peso'), d.get('bruto') or '', bool(d.get('estavel'))
-
-
-def formatar_peso_ui(peso: float | None) -> str:
-    """Somente o visor: 3 dígitos inteiros + 2 decimais (000.00). Não altera o valor gravado."""
-    if peso is None:
-        return '000.00'
-    try:
-        p = float(peso)
-    except (TypeError, ValueError):
-        return '000.00'
-    if p < 0:
-        return f'-{abs(p):06.2f}'
-    return f'{p:06.2f}'
-
-
-def formatar_data_hora_envio(valor) -> str:
-    """Data/hora compacta para a grade de envios do dia (27/08 10:57)."""
-    text = str(valor or '').strip()
-    if not text:
-        return '—'
-    trecho = text.replace('T', ' ')[:19]
-    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%d/%m/%Y %H:%M:%S', '%d/%m/%Y %H:%M'):
-        try:
-            return datetime.strptime(trecho, fmt).strftime('%d/%m %H:%M')
-        except ValueError:
-            continue
-    return text[:16]
-
-
-def celulas_envio(leitura: dict) -> tuple:
-    """Valores da linha: data/hora, cliente, bruto, tara, líquido, ação excluir."""
-    bruto = leitura.get('peso_bruto')
-    if bruto is None:
-        bruto = leitura.get('peso')
-    tara = leitura.get('tara')
-    liquido = leitura.get('peso_liquido')
-    if liquido is None:
-        liquido = leitura.get('peso')
-    cliente = (leitura.get('cliente_nome') or '').strip() or '—'
-    return (
-        formatar_data_hora_envio(leitura.get('data_leitura') or leitura.get('data_hora')),
-        cliente,
-        formatar_peso_ui(bruto),
-        formatar_peso_ui(tara),
-        formatar_peso_ui(liquido),
-        'Excluir',
-    )
 
 
 # Segmentos LED: a=topo, b=dir-sup, c=dir-inf, d=base, e=esq-inf, f=esq-sup, g=meio
@@ -2860,71 +2815,100 @@ class AgenteApp:
             parent=self.root,
         )
 
+    def _foco_eh(self, widget) -> bool:
+        """Foco atual, sem quebrar a fila se um diálogo acabou de fechar."""
+        try:
+            return self.root.focus_get() is widget
+        except (tk.TclError, KeyError, RuntimeError):
+            return False
+
     def _poll_queue(self):
         try:
             while True:
-                kind, payload = self.q.get_nowait()
-                if kind == 'status':
-                    self._set_status(str(payload))
-                elif kind == 'porta':
-                    self.porta_atual = str(payload)
-                    self.porta_var.set(self._rotulo_conexao(self.porta_atual))
-                elif kind == 'raw':
-                    pass
-                elif kind == 'peso':
-                    self._update_peso(payload)
-                elif kind == 'tara':
-                    self._update_tara(payload)
-                elif kind == 'envio_ok':
-                    self.enviando = False
-                    self._set_botoes_envio(True)
-                    self._set_status(f'Enviado OK (id={payload})')
-                    self.carregar_envios_hoje()
-                    messagebox.showinfo('Enviado', f'Peso enviado ao servidor.\nID: {payload}', parent=self.root)
-                elif kind == 'envio_erro':
-                    self.enviando = False
-                    self._set_botoes_envio(True)
-                    self._set_status(str(payload))
-                    messagebox.showerror('Falha', str(payload), parent=self.root)
-                elif kind == 'clientes':
-                    self._aplicar_lista_clientes(payload)
-                elif kind == 'clientes_erro':
-                    self._aplicar_lista_clientes([])
-                    self._set_status(str(payload))
-                elif kind == 'envios':
-                    seq, rows = payload
-                    if seq == self._envios_req_seq:
-                        self._aplicar_envios_hoje(rows)
-                elif kind == 'envios_erro':
-                    seq, msg = payload
-                    if seq == self._envios_req_seq:
-                        self._aplicar_envios_hoje([])
-                        if hasattr(self, 'lbl_envios_status'):
-                            self.lbl_envios_status.configure(text=str(msg))
-                elif kind == 'excluir_ok':
-                    self._excluir_req_ids.discard(int(payload))
-                    self._set_status(f'Envio excluído (id={payload})')
-                    if hasattr(self, 'tree_envios'):
-                        iid = str(payload)
-                        if self.tree_envios.exists(iid):
-                            self.tree_envios.delete(iid)
-                    self.carregar_envios_hoje()
-                elif kind == 'excluir_erro':
-                    lid, msg = payload
-                    self._excluir_req_ids.discard(int(lid))
-                    self._set_status(str(msg))
-                    messagebox.showerror('Excluir envio', str(msg), parent=self.root)
-                elif kind == 'cliente_img':
-                    seq, blob = payload
-                    if seq == self._img_req_seq:
-                        self._exibir_imagem_bytes(blob)
-                elif kind == 'cliente_img_erro':
-                    seq, msg = payload
-                    if seq == self._img_req_seq:
-                        self._mostrar_placeholder_img(str(msg))
-        except queue.Empty:
+                try:
+                    kind, payload = self.q.get_nowait()
+                except queue.Empty:
+                    break
+                try:
+                    self._tratar_fila(kind, payload)
+                except Exception as exc:
+                    try:
+                        self._set_status(f'Erro interno: {exc}')
+                    except Exception:
+                        pass
+        finally:
+            try:
+                self.root.after(80, self._poll_queue)
+            except Exception:
+                pass
+
+    def _tratar_fila(self, kind, payload):
+        if kind == 'status':
+            self._set_status(str(payload))
+        elif kind == 'porta':
+            self.porta_atual = str(payload)
+            self.porta_var.set(self._rotulo_conexao(self.porta_atual))
+        elif kind == 'raw':
             pass
-        self.root.after(80, self._poll_queue)
+        elif kind == 'peso':
+            self._update_peso(payload)
+        elif kind == 'tara':
+            self._update_tara(payload)
+        elif kind == 'envio_ok':
+            self.enviando = False
+            self._set_botoes_envio(True)
+            self._set_status(f'Enviado OK (id={payload})')
+            self.carregar_envios_hoje()
+            messagebox.showinfo('Enviado', f'Peso enviado ao servidor.\nID: {payload}', parent=self.root)
+        elif kind == 'envio_erro':
+            self.enviando = False
+            self._set_botoes_envio(True)
+            self._set_status(str(payload))
+            messagebox.showerror('Falha', str(payload), parent=self.root)
+        elif kind == 'clientes':
+            self._aplicar_lista_clientes(payload)
+        elif kind == 'clientes_erro':
+            self._aplicar_lista_clientes([])
+            self._set_status(str(payload))
+        elif kind == 'envios':
+            seq, rows = payload
+            if seq == self._envios_req_seq:
+                self._aplicar_envios_hoje(rows)
+        elif kind == 'envios_erro':
+            seq, msg = payload
+            if seq == self._envios_req_seq:
+                self._aplicar_envios_hoje([])
+                if hasattr(self, 'lbl_envios_status'):
+                    self.lbl_envios_status.configure(text=str(msg))
+        elif kind == 'excluir_ok':
+            self._excluir_req_ids.discard(int(payload))
+            self._set_status(f'Envio excluído (id={payload})')
+            if hasattr(self, 'tree_envios'):
+                iid = str(payload)
+                if self.tree_envios.exists(iid):
+                    self.tree_envios.delete(iid)
+                n = len(self.tree_envios.get_children())
+                if hasattr(self, 'lbl_envios_status'):
+                    if n == 0:
+                        self.lbl_envios_status.configure(text='Nenhum envio hoje nesta balança.')
+                    elif n == 1:
+                        self.lbl_envios_status.configure(text='1 envio hoje')
+                    else:
+                        self.lbl_envios_status.configure(text=f'{n} envios hoje')
+            self.carregar_envios_hoje()
+        elif kind == 'excluir_erro':
+            lid, msg = payload
+            self._excluir_req_ids.discard(int(lid))
+            self._set_status(str(msg))
+            messagebox.showerror('Excluir envio', str(msg), parent=self.root)
+        elif kind == 'cliente_img':
+            seq, blob = payload
+            if seq == self._img_req_seq:
+                self._exibir_imagem_bytes(blob)
+        elif kind == 'cliente_img_erro':
+            seq, msg = payload
+            if seq == self._img_req_seq:
+                self._mostrar_placeholder_img(str(msg))
 
     def _set_botoes_envio(self, habilitado: bool):
         estado = 'normal' if habilitado else 'disabled'
@@ -2952,10 +2936,7 @@ class AgenteApp:
         if hasattr(self, 'detalhe_peso_var'):
             self.detalhe_peso_var.set(self._texto_detalhe_peso())
         if hasattr(self, 'tara_var') and hasattr(self, 'ent_tara'):
-            try:
-                if self.root.focus_get() is not self.ent_tara:
-                    self.tara_var.set(formatar_peso_ui(self.tara_atual))
-            except tk.TclError:
+            if not self._foco_eh(self.ent_tara):
                 self.tara_var.set(formatar_peso_ui(self.tara_atual))
 
     def _aplicar_pesos(self, bruto, *, aceso: bool = True):
@@ -2979,7 +2960,7 @@ class AgenteApp:
 
     def _tara_select_all(self):
         try:
-            if self.root.focus_get() is self.ent_tara:
+            if self._foco_eh(self.ent_tara):
                 self.ent_tara.selection_range(0, 'end')
                 self.ent_tara.icursor('end')
         except tk.TclError:
@@ -3044,7 +3025,7 @@ class AgenteApp:
             self._set_status(f'Tara aplicada, mas não gravou config: {exc}')
         try:
             if hasattr(self, 'tara_var') and hasattr(self, 'ent_tara'):
-                if self.root.focus_get() is not self.ent_tara:
+                if not self._foco_eh(self.ent_tara):
                     self.tara_var.set(formatar_peso_ui(self.tara_atual))
         except tk.TclError:
             self.tara_var.set(formatar_peso_ui(self.tara_atual))
