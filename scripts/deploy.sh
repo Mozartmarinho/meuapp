@@ -67,6 +67,13 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 log "Dependências OK"
 
+if command -v npm >/dev/null 2>&1; then
+  log "Instalando ponte WhatsApp (npm)"
+  (cd "${APP_DIR}/whatsapp_bridge" && npm install --omit=dev) || log "AVISO: npm install da ponte WhatsApp falhou"
+else
+  log "AVISO: npm não encontrado; Conf. WhatsApp fica sem QR até instalar Node.js 18+"
+fi
+
 log ">>> 3/5 Executando migrações de banco"
 python scripts/run_migrations.py || fail "Migrações falharam"
 

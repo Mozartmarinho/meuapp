@@ -67,6 +67,14 @@
                 </a>
             </li>
             {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('pesagem', 'whatsapp') %}
+            <li>
+                <a href="{{ url_for('pesagem.whatsapp_page') }}" class="{% if active_page == 'whatsapp' %}active{% endif %}" title="Conf. WhatsApp">
+                    <i class="fab fa-whatsapp menu-icon"></i>
+                    <span class="menu-label">Conf. WhatsApp</span>
+                </a>
+            </li>
+            {% endif %}
             {% if usuario_atual and usuario_atual.tem_menu('pesagem', 'auditoria') %}
             <li>
                 <a href="{{ url_for('pesagem.auditoria') }}" class="{% if active_page == 'auditoria' %}active{% endif %}" title="Auditoria">

@@ -53,6 +53,7 @@ SISTEMAS = {
             ('dashboard', 'Leituras'),
             ('balancas', 'Balanças'),
             ('clientes', 'Cadastro de Cliente'),
+            ('whatsapp', 'Conf. WhatsApp'),
             ('auditoria', 'Auditoria'),
         ],
     },

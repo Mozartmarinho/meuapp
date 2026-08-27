@@ -87,3 +87,71 @@ class PesagemLeitura(db.Model):
             'cliente_nome': self.cliente_nome or '',
             'data_leitura': self.data_leitura.isoformat(sep=' ', timespec='seconds') if self.data_leitura else '',
         }
+
+
+class PesagemWhatsAppDestino(db.Model):
+    """Destinatário do relatório diário de pesagem via WhatsApp."""
+    __tablename__ = 'pesagem_whatsapp_destinos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(120), nullable=False)
+    telefone = db.Column(db.String(20), nullable=False)
+    hora = db.Column(db.Time, nullable=False)
+    mensagem = db.Column(db.Text, nullable=False, default='')
+    ativo = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        hora = ''
+        if self.hora:
+            hora = self.hora.strftime('%H:%M')
+        return {
+            'id': self.id,
+            'nome': self.nome,
+            'telefone': self.telefone or '',
+            'hora': hora,
+            'mensagem': self.mensagem or '',
+            'ativo': bool(self.ativo),
+            'created_at': (
+                self.created_at.isoformat(sep=' ', timespec='seconds')
+                if self.created_at else ''
+            ),
+        }
+
+
+class PesagemWhatsAppEnvio(db.Model):
+    """Histórico de envios (agendado uma vez ao dia ou manual)."""
+    __tablename__ = 'pesagem_whatsapp_envios'
+
+    id = db.Column(db.Integer, primary_key=True)
+    destino_id = db.Column(
+        db.Integer, db.ForeignKey('pesagem_whatsapp_destinos.id'), nullable=False, index=True
+    )
+    destino = db.relationship('PesagemWhatsAppDestino', backref='envios')
+    data_ref = db.Column(db.Date, nullable=False, index=True)
+    tipo = db.Column(db.String(20), nullable=False, default='agendado')  # agendado | manual
+    enviado_em = db.Column(db.DateTime, default=datetime.utcnow)
+    status = db.Column(db.String(20), nullable=False, default='ok')  # ok | erro
+    erro = db.Column(db.String(255))
+    corpo = db.Column(db.Text)
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            'destino_id', 'data_ref', 'tipo',
+            name='uq_pesagem_wa_envio_destino_dia_tipo',
+        ),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'destino_id': self.destino_id,
+            'data_ref': self.data_ref.isoformat() if self.data_ref else '',
+            'tipo': self.tipo,
+            'enviado_em': (
+                self.enviado_em.isoformat(sep=' ', timespec='seconds')
+                if self.enviado_em else ''
+            ),
+            'status': self.status,
+            'erro': self.erro or '',
+        }

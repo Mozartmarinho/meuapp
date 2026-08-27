@@ -23,6 +23,14 @@ docs/acesso/dumps/*.sql.bz2
 venv/
 .venv/
 
+# --- WhatsApp pesagem (sessão QR / node) ---
+whatsapp_bridge/node_modules/
+whatsapp_bridge/auth/
+whatsapp_bridge/.token
+whatsapp_bridge/*.pid
+whatsapp_bridge/npm-debug.log*
+whatsapp_bridge/bridge.log
+
 # --- Agente pesagem (build local) ---
 agente_pesagem/.venv/
 agente_pesagem/build/

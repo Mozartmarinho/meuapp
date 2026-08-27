@@ -14,7 +14,13 @@ from sqlalchemy import func
 from werkzeug.utils import secure_filename
 
 from models import db, Usuario
-from models_pesagem import PesagemBalanca, PesagemCliente, PesagemLeitura
+from models_pesagem import (
+    PesagemBalanca,
+    PesagemCliente,
+    PesagemLeitura,
+    PesagemWhatsAppDestino,
+    PesagemWhatsAppEnvio,
+)
 
 pesagem = Blueprint('pesagem', __name__, template_folder='templates_pesagem')
 
@@ -48,6 +54,7 @@ _PESAGEM_ENDPOINT_MENUS = {
     'pesagem.dashboard_imprimir': 'dashboard',
     'pesagem.balancas_page': 'balancas',
     'pesagem.clientes_page': 'clientes',
+    'pesagem.whatsapp_page': 'whatsapp',
     'pesagem.auditoria': 'auditoria',
     'pesagem.download_agente_arquivo': 'dashboard',
     'pesagem.api_listar_leituras': 'dashboard',
@@ -57,6 +64,12 @@ _PESAGEM_ENDPOINT_MENUS = {
     'pesagem.api_listar_clientes': 'clientes',
     'pesagem.api_criar_cliente': 'clientes',
     'pesagem.api_cliente': 'clientes',
+    'pesagem.api_whatsapp_status': 'whatsapp',
+    'pesagem.api_whatsapp_logout': 'whatsapp',
+    'pesagem.api_whatsapp_preview': 'whatsapp',
+    'pesagem.api_whatsapp_destinos': 'whatsapp',
+    'pesagem.api_whatsapp_destino': 'whatsapp',
+    'pesagem.api_whatsapp_enviar': 'whatsapp',
 }
 
 
@@ -515,6 +528,21 @@ def clientes_page():
     )
 
 
+@pesagem.route('/pesagem/whatsapp')
+@login_required
+def whatsapp_page():
+    from whatsapp_pesagem import ultimo_envio_por_destino
+
+    destinos = PesagemWhatsAppDestino.query.order_by(PesagemWhatsAppDestino.nome).all()
+    ids = [d.id for d in destinos]
+    return render_template(
+        'pesagem_whatsapp.html',
+        destinos=[d.to_dict() for d in destinos],
+        ultimos=ultimo_envio_por_destino(ids),
+        **{'active_page': 'whatsapp'},
+    )
+
+
 @pesagem.route('/pesagem/auditoria')
 @login_required
 def auditoria():
@@ -823,3 +851,135 @@ def api_cliente(cid):
             c.imagem_path = path
     db.session.commit()
     return jsonify({'ok': True, 'cliente': _cliente_to_dict(c)})
+
+
+def _destino_payload():
+    from whatsapp_pesagem import parse_hora, telefone_valido, normalizar_telefone
+
+    d = request.get_json(silent=True) or {}
+    nome = (d.get('nome') or '').strip()[:120]
+    telefone_raw = (d.get('telefone') or '').strip()
+    hora = parse_hora(d.get('hora'))
+    mensagem = (d.get('mensagem') if d.get('mensagem') is not None else '')
+    mensagem = str(mensagem).strip()
+    ativo = d.get('ativo', True)
+    if isinstance(ativo, str):
+        ativo = ativo.lower() in ('1', 'true', 'on', 'sim')
+    else:
+        ativo = bool(ativo)
+    erros = []
+    if not nome:
+        erros.append('Nome é obrigatório')
+    if not telefone_valido(telefone_raw):
+        erros.append('Telefone inválido. Use DDD + número, com ou sem 55.')
+    if not hora:
+        erros.append('Hora inválida')
+    if erros:
+        return None, erros
+    return {
+        'nome': nome,
+        'telefone': normalizar_telefone(telefone_raw),
+        'hora': hora,
+        'mensagem': mensagem,
+        'ativo': ativo,
+    }, None
+
+
+@pesagem.route('/api/pesagem/whatsapp/status', methods=['GET'])
+@login_required
+def api_whatsapp_status():
+    from whatsapp_pesagem import status_whatsapp
+    return jsonify(status_whatsapp())
+
+
+@pesagem.route('/api/pesagem/whatsapp/logout', methods=['POST'])
+@login_required
+def api_whatsapp_logout():
+    from whatsapp_pesagem import logout_whatsapp
+    result = logout_whatsapp()
+    code = 200 if result.get('ok') else 400
+    return jsonify(result), code
+
+
+@pesagem.route('/api/pesagem/whatsapp/preview', methods=['GET'])
+@login_required
+def api_whatsapp_preview():
+    from whatsapp_pesagem import montar_mensagem, totais_bruto_do_dia
+
+    template = (request.args.get('mensagem') or '').strip()
+    if not template:
+        dest_id = request.args.get('destino_id')
+        if dest_id:
+            dest = PesagemWhatsAppDestino.query.get(dest_id)
+            if dest:
+                template = dest.mensagem or ''
+        if not template:
+            primeiro = PesagemWhatsAppDestino.query.filter_by(ativo=True).order_by(
+                PesagemWhatsAppDestino.id
+            ).first()
+            if primeiro:
+                template = primeiro.mensagem or ''
+    if not template:
+        template = 'Resumo da pesagem de hoje:'
+    dia = _parse_date_arg(request.args.get('data')) or date.today()
+    totais = totais_bruto_do_dia(dia)
+    corpo = montar_mensagem(template, totais=totais, dia=dia)
+    return jsonify({
+        'ok': True,
+        'data': dia.isoformat(),
+        'corpo': corpo,
+        'totais': totais,
+    })
+
+
+@pesagem.route('/api/pesagem/whatsapp/destinos', methods=['GET', 'POST'])
+@login_required
+def api_whatsapp_destinos():
+    if request.method == 'POST':
+        payload, erros = _destino_payload()
+        if erros:
+            return jsonify({'ok': False, 'error': '; '.join(erros)}), 400
+        dest = PesagemWhatsAppDestino(**payload)
+        db.session.add(dest)
+        db.session.commit()
+        return jsonify({'ok': True, 'destino': dest.to_dict()})
+    rows = PesagemWhatsAppDestino.query.order_by(PesagemWhatsAppDestino.nome).all()
+    return jsonify({'ok': True, 'destinos': [r.to_dict() for r in rows]})
+
+
+@pesagem.route('/api/pesagem/whatsapp/destinos/<int:did>', methods=['PUT', 'DELETE'])
+@login_required
+def api_whatsapp_destino(did):
+    dest = PesagemWhatsAppDestino.query.get(did)
+    if not dest:
+        return jsonify({'ok': False, 'error': 'Destinatário não encontrado'}), 404
+    if request.method == 'DELETE':
+        PesagemWhatsAppEnvio.query.filter_by(destino_id=dest.id).delete(
+            synchronize_session=False
+        )
+        db.session.delete(dest)
+        db.session.commit()
+        return jsonify({'ok': True})
+    payload, erros = _destino_payload()
+    if erros:
+        return jsonify({'ok': False, 'error': '; '.join(erros)}), 400
+    dest.nome = payload['nome']
+    dest.telefone = payload['telefone']
+    dest.hora = payload['hora']
+    dest.mensagem = payload['mensagem']
+    dest.ativo = payload['ativo']
+    db.session.commit()
+    return jsonify({'ok': True, 'destino': dest.to_dict()})
+
+
+@pesagem.route('/api/pesagem/whatsapp/enviar/<int:did>', methods=['POST'])
+@login_required
+def api_whatsapp_enviar(did):
+    from whatsapp_pesagem import enviar_para_destino
+
+    dest = PesagemWhatsAppDestino.query.get(did)
+    if not dest:
+        return jsonify({'ok': False, 'error': 'Destinatário não encontrado'}), 404
+    result = enviar_para_destino(dest, tipo='manual')
+    code = 200 if result.get('ok') else 400
+    return jsonify(result), code
