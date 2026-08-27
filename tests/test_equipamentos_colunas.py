@@ -3,10 +3,50 @@
 import os
 import re
 import unittest
+from unittest import mock
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 TEMPLATE = os.path.join(ROOT, 'templates', 'equipamentos.html')
 MODELS = os.path.join(ROOT, 'models.py')
+SQLITE_URI = 'sqlite:///:memory:'
+
+
+def _sqlite_app():
+    os.environ['DATABASE_URL'] = SQLITE_URI
+    import db_config
+    import app as app_mod
+    db_config.SQLALCHEMY_DATABASE_URI = SQLITE_URI
+    app_mod.SQLALCHEMY_DATABASE_URI = SQLITE_URI
+    app = app_mod.create_app()
+    app.config['SQLALCHEMY_DATABASE_URI'] = SQLITE_URI
+    app.config['TESTING'] = True
+    return app, app_mod
+
+
+CREATE_SEM_LEGADO = (
+    'CREATE TABLE equipamentos ('
+    'id INTEGER PRIMARY KEY,'
+    'nome_equipamento VARCHAR(100) NOT NULL,'
+    'marca VARCHAR(100),'
+    'modelo VARCHAR(100),'
+    'numero_serie VARCHAR(50),'
+    'patrimonio VARCHAR(50),'
+    'localizacao VARCHAR(100),'
+    'setor VARCHAR(100),'
+    'local VARCHAR(200),'
+    'ativo INTEGER DEFAULT 1,'
+    'data_compra DATE,'
+    'data_manutencao DATE,'
+    'data_criacao DATETIME,'
+    'atualizado_em DATETIME,'
+    'cliente_id INTEGER NOT NULL,'
+    'tipo_recurso VARCHAR(40),'
+    'grupo_id INTEGER,'
+    'usuario_equipamento VARCHAR(120),'
+    'ip VARCHAR(45),'
+    'is_agente INTEGER DEFAULT 0'
+    ')'
+)
 
 
 class EquipamentosColunasTest(unittest.TestCase):
@@ -43,61 +83,85 @@ class EquipamentosColunasTest(unittest.TestCase):
         colunas = {c.name for c in Equipamento.__table__.columns}
         self.assertNotIn('equipamento', colunas)
         self.assertIn('nome_equipamento', colunas)
+        sql = str(Equipamento.__table__.select().compile())
+        self.assertNotIn('equipamentos.equipamento,', sql)
+        self.assertNotIn('equipamentos.equipamento ', sql)
+
+    def test_listagem_usa_consulta_com_retry(self):
+        with open(os.path.join(ROOT, 'routes.py'), encoding='utf-8') as fh:
+            src = fh.read()
+        self.assertIn('def _listar_equipamentos_cadastrados', src)
+        self.assertIn('ensure_equipamentos_schema()', src)
+        self.assertIn('is_missing_equipamentos_equipamento_column', src)
+        self.assertIn('equipamentos = _listar_equipamentos_cadastrados()', src)
+
+    def test_detecta_erro_coluna_ausente(self):
+        from app import is_missing_equipamentos_equipamento_column
+        self.assertTrue(is_missing_equipamentos_equipamento_column(
+            Exception("(1054, \"Unknown column 'equipamentos.equipamento' in 'field list'\")")
+        ))
+        self.assertFalse(is_missing_equipamentos_equipamento_column(
+            Exception("(1054, \"Unknown column 'equipamentos.marca' in 'field list'\")")
+        ))
 
     def test_consulta_funciona_sem_coluna_legado(self):
         from sqlalchemy import text
-        from app import create_app
         from models import Equipamento, db
 
-        os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
-        app = create_app()
-        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-        app.config['TESTING'] = True
+        app, _app_mod = _sqlite_app()
         with app.app_context():
             db.session.execute(text('DROP TABLE IF EXISTS equipamentos'))
-            db.session.execute(text(
-                'CREATE TABLE equipamentos ('
-                'id INTEGER PRIMARY KEY,'
-                'nome_equipamento VARCHAR(100) NOT NULL,'
-                'marca VARCHAR(100),'
-                'modelo VARCHAR(100),'
-                'numero_serie VARCHAR(50),'
-                'patrimonio VARCHAR(50),'
-                'localizacao VARCHAR(100),'
-                'setor VARCHAR(100),'
-                'local VARCHAR(200),'
-                'ativo INTEGER DEFAULT 1,'
-                'data_compra DATE,'
-                'data_manutencao DATE,'
-                'data_criacao DATETIME,'
-                'atualizado_em DATETIME,'
-                'cliente_id INTEGER NOT NULL,'
-                'tipo_recurso VARCHAR(40),'
-                'grupo_id INTEGER,'
-                'usuario_equipamento VARCHAR(120),'
-                'ip VARCHAR(45),'
-                'is_agente INTEGER DEFAULT 0'
-                ')'
-            ))
+            db.session.execute(text(CREATE_SEM_LEGADO))
             db.session.execute(text(
                 "INSERT INTO equipamentos (nome_equipamento, patrimonio, cliente_id) "
                 "VALUES ('PC Recepção', 'EQ-1', 1)"
             ))
             db.session.commit()
-            itens = Equipamento.query.all()
+            itens = Equipamento.consulta().all()
             self.assertEqual(len(itens), 1)
             self.assertEqual(itens[0].nome_equipamento, 'PC Recepção')
             self.assertEqual(itens[0].equipamento, 'PC Recepção')
 
+    def test_listagem_abre_mesmo_se_alter_falhar(self):
+        from sqlalchemy import text
+        from models import db
+        from routes import _listar_equipamentos_cadastrados
+
+        app, _app_mod = _sqlite_app()
+        with app.app_context():
+            db.session.execute(text('DROP TABLE IF EXISTS equipamentos'))
+            db.session.execute(text('DROP TABLE IF EXISTS clientes'))
+            db.session.execute(text(
+                'CREATE TABLE clientes ('
+                'id INTEGER PRIMARY KEY,'
+                'nome VARCHAR(100),'
+                'endereco VARCHAR(200),'
+                'telefone VARCHAR(20),'
+                'email VARCHAR(120),'
+                'responsavel VARCHAR(100),'
+                'telefone_responsavel VARCHAR(20),'
+                'ativo INTEGER DEFAULT 1,'
+                'habilitado_chamados INTEGER DEFAULT 1,'
+                'habilitado_nutricao INTEGER DEFAULT 0,'
+                'data_criacao DATETIME'
+                ')'
+            ))
+            db.session.execute(text(CREATE_SEM_LEGADO))
+            db.session.execute(text(
+                "INSERT INTO equipamentos (nome_equipamento, patrimonio, cliente_id) "
+                "VALUES ('PC Recepção', 'EQ-1', 1)"
+            ))
+            db.session.commit()
+            with mock.patch('app.ensure_equipamentos_schema'):
+                itens = _listar_equipamentos_cadastrados()
+            self.assertEqual(len(itens), 1)
+            self.assertEqual(itens[0].nome_equipamento, 'PC Recepção')
+
     def test_ensure_adiciona_coluna_equipamento_ausente(self):
-        from sqlalchemy import inspect, text
-        from app import create_app, ensure_equipamentos_schema
+        from sqlalchemy import text
         from models import Equipamento, db
 
-        os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
-        app = create_app()
-        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-        app.config['TESTING'] = True
+        app, app_mod = _sqlite_app()
         with app.app_context():
             db.session.execute(text('DROP TABLE IF EXISTS equipamentos'))
             db.session.execute(text(
@@ -115,15 +179,23 @@ class EquipamentosColunasTest(unittest.TestCase):
                 "VALUES ('PC Recepção', 'EQ-1', 1)"
             ))
             db.session.commit()
-            cols = {c['name'] for c in inspect(db.engine).get_columns('equipamentos')}
+            cols = {c.lower() for c in app_mod.equipamentos_column_names()}
             self.assertNotIn('equipamento', cols)
-            ensure_equipamentos_schema()
-            cols = {c['name'] for c in inspect(db.engine).get_columns('equipamentos')}
+            app_mod.ensure_equipamentos_schema()
+            cols = {c.lower() for c in app_mod.equipamentos_column_names()}
             self.assertIn('equipamento', cols)
-            eq = Equipamento.query.first()
+            eq = Equipamento.consulta().first()
             self.assertIsNotNone(eq)
             self.assertEqual(eq.nome_equipamento, 'PC Recepção')
             self.assertEqual(eq.equipamento, 'PC Recepção')
+            novo = Equipamento(
+                nome_equipamento='Notebook',
+                patrimonio='EQ-2',
+                cliente_id=1,
+            )
+            db.session.add(novo)
+            db.session.commit()
+            self.assertEqual(novo.equipamento, 'Notebook')
 
 
 if __name__ == '__main__':

@@ -551,6 +551,19 @@ class Equipamento(db.Model):
     def __repr__(self):
         return f'<Equipamento {self.nome_equipamento}>'
 
+    @classmethod
+    def consulta(cls):
+        """Query da listagem: nunca SELECIONA a coluna legado equipamentos.equipamento.
+
+        Alguns MySQL têm só nome_equipamento (erro 1054 se o ORM pedir equipamento).
+        Se a coluna voltar a ser mapeada, ela entra como deferred e fica fora do SELECT.
+        """
+        from sqlalchemy.orm import defer
+        q = cls.query
+        if 'equipamento' in cls.__table__.c:
+            q = q.options(defer('equipamento'))
+        return q
+
     @property
     def equipamento(self):
         """Compat: o banco usa nome_equipamento; alguns DBs não têm a coluna legado."""

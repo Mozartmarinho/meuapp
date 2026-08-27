@@ -42,6 +42,8 @@ def create_app():
             ensure_equipamentos_schema()
         except Exception as exc:
             print(f"Aviso ao ajustar schema de equipamentos: {exc}")
+            import traceback
+            traceback.print_exc()
 
     @app.context_processor
     def inject_acesso():
@@ -334,18 +336,75 @@ def ensure_chamados_schema():
         db.session.rollback()
 
 
+def is_missing_equipamentos_equipamento_column(exc):
+    """True quando o banco não tem equipamentos.equipamento (MySQL 1054 / SQLite)."""
+    blob = ' '.join(
+        str(parte)
+        for parte in (exc, getattr(exc, 'orig', None), getattr(exc, 'orig', exc))
+        if parte is not None
+    )
+    lower = blob.lower()
+    return (
+        "Unknown column 'equipamentos.equipamento'" in blob
+        or ('1054' in blob and 'equipamentos.equipamento' in blob)
+        or 'no such column: equipamentos.equipamento' in lower
+    )
+
+
+def equipamentos_column_names():
+    """Colunas reais de equipamentos, sem o cache do Inspector do SQLAlchemy."""
+    from sqlalchemy import text
+    names = set()
+    engine = db.engine
+    conn = engine.connect()
+    try:
+        if engine.dialect.name == 'sqlite':
+            rows = conn.execute(text('PRAGMA table_info(equipamentos)'))
+            for row in rows:
+                names.add(str(row[1]))
+        else:
+            rows = conn.execute(text(
+                "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+                "WHERE TABLE_SCHEMA = DATABASE() "
+                "AND LOWER(TABLE_NAME) = 'equipamentos'"
+            ))
+            for row in rows:
+                names.add(str(row[0]))
+    finally:
+        conn.close()
+    return names
+
+
+def _exec_ddl(sql):
+    """DDL fora da transação da sessão (MySQL faz commit implícito no ALTER)."""
+    from sqlalchemy import text
+    conn = db.engine.connect().execution_options(isolation_level='AUTOCOMMIT')
+    try:
+        conn.execute(text(sql))
+    finally:
+        conn.close()
+
+
 def ensure_equipamentos_schema():
     """Garante tabela/colunas de equipamentos (patrimônio vinculado ao cliente)."""
     from sqlalchemy import inspect, text
     try:
         insp = inspect(db.engine)
+        try:
+            insp.clear_cache()
+        except Exception:
+            pass
         tables = set(insp.get_table_names())
-        if 'recurso_grupos' not in tables:
+        tables_l = {t.lower() for t in tables}
+        if 'recurso_grupos' not in tables_l:
             from models import RecursoGrupo
             RecursoGrupo.__table__.create(db.engine, checkfirst=True)
-        if 'equipamentos' not in tables:
+        if 'equipamentos' not in tables_l:
             return
-        cols = {c['name'] for c in insp.get_columns('equipamentos')}
+        try:
+            cols = {c.lower() for c in equipamentos_column_names()}
+        except Exception:
+            cols = {c['name'].lower() for c in insp.get_columns('equipamentos')}
         extras = {
             'setor': 'VARCHAR(100) NULL',
             'cliente_id': 'INT NULL',
@@ -356,7 +415,7 @@ def ensure_equipamentos_schema():
             'data_manutencao': 'DATE NULL',
             'data_criacao': 'DATETIME NULL',
             'ativo': 'TINYINT(1) NOT NULL DEFAULT 1',
-            'equipamento': 'VARCHAR(100) NULL',
+            'equipamento': "VARCHAR(100) NULL DEFAULT ''",
             'nome_equipamento': 'VARCHAR(100) NULL',
             'marca': 'VARCHAR(100) NULL',
             'modelo': 'VARCHAR(100) NULL',
@@ -371,14 +430,22 @@ def ensure_equipamentos_schema():
         for col, ddl in extras.items():
             if col not in cols:
                 try:
-                    db.session.execute(text(
-                        f'ALTER TABLE equipamentos ADD COLUMN `{col}` {ddl}'
-                    ))
-                    db.session.commit()
+                    _exec_ddl(f'ALTER TABLE equipamentos ADD COLUMN `{col}` {ddl}')
                     cols.add(col)
                 except Exception as exc:
-                    db.session.rollback()
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
                     print(f'Aviso: não foi possível criar equipamentos.{col}: {exc}')
+        if db.engine.dialect.name != 'sqlite' and 'equipamento' in cols:
+            try:
+                _exec_ddl(
+                    "ALTER TABLE equipamentos MODIFY COLUMN equipamento "
+                    "VARCHAR(100) NULL DEFAULT ''"
+                )
+            except Exception as exc:
+                print(f'Aviso: não foi possível ajustar default de equipamentos.equipamento: {exc}')
         if 'equipamento' in cols and 'nome_equipamento' in cols:
             try:
                 db.session.execute(text(
@@ -438,8 +505,12 @@ def ensure_equipamentos_schema():
                         db.session.commit()
                     except Exception:
                         db.session.rollback()
-    except Exception:
-        db.session.rollback()
+    except Exception as exc:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        print(f'Aviso ao ajustar schema de equipamentos: {exc}')
 
 
 def ensure_clientes_schema():
