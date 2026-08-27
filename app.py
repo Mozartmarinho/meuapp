@@ -345,11 +345,16 @@ def ensure_equipamentos_schema():
             'cliente_id': 'INT NULL',
             'patrimonio': 'VARCHAR(50) NULL',
             'localizacao': 'VARCHAR(100) NULL',
+            'local': 'VARCHAR(200) NULL',
             'data_compra': 'DATE NULL',
+            'data_manutencao': 'DATE NULL',
+            'data_criacao': 'DATETIME NULL',
             'ativo': 'TINYINT(1) NOT NULL DEFAULT 1',
+            'equipamento': 'VARCHAR(100) NULL',
             'nome_equipamento': 'VARCHAR(100) NULL',
             'marca': 'VARCHAR(100) NULL',
             'modelo': 'VARCHAR(100) NULL',
+            'numero_serie': 'VARCHAR(50) NULL',
             'tipo_recurso': "VARCHAR(40) NULL DEFAULT 'Estação'",
             'grupo_id': 'INT NULL',
             'usuario_equipamento': 'VARCHAR(120) NULL',
@@ -367,7 +372,12 @@ def ensure_equipamentos_schema():
                 db.session.execute(text(
                     'UPDATE equipamentos SET nome_equipamento = equipamento '
                     'WHERE (nome_equipamento IS NULL OR nome_equipamento = \'\') '
-                    'AND equipamento IS NOT NULL'
+                    'AND equipamento IS NOT NULL AND equipamento != \'\''
+                ))
+                db.session.execute(text(
+                    'UPDATE equipamentos SET equipamento = nome_equipamento '
+                    'WHERE (equipamento IS NULL OR equipamento = \'\') '
+                    'AND nome_equipamento IS NOT NULL AND nome_equipamento != \'\''
                 ))
                 db.session.commit()
             except Exception:
