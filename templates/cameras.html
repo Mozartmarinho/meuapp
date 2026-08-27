@@ -118,10 +118,14 @@
                             {{ 'Ativo' if s.ativo else 'Inativo' }}
                         </span>
                     </td>
-                    <td>
+                    <td class="setor-acoes">
                         <button type="button" class="btn tec-btn-sm tec-btn-muted"
-                                onclick="toggleSetor({{ s.id }})">
-                            <i class="fas fa-toggle-on"></i> Alternar
+                                onclick="ChamadoSetorCadastro.editar({{ s.id }})">
+                            <i class="fas fa-edit"></i> Editar
+                        </button>
+                        <button type="button" class="btn tec-btn-sm tec-btn-danger"
+                                onclick="ChamadoSetorCadastro.excluir({{ s.id }})">
+                            <i class="fas fa-trash"></i> Excluir
                         </button>
                     </td>
                 </tr>
@@ -137,13 +141,14 @@
 </div>
 
 <!-- ── MODAL ADICIONAR SETOR ──────────────────────────────────── -->
-<div class="tec-overlay" id="modalSetorOverlay" style="display:none" onclick="fecharModalSetor()"></div>
+<div class="tec-overlay" id="modalSetorOverlay" style="display:none" onclick="ChamadoSetorCadastro.fechar()"></div>
 <div class="tec-modal" id="modalSetor" style="display:none">
     <div class="tec-modal-head">
-        <span>Adicionar Setor</span>
-        <button type="button" class="tec-modal-close" onclick="fecharModalSetor()"><i class="fas fa-times"></i></button>
+        <span id="modalSetorTitulo">Adicionar Setor</span>
+        <button type="button" class="tec-modal-close" onclick="ChamadoSetorCadastro.fechar()"><i class="fas fa-times"></i></button>
     </div>
     <div class="tec-modal-body">
+        <input type="hidden" id="setorId" value="">
         <div class="form-group">
             <label>Nome do Setor *</label>
             <input type="text" id="setorNome" placeholder="Ex: Informática" maxlength="80">
@@ -151,8 +156,8 @@
         <div id="setorErro" class="tec-erro" style="display:none"></div>
     </div>
     <div class="tec-modal-foot">
-        <button type="button" class="btn tec-btn-sm tec-btn-muted" onclick="fecharModalSetor()">Fechar</button>
-        <button type="button" class="btn btn-success tec-btn-sm" onclick="salvarSetor()">Salvar</button>
+        <button type="button" class="btn tec-btn-sm tec-btn-muted" onclick="ChamadoSetorCadastro.fechar()">Fechar</button>
+        <button type="button" class="btn btn-success tec-btn-sm" onclick="ChamadoSetorCadastro.salvar()">Salvar</button>
     </div>
 </div>
 
@@ -329,6 +334,7 @@
 }
 .nc-btn-muted { background-color: var(--gray-300); color: var(--gray-800); }
 .tec-erro { color: #842029; font-size: 0.75rem; margin-top: 0.4rem; }
+.setor-acoes { white-space: nowrap; }
 body.modal-open { overflow: hidden; }
 .eq-header-actions { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .tec-section-head {
@@ -485,6 +491,7 @@ body.modal-open { overflow: hidden; }
 }
 </style>
 
+<script src="{{ url_for('static', filename='js/chamado-setores.js') }}?v=1"></script>
 <script>
 function abrirModalListaSetores() {
     document.getElementById('modalListaSetoresOverlay').style.display = '';
@@ -494,92 +501,10 @@ function fecharModalListaSetores() {
     document.getElementById('modalListaSetoresOverlay').style.display = 'none';
     document.getElementById('modalListaSetores').style.display = 'none';
 }
-function abrirModalSetor() {
-    document.getElementById('setorNome').value = '';
-    document.getElementById('setorErro').style.display = 'none';
-    document.getElementById('modalSetorOverlay').style.display = '';
-    document.getElementById('modalSetor').style.display = '';
-    document.getElementById('setorNome').focus();
-}
-function fecharModalSetor() {
-    document.getElementById('modalSetorOverlay').style.display = 'none';
-    document.getElementById('modalSetor').style.display = 'none';
-}
-function _appendSetorOption(selectEl, id, nome) {
-    if (!selectEl) return;
-    const exists = Array.from(selectEl.options).some(function (o) { return o.value === String(id); });
-    if (exists) return;
-    const opt = document.createElement('option');
-    opt.value = id;
-    opt.textContent = nome;
-    selectEl.appendChild(opt);
-}
-function salvarSetor() {
-    const nome = document.getElementById('setorNome').value.trim();
-    const erro = document.getElementById('setorErro');
-    if (!nome) { erro.textContent = 'Informe o nome do setor.'; erro.style.display = ''; return; }
-    const fd = new FormData();
-    fd.append('nome', nome);
-    fetch('/cameras/setor/adicionar', { method: 'POST', body: fd })
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-            if (!d.ok) { erro.textContent = d.error || 'Erro ao salvar.'; erro.style.display = ''; return; }
-            fecharModalSetor();
-            const tbody = document.querySelector('#tabSetores tbody');
-            const vazio = document.getElementById('setores-vazio');
-            if (vazio) vazio.remove();
-            const tr = document.createElement('tr');
-            tr.id = 'setor-row-' + d.id;
-            tr.setAttribute('data-nome', d.nome);
-            tr.innerHTML =
-                '<td>' + d.nome + '</td>' +
-                '<td><span class="tec-badge tec-badge-ok" id="setor-status-' + d.id + '">Ativo</span></td>' +
-                '<td><button type="button" class="btn tec-btn-sm tec-btn-muted" onclick="toggleSetor(' + d.id + ')">' +
-                '<i class="fas fa-toggle-on"></i> Alternar</button></td>';
-            tbody.appendChild(tr);
-            _appendSetorOption(document.getElementById('filtroSetor'), d.id, d.nome);
-            _appendSetorOption(document.getElementById('cam_setor'), d.id, d.nome);
-        })
-        .catch(function () {
-            erro.textContent = 'Erro de comunicação.';
-            erro.style.display = '';
-        });
-}
-function toggleSetor(sid) {
-    fetch('/cameras/setor/' + sid + '/toggle', { method: 'POST' })
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-            if (!d.ok) return;
-            const span = document.getElementById('setor-status-' + sid);
-            if (span) {
-                span.textContent = d.ativo ? 'Ativo' : 'Inativo';
-                span.className = 'tec-badge ' + (d.ativo ? 'tec-badge-ok' : 'tec-badge-off');
-            }
-            const row = document.getElementById('setor-row-' + sid);
-            const nome = row
-                ? (row.getAttribute('data-nome') || row.cells[0].textContent.trim())
-                : ('Setor ' + sid);
-            const camSel = document.getElementById('cam_setor');
-            if (camSel) {
-                const opt = camSel.querySelector('option[value="' + sid + '"]');
-                if (!d.ativo && opt) {
-                    opt.remove();
-                } else if (d.ativo && !opt) {
-                    _appendSetorOption(camSel, sid, nome);
-                }
-            }
-            const filtro = document.getElementById('filtroSetor');
-            if (filtro && d.ativo) {
-                _appendSetorOption(filtro, sid, nome);
-            }
-        });
-}
 
 document.getElementById('btnAdicionarSetor').addEventListener('click', abrirModalListaSetores);
-document.getElementById('btnNovoSetor').addEventListener('click', abrirModalSetor);
-document.getElementById('setorNome').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); salvarSetor(); }
-});
+document.getElementById('btnNovoSetor').addEventListener('click', function () { ChamadoSetorCadastro.novo(); });
+ChamadoSetorCadastro.init({ addUrl: '/cameras/setor/adicionar', idSelects: ['cam_setor', 'filtroSetor'] });
 
 (function () {
     const overlay = document.getElementById('modalCamera');
@@ -699,7 +624,7 @@ document.getElementById('setorNome').addEventListener('keydown', function (e) {
         const addSetor = document.getElementById('modalSetor');
         const listaSetores = document.getElementById('modalListaSetores');
         if (addSetor && addSetor.style.display !== 'none') {
-            fecharModalSetor();
+            ChamadoSetorCadastro.fechar();
             return;
         }
         if (listaSetores && listaSetores.style.display !== 'none') {
