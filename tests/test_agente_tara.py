@@ -72,6 +72,7 @@ class TaraFixaTest(unittest.TestCase):
         self.assertIn("text='Aplicar tara'", src)
         self.assertIn("self.ent_tara = tk.Entry(", src)
         self.assertIn('_preview_tara_digitada', src)
+        self.assertIn('_selecionar_campo_tara', src)
         self.assertIn("origem='ja_pesado'", src)
         self.assertIn("APP_VERSION = '1.5.0'", src)
         self.assertIn("self.title('Roupa já pesada')", src)

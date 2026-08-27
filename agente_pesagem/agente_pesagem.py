@@ -2277,6 +2277,7 @@ class AgenteApp:
         self.ent_tara.pack(side='left', padx=(4, 2))
         self.ent_tara.bind('<Return>', lambda e: self._aplicar_tara_fixa())
         self.ent_tara.bind('<FocusOut>', lambda e: self._aplicar_tara_fixa(silencioso=True))
+        self.ent_tara.bind('<FocusIn>', self._selecionar_campo_tara)
         self.ent_tara.bind('<KeyRelease>', self._preview_tara_digitada)
         tk.Label(det, text='kg', font=FONT_UI, bg=CLR_BG).pack(side='left')
         tk.Button(
@@ -2693,6 +2694,20 @@ class AgenteApp:
             self.led_peso.set_peso(self.peso_liquido_atual, aceso=aceso)
         self._refresh_detalhe()
         return pesos
+
+    def _selecionar_campo_tara(self, _evt=None):
+        """Ao clicar na tara, seleciona o valor para o operador substituir (não concatenar no 000.00)."""
+        if not hasattr(self, 'ent_tara'):
+            return
+        self.ent_tara.after_idle(lambda: self._tara_select_all())
+
+    def _tara_select_all(self):
+        try:
+            if self.root.focus_get() is self.ent_tara:
+                self.ent_tara.selection_range(0, 'end')
+                self.ent_tara.icursor('end')
+        except tk.TclError:
+            pass
 
     def _recalcular_apos_tara(self):
         """Atualiza líquido/visor com a tara atual, sem mexer no campo enquanto se digita."""
