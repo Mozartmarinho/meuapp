@@ -569,6 +569,7 @@ class Equipamento(db.Model):
             'ativo': self.ativo,
             'cliente_id': self.cliente_id,
             'cliente_nome': self.cliente.nome if self.cliente else None,
+            'cliente_endereco': (self.cliente.endereco or '') if self.cliente else '',
             'data_compra': self.data_compra.strftime('%d/%m/%Y') if self.data_compra else None,
             'data_compra_iso': self.data_compra.strftime('%Y-%m-%d') if self.data_compra else None,
             'data_manutencao': self.data_manutencao.strftime('%d/%m/%Y') if self.data_manutencao else None,
