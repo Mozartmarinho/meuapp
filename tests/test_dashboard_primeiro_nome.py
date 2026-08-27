@@ -58,13 +58,20 @@ class DashboardPrimeiroNomeTest(unittest.TestCase):
         db.session.commit()
         self.assertEqual(_primeiro_nome(user), 'Mozart')
 
-    def test_nao_cumprimenta_pelo_setor_quando_nao_ha_tecnico(self):
-        user = self._usuario('Informática São Geraldo', 'master@example.com', setor='Informática')
-        self.assertEqual(_primeiro_nome(user), 'São Geraldo')
+    def test_sem_email_no_tecnico_usa_nome_de_acessos(self):
+        user = self._usuario('João da Silva', 'joao@example.com', setor='Informática')
+        db.session.add(ChamadoTecnico(
+            nome='Mozart Marinho',
+            email=None,
+            usuario_id=user.id,
+            ativo=True,
+        ))
+        db.session.commit()
+        self.assertEqual(_primeiro_nome(user), 'João')
 
-    def test_conta_so_com_setor_nao_usa_setor_como_nome(self):
-        user = self._usuario('Informática', 'setor@example.com', setor='Informática')
-        self.assertEqual(_primeiro_nome(user), 'olá')
+    def test_sem_tecnico_usa_nome_cadastrado_em_acessos(self):
+        user = self._usuario('Informática São Geraldo', 'master@example.com', setor='Informática')
+        self.assertEqual(_primeiro_nome(user), 'Informática')
 
     def test_pessoa_sem_setor_no_nome_mantem_primeiro_nome(self):
         user = self._usuario('João da Silva', 'joao@example.com', setor='Informática')

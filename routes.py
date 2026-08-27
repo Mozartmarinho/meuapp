@@ -332,36 +332,22 @@ def _tecnico_vinculado(usuario):
         return None
 
 
-def _token_eh_setor(token, usuario=None):
-    """True se o token for um setor de chamados, não um nome de pessoa."""
-    raw = (token or '').strip()
-    if not raw:
-        return False
-    if normalizar_setor_chamado(raw):
-        return True
-    setor = _setor_usuario(usuario)
-    if not setor:
-        return False
-    return raw.casefold() == setor.split()[0].casefold()
+def _tecnico_com_email_vinculado(usuario):
+    """Técnico só vale para o cumprimento se o cadastro tiver e-mail."""
+    tecnico = _tecnico_vinculado(usuario)
+    if not tecnico or not _normalizar_email(getattr(tecnico, 'email', None)):
+        return None
+    return tecnico
 
 
 def _primeiro_nome(usuario):
-    """Primeiro nome da pessoa (técnico), nunca o setor do login."""
-    tecnico = _tecnico_vinculado(usuario)
+    """Nome do técnico (se houver e-mail) ou o nome cadastrado em Acessos."""
+    tecnico = _tecnico_com_email_vinculado(usuario)
     nome_tec = (getattr(tecnico, 'nome', None) or '').strip() if tecnico else ''
     if nome_tec:
         return nome_tec.split()[0]
     nome = (getattr(usuario, 'nome', None) or '').strip()
-    if not nome:
-        return 'olá'
-    palavras = nome.split()
-    while palavras and _token_eh_setor(palavras[0], usuario):
-        palavras.pop(0)
-    if not palavras:
-        return 'olá'
-    if len(palavras) != len(nome.split()):
-        return ' '.join(palavras)
-    return palavras[0]
+    return nome.split()[0] if nome else 'olá'
 
 
 def _filtro_chamados_usuario(user):
