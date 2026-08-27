@@ -74,12 +74,43 @@ class TaraFixaTest(unittest.TestCase):
         self.assertIn('_preview_tara_digitada', src)
         self.assertIn('_selecionar_campo_tara', src)
         self.assertIn("origem='ja_pesado'", src)
-        self.assertIn("APP_VERSION = '1.5.0'", src)
+        self.assertIn("APP_VERSION = '1.6.0'", src)
         self.assertIn("self.title('Roupa já pesada')", src)
         self.assertIn("self.var_tara = tk.StringVar", src)
         led = src.split('class LedPesoDisplay', 1)[1][:900]
         self.assertIn("text='Líquido'", led)
         self.assertNotIn("text='Peso'", led)
+
+    def test_envios_do_dia_na_tela(self):
+        with open(AGENTE_PY, encoding='utf-8') as fh:
+            src = fh.read()
+        self.assertIn("text=' Envios do dia '", src)
+        self.assertIn("'Data/hora'", src)
+        self.assertIn("'Excluir'", src)
+        self.assertIn('self.tree_envios', src)
+        self.assertIn('carregar_envios_hoje', src)
+        self.assertIn('_excluir_envio', src)
+        self.assertIn('/api/pesagem/leituras', src)
+        self.assertIn("requests.delete(", src)
+
+    def test_formatar_linha_envio(self):
+        from agente_pesagem import celulas_envio, formatar_data_hora_envio
+
+        self.assertEqual(formatar_data_hora_envio('2026-08-27 10:57:07'), '27/08 10:57')
+        self.assertEqual(formatar_data_hora_envio(''), '—')
+        cells = celulas_envio({
+            'data_leitura': '2026-08-27 10:57:07',
+            'cliente_nome': 'HMLJ',
+            'peso_bruto': 12.5,
+            'tara': 1.25,
+            'peso_liquido': 11.25,
+        })
+        self.assertEqual(cells[0], '27/08 10:57')
+        self.assertEqual(cells[1], 'HMLJ')
+        self.assertEqual(cells[2], '012.50')
+        self.assertEqual(cells[3], '001.25')
+        self.assertEqual(cells[4], '011.25')
+        self.assertEqual(cells[5], 'Excluir')
 
     def test_default_config_tem_tara_fixa(self):
         with open(AGENTE_PY, encoding='utf-8') as fh:

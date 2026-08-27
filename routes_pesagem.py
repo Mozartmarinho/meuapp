@@ -78,7 +78,13 @@ def _checar_permissao_menu_pesagem():
     if request.endpoint in ('pesagem.api_health', 'pesagem.api_receber_leitura'):
         return None
     path = (request.path or '').rstrip('/')
-    # AgentePesagem.exe: lista somente leitura do Cadastro de Cliente (pesagem_clientes)
+    # AgentePesagem.exe: lista clientes e envios do dia; exclusão de peso enviado errado
+    if _check_api_key() and request.endpoint in (
+        'pesagem.api_listar_clientes',
+        'pesagem.api_listar_leituras',
+        'pesagem.api_excluir_leitura',
+    ):
+        return None
     if request.method == 'GET' and path == '/api/pesagem/clientes' and _check_api_key():
         return None
     if request.endpoint == 'pesagem.api_listar_clientes' and _check_api_key():
@@ -107,7 +113,7 @@ def _check_api_key():
         or request.headers.get('Authorization', '').replace('Bearer ', '').strip()
         or request.args.get('api_key')
     )
-    if not key and request.method in ('POST', 'PUT', 'PATCH'):
+    if not key and request.method in ('POST', 'PUT', 'PATCH', 'DELETE'):
         key = (request.get_json(silent=True) or {}).get('api_key')
     return bool(key) and key == PESAGEM_API_KEY
 
@@ -119,6 +125,13 @@ def api_key_required(f):
             return jsonify({'ok': False, 'error': 'API key inválida'}), 401
         return f(*args, **kwargs)
     return decorated
+
+
+def _api_key_ou_login():
+    """Agente (X-API-Key) ou tela web (sessão). Resposta JSON, sem redirect de login."""
+    if _check_api_key() or 'user_id' in session:
+        return None
+    return jsonify({'ok': False, 'error': 'Não autorizado'}), 401
 
 
 def seed_pesagem():
@@ -683,8 +696,11 @@ def api_receber_leitura():
 
 
 @pesagem.route('/api/pesagem/leituras', methods=['GET'])
-@login_required
 def api_listar_leituras():
+    """Lista leituras para o dashboard e para o agente (envios do dia)."""
+    auth = _api_key_ou_login()
+    if auth:
+        return auth
     filtros = {
         'data_de': _parse_date_arg(request.args.get('data_de')),
         'data_ate': _parse_date_arg(request.args.get('data_ate')),
@@ -709,9 +725,11 @@ def api_listar_leituras():
 
 
 @pesagem.route('/api/pesagem/leituras/<int:lid>', methods=['DELETE'])
-@login_required
 def api_excluir_leitura(lid):
-    """Remove um lançamento de pesagem da listagem."""
+    """Remove um lançamento de pesagem (dashboard ou agente — peso enviado errado)."""
+    auth = _api_key_ou_login()
+    if auth:
+        return auth
     leitura = PesagemLeitura.query.get(lid)
     if not leitura:
         return jsonify({'ok': False, 'error': 'Lançamento não encontrado'}), 404
