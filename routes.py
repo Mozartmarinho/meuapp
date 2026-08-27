@@ -310,9 +310,58 @@ def _setor_usuario(usuario):
     return normalizar_setor_chamado(getattr(usuario, 'setor', None) if usuario else '')
 
 
+def _tecnico_vinculado(usuario):
+    """Técnico ativo ligado ao acesso (usuario_id ou e-mail)."""
+    if not usuario or not getattr(usuario, 'id', None):
+        return None
+    try:
+        email = _normalizar_email(getattr(usuario, 'email', None))
+        conds = [ChamadoTecnico.usuario_id == usuario.id]
+        if email:
+            conds.append(func.lower(ChamadoTecnico.email) == email)
+        return (
+            ChamadoTecnico.query
+            .filter(
+                ChamadoTecnico.ativo == True,  # noqa: E712
+                or_(*conds),
+            )
+            .order_by(ChamadoTecnico.id.asc())
+            .first()
+        )
+    except Exception:
+        return None
+
+
+def _token_eh_setor(token, usuario=None):
+    """True se o token for um setor de chamados, não um nome de pessoa."""
+    raw = (token or '').strip()
+    if not raw:
+        return False
+    if normalizar_setor_chamado(raw):
+        return True
+    setor = _setor_usuario(usuario)
+    if not setor:
+        return False
+    return raw.casefold() == setor.split()[0].casefold()
+
+
 def _primeiro_nome(usuario):
+    """Primeiro nome da pessoa (técnico), nunca o setor do login."""
+    tecnico = _tecnico_vinculado(usuario)
+    nome_tec = (getattr(tecnico, 'nome', None) or '').strip() if tecnico else ''
+    if nome_tec:
+        return nome_tec.split()[0]
     nome = (getattr(usuario, 'nome', None) or '').strip()
-    return nome.split()[0] if nome else 'olá'
+    if not nome:
+        return 'olá'
+    palavras = nome.split()
+    while palavras and _token_eh_setor(palavras[0], usuario):
+        palavras.pop(0)
+    if not palavras:
+        return 'olá'
+    if len(palavras) != len(nome.split()):
+        return ' '.join(palavras)
+    return palavras[0]
 
 
 def _filtro_chamados_usuario(user):
