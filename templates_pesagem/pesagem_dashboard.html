@@ -134,7 +134,7 @@
           <td>{{ '%.3f'|format(l.peso_bruto if l.peso_bruto is not none else l.peso) }} {{ l.unidade }}</td>
           <td>{{ l.balanca_codigo }}</td>
           <td>{{ 'Sim' if l.estavel else 'Não' }}</td>
-          <td>{{ l.origem }}</td>
+          <td>{% if l.origem == 'ja_pesado' %}Já pesado{% elif l.origem == 'agente' %}Agente{% else %}{{ l.origem or '-' }}{% endif %}</td>
           <td>{{ l.computador or '-' }}{% if l.porta_com %} / {{ l.porta_com }}{% endif %}</td>
           <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;" title="{{ l.bruto_serial }}">{{ l.bruto_serial or '-' }}</td>
         </tr>

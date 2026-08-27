@@ -12,7 +12,7 @@ if errorlevel 1 (
   if /I not "%~1"=="nopause" pause
   exit /b 1
 )
-pyinstaller --noconfirm --onefile --windowed --name AgentePesagem --icon sao_geraldo.ico --add-data "sao_geraldo.ico;." --add-data "sao_geraldo.png;." --hidden-import PIL --hidden-import PIL.Image --hidden-import PIL.ImageTk agente_pesagem.py
+pyinstaller --noconfirm --onefile --windowed --name AgentePesagem --icon sao_geraldo.ico --add-data "sao_geraldo.ico;." --add-data "sao_geraldo.png;." --hidden-import PIL --hidden-import PIL.Image --hidden-import PIL.ImageTk --hidden-import pesagem_calc agente_pesagem.py
 if errorlevel 1 (
   echo Falha ao gerar o executavel.
   if /I not "%~1"=="nopause" pause

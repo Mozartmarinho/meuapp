@@ -2,10 +2,12 @@ Agente de Pesagem — São Geraldo Service
 =====================================
 
 O programa abre uma janela com:
-- Peso atual da balança (visor = líquido após a tara)
-- Bruto, tara e líquido (ao pressionar Tara na balança)
-- Seleção de cliente e foto cadastrada (servidor http://192.168.1.179)
-- Botão ENVIAR PARA O SERVIDOR
+- Visor vermelho = peso LÍQUIDO (bruto da balança − tara fixa)
+- Tara digitável e fixa (não muda sozinha com a balança)
+- Bruto ao vivo da balança
+- Botão ENVIAR PARA O SERVIDOR (envia o líquido)
+- Botão JÁ PESADO (digite o líquido de um produto já pesado e envie)
+- Seleção de cliente e foto cadastrada
 - Registro (log) da conexão
 - Configuração (F2) — a URL do servidor fica salva neste computador
   (AppData\SaoGeraldoService\AgentePesagem\config.json)
