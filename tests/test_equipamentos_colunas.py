@@ -68,6 +68,16 @@ class EquipamentosColunasTest(unittest.TestCase):
         self.assertIn('is_missing_equipamentos_equipamento_column', src)
         self.assertIn('equipamentos = _listar_equipamentos_cadastrados()', src)
 
+    def test_forcar_coluna_nao_mexe_em_sqlite(self):
+        from db_config import forcar_coluna_equipamento
+        import db_config
+        old = db_config.SQLALCHEMY_DATABASE_URI
+        db_config.SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+        try:
+            self.assertFalse(forcar_coluna_equipamento())
+        finally:
+            db_config.SQLALCHEMY_DATABASE_URI = old
+
     def test_detecta_erro_coluna_ausente(self):
         from app import is_missing_equipamentos_equipamento_column
         self.assertTrue(is_missing_equipamentos_equipamento_column(

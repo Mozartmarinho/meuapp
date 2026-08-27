@@ -32,6 +32,8 @@ if ($AppDir) { [void]$hints.Add($AppDir) }
 if (Test-Path -LiteralPath $saved) {
     [void]$hints.Add((Get-Content -LiteralPath $saved -TotalCount 1))
 }
+[void]$hints.Add((Join-Path $env:USERPROFILE 'source\repos\Mozartmarinho\meuapp'))
+[void]$hints.Add((Join-Path $env:USERPROFILE 'source\repos\meuapp'))
 [void]$hints.Add((Join-Path $env:USERPROFILE 'meuapp'))
 [void]$hints.Add((Join-Path $env:USERPROFILE 'Documents\meuapp'))
 [void]$hints.Add((Join-Path $env:USERPROFILE 'Downloads\meuapp'))

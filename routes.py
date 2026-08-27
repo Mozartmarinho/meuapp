@@ -3183,7 +3183,9 @@ def _query_equipamentos():
 
 def _listar_equipamentos_cadastrados():
     from app import ensure_equipamentos_schema, is_missing_equipamentos_equipamento_column
+    from db_config import forcar_coluna_equipamento
     try:
+        forcar_coluna_equipamento()
         ensure_equipamentos_schema()
     except Exception as exc:
         print(f'Aviso ao ajustar schema de equipamentos: {exc}')

@@ -1,16 +1,91 @@
-from flask import Flask
+import os
+import sys
+import subprocess
+
+def _forcar_codigo_github():
+    """No Windows, alinha a pasta do app com origin/main antes de importar o resto."""
+    if sys.platform != 'win32':
+        return
+    if 'unittest' in sys.modules:
+        return
+    if os.environ.get('MEUAPP_SKIP_GIT', '').strip().lower() in ('1', 'true', 'yes'):
+        return
+    if os.environ.get('MEUAPP_BOOTSTRAPPED_GIT') == '1':
+        return
+    pasta = os.path.dirname(os.path.abspath(__file__))
+    candidatos = [
+        'git',
+        r'C:\Program Files\Git\cmd\git.exe',
+        r'C:\Program Files\Git\bin\git.exe',
+        r'C:\Program Files (x86)\Git\cmd\git.exe',
+    ]
+    git = None
+    for cand in candidatos:
+        if cand != 'git' and not os.path.isfile(cand):
+            continue
+        try:
+            subprocess.check_output(
+                [cand, '--version'],
+                stderr=subprocess.DEVNULL,
+            )
+            git = cand
+            break
+        except Exception:
+            continue
+    if not git:
+        return
+    env = os.environ.copy()
+    env['GIT_TERMINAL_PROMPT'] = '0'
+    try:
+        old = subprocess.check_output(
+            [git, '-C', pasta, 'rev-parse', 'HEAD'],
+            env=env, stderr=subprocess.DEVNULL,
+        ).strip()
+        branch = subprocess.check_output(
+            [git, '-C', pasta, 'rev-parse', '--abbrev-ref', 'HEAD'],
+            env=env, stderr=subprocess.DEVNULL,
+        ).strip()
+        if branch not in (b'main', b'master'):
+            return
+        subprocess.run(
+            [git, '-C', pasta, 'fetch', 'origin', 'main'],
+            env=env, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        subprocess.run(
+            [git, '-C', pasta, 'reset', '--hard', 'origin/main'],
+            env=env, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        new = subprocess.check_output(
+            [git, '-C', pasta, 'rev-parse', 'HEAD'],
+            env=env, stderr=subprocess.DEVNULL,
+        ).strip()
+    except Exception as exc:
+        print('Aviso ao atualizar código do GitHub:', exc)
+        return
+    if old != new:
+        print('Código atualizado do GitHub. Reiniciando o app...')
+        os.environ['MEUAPP_BOOTSTRAPPED_GIT'] = '1'
+        os.execv(sys.executable, [sys.executable, os.path.abspath(__file__)] + sys.argv[1:])
+
+
+_forcar_codigo_github()
+
+from db_config import SQLALCHEMY_DATABASE_URI, forcar_coluna_equipamento
+
+if 'unittest' not in sys.modules:
+    forcar_coluna_equipamento()
+
+from flask import Flask, request
 from routes import main
 from routes_nutricao import nutricao
 from routes_pesagem import pesagem
 from routes_acesso import acesso
 from routes_audit import auditoria
 from models import db, Usuario
-from db_config import SQLALCHEMY_DATABASE_URI
 import models_nutricao  # noqa: F401 — registra tabelas de nutrição
 import models_pesagem  # noqa: F401 — registra tabelas de pesagem
 import models_acesso  # noqa: F401 — registra tabelas de controle de acesso
 import models_audit  # noqa: F401 — registra tabelas de auditoria
-import os
 import socket
 import threading
 
@@ -37,8 +112,19 @@ def create_app():
     from audit_service import register_audit_hooks
     register_audit_hooks(app)
 
+    @app.before_request
+    def _forcar_schema_equipamentos():
+        if not request.path.startswith('/equipamentos'):
+            return
+        try:
+            forcar_coluna_equipamento()
+            ensure_equipamentos_schema()
+        except Exception as exc:
+            print(f'Aviso ao forçar schema de equipamentos: {exc}')
+
     with app.app_context():
         try:
+            forcar_coluna_equipamento()
             ensure_equipamentos_schema()
         except Exception as exc:
             print(f"Aviso ao ajustar schema de equipamentos: {exc}")

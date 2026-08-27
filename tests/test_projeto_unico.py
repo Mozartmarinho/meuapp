@@ -33,8 +33,11 @@ class ProjetoUnicoTest(unittest.TestCase):
         self.assertIn('reset --hard origin/main', texto)
         self.assertIn('http://127.0.0.1/nutricao', texto)
         self.assertIn('MEUAPP_BOOTSTRAPPED', texto)
+        self.assertIn('source\\repos\\Mozartmarinho\\meuapp', texto)
+        self.assertIn('forcar_coluna_equipamento.py', texto)
         self.assertTrue(os.path.exists(os.path.join(ROOT, 'app.py')))
         self.assertTrue(os.path.exists(os.path.join(ROOT, 'scripts', 'desktop_sao_geraldo.ps1')))
+        self.assertTrue(os.path.exists(os.path.join(ROOT, 'scripts', 'forcar_coluna_equipamento.py')))
 
 
 if __name__ == '__main__':
