@@ -310,7 +310,42 @@ def _setor_usuario(usuario):
     return normalizar_setor_chamado(getattr(usuario, 'setor', None) if usuario else '')
 
 
+def _tecnico_vinculado(usuario):
+    """Técnico ativo ligado ao acesso (usuario_id ou e-mail)."""
+    if not usuario or not getattr(usuario, 'id', None):
+        return None
+    try:
+        email = _normalizar_email(getattr(usuario, 'email', None))
+        conds = [ChamadoTecnico.usuario_id == usuario.id]
+        if email:
+            conds.append(func.lower(ChamadoTecnico.email) == email)
+        return (
+            ChamadoTecnico.query
+            .filter(
+                ChamadoTecnico.ativo == True,  # noqa: E712
+                or_(*conds),
+            )
+            .order_by(ChamadoTecnico.id.asc())
+            .first()
+        )
+    except Exception:
+        return None
+
+
+def _tecnico_com_email_vinculado(usuario):
+    """Técnico só vale para o cumprimento se o cadastro tiver e-mail."""
+    tecnico = _tecnico_vinculado(usuario)
+    if not tecnico or not _normalizar_email(getattr(tecnico, 'email', None)):
+        return None
+    return tecnico
+
+
 def _primeiro_nome(usuario):
+    """Nome do técnico (se houver e-mail) ou o nome cadastrado em Acessos."""
+    tecnico = _tecnico_com_email_vinculado(usuario)
+    nome_tec = (getattr(tecnico, 'nome', None) or '').strip() if tecnico else ''
+    if nome_tec:
+        return nome_tec.split()[0]
     nome = (getattr(usuario, 'nome', None) or '').strip()
     return nome.split()[0] if nome else 'olá'
 
