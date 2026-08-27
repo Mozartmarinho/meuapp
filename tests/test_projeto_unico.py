@@ -28,6 +28,7 @@ class ProjetoUnicoTest(unittest.TestCase):
             texto = fh.read()
         self.assertNotIn('MeuApp - Inicializacao', texto)
         self.assertIn('Encerrando app.py antigo', texto)
+        self.assertIn('Get-CimInstance', texto)
         self.assertIn('origin/main', texto)
         self.assertIn('reset --hard origin/main', texto)
         self.assertIn('http://127.0.0.1/nutricao', texto)

@@ -39,9 +39,18 @@ class NutricaoPaginaTest(unittest.TestCase):
         self.assertIn('/nutricao/impressao-mapa-distribuicao', html)
         self.assertIn('Selecione a clínica para ver o mapa', html)
         self.assertNotIn('filtroEnfermaria', html)
+        self.assertIn('São Geraldo Service · meuapp', html)
+        self.assertIn('projeto-versao-bar', html)
         cache = (resp.headers.get('Cache-Control') or '').lower()
         self.assertIn('no-store', cache)
         self.assertIn('text/html', resp.headers.get('Content-Type', ''))
+
+    def test_rota_versao_nao_e_404(self):
+        resp = self.client.get('/nutricao/versao')
+        self.assertEqual(resp.status_code, 200)
+        texto = resp.get_data(as_text=True)
+        self.assertIn('meuapp', texto)
+        self.assertIn('pasta', texto)
 
     def test_rotas_de_impressao_existem(self):
         mapa = self.client.get('/nutricao/impressao-mapa')

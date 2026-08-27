@@ -190,26 +190,12 @@ goto :eof
 
 :parar_app
 set "PAROU=0"
-for %%I in (python.exe pythonw.exe) do (
-    for /f "tokens=2 delims=," %%P in ('tasklist /FI "IMAGENAME eq %%I" /FO CSV /NH 2^>nul') do (
-        set "PID=%%~P"
-        wmic process where "ProcessId=!PID!" get CommandLine 2>nul | findstr /i /c:"app.py" >nul 2>&1
-        if not errorlevel 1 (
-            echo       Encerrando PID !PID! ...
-            taskkill /PID !PID! /F >nul 2>&1
-            set "PAROU=1"
-        )
-    )
-)
-for /f "tokens=5" %%A in ('netstat -aon 2^>nul ^| findstr /R /C:":80 .*LISTENING"') do (
-    set "PPID=%%A"
-    if defined PPID (
-        tasklist /FI "PID eq !PPID!" /FO CSV /NH 2>nul | findstr /i "python" >nul 2>&1
-        if not errorlevel 1 (
-            echo       Encerrando python na porta 80 PID !PPID! ...
-            taskkill /PID !PPID! /F >nul 2>&1
-            set "PAROU=1"
-        )
-    )
-)
+REM wmic some vezes nao existe no Windows 11; PowerShell mata app.py e python na porta 80.
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$ErrorActionPreference='SilentlyContinue'; $killed=$false;" ^
+  "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'python' -and $_.CommandLine -match 'app.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force; $killed=$true; Write-Host ('       Encerrando PID ' + $_.ProcessId) };" ^
+  "Get-NetTCPConnection -LocalPort 80 -State Listen | ForEach-Object { $p=Get-Process -Id $_.OwningProcess; if ($p -and $p.ProcessName -match 'python') { Stop-Process -Id $p.Id -Force; $killed=$true; Write-Host ('       Encerrando python porta 80 PID ' + $p.Id) } };" ^
+  "if ($killed) { exit 0 } else { exit 1 }"
+if %errorlevel%==0 set "PAROU=1"
+timeout /t 2 /nobreak >nul
 goto :eof

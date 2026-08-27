@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v=mapa33" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v=mapa34" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/loading-overlay.css') }}?v=1" rel="stylesheet">
 </head>
 <body data-sidebar-collapse="sg-nutricao-sidebar-collapsed">
@@ -247,6 +247,9 @@
             {% endif %}
         {% endwith %}
 
+        <div class="projeto-versao-bar" title="Se esta faixa não aparecer, o navegador ainda está no app antigo">
+            São Geraldo Service · meuapp · rev {{ app_revision or 'sem-git' }}
+        </div>
         {% block content %}{% endblock %}
     </main>
 

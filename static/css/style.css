@@ -158,6 +158,17 @@ h1, h2, h3, h4, .brand-title {
     font-family: var(--font-body);
 }
 
+.projeto-versao-bar {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #115e59;
+    background: #ccfbf1;
+    border: 1px solid #5eead4;
+    padding: 0.4rem 0.75rem;
+    margin: 0 0 0.85rem;
+    border-radius: 0.4rem;
+}
+
 .sidebar-logo .module-cliente {
     margin-top: 0.35rem;
     padding: 0.35rem 0.45rem;

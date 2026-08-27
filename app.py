@@ -57,6 +57,16 @@ def create_app():
             response.headers['Expires'] = '0'
         return response
 
+    @app.route('/nutricao/versao')
+    def nutricao_versao():
+        rev = _app_revision() or 'sem-git'
+        pasta = os.path.dirname(os.path.abspath(__file__))
+        corpo = f'meuapp {rev}\npasta {pasta}\n'
+        return corpo, 200, {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        }
+
     return app
 
 
@@ -712,6 +722,14 @@ if __name__ == '__main__':
     from password_utils import generate_password_hash
 
     app = create_app()
+    pasta = os.path.dirname(os.path.abspath(__file__))
+    print('========================================')
+    print('  São Geraldo Service — projeto meuapp')
+    print(f'  Pasta: {pasta}')
+    print(f'  rev:   {_app_revision() or "sem-git"}')
+    print('  Se a pasta acima não for o clone git,')
+    print('  você está no projeto antigo.')
+    print('========================================')
     with app.app_context():
         db.create_all()
         ensure_usuarios_schema()
