@@ -49,10 +49,10 @@
                     <th>Nome</th>
                     <th>Marca</th>
                     <th>Modelo</th>
+                    <th>Cliente</th>
                     <th>Local</th>
                     <th>Setor</th>
-                    <th>Data compra</th>
-                    <th>Cliente</th>
+                    <th>Data da compra</th>
                     <th class="no-print">Ações</th>
                 </tr>
             </thead>
@@ -64,17 +64,19 @@
                     data-marca="{{ eq.marca or '' }}"
                     data-modelo="{{ eq.modelo or '' }}"
                     data-local="{{ eq.cliente.nome if eq.cliente else (eq.local or '') }}"
+                    data-endereco="{{ (eq.cliente.endereco or '') if eq.cliente else '' }}"
                     data-setor="{{ eq.setor or eq.localizacao or '' }}"
                     data-compra="{{ eq.data_compra.strftime('%Y-%m-%d') if eq.data_compra else '' }}"
                     data-cliente="{{ eq.cliente_id or '' }}">
+                    {% set endereco = (eq.cliente.endereco or '')|trim if eq.cliente else '' %}
                     <td><strong>{{ eq.patrimonio or '—' }}</strong></td>
                     <td>{{ eq.nome_equipamento }}</td>
                     <td>{{ eq.marca or '—' }}</td>
                     <td>{{ eq.modelo or '—' }}</td>
-                    <td>{{ eq.cliente.nome if eq.cliente else (eq.local or '—') }}</td>
+                    <td>{{ eq.cliente.nome if eq.cliente else '—' }}</td>
+                    <td class="eq-col-local" title="{{ endereco }}">{{ endereco or '—' }}</td>
                     <td>{{ eq.setor or eq.localizacao or '—' }}</td>
                     <td>{{ eq.data_compra.strftime('%d/%m/%Y') if eq.data_compra else '—' }}</td>
-                    <td>{{ eq.cliente.nome if eq.cliente else '—' }}</td>
                     <td class="acoes-cell no-print">
                         <button type="button" class="btn btn-sm btn-editar-link btn-editar-eq" title="Editar">
                             <i class="fas fa-edit"></i>
@@ -140,7 +142,7 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="eq_compra">Data compra</label>
+                    <label for="eq_compra">Data da compra</label>
                     <input type="date" id="eq_compra" name="data_compra">
                 </div>
             </div>
@@ -277,6 +279,7 @@
 .chamados-page .table th { background: #f2f2f2; }
 .chamados-page .table tr:hover { background: #f1f1f1; }
 .empty-row { text-align: center; color: var(--gray-600); padding: 1.4rem !important; }
+.eq-col-local { max-width: 280px; word-break: break-word; }
 .acoes-cell { white-space: nowrap; }
 .acoes-cell .btn { margin-right: 0.25rem; }
 .btn-editar-link { background-color: var(--gray-300); color: var(--gray-800); }
