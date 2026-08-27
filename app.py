@@ -1,16 +1,91 @@
-from flask import Flask
+import os
+import sys
+import subprocess
+
+def _forcar_codigo_github():
+    """No Windows, alinha a pasta do app com origin/main antes de importar o resto."""
+    if sys.platform != 'win32':
+        return
+    if 'unittest' in sys.modules:
+        return
+    if os.environ.get('MEUAPP_SKIP_GIT', '').strip().lower() in ('1', 'true', 'yes'):
+        return
+    if os.environ.get('MEUAPP_BOOTSTRAPPED_GIT') == '1':
+        return
+    pasta = os.path.dirname(os.path.abspath(__file__))
+    candidatos = [
+        'git',
+        r'C:\Program Files\Git\cmd\git.exe',
+        r'C:\Program Files\Git\bin\git.exe',
+        r'C:\Program Files (x86)\Git\cmd\git.exe',
+    ]
+    git = None
+    for cand in candidatos:
+        if cand != 'git' and not os.path.isfile(cand):
+            continue
+        try:
+            subprocess.check_output(
+                [cand, '--version'],
+                stderr=subprocess.DEVNULL,
+            )
+            git = cand
+            break
+        except Exception:
+            continue
+    if not git:
+        return
+    env = os.environ.copy()
+    env['GIT_TERMINAL_PROMPT'] = '0'
+    try:
+        old = subprocess.check_output(
+            [git, '-C', pasta, 'rev-parse', 'HEAD'],
+            env=env, stderr=subprocess.DEVNULL,
+        ).strip()
+        branch = subprocess.check_output(
+            [git, '-C', pasta, 'rev-parse', '--abbrev-ref', 'HEAD'],
+            env=env, stderr=subprocess.DEVNULL,
+        ).strip()
+        if branch not in (b'main', b'master'):
+            return
+        subprocess.run(
+            [git, '-C', pasta, 'fetch', 'origin', 'main'],
+            env=env, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        subprocess.run(
+            [git, '-C', pasta, 'reset', '--hard', 'origin/main'],
+            env=env, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        new = subprocess.check_output(
+            [git, '-C', pasta, 'rev-parse', 'HEAD'],
+            env=env, stderr=subprocess.DEVNULL,
+        ).strip()
+    except Exception as exc:
+        print('Aviso ao atualizar código do GitHub:', exc)
+        return
+    if old != new:
+        print('Código atualizado do GitHub. Reiniciando o app...')
+        os.environ['MEUAPP_BOOTSTRAPPED_GIT'] = '1'
+        os.execv(sys.executable, [sys.executable, os.path.abspath(__file__)] + sys.argv[1:])
+
+
+_forcar_codigo_github()
+
+from db_config import SQLALCHEMY_DATABASE_URI, forcar_coluna_equipamento
+
+if 'unittest' not in sys.modules:
+    forcar_coluna_equipamento()
+
+from flask import Flask, request
 from routes import main
 from routes_nutricao import nutricao
 from routes_pesagem import pesagem
 from routes_acesso import acesso
 from routes_audit import auditoria
 from models import db, Usuario
-from db_config import SQLALCHEMY_DATABASE_URI
 import models_nutricao  # noqa: F401 — registra tabelas de nutrição
 import models_pesagem  # noqa: F401 — registra tabelas de pesagem
 import models_acesso  # noqa: F401 — registra tabelas de controle de acesso
 import models_audit  # noqa: F401 — registra tabelas de auditoria
-import os
 import socket
 import threading
 
@@ -37,11 +112,24 @@ def create_app():
     from audit_service import register_audit_hooks
     register_audit_hooks(app)
 
+    @app.before_request
+    def _forcar_schema_equipamentos():
+        if not request.path.startswith('/equipamentos'):
+            return
+        try:
+            forcar_coluna_equipamento()
+            ensure_equipamentos_schema()
+        except Exception as exc:
+            print(f'Aviso ao forçar schema de equipamentos: {exc}')
+
     with app.app_context():
         try:
+            forcar_coluna_equipamento()
             ensure_equipamentos_schema()
         except Exception as exc:
             print(f"Aviso ao ajustar schema de equipamentos: {exc}")
+            import traceback
+            traceback.print_exc()
 
     @app.context_processor
     def inject_acesso():
@@ -334,18 +422,72 @@ def ensure_chamados_schema():
         db.session.rollback()
 
 
+def is_missing_equipamentos_equipamento_column(exc):
+    """True quando o banco não tem equipamentos.equipamento (MySQL 1054 / SQLite)."""
+    blob = ' '.join(
+        str(parte)
+        for parte in (exc, getattr(exc, 'orig', ''), getattr(exc, 'orig', exc))
+        if parte is not None
+    )
+    return (
+        "Unknown column 'equipamentos.equipamento'" in blob
+        or ('1054' in blob and 'equipamentos.equipamento' in blob)
+        or 'no such column: equipamentos.equipamento' in blob.lower()
+    )
+
+
+def equipamentos_column_names():
+    """Colunas reais de equipamentos, sem o cache do Inspector do SQLAlchemy."""
+    from sqlalchemy import text
+    names = set()
+    engine = db.engine
+    conn = engine.connect()
+    try:
+        if engine.dialect.name == 'sqlite':
+            rows = conn.execute(text('PRAGMA table_info(equipamentos)'))
+            for row in rows:
+                names.add(str(row[1]))
+        else:
+            rows = conn.execute(text(
+                "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+                "WHERE TABLE_SCHEMA = DATABASE() "
+                "AND LOWER(TABLE_NAME) = 'equipamentos'"
+            ))
+            for row in rows:
+                names.add(str(row[0]))
+    finally:
+        conn.close()
+    return names
+
+
+def _exec_ddl(sql):
+    """DDL fora da transação da sessão (MySQL faz commit implícito no ALTER)."""
+    from sqlalchemy import text
+    conn = db.engine.connect().execution_options(isolation_level='AUTOCOMMIT')
+    try:
+        conn.execute(text(sql))
+    finally:
+        conn.close()
+
+
 def ensure_equipamentos_schema():
     """Garante tabela/colunas de equipamentos (patrimônio vinculado ao cliente)."""
     from sqlalchemy import inspect, text
+    from models import Equipamento
+
+    Equipamento._tem_coluna_legado = False
     try:
         insp = inspect(db.engine)
-        tables = set(insp.get_table_names())
+        try:
+            insp.clear_cache()
+        except Exception:
+            pass
+        tables = {t.lower() for t in insp.get_table_names()}
         if 'recurso_grupos' not in tables:
             from models import RecursoGrupo
             RecursoGrupo.__table__.create(db.engine, checkfirst=True)
         if 'equipamentos' not in tables:
             return
-        cols = {c['name'] for c in insp.get_columns('equipamentos')}
         extras = {
             'setor': 'VARCHAR(100) NULL',
             'cliente_id': 'INT NULL',
@@ -356,7 +498,7 @@ def ensure_equipamentos_schema():
             'data_manutencao': 'DATE NULL',
             'data_criacao': 'DATETIME NULL',
             'ativo': 'TINYINT(1) NOT NULL DEFAULT 1',
-            'equipamento': 'VARCHAR(100) NULL',
+            'equipamento': "VARCHAR(100) NULL DEFAULT ''",
             'nome_equipamento': 'VARCHAR(100) NULL',
             'marca': 'VARCHAR(100) NULL',
             'modelo': 'VARCHAR(100) NULL',
@@ -368,17 +510,32 @@ def ensure_equipamentos_schema():
             'is_agente': 'TINYINT(1) NOT NULL DEFAULT 0',
             'atualizado_em': 'DATETIME NULL',
         }
+        cols = {c.lower() for c in equipamentos_column_names()}
         for col, ddl in extras.items():
-            if col not in cols:
+            if col.lower() not in cols:
                 try:
-                    db.session.execute(text(
-                        f'ALTER TABLE equipamentos ADD COLUMN `{col}` {ddl}'
-                    ))
-                    db.session.commit()
-                    cols.add(col)
+                    _exec_ddl(f'ALTER TABLE equipamentos ADD COLUMN `{col}` {ddl}')
+                    cols.add(col.lower())
+                    print(f'Schema equipamentos: coluna {col} criada.')
                 except Exception as exc:
-                    db.session.rollback()
-                    print(f'Aviso: não foi possível criar equipamentos.{col}: {exc}')
+                    msg = str(exc)
+                    if 'Duplicate column' in msg or '1060' in msg:
+                        cols.add(col.lower())
+                    else:
+                        print(f'Aviso: não foi possível criar equipamentos.{col}: {exc}')
+        cols = {c.lower() for c in equipamentos_column_names()}
+        Equipamento._tem_coluna_legado = 'equipamento' in cols
+        if 'equipamento' in cols and db.engine.dialect.name == 'mysql':
+            try:
+                _exec_ddl(
+                    'ALTER TABLE equipamentos MODIFY COLUMN `equipamento` '
+                    "VARCHAR(100) NULL DEFAULT ''"
+                )
+            except Exception as exc:
+                print(
+                    'Aviso: não foi possível ajustar default de '
+                    f'equipamentos.equipamento: {exc}'
+                )
         if 'equipamento' in cols and 'nome_equipamento' in cols:
             try:
                 db.session.execute(text(
@@ -395,51 +552,52 @@ def ensure_equipamentos_schema():
             except Exception:
                 db.session.rollback()
         try:
-            db.session.execute(text(
+            _exec_ddl(
                 'ALTER TABLE equipamentos ADD CONSTRAINT fk_equipamentos_grupo '
                 'FOREIGN KEY (grupo_id) REFERENCES recurso_grupos(id)'
-            ))
-            db.session.commit()
+            )
         except Exception:
-            db.session.rollback()
+            pass
         if 'clientes' in tables:
             fks = insp.get_foreign_keys('equipamentos')
             has_fk = any(
                 'cliente_id' in (fk.get('constrained_columns') or [])
-                and fk.get('referred_table') == 'clientes'
+                and (fk.get('referred_table') or '').lower() == 'clientes'
                 for fk in fks
             )
             if not has_fk and 'cliente_id' in cols:
                 try:
-                    db.session.execute(text(
+                    _exec_ddl(
                         'ALTER TABLE equipamentos '
                         'ADD CONSTRAINT fk_equipamentos_cliente '
                         'FOREIGN KEY (cliente_id) REFERENCES clientes(id)'
-                    ))
-                    db.session.commit()
+                    )
                 except Exception:
-                    db.session.rollback()
+                    pass
         if 'chamados' in tables:
             chamado_cols = {c['name'] for c in insp.get_columns('chamados')}
             if 'equipamento_id' in chamado_cols:
                 fks = insp.get_foreign_keys('chamados')
                 has_eq_fk = any(
                     'equipamento_id' in (fk.get('constrained_columns') or [])
-                    and fk.get('referred_table') == 'equipamentos'
+                    and (fk.get('referred_table') or '').lower() == 'equipamentos'
                     for fk in fks
                 )
                 if not has_eq_fk:
                     try:
-                        db.session.execute(text(
+                        _exec_ddl(
                             'ALTER TABLE chamados '
                             'ADD CONSTRAINT fk_chamados_equipamento '
                             'FOREIGN KEY (equipamento_id) REFERENCES equipamentos(id)'
-                        ))
-                        db.session.commit()
+                        )
                     except Exception:
-                        db.session.rollback()
-    except Exception:
-        db.session.rollback()
+                        pass
+    except Exception as exc:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        print(f'Aviso ao ajustar schema de equipamentos: {exc}')
 
 
 def ensure_clientes_schema():

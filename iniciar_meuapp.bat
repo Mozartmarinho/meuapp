@@ -51,6 +51,8 @@ if defined APP_DIR if not exist "!APP_DIR!\.git" set "APP_DIR="
 
 if not defined APP_DIR (
     for %%D in (
+        "%USERPROFILE%\source\repos\Mozartmarinho\meuapp"
+        "%USERPROFILE%\source\repos\meuapp"
         "%USERPROFILE%\meuapp"
         "%USERPROFILE%\Documents\meuapp"
         "%USERPROFILE%\Downloads\meuapp"
@@ -175,7 +177,11 @@ if not defined TS set "TS=%RANDOM%"
 start "" cmd /c "timeout /t 3 /nobreak >nul & start http://127.0.0.1/nutricao?v=!TS!"
 
 echo.
-echo Codigo deste projeto (meuapp). Iniciando São Geraldo Service...
+echo Codigo deste projeto (meuapp). Forçando coluna equipamentos.equipamento...
+if exist "%CD%\scripts\forcar_coluna_equipamento.py" (
+    "%PYTHON%" "%CD%\scripts\forcar_coluna_equipamento.py"
+)
+echo Iniciando São Geraldo Service...
 echo Logs abaixo. Feche esta janela ou use parar_meuapp.bat para encerrar.
 echo ========================================
 echo.
