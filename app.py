@@ -37,6 +37,12 @@ def create_app():
     from audit_service import register_audit_hooks
     register_audit_hooks(app)
 
+    with app.app_context():
+        try:
+            ensure_equipamentos_schema()
+        except Exception as exc:
+            print(f"Aviso ao ajustar schema de equipamentos: {exc}")
+
     @app.context_processor
     def inject_acesso():
         from flask import session
@@ -364,9 +370,15 @@ def ensure_equipamentos_schema():
         }
         for col, ddl in extras.items():
             if col not in cols:
-                db.session.execute(text(f'ALTER TABLE equipamentos ADD COLUMN {col} {ddl}'))
-                db.session.commit()
-                cols.add(col)
+                try:
+                    db.session.execute(text(
+                        f'ALTER TABLE equipamentos ADD COLUMN `{col}` {ddl}'
+                    ))
+                    db.session.commit()
+                    cols.add(col)
+                except Exception as exc:
+                    db.session.rollback()
+                    print(f'Aviso: não foi possível criar equipamentos.{col}: {exc}')
         if 'equipamento' in cols and 'nome_equipamento' in cols:
             try:
                 db.session.execute(text(

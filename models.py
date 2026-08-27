@@ -526,8 +526,6 @@ class Equipamento(db.Model):
     __tablename__ = 'equipamentos'
 
     id = db.Column(db.Integer, primary_key=True)
-    # Coluna legada NOT NULL no MySQL; espelha o nome do equipamento
-    equipamento = db.Column(db.String(100), nullable=False)
     nome_equipamento = db.Column(db.String(100), nullable=False)
     marca = db.Column(db.String(100))
     modelo = db.Column(db.String(100))
@@ -552,6 +550,15 @@ class Equipamento(db.Model):
 
     def __repr__(self):
         return f'<Equipamento {self.nome_equipamento}>'
+
+    @property
+    def equipamento(self):
+        """Compat: o banco usa nome_equipamento; alguns DBs não têm a coluna legado."""
+        return self.nome_equipamento
+
+    @equipamento.setter
+    def equipamento(self, value):
+        self.nome_equipamento = value
 
     def to_dict(self):
         return {
