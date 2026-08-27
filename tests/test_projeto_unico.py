@@ -33,8 +33,13 @@ class ProjetoUnicoTest(unittest.TestCase):
         self.assertIn('reset --hard origin/main', texto)
         self.assertIn('http://127.0.0.1/nutricao', texto)
         self.assertIn('MEUAPP_BOOTSTRAPPED', texto)
+        self.assertIn('liberar_porta80.ps1', texto)
+        self.assertIn('abrir_nutricao_quando_pronto.ps1', texto)
+        self.assertIn('__pycache__', texto)
         self.assertTrue(os.path.exists(os.path.join(ROOT, 'app.py')))
         self.assertTrue(os.path.exists(os.path.join(ROOT, 'scripts', 'desktop_sao_geraldo.ps1')))
+        self.assertTrue(os.path.exists(os.path.join(ROOT, 'scripts', 'liberar_porta80.ps1')))
+        self.assertTrue(os.path.exists(os.path.join(ROOT, 'scripts', 'abrir_nutricao_quando_pronto.ps1')))
 
 
 if __name__ == '__main__':

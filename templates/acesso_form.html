@@ -68,7 +68,7 @@
         .alert-error { background:#fee2e2; color:#991b1b; }
         @media (max-width:720px) { .grid { grid-template-columns:1fr; } }
     </style>
-    <link href="{{ url_for('static', filename='css/loading-overlay.css') }}?v=1" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/loading-overlay.css') }}" rel="stylesheet">
 </head>
 <body>
     <main class="wrap">
@@ -449,6 +449,6 @@
         });
     })();
     </script>
-    <script src="{{ url_for('static', filename='js/loading-overlay.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/loading-overlay.js') }}"></script>
 </body>
 </html>

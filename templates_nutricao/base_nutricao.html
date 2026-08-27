@@ -3,13 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>{% block title %}Nutrição Hospitalar - São Geraldo Service{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v=mapa34" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/loading-overlay.css') }}?v=1" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/loading-overlay.css') }}" rel="stylesheet">
 </head>
 <body data-sidebar-collapse="sg-nutricao-sidebar-collapsed">
     <script>
@@ -269,8 +272,44 @@
 
     <div class="toast" id="toast"><span id="toastIcon">✓</span><span id="toastMessage"></span></div>
 
-    <script src="{{ url_for('static', filename='js/loading-overlay.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/loading-overlay.js') }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script id="nutricao-stale-check">
+    (function () {
+        var pageRev = {{ (app_revision or '')|tojson }};
+        var reloading = false;
+        function serverRev(text) {
+            var m = String(text || '').match(/meuapp\s+(\S+)/);
+            return m ? m[1] : '';
+        }
+        function check() {
+            if (reloading || !pageRev) return;
+            fetch('/nutricao/versao?t=' + Date.now(), { cache: 'no-store' })
+                .then(function (r) { return r.text(); })
+                .then(function (t) {
+                    var rev = serverRev(t);
+                    if (!rev || rev === 'sem-git' || rev === pageRev) return;
+                    var key = 'sg-nutricao-reload-' + rev;
+                    try {
+                        if (sessionStorage.getItem(key) === '1') return;
+                        sessionStorage.setItem(key, '1');
+                    } catch (e) {}
+                    reloading = true;
+                    var u = new URL(window.location.href);
+                    u.searchParams.set('_rev', rev);
+                    window.location.replace(u.toString());
+                })
+                .catch(function () {});
+        }
+        check();
+        document.addEventListener('visibilitychange', function () {
+            if (!document.hidden) check();
+        });
+        window.addEventListener('pageshow', function (e) {
+            if (e.persisted) window.location.reload();
+        });
+    })();
+    </script>
     <script>
     function showToast(msg, type) {
         type = type || 'success';

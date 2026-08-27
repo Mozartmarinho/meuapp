@@ -50,7 +50,7 @@
         .hint { color:var(--muted); font-size:.85rem; margin-top:6px; line-height:1.45; }
         @media (max-width:720px) { .grid { grid-template-columns:1fr; } .check { padding-top:0; } }
     </style>
-    <link href="{{ url_for('static', filename='css/loading-overlay.css') }}?v=1" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/loading-overlay.css') }}" rel="stylesheet">
 </head>
 <body>
     <header class="topbar">
@@ -112,6 +112,6 @@
             </div>
         </form>
     </main>
-    <script src="{{ url_for('static', filename='js/loading-overlay.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/loading-overlay.js') }}"></script>
 </body>
 </html>
