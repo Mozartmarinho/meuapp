@@ -39,7 +39,7 @@ def calcular_pesos(bruto, tara=0.0) -> dict:
 
 
 def pesos_ja_pesado(liquido, tara=0.0) -> dict:
-    """Produto já pesado: o operador informa o líquido (tara opcional do recipiente)."""
+    """Produto/roupa já pesado: o operador informa o líquido (tara opcional do recipiente)."""
     try:
         liq = float(liquido)
     except (TypeError, ValueError):

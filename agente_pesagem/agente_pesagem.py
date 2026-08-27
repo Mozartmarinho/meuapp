@@ -114,7 +114,7 @@ PORTA_UDP_BROADCAST = 33584
 # Manual não documenta bytes de login TCP — só a topologia UDP 168/169.
 HANDSHAKE_UDP_CONNECT = b'\x00\x00'
 PORTAS_TCP_COMUNS = (33581, 4001, 23, 2222, 8000, 9000, 33582, 10001, 9100)
-APP_VERSION = '1.4.0'
+APP_VERSION = '1.5.0'
 ICON_NAME = 'sao_geraldo.ico'
 
 # Aceita formatos WT1000, Urano ST/GS e genéricos
@@ -1509,12 +1509,12 @@ SerialReader = BalancaReader
 
 
 class JaPesadoDialog(tk.Toplevel):
-    """Informa o líquido de um produto que já foi pesado e envia ao servidor."""
+    """Informa o líquido de roupa já pesada e envia ao servidor (sem a balança)."""
 
-    def __init__(self, master):
+    def __init__(self, master, tara_inicial=0.0):
         super().__init__(master)
-        self.result = None
-        self.title('Produto já pesado')
+        self.result = None  # {'liquido': float, 'tara': float}
+        self.title('Roupa já pesada')
         self.configure(bg=CLR_BG)
         self.resizable(False, False)
         self.transient(master)
@@ -1525,12 +1525,13 @@ class JaPesadoDialog(tk.Toplevel):
         body.pack(fill='both', expand=True)
         tk.Label(
             body,
-            text='Informe o peso líquido (kg) do produto já pesado.\n'
-                 'Esse valor será enviado ao servidor (não usa a balança).',
+            text='Informe o peso da roupa já pesada (não usa a balança).\n'
+                 'O líquido é o valor enviado ao servidor. A tara do recipiente é opcional.',
             font=FONT_UI, bg=CLR_BG, fg=CLR_BLACK, justify='left', anchor='w',
         ).pack(fill='x', pady=(0, 10))
+
         row = tk.Frame(body, bg=CLR_BG)
-        row.pack(fill='x')
+        row.pack(fill='x', pady=(0, 6))
         tk.Label(row, text='Líquido', width=10, anchor='w', bg=CLR_BG, font=FONT_UI).pack(side='left')
         self.var_liq = tk.StringVar()
         ent = tk.Entry(
@@ -1542,6 +1543,22 @@ class JaPesadoDialog(tk.Toplevel):
         ent.focus_set()
         ent.bind('<Return>', lambda e: self._ok())
 
+        row_t = tk.Frame(body, bg=CLR_BG)
+        row_t.pack(fill='x')
+        tk.Label(row_t, text='Tara', width=10, anchor='w', bg=CLR_BG, font=FONT_UI).pack(side='left')
+        try:
+            tara0 = max(0.0, float(tara_inicial or 0.0))
+        except (TypeError, ValueError):
+            tara0 = 0.0
+        self.var_tara = tk.StringVar(value=formatar_peso_ui(tara0) if tara0 else '0')
+        ent_t = tk.Entry(
+            row_t, textvariable=self.var_tara, font=('Consolas', 14, 'bold'),
+            width=12, bg='#FFF8C6', relief='sunken', justify='right',
+        )
+        ent_t.pack(side='left', padx=(0, 6))
+        tk.Label(row_t, text='kg  (opcional)', font=FONT_UI, bg=CLR_BG).pack(side='left')
+        ent_t.bind('<Return>', lambda e: self._ok())
+
         btns = tk.Frame(self, bg=CLR_BG, padx=14, pady=10)
         btns.pack(fill='x', side='bottom')
         tk.Button(
@@ -1551,7 +1568,7 @@ class JaPesadoDialog(tk.Toplevel):
         tk.Button(btns, text='Cancelar', font=FONT_UI, bg=CLR_BTN, command=self.destroy, width=10).pack(side='right')
 
         self.update_idletasks()
-        w, h = max(self.winfo_reqwidth(), 420), max(self.winfo_reqheight(), 160)
+        w, h = max(self.winfo_reqwidth(), 460), max(self.winfo_reqheight(), 200)
         x = master.winfo_rootx() + 60
         y = master.winfo_rooty() + 80
         self.geometry(f'{w}x{h}+{x}+{y}')
@@ -1561,12 +1578,18 @@ class JaPesadoDialog(tk.Toplevel):
         valor = parse_peso_digitado(self.var_liq.get())
         if valor is None or valor <= 0:
             messagebox.showwarning(
-                'Produto já pesado',
+                'Roupa já pesada',
                 'Informe o peso líquido em kg (ex.: 12,50).',
                 parent=self,
             )
             return
-        self.result = valor
+        tara = parse_peso_digitado(self.var_tara.get())
+        if tara is None:
+            tara = 0.0
+        if tara < 0:
+            messagebox.showwarning('Roupa já pesada', 'A tara não pode ser negativa.', parent=self)
+            return
+        self.result = {'liquido': valor, 'tara': tara}
         self.destroy()
 
 
@@ -2164,7 +2187,7 @@ class AgenteApp:
         m_balanca.add_command(label='Reconectar', command=self._reconectar)
         m_balanca.add_command(label='Testar servidor', command=self._test_server)
         m_balanca.add_separator()
-        m_balanca.add_command(label='Produto já pesado...', command=self._abrir_ja_pesado)
+        m_balanca.add_command(label='Roupa já pesada...', command=self._abrir_ja_pesado)
         m_balanca.add_separator()
         m_balanca.add_command(label='Modo simulação (ligar/desligar)', command=self._toggle_sim)
         menubar.add_cascade(label='Balança', menu=m_balanca)
@@ -2247,14 +2270,17 @@ class AgenteApp:
         tk.Label(det, text='   Tara', font=FONT_UI, bg=CLR_BG, fg='#6B4E00').pack(side='left')
         self.tara_var = tk.StringVar(value=formatar_peso_ui(self.tara_atual))
         self.ent_tara = tk.Entry(
-            det, textvariable=self.tara_var, font=('Consolas', 11, 'bold'),
-            width=8, bg='#FFF8C6', relief='sunken', justify='right',
+            det, textvariable=self.tara_var, font=('Consolas', 12, 'bold'),
+            width=10, bg='#FFF8C6', relief='sunken', justify='right',
+            highlightthickness=1, highlightbackground='#C9A227', highlightcolor='#8A6A00',
         )
         self.ent_tara.pack(side='left', padx=(4, 2))
         self.ent_tara.bind('<Return>', lambda e: self._aplicar_tara_fixa())
+        self.ent_tara.bind('<FocusOut>', lambda e: self._aplicar_tara_fixa(silencioso=True))
+        self.ent_tara.bind('<KeyRelease>', self._preview_tara_digitada)
         tk.Label(det, text='kg', font=FONT_UI, bg=CLR_BG).pack(side='left')
         tk.Button(
-            det, text='Fixar tara', font=FONT_UI, bg=CLR_BTN, command=self._aplicar_tara_fixa
+            det, text='Aplicar tara', font=FONT_UI, bg=CLR_BTN, command=self._aplicar_tara_fixa
         ).pack(side='left', padx=(6, 10))
 
         tk.Label(det, text='Líquido', font=FONT_UI, bg=CLR_BG).pack(side='left')
@@ -2308,8 +2334,8 @@ class AgenteApp:
         )
         self.btn_enviar.pack(side='left')
         self.btn_ja_pesado = tk.Button(
-            btn_row, text='Já pesado...', font=('Tahoma', 10, 'bold'),
-            bg=CLR_BTN, relief='raised', width=14, height=1, command=self._abrir_ja_pesado
+            btn_row, text='Enviar roupa já pesada', font=('Tahoma', 10, 'bold'),
+            bg=CLR_BTN, relief='raised', width=22, height=1, command=self._abrir_ja_pesado
         )
         self.btn_ja_pesado.pack(side='left', padx=8)
         tk.Button(
@@ -2575,8 +2601,8 @@ class AgenteApp:
             'Sobre',
             f'Controle de Pesagem\nSão Geraldo Service\nVersão {APP_VERSION}\n\n'
             'O visor vermelho mostra o líquido (bruto − tara).\n'
-            'A tara é digitada e fica fixa até você alterar.\n'
-            'Produto já pesado: informe o líquido sem usar a balança.\n\n'
+            'A tara é digitada pelo operador (campo amarelo) e o líquido atualiza na hora.\n'
+            'Roupa já pesada: informe o líquido sem usar a balança.\n\n'
             f'Configuração salva em:\n{user_config_path()}',
             parent=self.root,
         )
@@ -2668,47 +2694,90 @@ class AgenteApp:
         self._refresh_detalhe()
         return pesos
 
-    def _aplicar_tara_fixa(self):
-        valor = parse_peso_digitado(self.tara_var.get())
+    def _recalcular_apos_tara(self):
+        """Atualiza líquido/visor com a tara atual, sem mexer no campo enquanto se digita."""
+        bruto = self.peso_bruto_atual
+        if bruto is None and self.peso_atual is not None:
+            bruto = self.peso_atual
+        if bruto is None:
+            if hasattr(self, 'liquido_var'):
+                self.liquido_var.set(formatar_peso_ui(None))
+            if hasattr(self, 'detalhe_peso_var'):
+                self.detalhe_peso_var.set(self._texto_detalhe_peso())
+            return
+        pesos = calcular_pesos(bruto, self.tara_atual)
+        self.peso_bruto_atual = pesos['peso_bruto']
+        self.peso_liquido_atual = pesos['peso_liquido']
+        self.peso_atual = pesos['peso_liquido']
+        if hasattr(self, 'peso_var'):
+            self.peso_var.set(formatar_peso_ui(self.peso_liquido_atual))
+        if hasattr(self, 'led_peso'):
+            self.led_peso.set_peso(self.peso_liquido_atual, aceso=True)
+        if hasattr(self, 'bruto_var'):
+            self.bruto_var.set(formatar_peso_ui(self.peso_bruto_atual))
+        if hasattr(self, 'liquido_var'):
+            self.liquido_var.set(formatar_peso_ui(self.peso_liquido_atual))
+        if hasattr(self, 'detalhe_peso_var'):
+            self.detalhe_peso_var.set(self._texto_detalhe_peso())
+
+    def _preview_tara_digitada(self, _evt=None):
+        valor = parse_peso_digitado(self.tara_var.get()) if hasattr(self, 'tara_var') else None
+        if valor is None or valor < 0:
+            return
+        self.tara_atual = valor
+        self._recalcular_apos_tara()
+
+    def _aplicar_tara_fixa(self, silencioso=False):
+        valor = parse_peso_digitado(self.tara_var.get()) if hasattr(self, 'tara_var') else None
         if valor is None:
-            messagebox.showwarning(
-                'Tara',
-                'Informe a tara em kg (ex.: 1,25). Use 0 para sem tara.',
-                parent=self.root,
-            )
-            self.tara_var.set(formatar_peso_ui(self.tara_atual))
-            return
+            if not silencioso:
+                messagebox.showwarning(
+                    'Tara',
+                    'Informe a tara em kg (ex.: 1,25). Use 0 para sem tara.',
+                    parent=self.root,
+                )
+            if hasattr(self, 'tara_var'):
+                self.tara_var.set(formatar_peso_ui(self.tara_atual))
+            return False
         if valor < 0:
-            messagebox.showwarning('Tara', 'A tara não pode ser negativa.', parent=self.root)
-            self.tara_var.set(formatar_peso_ui(self.tara_atual))
-            return
+            if not silencioso:
+                messagebox.showwarning('Tara', 'A tara não pode ser negativa.', parent=self.root)
+            if hasattr(self, 'tara_var'):
+                self.tara_var.set(formatar_peso_ui(self.tara_atual))
+            return False
         self.tara_atual = valor
         self.cfg['tara_fixa'] = valor
         try:
             save_config(self.cfg)
         except OSError as exc:
             self._set_status(f'Tara aplicada, mas não gravou config: {exc}')
-        self.tara_var.set(formatar_peso_ui(self.tara_atual))
-        bruto = self.peso_bruto_atual
-        if bruto is None and self.peso_atual is not None:
-            bruto = self.peso_atual
-        if bruto is not None:
-            self._aplicar_pesos(bruto, aceso=True)
-        else:
-            self._refresh_detalhe()
-        self._set_status(f'Tara fixa {formatar_peso_ui(self.tara_atual)} kg (líquido = bruto − tara)')
+        try:
+            if hasattr(self, 'tara_var') and hasattr(self, 'ent_tara'):
+                if self.root.focus_get() is not self.ent_tara:
+                    self.tara_var.set(formatar_peso_ui(self.tara_atual))
+        except tk.TclError:
+            self.tara_var.set(formatar_peso_ui(self.tara_atual))
+        self._recalcular_apos_tara()
+        if not silencioso:
+            self._set_status(
+                f'Tara {formatar_peso_ui(self.tara_atual)} kg (líquido = bruto − tara)'
+            )
+        return True
 
     def _abrir_ja_pesado(self):
         if self.enviando:
             return
-        dlg = JaPesadoDialog(self.root)
+        self._aplicar_tara_fixa(silencioso=True)
+        dlg = JaPesadoDialog(self.root, tara_inicial=self.tara_atual)
         self.root.wait_window(dlg)
-        if dlg.result is None:
+        if not dlg.result:
             return
+        liquido = dlg.result.get('liquido')
+        tara = dlg.result.get('tara') or 0.0
         self.enviar_peso(
-            pesos=pesos_ja_pesado(dlg.result, tara=0.0),
+            pesos=pesos_ja_pesado(liquido, tara=tara),
             origem='ja_pesado',
-            observacao='Produto já pesado (digitado)',
+            observacao='Roupa já pesada (digitado)',
         )
 
     def _update_tara(self, data: dict):
@@ -2717,7 +2786,7 @@ class AgenteApp:
         if bruto is not None:
             self._aplicar_pesos(bruto, aceso=True)
         self._set_status(
-            f'Tara da balança ignorada. Use Tara fixa na tela '
+            f'Tara da balança ignorada. Use a tara digitada na tela '
             f'({formatar_peso_ui(self.tara_atual)} kg).'
         )
 
@@ -2758,6 +2827,7 @@ class AgenteApp:
         if self.enviando:
             return
         if pesos is None:
+            self._aplicar_tara_fixa(silencioso=True)
             if self.peso_atual is None:
                 if not silencioso:
                     messagebox.showwarning('Sem peso', 'Aguarde o peso aparecer na tela.', parent=self.root)
@@ -2792,7 +2862,9 @@ class AgenteApp:
         self._set_status(f'Enviando líquido {peso_liquido:.3f} kg (tara {tara:.3f} kg)...')
 
         cfg = dict(self.cfg)
-        bruto = self.bruto_atual if origem == 'agente' else f'JA_PESADO L={peso_liquido:.3f}'
+        bruto = self.bruto_atual if origem == 'agente' else (
+            f'JA_PESADO L={peso_liquido:.3f} T={tara:.3f}'
+        )
         estavel = True if origem != 'agente' else self.estavel_atual
         porta = self.porta_atual
         obs = observacao if observacao is not None else (cfg.get('balanca_local') or '')
