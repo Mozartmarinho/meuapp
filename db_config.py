@@ -113,7 +113,7 @@ def forcar_colunas_equipamentos(uri=None):
                         f'ALTER TABLE equipamentos ADD COLUMN `{name}` {ddl}'
                     )
                     cols.add(name.lower())
-                    print(f'Schema equipamentos: criada coluna {name}')
+                    print(f'Reparo automático: criada equipamentos.{name}')
                 except Exception as exc:
                     print(f'Aviso: não criou equipamentos.{name}: {exc}')
             if 'equipamento' in cols and 'nome_equipamento' in cols:

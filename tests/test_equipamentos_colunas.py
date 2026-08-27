@@ -95,6 +95,7 @@ class EquipamentosColunasTest(unittest.TestCase):
         self.assertIn('def _listar_equipamentos_cadastrados', src)
         self.assertIn('ensure_equipamentos_schema()', src)
         self.assertIn('is_missing_equipamentos_column', src)
+        self.assertIn('Reparo automático em /equipamentos', src)
         self.assertIn('equipamentos = _listar_equipamentos_cadastrados()', src)
 
     def test_detecta_erro_coluna_ausente(self):
@@ -173,6 +174,54 @@ class EquipamentosColunasTest(unittest.TestCase):
                 itens = _listar_equipamentos_cadastrados()
             self.assertEqual(len(itens), 1)
             self.assertEqual(itens[0].nome_equipamento, 'PC Recepção')
+
+    def test_reparo_automatico_cria_coluna_e_lista(self):
+        from sqlalchemy import text
+        from models import db
+        from routes import _listar_equipamentos_cadastrados
+
+        app, app_mod = _sqlite_app()
+        with app.app_context():
+            db.session.execute(text('DROP TABLE IF EXISTS equipamentos'))
+            db.session.execute(text('DROP TABLE IF EXISTS clientes'))
+            db.session.execute(text(
+                'CREATE TABLE clientes ('
+                'id INTEGER PRIMARY KEY,'
+                'nome VARCHAR(100),'
+                'endereco VARCHAR(200),'
+                'telefone VARCHAR(20),'
+                'email VARCHAR(120),'
+                'responsavel VARCHAR(100),'
+                'telefone_responsavel VARCHAR(20),'
+                'ativo INTEGER DEFAULT 1,'
+                'habilitado_chamados INTEGER DEFAULT 1,'
+                'habilitado_nutricao INTEGER DEFAULT 0,'
+                'data_criacao DATETIME'
+                ')'
+            ))
+            db.session.execute(text(CREATE_SEM_LEGADO))
+            db.session.execute(text(
+                "INSERT INTO equipamentos (nome_equipamento, patrimonio, cliente_id) "
+                "VALUES ('PC Recepção', 'EQ-1', 1)"
+            ))
+            db.session.commit()
+            self.assertNotIn(
+                'equipamento',
+                {c.lower() for c in app_mod.equipamentos_column_names()},
+            )
+            itens = _listar_equipamentos_cadastrados()
+            self.assertEqual(len(itens), 1)
+            self.assertEqual(itens[0].nome_equipamento, 'PC Recepção')
+            self.assertEqual(itens[0].equipamento, 'PC Recepção')
+            cols = {c.lower() for c in app_mod.equipamentos_column_names()}
+            self.assertIn('equipamento', cols)
+
+    def test_app_registra_reparo_automatico(self):
+        with open(os.path.join(ROOT, 'app.py'), encoding='utf-8') as fh:
+            src = fh.read()
+        self.assertIn('def _reparo_automatico_equipamentos', src)
+        self.assertIn('def _reparar_1054_equipamentos', src)
+        self.assertIn('Reparo automático', src)
 
     def test_ensure_adiciona_coluna_equipamento_ausente(self):
         from sqlalchemy import text

@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, request, redirect, g
 from routes import main
 from routes_nutricao import nutricao
 from routes_pesagem import pesagem
@@ -36,6 +36,46 @@ def create_app():
 
     from audit_service import register_audit_hooks
     register_audit_hooks(app)
+
+    @app.before_request
+    def _reparo_automatico_equipamentos():
+        path = request.path or ''
+        if path.startswith('/static') or request.args.get('__debugger__'):
+            return
+        if not (
+            path.startswith('/equipamentos')
+            or path.startswith('/api/equipamentos')
+            or path.startswith('/api/equipamentos_por_cliente')
+            or path.startswith('/novo_equipamento')
+        ):
+            return
+        try:
+            ensure_equipamentos_schema()
+        except Exception as exc:
+            print(f'Aviso no reparo automático de equipamentos: {exc}')
+
+    from sqlalchemy.exc import OperationalError
+
+    @app.errorhandler(OperationalError)
+    def _reparar_1054_equipamentos(exc):
+        """Se faltar coluna, ALTER e recarrega a página (sem tela amarela do debugger)."""
+        if not is_missing_equipamentos_column(exc):
+            raise exc
+        if getattr(g, '_equipamentos_1054_retry', False):
+            raise exc
+        g._equipamentos_1054_retry = True
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        print('Reparo automático: tabela equipamentos incompleta, criando colunas...')
+        try:
+            ensure_equipamentos_schema()
+        except Exception as repair_exc:
+            print(f'Aviso no reparo automático de equipamentos: {repair_exc}')
+        if request.method in ('GET', 'HEAD'):
+            return redirect(request.url)
+        raise exc
 
     with app.app_context():
         try:
@@ -426,6 +466,7 @@ def ensure_equipamentos_schema():
                 try:
                     _exec_ddl(f'ALTER TABLE equipamentos ADD COLUMN `{col}` {ddl}')
                     cols.add(col)
+                    print(f'Reparo automático: criada equipamentos.{col}')
                 except Exception as exc:
                     try:
                         db.session.rollback()

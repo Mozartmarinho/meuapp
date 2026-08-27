@@ -3177,33 +3177,44 @@ def excluir_estoque(eid):
 
 
 def _listar_equipamentos_cadastrados():
-    """Alinha o schema com o model e lista patrimônios (cria colunas que faltarem)."""
+    """Reparo automático + listagem. Cria colunas faltantes e não quebra cadastros antigos."""
     from app import (
         ensure_equipamentos_schema,
         is_missing_equipamentos_column,
     )
-    try:
-        ensure_equipamentos_schema()
-    except Exception as exc:
-        print(f'Aviso ao ajustar schema de equipamentos: {exc}')
-    q = (
-        Equipamento.query
-        .options(joinedload(Equipamento.cliente))
-        .order_by(Equipamento.patrimonio.asc(), Equipamento.nome_equipamento.asc())
-    )
-    try:
-        return q.all()
-    except (OperationalError, Exception) as exc:
-        db.session.rollback()
-        if not is_missing_equipamentos_column(exc):
-            raise
-        ensure_equipamentos_schema()
+
+    def _query():
         return (
-            Equipamento.consulta()
+            Equipamento.query
             .options(joinedload(Equipamento.cliente))
             .order_by(Equipamento.patrimonio.asc(), Equipamento.nome_equipamento.asc())
             .all()
         )
+
+    try:
+        ensure_equipamentos_schema()
+    except Exception as exc:
+        print(f'Aviso ao ajustar schema de equipamentos: {exc}')
+    try:
+        return _query()
+    except (OperationalError, Exception) as exc:
+        db.session.rollback()
+        if not is_missing_equipamentos_column(exc):
+            raise
+        print('Reparo automático em /equipamentos:', exc)
+        ensure_equipamentos_schema()
+        try:
+            return _query()
+        except (OperationalError, Exception) as exc2:
+            db.session.rollback()
+            if not is_missing_equipamentos_column(exc2):
+                raise
+            return (
+                Equipamento.consulta()
+                .options(joinedload(Equipamento.cliente))
+                .order_by(Equipamento.patrimonio.asc(), Equipamento.nome_equipamento.asc())
+                .all()
+            )
 
 
 @main.route('/equipamentos')
