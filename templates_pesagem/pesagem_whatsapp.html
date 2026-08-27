@@ -119,6 +119,7 @@
       <div class="form-group">
         <label class="form-label" for="d-hora">Hora do envio (uma vez ao dia)</label>
         <input class="form-control" id="d-hora" type="time" value="18:00">
+        <p class="wa-help" style="margin:0.35rem 0 0;">Horário 24 horas: 07:30 de manhã ou 20:00 à noite.</p>
       </div>
       <div class="form-group">
         <label class="form-label" for="d-mensagem">Mensagem</label>
@@ -233,6 +234,7 @@
   justify-content: flex-end;
 }
 .wa-page .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.wa-page .btn[hidden] { display: none !important; }
 .wa-page .btn-sm { padding: 0.16rem 0.32rem; }
 .dest-modal-dialog { max-width: 460px; }
 .bal-modal-overlay {
