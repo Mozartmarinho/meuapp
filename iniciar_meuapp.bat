@@ -81,6 +81,12 @@ if exist "!APP_DIR!\scripts\desktop_sao_geraldo.ps1" (
     echo       Atalho da area de trabalho: São Geraldo Service
 )
 
+if /i not "!MEUAPP_AUTOSTART!"=="1" goto :fazer_git
+echo [3/6] Inicio automatico: mantem o codigo local (sem git pull).
+set "RELAUNCH_DIR=!APP_DIR!"
+endlocal & set "MEUAPP_BOOTSTRAPPED=1" & set "MEUAPP_DIR=%RELAUNCH_DIR%" & set "MEUAPP_AUTOSTART=1" & goto :depois_atualizacao
+
+:fazer_git
 REM --- Git no PATH do atalho da area de trabalho (muitas vezes nao vem) ---
 set "GIT="
 where git >nul 2>&1 && for /f "delims=" %%G in ('where git 2^>nul') do (
@@ -125,7 +131,8 @@ if not defined GIT (
 
 REM Relanca o .bat ja atualizado (cmd.exe nao deve continuar com linhas do arquivo antigo).
 set "RELAUNCH_DIR=!APP_DIR!"
-endlocal & set "MEUAPP_BOOTSTRAPPED=1" & set "MEUAPP_DIR=%RELAUNCH_DIR%" & cd /d "%RELAUNCH_DIR%" & call "%RELAUNCH_DIR%\iniciar_meuapp.bat"
+set "RELAUNCH_AUTO=!MEUAPP_AUTOSTART!"
+endlocal & set "MEUAPP_BOOTSTRAPPED=1" & set "MEUAPP_DIR=%RELAUNCH_DIR%" & set "MEUAPP_AUTOSTART=%RELAUNCH_AUTO%" & cd /d "%RELAUNCH_DIR%" & call "%RELAUNCH_DIR%\iniciar_meuapp.bat"
 exit /b
 
 :depois_atualizacao
@@ -168,23 +175,37 @@ if exist "%CD%\.venv\Scripts\python.exe" (
     echo       Usando: python (PATH)
 )
 
-REM --- Browser ---
-echo [6/6] Abrindo http://127.0.0.1/nutricao em alguns segundos...
-for /f %%T in ('powershell -NoProfile -Command "Get-Date -UFormat %%s"') do set "TS=%%T"
-if not defined TS set "TS=%RANDOM%"
-start "" cmd /c "timeout /t 3 /nobreak >nul & start http://127.0.0.1/nutricao?v=!TS!"
+REM --- Browser (atalho manual). No inicio automatico nao abre o navegador. ---
+if /i "%MEUAPP_AUTOSTART%"=="1" (
+    echo [6/6] Inicio automatico: app em segundo plano, sem abrir o navegador.
+) else (
+    echo [6/6] Abrindo http://127.0.0.1/nutricao em alguns segundos...
+    for /f %%T in ('powershell -NoProfile -Command "Get-Date -UFormat %%s"') do set "TS=%%T"
+    if not defined TS set "TS=%RANDOM%"
+    start "" cmd /c "timeout /t 3 /nobreak >nul & start http://127.0.0.1/nutricao?v=!TS!"
+)
 
 echo.
 echo Codigo deste projeto (meuapp). Iniciando São Geraldo Service...
-echo Logs abaixo. Feche esta janela ou use parar_meuapp.bat para encerrar.
+if /i "%MEUAPP_AUTOSTART%"=="1" (
+    echo Logs em %LOCALAPPDATA%\MeuApp\app.log
+) else (
+    echo Logs abaixo. Feche esta janela ou use parar_meuapp.bat para encerrar.
+)
 echo ========================================
 echo.
 
-"%PYTHON%" app.py
-
-echo.
-echo App encerrado.
-pause
+if /i "%MEUAPP_AUTOSTART%"=="1" (
+    if not exist "%LOCALAPPDATA%\MeuApp" mkdir "%LOCALAPPDATA%\MeuApp"
+    echo ----- %DATE% %TIME% ----->> "%LOCALAPPDATA%\MeuApp\app.log"
+    "%PYTHON%" app.py >> "%LOCALAPPDATA%\MeuApp\app.log" 2>&1
+    echo App encerrado.
+) else (
+    "%PYTHON%" app.py
+    echo.
+    echo App encerrado.
+    pause
+)
 endlocal
 goto :eof
 

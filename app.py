@@ -49,9 +49,20 @@ def create_app():
         user = None
         if session.get('user_id'):
             user = Usuario.query.get(session['user_id'])
+        nome = ''
+        if user is not None:
+            nome = str(
+                getattr(user, 'nome', None)
+                or getattr(user, 'email', None)
+                or getattr(user, 'usuario', None)
+                or ''
+            ).strip()
+        if not nome:
+            nome = str(session.get('user_name') or session.get('user_email') or '').strip()
         return {
             'usuario_atual': user,
-            'app_revision': _app_revision(),
+            'usuario_nome_sessao': nome,
+            'usuario_sistema': _nome_usuario_sistema(),
         }
 
     @app.after_request
@@ -79,8 +90,21 @@ def create_app():
 _APP_REVISION_CACHE = None
 
 
+def _nome_usuario_sistema():
+    """Nome do usuário logado no Windows/sistema operacional."""
+    for key in ('USERNAME', 'USER', 'LOGNAME'):
+        nome = (os.environ.get(key) or '').strip()
+        if nome:
+            return nome
+    try:
+        import getpass
+        return (getpass.getuser() or '').strip()
+    except Exception:
+        return ''
+
+
 def _app_revision():
-    """Short git SHA so /nutricao shows which code is actually running."""
+    """Short git SHA for /nutricao/versao and console startup."""
     global _APP_REVISION_CACHE
     if _APP_REVISION_CACHE is not None:
         return _APP_REVISION_CACHE

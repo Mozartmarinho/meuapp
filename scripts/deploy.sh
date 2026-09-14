@@ -32,6 +32,7 @@ else
 fi
 
 cd "${APP_DIR}" || fail "Diretório ${APP_DIR} não encontrado"
+chmod +x "${APP_DIR}/scripts/"*.sh "${APP_DIR}/scripts/run_migrations.py" 2>/dev/null || true
 
 log "========== INÍCIO DO DEPLOY =========="
 log "Diretório: ${APP_DIR}"

@@ -145,6 +145,7 @@
 <script>
 const TIPOS_REF = {{ (tipos or [])|tojson }};
 const GRUPOS_DIETA = {{ (grupos or [])|tojson }};
+const CATEGORIAS_DIETA = {{ (categorias or [])|tojson }};
 
 function fmtBR(v){
   const n = Number(v);
@@ -196,16 +197,21 @@ function abrirDieta(data){
       </div>`;
   }).join('');
 
-  const cats = [
-    ['basica','Básica / Oral'],
-    ['enteral','Enteral'],
-    ['formula','Fórmula'],
-    ['suplemento','Suplemento'],
-    ['outro','Outro'],
-  ];
-  const catOpts = cats.map(([v,l]) =>
-    `<option value="${v}" ${(data && data.categoria)===v ? 'selected':''}>${l}</option>`
-  ).join('');
+  const catAtual = (data && data.categoria) ? String(data.categoria) : '';
+  const catOpts = (CATEGORIAS_DIETA || []).map(c => {
+    const codigo = String(c.codigo || '');
+    const nome = String(c.nome || c.codigo || '');
+    const sel = codigo === catAtual ? ' selected' : '';
+    return `<option value="${codigo.replace(/"/g,'&quot;')}"${sel}>${nome.replace(/</g,'&lt;')}</option>`;
+  });
+  if (catAtual && !(CATEGORIAS_DIETA || []).some(c => String(c.codigo || '') === catAtual)) {
+    catOpts.push(
+      `<option value="${catAtual.replace(/"/g,'&quot;')}" selected>${catAtual.replace(/</g,'&lt;')} (legado)</option>`
+    );
+  }
+  if (!catOpts.length) {
+    catOpts.push('<option value="basica">Básica / Oral</option>');
+  }
 
   const grupoAtual = (data && data.grupo) ? String(data.grupo) : '';
   const gruposOpts = ['<option value="">— Sem grupo —</option>'].concat(
@@ -233,7 +239,7 @@ function abrirDieta(data){
     </div>
     <div class="form-group">
       <label class="form-label">Categoria</label>
-      <select class="form-control" id="f-dieta-categoria">${catOpts}</select>
+      <select class="form-control" id="f-dieta-categoria">${catOpts.join('')}</select>
     </div>
     <div class="form-group" style="display:flex;align-items:center;gap:6px;margin-top:10px;">
       <input type="checkbox" id="f-dieta-ativo" ${(data ? data.ativo !== false : true) ? 'checked' : ''}>
@@ -284,11 +290,14 @@ async function toggleDietaAtivo(id, ativo){
 }
 
 async function excluirDieta(id){
-  if (!confirm('Excluir esta dieta e o cardápio vinculado?')) return;
+  if (!confirm('Excluir esta dieta do cadastro? Cardápios e preços vinculados também serão removidos.')) return;
   const r = await fetch(`/nutricao/api/dietas/${id}`, { method:'DELETE' });
-  const j = await r.json();
+  let j = {};
+  try { j = await r.json(); } catch(e) { j = {}; }
   if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao excluir','error'); return; }
-  showToast('Dieta e cardápio excluídos','success');
+  showToast('Dieta excluída','success');
+  const tr = document.querySelector(`#tabelaDietasBody tr[data-id="${id}"]`);
+  if (tr) tr.remove();
   setTimeout(() => location.reload(), 450);
 }
 </script>

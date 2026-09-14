@@ -11,7 +11,7 @@ os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
 
 from app import create_app  # noqa: E402
 from models import db  # noqa: E402
-from models_nutricao import NutClinica, NutEnfermaria, NutLeito, NutMapaRefeicao  # noqa: E402
+from models_nutricao import NutClinica, NutGrupoClinica, NutEnfermaria, NutLeito, NutMapaRefeicao  # noqa: E402
 from nutricao_service import _chaves_ocupacao_leito, montar_grade_leitos_mapa  # noqa: E402
 
 
@@ -34,6 +34,7 @@ class GradeLeitosMapaTest(unittest.TestCase):
     def setUp(self):
         db.session.query(NutMapaRefeicao).delete()
         db.session.query(NutLeito).delete()
+        NutGrupoClinica.query.delete()
         NutClinica.query.delete()
         NutEnfermaria.query.delete()
         db.session.commit()
@@ -83,6 +84,20 @@ class GradeLeitosMapaTest(unittest.TestCase):
     def test_sem_clinica_nao_filtra_vazio_no_servico(self):
         grade = montar_grade_leitos_mapa(date.today(), '__todas__')
         self.assertEqual(len(grade), 4)
+
+    def test_grade_filtra_por_nomes_do_grupo(self):
+        outra = NutClinica(nome='ONCO', ativo=True)
+        db.session.add(outra)
+        db.session.flush()
+        outra.enfermarias.append(self.enf_b)
+        db.session.commit()
+
+        grade_grupo = montar_grade_leitos_mapa(
+            date.today(), clinica_nomes=[self.clinica.nome]
+        )
+        self.assertTrue(grade_grupo)
+        self.assertTrue(all(s['clinica'] == self.clinica.nome for s in grade_grupo))
+        self.assertEqual(montar_grade_leitos_mapa(date.today(), clinica_nomes=[]), [])
 
 
 if __name__ == '__main__':

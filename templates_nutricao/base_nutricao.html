@@ -21,7 +21,7 @@
         } catch (e) { /* ignore */ }
     })();
     </script>
-    {% set cadastro_pages = active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas','cadastro_grupos_dietas','cadastro_tipos_refeicao','cadastro_cardapios','cadastro_precos_refeicoes','cadastro_nutricional','cadastro_pratos_liquidos','cadastro_produtos','cadastro_fornecedores','cadastro_etiquetas'] %}
+    {% set cadastro_pages = active_page in ['cadastro_pacientes','cadastro_grupos_clinicas','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_categorias','cadastro_grupos_dietas','cadastro_dietas','cadastro_tipos_refeicao','cadastro_cardapios','cadastro_precos_refeicoes','cadastro_nutricional','cadastro_pratos_liquidos','cadastro_produtos','cadastro_fornecedores','cadastro_etiquetas'] %}
     <header class="app-topbar">
         <button type="button" class="menu-toggle" id="menuToggle" aria-label="Recuar menu" aria-expanded="true" aria-controls="appSidebar">
             <i class="fas fa-bars"></i>
@@ -37,9 +37,6 @@
             <div class="module-label">Nutrição Hospitalar</div>
             {% if nutricao_cliente_nome %}
             <div class="module-cliente" title="{{ nutricao_cliente_nome }}">{{ nutricao_cliente_nome }}</div>
-            {% endif %}
-            {% if app_revision %}
-            <div class="module-revision" title="Código em execução">rev {{ app_revision }}</div>
             {% endif %}
         </div>
 
@@ -82,6 +79,12 @@
                         </a>
                     </li>
                     <li>
+                        <a href="{{ url_for('nutricao.grupos_clinicas') }}" class="{% if active_page == 'cadastro_grupos_clinicas' %}active{% endif %}" title="Grupo de Clínicas">
+                            <i class="fas fa-object-group menu-icon"></i>
+                            <span class="menu-label">Grupo de Clínicas</span>
+                        </a>
+                    </li>
+                    <li>
                         <a href="{{ url_for('nutricao.clinicas') }}" class="{% if active_page == 'cadastro_clinicas' %}active{% endif %}" title="Clínicas">
                             <i class="fas fa-hospital menu-icon"></i>
                             <span class="menu-label">Clínicas</span>
@@ -100,15 +103,21 @@
                         </a>
                     </li>
                     <li>
-                        <a href="{{ url_for('nutricao.dietas') }}" class="{% if active_page == 'cadastro_dietas' %}active{% endif %}" title="Dietas">
-                            <i class="fas fa-utensils menu-icon"></i>
-                            <span class="menu-label">Dietas</span>
+                        <a href="{{ url_for('nutricao.categorias_dietas') }}" class="{% if active_page == 'cadastro_categorias' %}active{% endif %}" title="Categoria">
+                            <i class="fas fa-stream menu-icon"></i>
+                            <span class="menu-label">Categoria</span>
                         </a>
                     </li>
                     <li>
                         <a href="{{ url_for('nutricao.grupos_dietas') }}" class="{% if active_page == 'cadastro_grupos_dietas' %}active{% endif %}" title="Grupos de Dietas">
                             <i class="fas fa-layer-group menu-icon"></i>
                             <span class="menu-label">Grupos de Dietas</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.dietas') }}" class="{% if active_page == 'cadastro_dietas' %}active{% endif %}" title="Dietas">
+                            <i class="fas fa-utensils menu-icon"></i>
+                            <span class="menu-label">Dietas</span>
                         </a>
                     </li>
                     <li>
@@ -247,8 +256,8 @@
             {% endif %}
         {% endwith %}
 
-        <div class="projeto-versao-bar" title="Se esta faixa não aparecer, o navegador ainda está no app antigo">
-            São Geraldo Service · meuapp · rev {{ app_revision or 'sem-git' }}
+        <div class="projeto-versao-bar">
+            São Geraldo Service · {{ usuario_nome_sessao or usuario_sistema or 'meuapp' }}
         </div>
         {% block content %}{% endblock %}
     </main>

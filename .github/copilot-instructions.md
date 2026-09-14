@@ -10,7 +10,8 @@ Este é um sistema web de gestão de pedidos e ordens de serviço, desenvolvido 
 - **templates/** e **templates_nutricao/**: templates HTML Jinja2.
 
 ## Fluxos de Trabalho
-- **Execução local**: atalho **São Geraldo Service** (`iniciar_meuapp.bat`) ou `python app.py`
+- **Execução local (Windows)**: atalho **São Geraldo Service** (`iniciar_meuapp.bat`) ou `python app.py`. Início automático: `instalar_inicio_automatico.bat`.
+- **Servidor Linux**: Nginx porta 80 → Gunicorn (`meuapp.service`). Deploy: `scripts/deploy.sh`. Início automático: `scripts/instalar_inicio_automatico.sh`.
 - **Inicialização do banco**: execute `python init_db.py` / `scripts/run_migrations.py`.
 - **Configuração do banco**: ajuste `SQLALCHEMY_DATABASE_URI` em `db_config.py`.
 - **Dependências**: instale com `pip install -r requirements.txt`.

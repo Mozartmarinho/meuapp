@@ -117,6 +117,7 @@
 
 <script>
 const CLINICAS = {{ clinicas|tojson }};
+const GRUPOS_CLINICA = {{ grupos_clinica|default([])|tojson }};
 const ENFERMARIAS = {{ enfermarias|tojson }};
 
 (function buildHoras(){
@@ -142,14 +143,17 @@ function atualizarFiltro(){
     sel.innerHTML = '<option value="">Todas</option>' + ENFERMARIAS.map(e =>
       `<option value="${e.id}" data-nome="${esc(e.nome)}">${esc(e.nome)}</option>`
     ).join('');
-  } else {
-    lbl.textContent = por === 'clinica' ? 'Clínica:' : 'Grupo de clínica:';
+  } else if (por === 'clinica'){
+    lbl.textContent = 'Clínica:';
     sel.innerHTML = '<option value="">Todos</option>' + CLINICAS.map(c =>
       `<option value="${c.id}" data-nome="${esc(c.nome)}">${esc(c.nome)}</option>`
     ).join('');
-    // seleciona maternidade se existir (exemplo da tela legado)
-    const i = [...sel.options].findIndex(o => (o.dataset.nome||'').includes('MATERNIDADE'));
-    if (i > 0) sel.selectedIndex = i;
+  } else {
+    lbl.textContent = 'Grupo de clínica:';
+    const grupos = GRUPOS_CLINICA || [];
+    sel.innerHTML = '<option value="">Todos</option>' + grupos.map(g =>
+      `<option value="${g.id}" data-nome="${esc(g.nome)}">${esc(g.nome)}</option>`
+    ).join('');
   }
 }
 

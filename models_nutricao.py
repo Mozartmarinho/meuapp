@@ -44,6 +44,46 @@ class NutClinica(db.Model):
         return data
 
 
+nut_grupo_clinicas = db.Table(
+    'nut_grupo_clinicas',
+    db.Column('grupo_id', db.Integer, db.ForeignKey('nut_grupos_clinica.id'), primary_key=True),
+    db.Column('clinica_id', db.Integer, db.ForeignKey('nut_clinicas.id'), primary_key=True),
+)
+
+
+class NutGrupoClinica(db.Model):
+    """Agrupa clínicas para impressão e cadastro (ex.: MATERNIDADE, CTI)."""
+    __tablename__ = 'nut_grupos_clinica'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'nome', name='uq_nut_grupos_clinica_cliente_nome'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    nome = db.Column(db.String(160), nullable=False)
+    ativo = db.Column(db.Boolean, default=True)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    clinicas = db.relationship(
+        'NutClinica',
+        secondary=nut_grupo_clinicas,
+        lazy='select',
+        backref=db.backref('grupos_clinica', lazy='select'),
+        order_by='NutClinica.nome',
+    )
+
+    def to_dict(self, include_clinicas=False):
+        data = {
+            'id': self.id,
+            'nome': self.nome or '',
+            'ativo': bool(self.ativo),
+            'num_clinicas': len(self.clinicas or []),
+        }
+        if include_clinicas:
+            data['clinica_ids'] = [c.id for c in self.clinicas]
+            data['clinicas'] = [c.to_dict() for c in self.clinicas]
+        return data
+
+
 class NutEnfermaria(db.Model):
     """Enfermaria/unidade física vinculável a uma ou mais clínicas."""
     __tablename__ = 'nut_enfermarias'
@@ -119,7 +159,7 @@ class NutDieta(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
     nome = db.Column(db.String(200), nullable=False)
-    # basica | enteral | formula | lve | suplemento | outro
+    # Código de NutCategoriaDieta (ex.: basica, enteral, formula, suplemento)
     categoria = db.Column(db.String(40), default='basica')
     # Agrupamento visual (ex.: DIETAS ORAIS, NUTRICAO ENTERAL) — nome de NutGrupoDieta
     grupo = db.Column(db.String(80), default='')
@@ -134,6 +174,19 @@ class NutDieta(db.Model):
             'grupo': self.grupo or '',
             'ativo': self.ativo,
         }
+
+
+class NutDietaExcluida(db.Model):
+    """Nomes removidos do cadastro para o seed não recriar a dieta."""
+    __tablename__ = 'nut_dietas_excluidas'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'nome', name='uq_nut_dietas_excluidas_cliente_nome'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    nome = db.Column(db.String(200), nullable=False)
+    data_exclusao = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class NutGrupoDieta(db.Model):
@@ -153,6 +206,32 @@ class NutGrupoDieta(db.Model):
     def to_dict(self):
         return {
             'id': self.id,
+            'nome': self.nome or '',
+            'ordem': int(self.ordem or 0),
+            'ativo': bool(self.ativo),
+        }
+
+
+class NutCategoriaDieta(db.Model):
+    """Categoria da dieta (ex.: Básica / Oral, Enteral)."""
+    __tablename__ = 'nut_categorias_dieta'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'codigo', name='uq_nut_categorias_dieta_cliente_codigo'),
+        db.UniqueConstraint('cliente_id', 'nome', name='uq_nut_categorias_dieta_cliente_nome'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    codigo = db.Column(db.String(40), nullable=False)
+    nome = db.Column(db.String(80), nullable=False)
+    ordem = db.Column(db.Integer, default=0)
+    ativo = db.Column(db.Boolean, default=True)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'codigo': self.codigo or '',
             'nome': self.nome or '',
             'ordem': int(self.ordem or 0),
             'ativo': bool(self.ativo),

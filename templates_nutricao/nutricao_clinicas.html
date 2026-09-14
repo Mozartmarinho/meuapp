@@ -40,7 +40,7 @@
             <button class="btn btn-ghost btn-sm" type="button" onclick="abrirClinica({id:{{ c.id }}, nome: {{ c.nome|tojson }}, ativo: {{ 'true' if c.ativo else 'false' }}})" title="Editar">
               <i class="fas fa-edit"></i>
             </button>
-            <button class="btn btn-ghost btn-sm" type="button" onclick="excluirClinica({{ c.id }})" title="Desativar">
+            <button class="btn btn-ghost btn-sm" type="button" onclick="excluirClinica({{ c.id }})" title="Excluir">
               <i class="fas fa-trash"></i>
             </button>
           </td>
@@ -207,18 +207,20 @@ async function toggleAtivo(id, ativo){
 }
 
 async function excluirClinica(id){
-  if (!confirm('Desativar esta clínica?')) return;
+  if (!confirm('Excluir esta clínica do cadastro?')) return;
   try {
     const r = await fetch(`/nutricao/api/clinicas/${id}`, { method: 'DELETE' });
-    const j = await r.json();
+    const j = await r.json().catch(() => ({}));
     if (!r.ok || j.ok === false){
-      showToast((j && j.error) || 'Falha ao desativar','error');
+      const msg = (j && j.error) || 'Não é possível excluir esta clínica.';
+      showToast(msg, 'error');
+      alert(msg);
       return;
     }
-    showToast('Clínica desativada','success');
-    setTimeout(() => location.reload(), 500);
+    showToast('Clínica excluída','success');
+    setTimeout(() => location.reload(), 400);
   } catch (e) {
-    showToast('Erro ao desativar','error');
+    showToast('Erro ao excluir clínica','error');
   }
 }
 </script>

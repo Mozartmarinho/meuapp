@@ -46,7 +46,7 @@
             <button class="btn btn-ghost btn-sm" type="button" onclick='abrirEnfermaria({{ {"id": e.id, "nome": e.nome, "ativo": e.ativo, "nutriz": e.nutriz}|tojson }})' title="Editar">
               <i class="fas fa-edit"></i>
             </button>
-            <button class="btn btn-ghost btn-sm" type="button" onclick="excluirEnfermaria({{ e.id }})" title="Desativar">
+            <button class="btn btn-ghost btn-sm" type="button" onclick="excluirEnfermaria({{ e.id }})" title="Excluir">
               <i class="fas fa-trash"></i>
             </button>
           </td>
@@ -261,12 +261,17 @@ async function toggleEnfermariaAtivo(id, ativo){
 }
 
 async function excluirEnfermaria(id){
-  if (!confirm('Desativar esta enfermaria?')) return;
+  if (!confirm('Excluir esta enfermaria do cadastro?')) return;
   const r = await fetch(`/nutricao/api/enfermarias/${id}`, { method:'DELETE' });
-  const j = await r.json();
-  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao desativar','error'); return; }
-  showToast('Enfermaria desativada','success');
-  setTimeout(() => location.reload(), 450);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.ok === false){
+    const msg = (j && j.error) || 'Não é possível excluir esta enfermaria.';
+    showToast(msg, 'error');
+    alert(msg);
+    return;
+  }
+  showToast('Enfermaria excluída','success');
+  setTimeout(() => location.reload(), 400);
 }
 
 function setVinculoEnabled(on){

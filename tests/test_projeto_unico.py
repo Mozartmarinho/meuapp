@@ -33,8 +33,17 @@ class ProjetoUnicoTest(unittest.TestCase):
         self.assertIn('reset --hard origin/main', texto)
         self.assertIn('http://127.0.0.1/nutricao', texto)
         self.assertIn('MEUAPP_BOOTSTRAPPED', texto)
+        self.assertIn('MEUAPP_AUTOSTART', texto)
+        self.assertIn('sem git pull', texto)
         self.assertTrue(os.path.exists(os.path.join(ROOT, 'app.py')))
         self.assertTrue(os.path.exists(os.path.join(ROOT, 'scripts', 'desktop_sao_geraldo.ps1')))
+        self.assertTrue(os.path.exists(os.path.join(ROOT, 'scripts', 'instalar_inicio_automatico.ps1')))
+        self.assertTrue(os.path.exists(os.path.join(ROOT, 'scripts', 'iniciar_autostart.ps1')))
+        self.assertTrue(os.path.exists(os.path.join(ROOT, 'instalar_inicio_automatico.bat')))
+        self.assertTrue(os.path.exists(os.path.join(ROOT, 'scripts', 'instalar_inicio_automatico.sh')))
+        self.assertTrue(os.path.exists(os.path.join(ROOT, 'scripts', 'iniciar_autostart.sh')))
+        self.assertTrue(os.path.exists(os.path.join(ROOT, 'scripts', 'start_on_boot.sh')))
+        self.assertTrue(os.path.exists(os.path.join(ROOT, 'deploy', 'meuapp.service')))
 
 
 if __name__ == '__main__':

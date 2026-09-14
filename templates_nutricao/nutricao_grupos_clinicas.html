@@ -1,0 +1,423 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="grp-cli-cadastro">
+<div class="page-header">
+  <h1>Cadastro de Grupo de Clínicas</h1>
+  <p>Agrupa clínicas para impressão, totalização e vínculo</p>
+</div>
+
+<div class="toolbar">
+  <div class="toolbar-search">
+    <i class="fas fa-search"></i>
+    <input type="text" id="buscaGrupo" placeholder="Buscar grupo..." oninput="filtrarGrupos()">
+  </div>
+  <button class="btn btn-primary btn-sm" type="button" onclick="abrirGrupo()">
+    <i class="fas fa-plus"></i> Novo Grupo
+  </button>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden;margin-bottom:1rem;">
+  <div class="table-container" style="box-shadow:none;border-radius:0;max-height:256px;overflow:auto;">
+    <table class="data-table" id="tabelaGrupos">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th style="width:88px;text-align:center">Clínicas</th>
+          <th style="width:72px;text-align:center">Ativo</th>
+          <th style="width:104px">Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tabelaGruposBody">
+        {% for g in grupos %}
+        <tr data-id="{{ g.id }}" data-nome="{{ g.nome }}" data-ativo="{{ '1' if g.ativo else '0' }}">
+          <td>{{ g.nome }}</td>
+          <td style="text-align:center">{{ g.num_clinicas }}</td>
+          <td style="text-align:center">
+            <input type="checkbox" {% if g.ativo %}checked{% endif %} onchange="toggleGrupoAtivo({{ g.id }}, this.checked)">
+          </td>
+          <td>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="selecionarGrupoVinculo({{ g.id }})" title="Vincular clínicas">
+              <i class="fas fa-link"></i>
+            </button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick='abrirGrupo({{ {"id": g.id, "nome": g.nome, "ativo": g.ativo}|tojson }})' title="Editar">
+              <i class="fas fa-edit"></i>
+            </button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="excluirGrupo({{ g.id }})" title="Desativar">
+              <i class="fas fa-trash"></i>
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr id="linhaVazia">
+          <td colspan="4" style="text-align:center;color:#6B7280;">Nenhum grupo de clínicas cadastrado.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card vinculo-card">
+  <div class="card-header" style="margin-bottom:0.6rem;">
+    <h3 style="margin:0;font-size:0.84rem;">Vínculo Grupo × Clínicas</h3>
+    <p style="margin:0.28rem 0 0;color:#64748b;font-size:0.72rem;">Escolha o grupo e selecione as clínicas vinculadas</p>
+  </div>
+
+  <div class="form-group" style="max-width:336px;margin-bottom:0.8rem;">
+    <label class="form-label" for="selGrupoVinculo">Grupo de clínicas</label>
+    <select id="selGrupoVinculo" class="form-control" onchange="carregarVinculoGrupo()">
+      <option value="">Selecione o grupo</option>
+      {% for g in grupos %}
+      <option value="{{ g.id }}" {% if grupo_id_inicial and grupo_id_inicial == g.id %}selected{% endif %}>{{ g.nome }}{% if not g.ativo %} (inativo){% endif %}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="dual-transfer" id="dualTransfer" style="opacity:0.55;pointer-events:none;">
+    <div class="dual-pane">
+      <div class="dual-pane-title">Clínicas cadastradas</div>
+      <input type="text" class="form-control dual-filter" id="filtroDisp" placeholder="Filtrar..." oninput="filtrarListasVinculo()">
+      <select id="listaDisponiveis" class="dual-list" multiple size="11"></select>
+    </div>
+    <div class="dual-actions">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="moverSelecionados('disp','sel')" title="Adicionar">
+        <i class="fas fa-chevron-right"></i>
+      </button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="moverTodos('disp','sel')" title="Adicionar todas">
+        <i class="fas fa-angle-double-right"></i>
+      </button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="moverSelecionados('sel','disp')" title="Remover">
+        <i class="fas fa-chevron-left"></i>
+      </button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="moverTodos('sel','disp')" title="Remover todas">
+        <i class="fas fa-angle-double-left"></i>
+      </button>
+    </div>
+    <div class="dual-pane">
+      <div class="dual-pane-title">Clínicas selecionadas</div>
+      <input type="text" class="form-control dual-filter" id="filtroSel" placeholder="Filtrar..." oninput="filtrarListasVinculo()">
+      <select id="listaSelecionadas" class="dual-list" multiple size="11"></select>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:0.4rem;justify-content:flex-end;margin-top:0.8rem;">
+    <button type="button" class="btn btn-ghost" onclick="restaurarVinculo()" id="btnCancelarVinculo" disabled>Cancelar</button>
+    <button type="button" class="btn btn-primary" onclick="salvarVinculoGrupo()" id="btnSalvarVinculo" disabled>
+      <i class="fas fa-check"></i> OK
+    </button>
+  </div>
+</div>
+</div>
+
+<style>
+.grp-cli-cadastro .page-header { margin-bottom: 1rem; }
+.grp-cli-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.grp-cli-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.grp-cli-cadastro .toolbar { gap: 0.6rem; margin-bottom: 0.8rem; }
+.grp-cli-cadastro .toolbar-search {
+  gap: 0.4rem;
+  padding: 0.44rem 0.68rem;
+  max-width: 336px;
+  flex-basis: 176px;
+}
+.grp-cli-cadastro .toolbar-search i { font-size: 0.72rem; }
+.grp-cli-cadastro .toolbar-search input {
+  font-size: 0.72rem;
+  padding: 0;
+  width: auto;
+  border: none;
+  box-shadow: none;
+}
+.grp-cli-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.grp-cli-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
+.grp-cli-cadastro .btn-ghost { padding: 0.28rem 0.4rem; }
+.grp-cli-cadastro .card { padding: 1rem; margin-bottom: 0.8rem; }
+.grp-cli-cadastro .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+.grp-cli-cadastro .form-control {
+  padding: 0.48rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+.grp-cli-cadastro .data-table { font-size: 0.8rem; }
+.grp-cli-cadastro .data-table th,
+.grp-cli-cadastro .data-table td { padding: 0.68rem 0.8rem; font-size: 0.76rem; }
+.vinculo-card { padding: 0.8rem 0.88rem 0.88rem; }
+.dual-transfer {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0.6rem;
+  align-items: stretch;
+}
+.dual-pane-title {
+  font-weight: 600;
+  font-size: 0.72rem;
+  margin-bottom: 0.32rem;
+  color: var(--brand-ink, #1f2d4d);
+}
+.grp-cli-cadastro .dual-filter { margin-bottom: 0.32rem; padding: 0.32rem 0.44rem; font-size: 0.7rem; }
+.dual-list {
+  width: 100%;
+  min-height: 224px;
+  border: 1px solid var(--gray-300, #d1d5db);
+  border-radius: 0.3rem;
+  padding: 0.2rem;
+  font-size: 0.7rem;
+  background: #fff;
+}
+.dual-actions {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.28rem;
+}
+@media (max-width: 900px) {
+  .dual-transfer { grid-template-columns: 1fr; }
+  .dual-actions { flex-direction: row; justify-content: center; }
+}
+#modalOverlay .modal-dialog { max-width: 512px; }
+</style>
+
+<script>
+const GRUPO_ID_INICIAL = {{ grupo_id_inicial|tojson }};
+let todasClinicas = [];
+let snapshotSelecionados = [];
+
+function filtrarGrupos(){
+  const q = (document.getElementById('buscaGrupo').value || '').toLowerCase().trim();
+  document.querySelectorAll('#tabelaGruposBody tr').forEach(tr => {
+    if (tr.id === 'linhaVazia') return;
+    const nome = (tr.dataset.nome || '').toLowerCase();
+    tr.style.display = (!q || nome.includes(q)) ? '' : 'none';
+  });
+}
+
+function abrirGrupo(data){
+  const isEdit = !!(data && data.id);
+  const html = `
+    <div class="form-group">
+      <label class="form-label">Nome *</label>
+      <input class="form-control" id="f-grupo-nome" value="${(data && data.nome) ? String(data.nome).replace(/"/g,'&quot;') : ''}" placeholder="Ex: MATERNIDADE">
+    </div>
+    <div class="form-group" style="display:flex;align-items:center;gap:8px;margin-top:12px;">
+      <input type="checkbox" id="f-grupo-ativo" ${(data ? data.ativo !== false : true) ? 'checked' : ''}>
+      <label class="form-label" for="f-grupo-ativo" style="margin:0">Ativo</label>
+    </div>
+  `;
+  window._editGrupoId = isEdit ? data.id : null;
+  abrirModal(isEdit ? 'Editar Grupo de Clínicas' : 'Novo Grupo de Clínicas', html, isEdit ? 'Atualizar' : 'Salvar', salvarGrupo);
+}
+
+async function salvarGrupo(){
+  const nome = (document.getElementById('f-grupo-nome')?.value || '').trim();
+  if (!nome){
+    showToast('Informe o nome do grupo','error');
+    return;
+  }
+  const body = {
+    nome,
+    ativo: !!document.getElementById('f-grupo-ativo')?.checked
+  };
+  const id = window._editGrupoId;
+  const url = id ? `/nutricao/api/grupos-clinicas/${id}` : '/nutricao/api/grupos-clinicas';
+  const method = id ? 'PUT' : 'POST';
+  try {
+    const r = await fetch(url, {
+      method,
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    const j = await r.json();
+    if (!r.ok || j.ok === false){
+      showToast((j && j.error) || 'Falha ao salvar','error');
+      return;
+    }
+    fecharModal();
+    showToast(id ? 'Grupo atualizado' : 'Grupo cadastrado','success');
+    setTimeout(() => location.reload(), 400);
+  } catch (e) {
+    showToast('Erro ao salvar grupo','error');
+  }
+}
+
+async function toggleGrupoAtivo(id, ativo){
+  try {
+    const r = await fetch(`/nutricao/api/grupos-clinicas/${id}`, {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ ativo: !!ativo })
+    });
+    const j = await r.json();
+    if (!r.ok || j.ok === false){
+      showToast((j && j.error) || 'Falha ao atualizar','error');
+      location.reload();
+    }
+  } catch (e) {
+    showToast('Erro ao atualizar status','error');
+    location.reload();
+  }
+}
+
+async function excluirGrupo(id){
+  if (!confirm('Desativar este grupo de clínicas?')) return;
+  try {
+    const r = await fetch(`/nutricao/api/grupos-clinicas/${id}`, { method: 'DELETE' });
+    const j = await r.json();
+    if (!r.ok || j.ok === false){
+      showToast((j && j.error) || 'Falha ao desativar','error');
+      return;
+    }
+    showToast('Grupo desativado','success');
+    setTimeout(() => location.reload(), 400);
+  } catch (e) {
+    showToast('Erro ao desativar','error');
+  }
+}
+
+function setVinculoEnabled(on){
+  document.getElementById('dualTransfer').style.opacity = on ? '1' : '0.55';
+  document.getElementById('dualTransfer').style.pointerEvents = on ? '' : 'none';
+  document.getElementById('btnSalvarVinculo').disabled = !on;
+  document.getElementById('btnCancelarVinculo').disabled = !on;
+}
+
+function selecionarGrupoVinculo(id){
+  document.getElementById('selGrupoVinculo').value = String(id);
+  carregarVinculoGrupo();
+  document.querySelector('.vinculo-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function optionClinica(c){
+  const o = document.createElement('option');
+  o.value = c.id;
+  o.textContent = c.nome + (c.ativo ? '' : ' (inativa)');
+  o.dataset.nome = (c.nome || '').toLowerCase();
+  return o;
+}
+
+function renderListas(selecionadas){
+  const idsSel = new Set((selecionadas || []).map(c => Number(c.id)));
+  const disp = document.getElementById('listaDisponiveis');
+  const sel = document.getElementById('listaSelecionadas');
+  disp.innerHTML = '';
+  sel.innerHTML = '';
+  (todasClinicas || []).forEach(c => {
+    if (idsSel.has(Number(c.id))) sel.appendChild(optionClinica(c));
+    else disp.appendChild(optionClinica(c));
+  });
+  ordenarSelect(disp);
+  ordenarSelect(sel);
+}
+
+function filtrarListasVinculo(){
+  const qd = (document.getElementById('filtroDisp').value || '').toLowerCase().trim();
+  const qs = (document.getElementById('filtroSel').value || '').toLowerCase().trim();
+  [...document.getElementById('listaDisponiveis').options].forEach(o => {
+    o.hidden = !!(qd && !(o.dataset.nome || '').includes(qd));
+  });
+  [...document.getElementById('listaSelecionadas').options].forEach(o => {
+    o.hidden = !!(qs && !(o.dataset.nome || '').includes(qs));
+  });
+}
+
+function optionsVisiveis(sel){
+  return [...sel.options].filter(o => !o.hidden);
+}
+
+function moverSelecionados(fromKey, toKey){
+  const from = document.getElementById(fromKey === 'disp' ? 'listaDisponiveis' : 'listaSelecionadas');
+  const to = document.getElementById(toKey === 'disp' ? 'listaDisponiveis' : 'listaSelecionadas');
+  [...from.selectedOptions].forEach(opt => {
+    if (opt.hidden) return;
+    to.appendChild(opt);
+    opt.selected = false;
+  });
+  ordenarSelect(to);
+  filtrarListasVinculo();
+}
+
+function moverTodos(fromKey, toKey){
+  const from = document.getElementById(fromKey === 'disp' ? 'listaDisponiveis' : 'listaSelecionadas');
+  const to = document.getElementById(toKey === 'disp' ? 'listaDisponiveis' : 'listaSelecionadas');
+  optionsVisiveis(from).forEach(opt => {
+    to.appendChild(opt);
+    opt.selected = false;
+  });
+  ordenarSelect(to);
+  filtrarListasVinculo();
+}
+
+function ordenarSelect(sel){
+  const opts = [...sel.options].sort((a,b) => a.textContent.localeCompare(b.textContent, 'pt'));
+  sel.innerHTML = '';
+  opts.forEach(o => sel.appendChild(o));
+}
+
+function idsSelecionadosAtuais(){
+  return [...document.getElementById('listaSelecionadas').options].map(o => Number(o.value));
+}
+
+async function carregarVinculoGrupo(){
+  const gid = document.getElementById('selGrupoVinculo').value;
+  if (!gid){
+    setVinculoEnabled(false);
+    document.getElementById('listaDisponiveis').innerHTML = '';
+    document.getElementById('listaSelecionadas').innerHTML = '';
+    return;
+  }
+  try {
+    const r = await fetch(`/nutricao/api/grupos-clinicas/${gid}/clinicas`);
+    const j = await r.json();
+    if (!r.ok || j.ok === false){
+      showToast((j && j.error) || 'Falha ao carregar vínculo','error');
+      return;
+    }
+    todasClinicas = j.todas || [];
+    const selecionadas = (j.grupo && j.grupo.clinicas) || [];
+    snapshotSelecionados = selecionadas.map(c => Number(c.id));
+    renderListas(selecionadas);
+    setVinculoEnabled(true);
+  } catch (e) {
+    showToast('Erro ao carregar vínculo','error');
+  }
+}
+
+async function salvarVinculoGrupo(){
+  const gid = document.getElementById('selGrupoVinculo').value;
+  if (!gid) return;
+  const clinica_ids = idsSelecionadosAtuais();
+  try {
+    const r = await fetch(`/nutricao/api/grupos-clinicas/${gid}/clinicas`, {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ clinica_ids })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.ok === false){
+      showToast((j && j.error) || 'Falha ao salvar vínculo','error');
+      return;
+    }
+    const salvas = (j.grupo && j.grupo.clinicas) || [];
+    snapshotSelecionados = salvas.map(c => Number(c.id));
+    renderListas(salvas);
+    showToast('Vínculo salvo','success');
+    setTimeout(() => location.reload(), 400);
+  } catch (e) {
+    showToast('Erro ao salvar vínculo','error');
+  }
+}
+
+function restaurarVinculo(){
+  carregarVinculoGrupo();
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  if (GRUPO_ID_INICIAL){
+    document.getElementById('selGrupoVinculo').value = String(GRUPO_ID_INICIAL);
+    carregarVinculoGrupo();
+  }
+});
+</script>
+{% endblock %}

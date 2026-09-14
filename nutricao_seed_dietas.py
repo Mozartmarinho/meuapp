@@ -193,6 +193,16 @@ GRUPO_POR_PAYER = {
     'acompanhante': 'ACOMPANHANTE',
 }
 
+# Cadastro de Categorias de Dieta — (codigo, nome, ordem). Seed idempotente;
+# também absorve valores distintos já gravados em NutDieta.categoria.
+CATEGORIAS_DIETA_SEED = [
+    ('basica', 'Básica / Oral', 10),
+    ('enteral', 'Enteral', 20),
+    ('formula', 'Fórmula', 30),
+    ('suplemento', 'Suplemento', 40),
+    ('outro', 'Outro', 50),
+]
+
 # Cadastro de Grupos de Dietas — (nome, ordem). Seed idempotente; também absorve
 # valores distintos já gravados em NutDieta.grupo.
 GRUPOS_DIETA_SEED = [
