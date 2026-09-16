@@ -23,6 +23,8 @@
         h1 { font-family:'Rajdhani',sans-serif; color:var(--brand-navy); }
         .btn { display:inline-flex; align-items:center; gap:.45rem; padding:.7rem 1rem; border-radius:999px; text-decoration:none; font-weight:700; border:1px solid rgba(27,79,156,.15); background:#fff; color:var(--brand-navy); }
         .btn-primary { background:var(--brand-blue); color:#fff; border-color:var(--brand-blue); }
+        .btn-danger { background:#dc2626; color:#fff; border-color:#dc2626; padding:.55rem .75rem; }
+        .acesso-acoes { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
         .card { background:#fff; border-radius:18px; box-shadow:0 10px 30px rgba(13,43,92,.08); overflow:auto; }
         table { width:100%; border-collapse:collapse; }
         th,td { padding:14px 16px; text-align:left; border-bottom:1px solid #e8eef6; }
@@ -85,7 +87,19 @@
                         <td><span class="badge {{ 'on' if item.tem_sistema('acesso') else 'off' }}">{{ 'Sim' if item.tem_sistema('acesso') else 'Não' }}</span></td>
                         <td><span class="badge {{ 'on' if item.tem_sistema('logistica') else 'off' }}">{{ 'Sim' if item.tem_sistema('logistica') else 'Não' }}</span></td>
                         <td><span class="badge {{ 'on' if item.ativo else 'off' }}">{{ 'Sim' if item.ativo else 'Não' }}</span></td>
-                        <td><a class="btn btn-primary" href="{{ url_for('main.editar_acesso', id=item.id) }}">Editar</a></td>
+                        <td>
+                            <div class="acesso-acoes">
+                                <a class="btn btn-primary" href="{{ url_for('main.editar_acesso', id=item.id) }}">Editar</a>
+                                {% if not item.is_master %}
+                                <form method="post" action="{{ url_for('main.excluir_acesso', id=item.id) }}"
+                                      onsubmit="return confirm('Excluir o acesso de {{ item.nome|e }}? Esta ação não pode ser desfeita.');">
+                                    <button type="submit" class="btn btn-danger" title="Excluir usuário" aria-label="Excluir {{ item.nome }}">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
                     </tr>
                     {% else %}
                     <tr><td colspan="9">Nenhum acesso cadastrado.</td></tr>

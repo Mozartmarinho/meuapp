@@ -35,6 +35,7 @@ from models import (
     ChamadoPortao,
     ChamadoEstoque,
     ChamadoEstoqueUso,
+    PermissaoMenu,
     ConhecimentoPasta,
     SetorFuncao,
     WhatsAppChamadoUsuario,
@@ -1429,6 +1430,49 @@ def _salvar_acesso_geral(usuario, form, novo=False):
     db.session.commit()
 
 
+def _excluir_acesso_geral(acesso, ator):
+    """Remove um acesso do sistema, desvinculando FKs opcionais."""
+    if acesso.is_master:
+        raise ValueError('Não é possível excluir um acesso Master.')
+    if ator and ator.id == acesso.id:
+        raise ValueError('Você não pode excluir o próprio acesso.')
+
+    vinculos = []
+    if Chamado.query.filter_by(tecnico_id=acesso.id).first():
+        vinculos.append('chamados')
+    if ChamadoAtendimento.query.filter_by(usuario_id=acesso.id).first():
+        vinculos.append('atendimentos')
+    if ChamadoEncaminhamento.query.filter_by(usuario_id=acesso.id).first():
+        vinculos.append('encaminhamentos')
+    if ChamadoConhecimento.query.filter_by(usuario_id=acesso.id).first():
+        vinculos.append('conhecimentos')
+    if vinculos:
+        raise ValueError(
+            'Não é possível excluir: há ' + ', '.join(vinculos)
+            + ' vinculados a este usuário. Desative o acesso em Editar.'
+        )
+
+    Chamado.query.filter_by(encaminhado_por_id=acesso.id).update(
+        {Chamado.encaminhado_por_id: None}, synchronize_session=False
+    )
+    ChamadoMensagem.query.filter_by(usuario_id=acesso.id).update(
+        {ChamadoMensagem.usuario_id: None}, synchronize_session=False
+    )
+    ChamadoEstoqueUso.query.filter_by(usuario_id=acesso.id).update(
+        {ChamadoEstoqueUso.usuario_id: None}, synchronize_session=False
+    )
+    ChamadoTecnico.query.filter_by(usuario_id=acesso.id).update(
+        {ChamadoTecnico.usuario_id: None}, synchronize_session=False
+    )
+    PermissaoMenu.query.filter_by(usuario_id=acesso.id).delete(synchronize_session=False)
+    from models_acesso import AcessoUsuarioPermissao
+    AcessoUsuarioPermissao.query.filter_by(usuario_id=acesso.id).delete(
+        synchronize_session=False
+    )
+    db.session.delete(acesso)
+    db.session.commit()
+
+
 @main.route('/acessos/setores', methods=['GET', 'POST'])
 @login_required
 def criar_setor_funcao():
@@ -1596,6 +1640,44 @@ def editar_acesso(id):
         setores_nutricao=listar_setores(TIPO_SETOR_NUTRICAO),
         clientes=Cliente.query.order_by(Cliente.nome.asc()).all(),
     )
+
+
+@main.route('/acessos/<int:id>/excluir', methods=['POST', 'DELETE'])
+@login_required
+def excluir_acesso(id):
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.pode_gerenciar_acessos():
+        if _wants_json():
+            return jsonify({'ok': False, 'message': 'Sem permissão para gerenciar acessos.'}), 403
+        flash('Você não tem permissão para gerenciar acessos.', 'error')
+        return redirect(url_for('main.inicio'))
+    acesso = Usuario.query.get_or_404(id)
+    try:
+        _excluir_acesso_geral(acesso, user)
+        if _wants_json():
+            return jsonify({'ok': True, 'message': 'Acesso excluído com sucesso.', 'id': id})
+        flash('Acesso excluído com sucesso.', 'success')
+        return redirect(url_for('main.listar_acessos'))
+    except ValueError as e:
+        db.session.rollback()
+        if _wants_json():
+            return jsonify({'ok': False, 'message': str(e)}), 400
+        flash(str(e), 'error')
+        return redirect(url_for('main.listar_acessos'))
+    except IntegrityError:
+        db.session.rollback()
+        msg = 'Não é possível excluir este usuário porque há registros vinculados. Desative o acesso em Editar.'
+        if _wants_json():
+            return jsonify({'ok': False, 'message': msg}), 400
+        flash(msg, 'error')
+        return redirect(url_for('main.listar_acessos'))
+    except Exception as e:
+        db.session.rollback()
+        if _wants_json():
+            return jsonify({'ok': False, 'message': str(e)}), 400
+        flash(str(e), 'error')
+        return redirect(url_for('main.listar_acessos'))
+
 
 @main.route('/dashboard')
 @login_required

@@ -202,6 +202,15 @@
 
         .portal-btn.pri { background: var(--brand-blue); color: #fff; }
         .portal-btn.sec { background: #6b7c90; color: #fff; }
+        .portal-btn.danger { background: #dc2626; color: #fff; }
+        .portal-btn.danger:hover { background: #b91c1c; }
+        .acesso-acoes {
+            display: inline-flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 6px;
+            white-space: nowrap;
+        }
 
         .portal-alert { margin: 0 0 1rem; padding: 12px 14px; border-radius: 10px; font-size: 0.92rem; }
         .portal-alert.success { background: #d1fae5; color: #065f46; }
@@ -357,6 +366,9 @@
         #modal-clientes .acessos-table th { font-size: 9px; }
         #modal-acessos .badge,
         #modal-clientes .badge { padding: 3px 7px; font-size: 8px; }
+        #modal-acessos .acessos-table th:last-child,
+        #modal-acessos .acessos-table td:last-child { text-align: right; }
+        #modal-acessos .portal-btn.danger { padding: 0.45rem 0.55rem; }
         #modal-acessos .portal-form .grid,
         #modal-clientes .portal-form .grid { gap: 10px; }
         #modal-acessos .portal-form label,
@@ -750,7 +762,16 @@
                                 <td><span class="badge {{ 'on' if item.tem_sistema('acesso') else 'off' }}">{{ 'Sim' if item.tem_sistema('acesso') else 'Não' }}</span></td>
                                 <td><span class="badge {{ 'on' if item.tem_sistema('logistica') else 'off' }}">{{ 'Sim' if item.tem_sistema('logistica') else 'Não' }}</span></td>
                                 <td><span class="badge {{ 'on' if item.ativo else 'off' }}">{{ 'Sim' if item.ativo else 'Não' }}</span></td>
-                                <td><button type="button" class="portal-btn pri" data-editar-acesso="{{ item.id }}">Editar</button></td>
+                                <td>
+                                    <div class="acesso-acoes">
+                                        <button type="button" class="portal-btn pri" data-editar-acesso="{{ item.id }}">Editar</button>
+                                        {% if not item.is_master %}
+                                        <button type="button" class="portal-btn danger" data-excluir-acesso="{{ item.id }}" title="Excluir usuário" aria-label="Excluir {{ item.nome }}">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                        {% endif %}
+                                    </div>
+                                </td>
                             </tr>
                             {% else %}
                             <tr class="acessos-empty"><td colspan="9">Nenhum acesso cadastrado.</td></tr>
@@ -1267,6 +1288,7 @@
         var SISTEMAS_MENUS = {{ sistemas | tojson }};
         var URL_NOVO = {{ url_for('main.novo_acesso') | tojson }};
         var URL_EDITAR_TPL = {{ url_for('main.editar_acesso', id=0) | tojson }};
+        var URL_EXCLUIR_TPL = {{ url_for('main.excluir_acesso', id=0) | tojson }};
         var URL_NOVO_CLIENTE = {{ url_for('main.novo_cliente') | tojson }};
         var URL_EDITAR_CLIENTE_TPL = {{ url_for('main.editar_cliente', id=0) | tojson }};
         var URL_CONFIG = {{ url_for('main.configuracoes') | tojson }};
@@ -1278,6 +1300,21 @@
 
         function urlEditar(id) {
             return URL_EDITAR_TPL.replace('/0/', '/' + id + '/');
+        }
+
+        function urlExcluir(id) {
+            return URL_EXCLUIR_TPL.replace('/0/', '/' + id + '/');
+        }
+
+        function acessoAcoesHtml(item) {
+            var html = '<td><div class="acesso-acoes">' +
+                '<button type="button" class="portal-btn pri" data-editar-acesso="' + item.id + '">Editar</button>';
+            if (!item.is_master) {
+                html += '<button type="button" class="portal-btn danger" data-excluir-acesso="' + item.id +
+                    '" title="Excluir usuário" aria-label="Excluir"><i class="fas fa-trash"></i></button>';
+            }
+            html += '</div></td>';
+            return html;
         }
 
         function urlEditarCliente(id) {
@@ -1300,7 +1337,7 @@
                 '<td>' + badge(s.acesso) + '</td>' +
                 '<td>' + badge(s.logistica) + '</td>' +
                 '<td>' + badge(item.ativo) + '</td>' +
-                '<td><button type="button" class="portal-btn pri" data-editar-acesso="' + item.id + '">Editar</button></td>' +
+                acessoAcoesHtml(item) +
                 '</tr>';
         }
 
@@ -1459,7 +1496,40 @@
         document.getElementById('btn-cancelar-acesso').addEventListener('click', function () {
             showAcessoLista();
         });
-        document.getElementById('acessos-tbody').addEventListener('click', function (ev) {
+        function removeAcessoDaLista(id) {
+            ACESSOS = ACESSOS.filter(function (a) { return a.id !== id; });
+            var tbody = document.getElementById('acessos-tbody');
+            var existing = tbody.querySelector('tr[data-id="' + id + '"]');
+            if (existing) existing.remove();
+            if (!tbody.querySelector('tr')) {
+                tbody.innerHTML = '<tr class="acessos-empty"><td colspan="9">Nenhum acesso cadastrado.</td></tr>';
+            }
+        }
+
+        document.getElementById('acessos-tbody').addEventListener('click', async function (ev) {
+            var delBtn = ev.target.closest('[data-excluir-acesso]');
+            if (delBtn) {
+                var delId = parseInt(delBtn.getAttribute('data-excluir-acesso'), 10);
+                var delItem = ACESSOS.find(function (a) { return a.id === delId; });
+                var nome = (delItem && delItem.nome) || 'este usuário';
+                if (!confirm('Excluir o acesso de ' + JSON.stringify(nome) + '? Esta ação não pode ser desfeita.')) return;
+                delBtn.disabled = true;
+                var msg = document.getElementById('acessos-lista-msg');
+                try {
+                    var r = await fetch(urlExcluir(delId), {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+                    var data = await r.json();
+                    showMsg(msg, !!data.ok, data.message || (data.ok ? 'Acesso excluído.' : 'Falha ao excluir.'));
+                    if (data.ok) removeAcessoDaLista(delId);
+                } catch (e) {
+                    showMsg(msg, false, 'Falha ao excluir o usuário.');
+                } finally {
+                    delBtn.disabled = false;
+                }
+                return;
+            }
             var btn = ev.target.closest('[data-editar-acesso]');
             if (!btn) return;
             var id = parseInt(btn.getAttribute('data-editar-acesso'), 10);

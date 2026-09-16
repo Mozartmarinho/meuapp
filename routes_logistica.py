@@ -20,6 +20,8 @@ from logistica_service import (
     alertas_dashboard,
     custo_operacional,
     custo_por_veiculo,
+    evolucao_custos,
+    geocodificar_endereco,
     periodo_padrao,
     seed_logistica,
 )
@@ -71,6 +73,7 @@ _LOGISTICA_ENDPOINT_MENUS = {
     'logistica.api_rota': 'rotas',
     'logistica.api_entregas': 'entregas',
     'logistica.api_entrega': 'entregas',
+    'logistica.api_geocode': 'entregas',
     'logistica.api_colaboradores': 'dp',
     'logistica.api_colaborador': 'dp',
     'logistica.api_folhas': 'dp',
@@ -188,14 +191,17 @@ def _page(template, active, **ctx):
 def dashboard():
     data_de, data_ate = periodo_padrao(request.args)
     placa = (request.args.get('placa') or 'all').strip()
-    resumo = custo_operacional(data_de, data_ate, None if placa == 'all' else placa)
-    por_veiculo = custo_por_veiculo(data_de, data_ate, None if placa == 'all' else placa)
+    placa_filtro = None if placa == 'all' else placa
+    resumo = custo_operacional(data_de, data_ate, placa_filtro)
+    por_veiculo = custo_por_veiculo(data_de, data_ate, placa_filtro)
+    evolucao = evolucao_custos(data_de, data_ate, placa_filtro)
     alertas = alertas_dashboard()
     return _page(
         'logistica_dashboard.html',
         'dashboard',
         resumo=resumo,
         por_veiculo=por_veiculo,
+        evolucao=evolucao,
         alertas=alertas,
         filtros={
             'data_de': data_de.isoformat() if data_de else '',
@@ -426,10 +432,12 @@ def auditoria():
 def api_resumo():
     data_de, data_ate = periodo_padrao(request.args)
     placa = (request.args.get('placa') or 'all').strip()
+    placa_filtro = None if placa == 'all' else placa
     return jsonify({
         'ok': True,
-        'resumo': custo_operacional(data_de, data_ate, None if placa == 'all' else placa),
-        'por_veiculo': custo_por_veiculo(data_de, data_ate, None if placa == 'all' else placa),
+        'resumo': custo_operacional(data_de, data_ate, placa_filtro),
+        'por_veiculo': custo_por_veiculo(data_de, data_ate, placa_filtro),
+        'evolucao': evolucao_custos(data_de, data_ate, placa_filtro),
     })
 
 
@@ -735,6 +743,30 @@ def api_rota(item_id):
     return jsonify({'ok': True, 'row': item.to_dict()})
 
 
+def _lat_lng_do_endereco(d, endereco, lat=None, lng=None):
+    if lat is None and 'lat' in d:
+        lat = _parse_float(d.get('lat'))
+    if lng is None and 'lng' in d:
+        lng = _parse_float(d.get('lng'))
+    if (lat is None or lng is None) and endereco:
+        hit = geocodificar_endereco(endereco)
+        if hit:
+            return hit['lat'], hit['lng']
+    return lat, lng
+
+
+@logistica.route('/api/logistica/geocode')
+@login_required
+def api_geocode():
+    q = (request.args.get('q') or '').strip()
+    if len(q) < 5:
+        return jsonify({'ok': False, 'error': 'Informe um endereço mais completo.'}), 400
+    hit = geocodificar_endereco(q)
+    if not hit:
+        return jsonify({'ok': False, 'error': 'Endereço não encontrado.'}), 404
+    return jsonify({'ok': True, **hit})
+
+
 @logistica.route('/api/logistica/entregas', methods=['GET', 'POST'])
 @login_required
 def api_entregas():
@@ -745,12 +777,14 @@ def api_entregas():
     nome = (d.get('nome') or '').strip()
     if not nome:
         return jsonify({'ok': False, 'error': 'Informe o ponto de entrega.'}), 400
+    endereco = (d.get('endereco') or '').strip()[:255] or None
+    lat, lng = _lat_lng_do_endereco(d, endereco)
     item = LogisticaEntrega(
         rota_id=_parse_int(d.get('rota_id')),
         nome=nome[:160],
-        endereco=(d.get('endereco') or '').strip()[:255] or None,
-        lat=_parse_float(d.get('lat')),
-        lng=_parse_float(d.get('lng')),
+        endereco=endereco,
+        lat=lat,
+        lng=lng,
         status=(d.get('status') or 'Pendente').strip()[:40],
         observacao=(d.get('observacao') or '').strip()[:255] or None,
     )
@@ -772,10 +806,9 @@ def api_entrega(item_id):
         item.rota_id = _parse_int(d.get('rota_id'))
     item.nome = (d.get('nome') or item.nome).strip()[:160]
     item.endereco = (d.get('endereco') or '').strip()[:255] or None
-    if 'lat' in d:
-        item.lat = _parse_float(d.get('lat'))
-    if 'lng' in d:
-        item.lng = _parse_float(d.get('lng'))
+    lat = _parse_float(d.get('lat')) if 'lat' in d else item.lat
+    lng = _parse_float(d.get('lng')) if 'lng' in d else item.lng
+    item.lat, item.lng = _lat_lng_do_endereco(d, item.endereco, lat, lng)
     item.status = (d.get('status') or item.status or 'Pendente')[:40]
     item.observacao = (d.get('observacao') or '').strip()[:255] or None
     db.session.commit()

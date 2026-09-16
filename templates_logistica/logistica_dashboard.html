@@ -64,6 +64,28 @@
   </div>
 </div>
 
+<div class="custo-charts">
+  <div class="card custo-chart-card">
+    <div class="custo-chart-title">Evolução dos custos</div>
+    <div class="custo-chart-canvas">
+      <canvas id="chartEvolucaoCustos"></canvas>
+    </div>
+  </div>
+  <div class="card custo-chart-card">
+    <div class="custo-chart-title">Composição dos custos</div>
+    <div class="custo-donut-wrap">
+      <div class="custo-chart-canvas custo-donut-canvas">
+        <canvas id="chartComposicaoCustos"></canvas>
+      </div>
+    </div>
+    <div class="custo-donut-legend">
+      {% for item in evolucao.composicao %}
+      <span><i style="background:{{ item.cor }}"></i>{{ item.label }}</span>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
 <div class="alerta-grid">
   <div class="card" style="padding:1rem 1.15rem;">
     <div style="font-weight:700;color:#0D2B5C;margin-bottom:0.5rem;">Revisões</div>
@@ -135,5 +157,195 @@
 .data-table th, .data-table td { padding: 0.55rem 0.7rem; border-bottom: 1px solid #e5e7eb; text-align: left; }
 .data-table th { background: #1f2d4d; color: #fff; }
 .data-table tbody tr:nth-child(even) { background: #f8fafc; }
+.custo-charts {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.9fr);
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+.custo-chart-card {
+  padding: 1.1rem 1.2rem 1rem;
+  border-radius: 16px;
+}
+.custo-chart-title {
+  font-family: var(--font-brand);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #0f2747;
+  margin-bottom: 0.35rem;
+}
+.custo-chart-canvas { position: relative; height: 280px; }
+.custo-donut-wrap { display: flex; align-items: center; justify-content: center; }
+.custo-donut-canvas { width: 100%; max-width: 280px; height: 240px; }
+.custo-donut-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.55rem 1rem;
+  margin-top: 0.35rem;
+}
+.custo-donut-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.custo-donut-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+@media (max-width: 900px) {
+  .custo-charts { grid-template-columns: 1fr; }
+}
 </style>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+(function () {
+  var dados = {{ evolucao|tojson }};
+  if (!dados) dados = { labels: [], composicao: [] };
+
+  function money(valor) {
+    return Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  }
+
+  var linhas = [
+    { key: 'abastecimento', label: 'Abastecimento', color: '#3b82f6' },
+    { key: 'pedagio', label: 'Pedágio', color: '#eab308' },
+    { key: 'manutencao', label: 'Manutenção', color: '#22c55e' }
+  ];
+
+  var elLinha = document.getElementById('chartEvolucaoCustos');
+  if (elLinha) {
+    new Chart(elLinha.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: dados.labels || [],
+        datasets: linhas.map(function (serie) {
+          return {
+            label: serie.label,
+            data: dados[serie.key] || [],
+            borderColor: serie.color,
+            backgroundColor: serie.color,
+            borderWidth: 2.5,
+            tension: 0.35,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            fill: false
+          };
+        })
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            position: 'top',
+            align: 'start',
+            labels: {
+              usePointStyle: true,
+              pointStyle: 'circle',
+              boxWidth: 8,
+              padding: 16,
+              color: '#334155',
+              font: { size: 12, weight: '600' }
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) {
+                return ' ' + ctx.dataset.label + ': ' + money(ctx.parsed.y);
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { maxRotation: 0, color: '#64748b', font: { size: 11 } },
+            grid: { display: false }
+          },
+          y: {
+            beginAtZero: true,
+            ticks: {
+              color: '#94a3b8',
+              font: { size: 11 },
+              callback: function (value) { return value; }
+            },
+            grid: { color: 'rgba(148, 163, 184, 0.25)' }
+          }
+        }
+      }
+    });
+  }
+
+  var donutCenter = {
+    id: 'donutCenter',
+    afterDraw: function (chart) {
+      var cfg = chart.config.options.plugins.donutCenter || {};
+      var txt = cfg.text;
+      if (!txt) return;
+      var meta = chart.getDatasetMeta(0);
+      if (!meta || !meta.data || !meta.data.length) return;
+      var first = meta.data[0];
+      var ctx = chart.ctx;
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = cfg.color || '#1e293b';
+      ctx.font = '700 28px Manrope, sans-serif';
+      ctx.fillText(txt, first.x, first.y);
+      ctx.restore();
+    }
+  };
+
+  var composicao = dados.composicao || [];
+  var elDonut = document.getElementById('chartComposicaoCustos');
+  if (elDonut) {
+    var maior = composicao.reduce(function (acc, item) {
+      return (!acc || item.valor > acc.valor) ? item : acc;
+    }, null);
+    new Chart(elDonut.getContext('2d'), {
+      type: 'doughnut',
+      plugins: [donutCenter],
+      data: {
+        labels: composicao.map(function (item) { return item.label; }),
+        datasets: [{
+          data: composicao.map(function (item) { return item.valor; }),
+          backgroundColor: composicao.map(function (item) { return item.cor; }),
+          borderWidth: 0,
+          hoverOffset: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '72%',
+        plugins: {
+          donutCenter: {
+            text: dados.total ? ((dados.maior_pct || 0).toFixed(1) + '%') : '0%',
+            color: (maior && maior.cor) || '#1e293b'
+          },
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) {
+                var item = composicao[ctx.dataIndex] || {};
+                var pct = item.pct != null ? item.pct : 0;
+                return ' ' + ctx.label + ': ' + money(ctx.parsed) + ' (' + pct + '%)';
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+})();
+</script>
 {% endblock %}

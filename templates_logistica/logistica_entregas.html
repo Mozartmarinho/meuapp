@@ -33,6 +33,21 @@
 .data-table th { background: #1f2d4d; color: #fff; }
 .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.7rem; }
 .form-grid .full { grid-column: 1 / -1; }
+.mapa-ponto { height: 180px; border-radius: 10px; border: 1px solid #dbe4f0; }
+.geo-status { margin-top: 0.35rem; font-size: 0.8rem; color: #64748b; min-height: 1.1em; }
+.geo-status.ok { color: #15803d; }
+.geo-status.err { color: #b91c1c; }
+.leaflet-tooltip.ponto-label {
+  background: #1f2d4d;
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-weight: 700;
+  font-size: 0.75rem;
+  box-shadow: 0 2px 8px rgba(15, 42, 86, 0.28);
+}
+.leaflet-tooltip.ponto-label::before { border-top-color: #1f2d4d; }
 </style>
 {% endblock %}
 {% block scripts %}
@@ -44,6 +59,10 @@
   var map = L.map('mapaEntregas').setView([-22.9068, -43.1729], 11);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
   var layer = L.layerGroup().addTo(map);
+  var miniMap = null;
+  var miniMarker = null;
+  var geoTimer = null;
+  var lastGeoQuery = '';
 
   function escapeHtml(str) {
     return String(str || '').replace(/[&<>"']/g, function (ch) {
@@ -60,6 +79,84 @@
       return '<option value="' + s + '"' + (s === selected ? ' selected' : '') + '>' + s + '</option>';
     }).join('');
   }
+  function nomePonto() {
+    var el = document.getElementById('f-nome');
+    return (el && el.value.trim()) || 'Ponto';
+  }
+  function setGeoStatus(msg, kind) {
+    var el = document.getElementById('geo-status');
+    if (!el) return;
+    el.className = 'geo-status' + (kind ? ' ' + kind : '');
+    el.textContent = msg || '';
+  }
+  function addPontoMarker(target, lat, lng, nome, extra) {
+    var m = L.marker([lat, lng]).bindTooltip(escapeHtml(nome || 'Ponto'), {
+      permanent: true,
+      direction: 'top',
+      offset: [0, -8],
+      className: 'ponto-label',
+      opacity: 0.95
+    });
+    if (extra) m.bindPopup(extra);
+    target.addLayer(m);
+    return m;
+  }
+  function marcarMini(lat, lng) {
+    if (!miniMap || lat == null || lng == null) return;
+    if (miniMarker) miniMap.removeLayer(miniMarker);
+    miniMarker = addPontoMarker(miniMap, lat, lng, nomePonto());
+    miniMap.setView([lat, lng], 16);
+  }
+  function destroyMini() {
+    clearTimeout(geoTimer);
+    if (miniMap) {
+      miniMap.remove();
+      miniMap = null;
+      miniMarker = null;
+    }
+    lastGeoQuery = '';
+  }
+  function initMini(row) {
+    destroyMini();
+    miniMap = L.map('mapaPonto', { scrollWheelZoom: true }).setView(
+      [row.lat != null ? row.lat : -22.9068, row.lng != null ? row.lng : -43.1729],
+      row.lat != null ? 16 : 11
+    );
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(miniMap);
+    if (row.lat != null && row.lng != null) marcarMini(row.lat, row.lng);
+    setTimeout(function () { if (miniMap) miniMap.invalidateSize(); }, 80);
+  }
+
+  async function buscarGeo(force) {
+    var elEnd = document.getElementById('f-endereco');
+    if (!elEnd) return;
+    var q = elEnd.value.trim();
+    if (q.length < 5) {
+      setGeoStatus('Digite o endereço para localizar no mapa.');
+      return;
+    }
+    if (!force && q === lastGeoQuery) return;
+    lastGeoQuery = q;
+    setGeoStatus('Buscando coordenadas…');
+    try {
+      var res = await fetch('/api/logistica/geocode?q=' + encodeURIComponent(q));
+      var data = await res.json();
+      if (!data.ok) {
+        setGeoStatus(data.error || 'Endereço não encontrado.', 'err');
+        return;
+      }
+      document.getElementById('f-lat').value = Number(data.lat).toFixed(6);
+      document.getElementById('f-lng').value = Number(data.lng).toFixed(6);
+      marcarMini(data.lat, data.lng);
+      setGeoStatus('Localizado no mapa.', 'ok');
+    } catch (err) {
+      setGeoStatus('Não foi possível buscar o endereço.', 'err');
+    }
+  }
+  function scheduleGeo() {
+    clearTimeout(geoTimer);
+    geoTimer = setTimeout(function () { buscarGeo(false); }, 700);
+  }
 
   async function load() {
     var res = await fetch('/api/logistica/entregas');
@@ -69,8 +166,13 @@
     var bounds = [];
     rows.forEach(function (row) {
       if (row.lat != null && row.lng != null) {
-        var m = L.marker([row.lat, row.lng]).bindPopup('<strong>' + escapeHtml(row.nome) + '</strong><br>' + escapeHtml(row.endereco || '') + '<br>' + escapeHtml(row.status || ''));
-        layer.addLayer(m);
+        addPontoMarker(
+          layer,
+          row.lat,
+          row.lng,
+          row.nome,
+          '<strong>' + escapeHtml(row.nome) + '</strong><br>' + escapeHtml(row.endereco || '') + '<br>' + escapeHtml(row.status || '')
+        );
         bounds.push([row.lat, row.lng]);
       }
     });
@@ -94,7 +196,9 @@
       '<div class="form-group full"><label class="form-label">Ponto</label><input class="form-control" id="f-nome" value="' + escapeHtml(row.nome || '') + '"></div>' +
       '<div class="form-group"><label class="form-label">Rota</label><select class="form-control" id="f-rota_id">' + optionsRota(row.rota_id) + '</select></div>' +
       '<div class="form-group"><label class="form-label">Status</label><select class="form-control" id="f-status">' + optionsStatus(row.status || 'Pendente') + '</select></div>' +
-      '<div class="form-group full"><label class="form-label">Endereço</label><input class="form-control" id="f-endereco" value="' + escapeHtml(row.endereco || '') + '"></div>' +
+      '<div class="form-group full"><label class="form-label">Endereço</label><input class="form-control" id="f-endereco" value="' + escapeHtml(row.endereco || '') + '" placeholder="Rua, número, bairro, cidade">' +
+      '<div id="geo-status" class="geo-status">Ao preencher o endereço, latitude e longitude são buscadas automaticamente.</div></div>' +
+      '<div class="form-group full"><div id="mapaPonto" class="mapa-ponto"></div></div>' +
       '<div class="form-group"><label class="form-label">Latitude</label><input class="form-control" id="f-lat" value="' + (row.lat != null ? row.lat : '') + '"></div>' +
       '<div class="form-group"><label class="form-label">Longitude</label><input class="form-control" id="f-lng" value="' + (row.lng != null ? row.lng : '') + '"></div>' +
       '</div>';
@@ -111,11 +215,35 @@
       var res = await fetch(url, { method: row.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       var data = await res.json();
       if (!data.ok) { showToast(data.error || 'Falha ao gravar.', 'error'); return; }
+      destroyMini();
       fecharModal();
       showToast('Ponto gravado.');
       load();
     });
+    setTimeout(function () {
+      initMini(row);
+      var elEnd = document.getElementById('f-endereco');
+      var elNome = document.getElementById('f-nome');
+      if (elEnd) {
+        elEnd.addEventListener('input', scheduleGeo);
+        elEnd.addEventListener('blur', function () { buscarGeo(false); });
+        if (elEnd.value.trim().length >= 5 && (row.lat == null || row.lng == null)) buscarGeo(true);
+      }
+      if (elNome) {
+        elNome.addEventListener('input', function () {
+          var lat = parseFloat(document.getElementById('f-lat').value);
+          var lng = parseFloat(document.getElementById('f-lng').value);
+          if (!isNaN(lat) && !isNaN(lng)) marcarMini(lat, lng);
+        });
+      }
+    }, 40);
   }
+
+  var _fechar = window.fecharModal;
+  window.fecharModal = function () {
+    destroyMini();
+    if (_fechar) _fechar();
+  };
 
   document.getElementById('btnNovo').addEventListener('click', function () { openForm({}); });
   document.getElementById('tbodyEntregas').addEventListener('click', async function (ev) {
