@@ -487,10 +487,10 @@
         .systems {
             margin-top: 2.2rem;
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 240px));
+            grid-template-columns: repeat(auto-fit, minmax(220px, 240px));
             gap: 1rem;
             width: 100%;
-            max-width: 1040px;
+            max-width: 1280px;
             justify-content: center;
             animation: rise 0.7s ease 0.22s both;
         }
@@ -546,6 +546,11 @@
             color: #b45309;
         }
 
+        .system-link.logistica .icon-wrap {
+            background: rgba(91, 33, 182, 0.14);
+            color: #5b21b6;
+        }
+
         .system-link h2 {
             font-family: 'Rajdhani', sans-serif;
             font-size: 1.25rem;
@@ -575,6 +580,7 @@
         .system-link.nutricao .go { color: #5f7a16; }
         .system-link.pesagem .go { color: #0e7490; }
         .system-link.acesso .go { color: #b45309; }
+        .system-link.logistica .go { color: #5b21b6; }
 
         .footer-note {
             padding: 1rem;
@@ -685,6 +691,15 @@
                 <span class="go">Acessar <i class="fas fa-arrow-right"></i></span>
             </a>
             {% endif %}
+
+            {% if 'logistica' in sistemas_liberados %}
+            <a class="system-link logistica" href="{{ url_for('logistica.dashboard') }}">
+                <div class="icon-wrap"><i class="fas fa-truck"></i></div>
+                <h2>Sistema de Controle de Logística</h2>
+                <p>Frota, combustível, manutenção, DP, expedição, operação e controle de peso.</p>
+                <span class="go">Acessar <i class="fas fa-arrow-right"></i></span>
+            </a>
+            {% endif %}
         </div>
     </section>
 
@@ -716,6 +731,7 @@
                                 <th>Nutrição</th>
                                 <th>Pesagem</th>
                                 <th>Acesso</th>
+                                <th>Logística</th>
                                 <th>Ativo</th>
                                 <th></th>
                             </tr>
@@ -732,11 +748,12 @@
                                 <td><span class="badge {{ 'on' if item.tem_sistema('nutricao') else 'off' }}">{{ 'Sim' if item.tem_sistema('nutricao') else 'Não' }}</span></td>
                                 <td><span class="badge {{ 'on' if item.tem_sistema('pesagem') else 'off' }}">{{ 'Sim' if item.tem_sistema('pesagem') else 'Não' }}</span></td>
                                 <td><span class="badge {{ 'on' if item.tem_sistema('acesso') else 'off' }}">{{ 'Sim' if item.tem_sistema('acesso') else 'Não' }}</span></td>
+                                <td><span class="badge {{ 'on' if item.tem_sistema('logistica') else 'off' }}">{{ 'Sim' if item.tem_sistema('logistica') else 'Não' }}</span></td>
                                 <td><span class="badge {{ 'on' if item.ativo else 'off' }}">{{ 'Sim' if item.ativo else 'Não' }}</span></td>
                                 <td><button type="button" class="portal-btn pri" data-editar-acesso="{{ item.id }}">Editar</button></td>
                             </tr>
                             {% else %}
-                            <tr class="acessos-empty"><td colspan="8">Nenhum acesso cadastrado.</td></tr>
+                            <tr class="acessos-empty"><td colspan="9">Nenhum acesso cadastrado.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
@@ -1281,6 +1298,7 @@
                 '<td>' + badge(s.nutricao) + '</td>' +
                 '<td>' + badge(s.pesagem) + '</td>' +
                 '<td>' + badge(s.acesso) + '</td>' +
+                '<td>' + badge(s.logistica) + '</td>' +
                 '<td>' + badge(item.ativo) + '</td>' +
                 '<td><button type="button" class="portal-btn pri" data-editar-acesso="' + item.id + '">Editar</button></td>' +
                 '</tr>';

@@ -3,12 +3,14 @@ from routes import main
 from routes_nutricao import nutricao
 from routes_pesagem import pesagem
 from routes_acesso import acesso
+from routes_logistica import logistica
 from routes_audit import auditoria
 from models import db, Usuario
 from db_config import SQLALCHEMY_DATABASE_URI
 import models_nutricao  # noqa: F401 — registra tabelas de nutrição
 import models_pesagem  # noqa: F401 — registra tabelas de pesagem
 import models_acesso  # noqa: F401 — registra tabelas de controle de acesso
+import models_logistica  # noqa: F401 — registra tabelas de logística
 import models_audit  # noqa: F401 — registra tabelas de auditoria
 import os
 import socket
@@ -32,6 +34,7 @@ def create_app():
     app.register_blueprint(nutricao)
     app.register_blueprint(pesagem)
     app.register_blueprint(acesso)
+    app.register_blueprint(logistica)
     app.register_blueprint(auditoria)
 
     from audit_service import register_audit_hooks
@@ -42,6 +45,14 @@ def create_app():
             ensure_equipamentos_schema()
         except Exception as exc:
             print(f"Aviso ao ajustar schema de equipamentos: {exc}")
+        try:
+            ensure_whatsapp_chamado_schema()
+        except Exception as exc:
+            print(f"Aviso ao ajustar schema WhatsApp chamado: {exc}")
+        try:
+            ensure_logistica_schema()
+        except Exception as extra:
+            print(f"Aviso ao ajustar schema de logística: {extra}")
 
     @app.context_processor
     def inject_acesso():
@@ -215,7 +226,7 @@ def ensure_usuarios_schema():
         if 'reset_token_expira' not in cols:
             db.session.execute(text('ALTER TABLE usuarios ADD COLUMN reset_token_expira DATETIME NULL'))
             db.session.commit()
-        for col in ('is_master', 'perm_chamados', 'perm_nutricao', 'perm_pesagem', 'perm_acesso', 'perm_portal'):
+        for col in ('is_master', 'perm_chamados', 'perm_nutricao', 'perm_pesagem', 'perm_logistica', 'perm_acesso', 'perm_portal'):
             if col not in cols:
                 db.session.execute(text(f'ALTER TABLE usuarios ADD COLUMN {col} TINYINT(1) NOT NULL DEFAULT 0'))
                 db.session.commit()
@@ -534,6 +545,88 @@ def ensure_pesagem_schema():
         db.session.rollback()
 
 
+def ensure_logistica_schema():
+    """Garante tabelas do Sistema de Controle de Logística e coluna perm_logistica."""
+    from sqlalchemy import Boolean, Date, DateTime, Float, Integer, String, inspect, text
+    from models_logistica import (
+        LogisticaChecklist,
+        LogisticaColeta,
+        LogisticaColaborador,
+        LogisticaEntrega,
+        LogisticaFolga,
+        LogisticaFolha,
+        LogisticaHigiene,
+        LogisticaLancamento,
+        LogisticaManutencao,
+        LogisticaOciosidade,
+        LogisticaRevisao,
+        LogisticaRota,
+        LogisticaVeiculo,
+    )
+    models_cols = (
+        LogisticaVeiculo, LogisticaLancamento, LogisticaManutencao, LogisticaRevisao,
+        LogisticaRota, LogisticaEntrega, LogisticaColaborador, LogisticaFolha,
+        LogisticaFolga, LogisticaOciosidade, LogisticaChecklist, LogisticaHigiene,
+        LogisticaColeta,
+    )
+    try:
+        for model in models_cols:
+            model.__table__.create(db.engine, checkfirst=True)
+    except Exception as exc:
+        db.session.rollback()
+        print(f'Aviso ao criar tabelas de logística: {exc}')
+    try:
+        insp = inspect(db.engine)
+        tables = set(insp.get_table_names())
+        if 'usuarios' in tables:
+            cols = {c['name'] for c in insp.get_columns('usuarios')}
+            if 'perm_logistica' not in cols:
+                db.session.execute(text(
+                    'ALTER TABLE usuarios ADD COLUMN perm_logistica TINYINT(1) NOT NULL DEFAULT 0'
+                ))
+                db.session.commit()
+        extras_por_tabela = {}
+        for model in models_cols:
+            extras = {}
+            for col in model.__table__.columns:
+                if col.primary_key:
+                    continue
+                t = col.type
+                if isinstance(t, String):
+                    ddl = f'VARCHAR({t.length or 255}) NULL'
+                elif isinstance(t, Integer):
+                    ddl = 'INT NULL'
+                elif isinstance(t, Float):
+                    ddl = 'FLOAT NULL DEFAULT 0'
+                elif isinstance(t, Boolean):
+                    ddl = 'TINYINT(1) NOT NULL DEFAULT 0'
+                elif isinstance(t, DateTime):
+                    ddl = 'DATETIME NULL'
+                elif isinstance(t, Date):
+                    ddl = 'DATE NULL'
+                else:
+                    ddl = 'TEXT NULL'
+                extras[col.name] = ddl
+            extras_por_tabela[model.__tablename__] = extras
+        for tabela, extras in extras_por_tabela.items():
+            if tabela not in tables:
+                continue
+            cols = {c['name'] for c in insp.get_columns(tabela)}
+            for col, ddl in extras.items():
+                if col in cols:
+                    continue
+                try:
+                    db.session.execute(text(f'ALTER TABLE {tabela} ADD COLUMN `{col}` {ddl}'))
+                    db.session.commit()
+                    cols.add(col)
+                except Exception as exc:
+                    db.session.rollback()
+                    print(f'Aviso: não foi possível criar {tabela}.{col}: {exc}')
+    except Exception as exc:
+        db.session.rollback()
+        print(f'Aviso ao ajustar schema de logística: {exc}')
+
+
 def ensure_setores_funcao_schema():
     """Cria setores_funcao e semeia os padrões de chamados e nutrição."""
     from sqlalchemy import inspect
@@ -659,6 +752,23 @@ def ensure_estoque_schema():
             ChamadoEstoque.__table__.create(db.engine, checkfirst=True)
         if 'chamado_estoque_usos' not in tables:
             ChamadoEstoqueUso.__table__.create(db.engine, checkfirst=True)
+    except Exception:
+        db.session.rollback()
+
+
+def ensure_whatsapp_chamado_schema():
+    from models import (
+        WhatsAppChamadoConfig,
+        WhatsAppChamadoUsuario,
+        WhatsAppChamadoLog,
+    )
+    try:
+        WhatsAppChamadoConfig.__table__.create(db.engine, checkfirst=True)
+        WhatsAppChamadoUsuario.__table__.create(db.engine, checkfirst=True)
+        WhatsAppChamadoLog.__table__.create(db.engine, checkfirst=True)
+        if not WhatsAppChamadoConfig.query.first():
+            db.session.add(WhatsAppChamadoConfig(ativo=True))
+            db.session.commit()
     except Exception:
         db.session.rollback()
 
@@ -789,20 +899,24 @@ if __name__ == '__main__':
         ensure_chamados_schema()
         ensure_equipamentos_schema()
         ensure_pesagem_schema()
+        ensure_logistica_schema()
         ensure_setores_funcao_schema()
         ensure_operacao_chamados_schema()
         ensure_tecnicos_schema()
         ensure_cameras_schema()
         ensure_portoes_schema()
         ensure_estoque_schema()
+        ensure_whatsapp_chamado_schema()
         from nutricao_tenant import ensure_nutricao_cliente_schema
         ensure_nutricao_cliente_schema()
         from nutricao_service import seed_nutricao
         from routes_pesagem import seed_pesagem
+        from routes_logistica import seed_logistica
         from routes_acesso import seed_acesso
         from audit_service import ensure_audit_table
         seed_nutricao()
         seed_pesagem()
+        seed_logistica()
         seed_acesso()
         ensure_audit_table()
         try:

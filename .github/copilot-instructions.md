@@ -5,7 +5,7 @@ Este é um sistema web de gestão de pedidos e ordens de serviço, desenvolvido 
 - **app.py**: único ponto de entrada. Não recriar `app_updated.py` nem `config.py` como segundo Flask app.
 - **db_config.py**: string de conexão MySQL (`SQLALCHEMY_DATABASE_URI`).
 - **models.py** / **routes.py**: modelos e rotas do núcleo (chamados).
-- **routes_nutricao.py**, **routes_pesagem.py**, **routes_acesso.py**: módulos extras.
+- **routes_nutricao.py**, **routes_pesagem.py**, **routes_acesso.py**, **routes_logistica.py**: módulos extras.
 - **static/**: arquivos estáticos (CSS, JS, imagens).
 - **templates/** e **templates_nutricao/**: templates HTML Jinja2.
 

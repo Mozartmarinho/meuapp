@@ -1,12 +1,12 @@
-{% extends "base_pesagem.html" %}
-{% block title %}Auditoria - Controle de Pesagem{% endblock %}
+{% extends "base_logistica.html" %}
+{% block title %}Auditoria - Controle de Logística{% endblock %}
 {% block content %}
 <div class="page-header">
   <h1>Auditoria</h1>
   <p>Consulta de logs de ações do sistema</p>
 </div>
 
-<form class="toolbar" method="get" action="{{ url_for('pesagem.auditoria') }}" style="flex-wrap:wrap;gap:0.65rem;align-items:flex-end;">
+<form class="toolbar" method="get" action="{{ url_for('logistica.auditoria') }}" style="flex-wrap:wrap;gap:0.65rem;align-items:flex-end;">
   <div class="form-group" style="margin:0;min-width:140px">
     <label class="form-label">De</label>
     <input class="form-control" type="date" name="data_de" value="{{ filtros.data_de }}">

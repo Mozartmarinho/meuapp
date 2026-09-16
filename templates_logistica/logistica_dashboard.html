@@ -1,0 +1,139 @@
+{% extends "base_logistica.html" %}
+{% block title %}Custo operacional{% endblock %}
+{% block content %}
+<div class="page-header" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-start;justify-content:space-between;">
+  <div>
+    <h1>Custo operacional</h1>
+    <p>Abastecimento, pedágio, manutenção e custo por quilômetro da frota.</p>
+  </div>
+</div>
+
+<form class="toolbar card" method="get" action="{{ url_for('logistica.dashboard') }}"
+      style="padding:1rem 1.15rem;margin-bottom:1.25rem;display:flex;flex-wrap:wrap;gap:0.65rem;align-items:flex-end;">
+  <div class="form-group" style="margin:0;min-width:140px;">
+    <label class="form-label" for="filtroDe">De</label>
+    <input class="form-control" type="date" id="filtroDe" name="data_de" value="{{ filtros.data_de }}">
+  </div>
+  <div class="form-group" style="margin:0;min-width:140px;">
+    <label class="form-label" for="filtroAte">Até</label>
+    <input class="form-control" type="date" id="filtroAte" name="data_ate" value="{{ filtros.data_ate }}">
+  </div>
+  <div class="form-group" style="margin:0;min-width:160px;">
+    <label class="form-label" for="filtroPlaca">Placa</label>
+    <select class="form-control" id="filtroPlaca" name="placa">
+      <option value="all">Toda a frota</option>
+      {% for v in veiculos %}
+      <option value="{{ v.placa }}" {% if filtros.placa == v.placa %}selected{% endif %}>{{ v.placa }} — {{ v.modelo }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button class="btn btn-primary" type="submit"><i class="fas fa-search"></i> Filtrar</button>
+</form>
+
+<div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-bottom:1.25rem;">
+  <div class="card" style="padding:1rem 1.15rem;">
+    <div style="color:var(--gray-500);font-size:0.85rem;">Custo total</div>
+    <div style="font-family:var(--font-brand);font-size:1.55rem;font-weight:700;color:var(--brand-navy);">{{ '%.2f'|format(resumo.total) | replace('.', ',') }}</div>
+  </div>
+  <div class="card" style="padding:1rem 1.15rem;">
+    <div style="color:var(--gray-500);font-size:0.85rem;">Abastecimento</div>
+    <div style="font-family:var(--font-brand);font-size:1.55rem;font-weight:700;color:var(--brand-navy);">{{ '%.2f'|format(resumo.abastecimento) }}</div>
+  </div>
+  <div class="card" style="padding:1rem 1.15rem;">
+    <div style="color:var(--gray-500);font-size:0.85rem;">Pedágio</div>
+    <div style="font-family:var(--font-brand);font-size:1.55rem;font-weight:700;color:var(--brand-navy);">{{ '%.2f'|format(resumo.pedagio) }}</div>
+  </div>
+  <div class="card" style="padding:1rem 1.15rem;">
+    <div style="color:var(--gray-500);font-size:0.85rem;">Manutenção</div>
+    <div style="font-family:var(--font-brand);font-size:1.55rem;font-weight:700;color:var(--brand-navy);">{{ '%.2f'|format(resumo.manutencao) }}</div>
+  </div>
+  <div class="card" style="padding:1rem 1.15rem;">
+    <div style="color:var(--gray-500);font-size:0.85rem;">Km / custo por km</div>
+    <div style="font-family:var(--font-brand);font-size:1.35rem;font-weight:700;color:var(--brand-navy);">{{ '%.1f'|format(resumo.km) }} km</div>
+    <div style="font-size:0.8rem;color:var(--gray-500);">R$ {{ '%.4f'|format(resumo.custo_km) }} / km</div>
+  </div>
+  <div class="card" style="padding:1rem 1.15rem;">
+    <div style="color:var(--gray-500);font-size:0.85rem;">Ociosidade</div>
+    <div style="font-family:var(--font-brand);font-size:1.55rem;font-weight:700;color:var(--brand-navy);">{{ '%.2f'|format(resumo.ociosidade) }}</div>
+    <div style="font-size:0.8rem;color:var(--gray-500);">{{ '%.1f'|format(resumo.horas_ociosas) }} h paradas</div>
+  </div>
+  <div class="card" style="padding:1rem 1.15rem;">
+    <div style="color:var(--gray-500);font-size:0.85rem;">Frota / rotas</div>
+    <div style="font-family:var(--font-brand);font-size:1.35rem;font-weight:700;color:var(--brand-navy);">{{ resumo.veiculos }} veículos</div>
+    <div style="font-size:0.8rem;color:var(--gray-500);">{{ resumo.rotas }} rotas ativas</div>
+  </div>
+</div>
+
+<div class="alerta-grid">
+  <div class="card" style="padding:1rem 1.15rem;">
+    <div style="font-weight:700;color:#0D2B5C;margin-bottom:0.5rem;">Revisões</div>
+    {% for item in alertas.revisoes %}
+    <div class="alerta-item">
+      <span class="badge-alerta {{ 'vencida' if item.alerta == 'vencida' else 'proxima' }}">{{ item.alerta }}</span>
+      {{ item.placa or '—' }} — {{ item.tipo }}
+      {% if item.km_restante is not none %} ({{ '%.0f'|format(item.km_restante) }} km){% endif %}
+    </div>
+    {% else %}
+    <div class="alerta-item" style="color:#64748b;">Nenhuma revisão próxima ou vencida.</div>
+    {% endfor %}
+  </div>
+  <div class="card" style="padding:1rem 1.15rem;">
+    <div style="font-weight:700;color:#0D2B5C;margin-bottom:0.5rem;">Boletos (15 dias)</div>
+    {% for item in alertas.boletos %}
+    <div class="alerta-item">{{ item.placa or '—' }} — NF {{ item.nf or '—' }} vence {{ item.vencimento }} · {{ '%.2f'|format(item.valor) }}</div>
+    {% else %}
+    <div class="alerta-item" style="color:#64748b;">Nenhum boleto a vencer.</div>
+    {% endfor %}
+  </div>
+  <div class="card" style="padding:1rem 1.15rem;">
+    <div style="font-weight:700;color:#0D2B5C;margin-bottom:0.5rem;">Folha / folgas do mês</div>
+    <div class="alerta-item">Custo da empresa: {{ '%.2f'|format(alertas.folha_mes) }}</div>
+    <div class="alerta-item">Média por colaborador: {{ '%.2f'|format(alertas.media_funcionario) }}</div>
+    <div class="alerta-item">Folgas lançadas: {{ alertas.folgas|length }}</div>
+  </div>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden;">
+  <div style="padding:0.75rem 1rem;border-bottom:1px solid #e5e7eb;font-weight:700;color:#0D2B5C;">Gasto por veículo</div>
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Placa</th>
+          <th>Abastecimento</th>
+          <th>Pedágio</th>
+          <th>Manutenção</th>
+          <th>Ociosidade</th>
+          <th>Outros</th>
+          <th>Km</th>
+          <th>Custo/km</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in por_veiculo %}
+        <tr>
+          <td><strong>{{ row.placa or '—' }}</strong></td>
+          <td>{{ '%.2f'|format(row.abastecimento) }}</td>
+          <td>{{ '%.2f'|format(row.pedagio) }}</td>
+          <td>{{ '%.2f'|format(row.manutencao) }}</td>
+          <td>{{ '%.2f'|format(row.ociosidade) }}</td>
+          <td>{{ '%.2f'|format(row.outros) }}</td>
+          <td>{{ '%.1f'|format(row.km) }}</td>
+          <td>{{ '%.4f'|format(row.custo_km) }}</td>
+          <td><strong>{{ '%.2f'|format(row.total) }}</strong></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" style="text-align:center;padding:1.5rem;color:#64748b;">Nenhum lançamento no período. Cadastre a frota e os custos nas abas do menu.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<style>
+.data-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.data-table th, .data-table td { padding: 0.55rem 0.7rem; border-bottom: 1px solid #e5e7eb; text-align: left; }
+.data-table th { background: #1f2d4d; color: #fff; }
+.data-table tbody tr:nth-child(even) { background: #f8fafc; }
+</style>
+{% endblock %}

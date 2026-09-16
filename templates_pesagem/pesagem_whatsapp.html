@@ -11,21 +11,26 @@
 
   <div class="wa-grid">
     <section class="card wa-card" id="cardConexao">
-      <h2><i class="fab fa-whatsapp"></i> WhatsApp carregado no sistema</h2>
-      <p class="wa-help">Leia o QR Code com o celular (WhatsApp → Aparelhos conectados). A sessão fica salva neste servidor.</p>
+      <h2><i class="fab fa-whatsapp"></i> WhatsApp Web interno</h2>
+      <p class="wa-help">O sistema abre o site do WhatsApp Web no Chrome deste servidor, como um navegador comum, para reduzir bloqueio. Leia o QR no celular (WhatsApp → Aparelhos conectados). A sessão fica salva aqui.</p>
       <div class="wa-status-row">
         <span class="wa-pill" id="waPill">Verificando…</span>
         <span class="wa-status-text" id="waStatusText"></span>
       </div>
       <div class="wa-qr-wrap" id="waQrWrap">
-        <div class="wa-qr-placeholder" id="waQrPlaceholder">Aguardando QR Code…</div>
+        <div class="wa-qr-placeholder" id="waQrPlaceholder">Abrindo o WhatsApp Web internamente…</div>
         <img id="waQrImg" alt="QR Code WhatsApp" hidden>
+        <div class="wa-connected" id="waConnected" hidden>
+          <i class="fab fa-whatsapp"></i>
+          <strong>WhatsApp carregado</strong>
+          <span id="waConnectedDetail"></span>
+        </div>
       </div>
       <div class="wa-conn-actions">
         <button class="btn btn-secondary" type="button" id="btnWaRefresh">
           <i class="fas fa-rotate"></i> Atualizar
         </button>
-        <button class="btn btn-ghost" type="button" id="btnWaLogout" hidden>
+        <button class="btn btn-wa-logout" type="button" id="btnWaLogout">
           <i class="fas fa-link-slash"></i> Desconectar
         </button>
       </div>
@@ -191,7 +196,36 @@
 }
 .wa-qr-wrap img { width: 220px; height: 220px; object-fit: contain; background: #fff; }
 .wa-qr-placeholder { font-size: 0.78rem; color: #94a3b8; text-align: center; padding: 1.2rem; }
+.wa-qr-wrap.is-connected {
+  border-style: solid;
+  border-color: #86efac;
+  background: #f0fdf4;
+  min-height: 140px;
+}
+.wa-connected {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  text-align: center;
+  color: #166534;
+  padding: 0.9rem 0.6rem;
+}
+.wa-connected[hidden] { display: none !important; }
+.wa-connected i { font-size: 1.8rem; color: #22c55e; }
+.wa-connected strong { font-size: 0.92rem; }
+.wa-connected span { font-size: 0.78rem; color: #15803d; }
 .wa-conn-actions { display: flex; gap: 0.5rem; margin-top: 0.7rem; flex-wrap: wrap; }
+.wa-page .btn-wa-logout {
+  background: #fff;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+.wa-page .btn-wa-logout:hover { background: #fef2f2; color: #991b1b; }
+.wa-page .btn-wa-logout:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 .wa-preview {
   margin: 0;
   white-space: pre-wrap;
@@ -311,28 +345,54 @@ function mostrarQr(src) {
   }
 }
 
+function mostrarConectado(on, detail) {
+  const box = document.getElementById('waConnected');
+  const wrap = document.getElementById('waQrWrap');
+  const ph = document.getElementById('waQrPlaceholder');
+  box.hidden = !on;
+  wrap.classList.toggle('is-connected', !!on);
+  if (on) {
+    ph.hidden = true;
+    document.getElementById('waConnectedDetail').textContent = detail || '';
+  }
+}
+
 async function atualizarStatus() {
   try {
     const r = await fetch('/api/pesagem/whatsapp/status');
     const j = await r.json();
     const st = j.state || 'unavailable';
-    document.getElementById('btnWaLogout').hidden = st !== 'open';
+    const btnLogout = document.getElementById('btnWaLogout');
+    btnLogout.hidden = false;
+    if (!btnLogout.dataset.busy) btnLogout.disabled = false;
     if (st === 'open') {
       const u = j.user || {};
-      setPill(st, u.number ? ('Número ' + u.number) : 'Sessão ativa');
+      const detalhe = [u.name, u.number ? ('Número ' + u.number) : '']
+        .filter(Boolean)
+        .join(' · ') || 'Sessão ativa neste servidor';
+      setPill(st, detalhe);
       mostrarQr('');
-      document.getElementById('waQrPlaceholder').textContent = 'WhatsApp carregado neste servidor.';
-      document.getElementById('waQrPlaceholder').hidden = false;
+      mostrarConectado(true, detalhe);
     } else if (st === 'qr' && j.qr_image) {
+      mostrarConectado(false);
       setPill(st, 'Abra o WhatsApp no celular e aponte a câmera.');
       mostrarQr(j.qr_image);
+    } else if (st === 'connecting') {
+      mostrarConectado(false);
+      setPill(st, 'Abrindo o WhatsApp Web internamente…');
+      mostrarQr('');
+      document.getElementById('waQrPlaceholder').textContent = 'Carregando a página do WhatsApp Web no Chrome do servidor…';
     } else {
+      mostrarConectado(false);
       setPill(st, j.error || 'Aguardando conexão…');
       mostrarQr('');
       document.getElementById('waQrPlaceholder').textContent = j.error || 'Aguardando QR Code…';
     }
+    return st;
   } catch (e) {
+    mostrarConectado(false);
     setPill('unavailable', 'Falha ao consultar o status.');
+    return 'unavailable';
   }
 }
 
@@ -432,8 +492,18 @@ document.getElementById('btnWaRefresh').addEventListener('click', function () {
   atualizarStatus();
   atualizarPreview();
 });
+function sleep(ms) {
+  return new Promise(function (resolve) { setTimeout(resolve, ms); });
+}
+
 document.getElementById('btnWaLogout').addEventListener('click', async function () {
   if (!confirm('Desconectar o WhatsApp deste servidor? Será preciso ler o QR de novo.')) return;
+  const btn = document.getElementById('btnWaLogout');
+  btn.dataset.busy = '1';
+  btn.disabled = true;
+  setPill('connecting', 'Desconectando e gerando um novo QR…');
+  mostrarQr('');
+  document.getElementById('waQrPlaceholder').textContent = 'Encerrando a sessão e reabrindo o WhatsApp Web…';
   try {
     const r = await fetch('/api/pesagem/whatsapp/logout', { method: 'POST' });
     const j = await r.json();
@@ -442,9 +512,16 @@ document.getElementById('btnWaLogout').addEventListener('click', async function 
       return;
     }
     showToast('Desconectado. Um novo QR será gerado.', 'success');
-    atualizarStatus();
+    for (let i = 0; i < 20; i++) {
+      const st = await atualizarStatus();
+      if (st === 'qr' || st === 'open') break;
+      await sleep(1000);
+    }
   } catch (e) {
     showToast('Erro ao desconectar', 'error');
+  } finally {
+    delete btn.dataset.busy;
+    await atualizarStatus();
   }
 });
 document.addEventListener('keydown', function (e) {

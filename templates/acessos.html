@@ -66,6 +66,7 @@
                         <th>Nutrição</th>
                         <th>Pesagem</th>
                         <th>Acesso</th>
+                        <th>Logística</th>
                         <th>Ativo</th>
                         <th></th>
                     </tr>
@@ -82,11 +83,12 @@
                         <td><span class="badge {{ 'on' if item.tem_sistema('nutricao') else 'off' }}">{{ 'Sim' if item.tem_sistema('nutricao') else 'Não' }}</span></td>
                         <td><span class="badge {{ 'on' if item.tem_sistema('pesagem') else 'off' }}">{{ 'Sim' if item.tem_sistema('pesagem') else 'Não' }}</span></td>
                         <td><span class="badge {{ 'on' if item.tem_sistema('acesso') else 'off' }}">{{ 'Sim' if item.tem_sistema('acesso') else 'Não' }}</span></td>
+                        <td><span class="badge {{ 'on' if item.tem_sistema('logistica') else 'off' }}">{{ 'Sim' if item.tem_sistema('logistica') else 'Não' }}</span></td>
                         <td><span class="badge {{ 'on' if item.ativo else 'off' }}">{{ 'Sim' if item.ativo else 'Não' }}</span></td>
                         <td><a class="btn btn-primary" href="{{ url_for('main.editar_acesso', id=item.id) }}">Editar</a></td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="8">Nenhum acesso cadastrado.</td></tr>
+                    <tr><td colspan="9">Nenhum acesso cadastrado.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

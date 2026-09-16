@@ -353,6 +353,7 @@ class Usuario(db.Model):
     perm_chamados = db.Column(db.Boolean, default=False)
     perm_nutricao = db.Column(db.Boolean, default=False)
     perm_pesagem = db.Column(db.Boolean, default=False)
+    perm_logistica = db.Column(db.Boolean, default=False)
     perm_acesso = db.Column(db.Boolean, default=False)
     perm_portal = db.Column(db.Boolean, default=False)
     setor = db.Column(db.String(80))
@@ -738,6 +739,61 @@ class ChamadoAutomacao(db.Model):
     ativa = db.Column(db.Boolean, default=True, nullable=False)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     mesa = db.relationship('MesaServico', foreign_keys=[mesa_id])
+
+
+class WhatsAppChamadoConfig(db.Model):
+    """Liga/desliga o atendimento de mensagens no número logado."""
+    __tablename__ = 'whatsapp_chamado_config'
+
+    id = db.Column(db.Integer, primary_key=True)
+    ativo = db.Column(db.Boolean, default=True, nullable=False)
+    atualizado_em = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class WhatsAppChamadoUsuario(db.Model):
+    """Cadastro do contato que falou com o WhatsApp de chamados."""
+    __tablename__ = 'whatsapp_chamado_usuarios'
+
+    id = db.Column(db.Integer, primary_key=True)
+    telefone = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    nome = db.Column(db.String(120))
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), index=True)
+    setor_id = db.Column(db.Integer, db.ForeignKey('chamado_setores.id'), index=True)
+    etapa = db.Column(db.String(30), default='novo', nullable=False)
+    lista_json = db.Column(db.Text)
+    criado_em = db.Column(db.DateTime, default=datetime.utcnow)
+    atualizado_em = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    cliente = db.relationship('Cliente', foreign_keys=[cliente_id])
+    setor = db.relationship('ChamadoSetor', foreign_keys=[setor_id])
+
+    def completo(self):
+        return bool((self.nome or '').strip() and self.cliente_id and self.setor_id)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'telefone': self.telefone,
+            'nome': self.nome or '',
+            'cliente_id': self.cliente_id,
+            'cliente': self.cliente.nome if self.cliente else '',
+            'setor_id': self.setor_id,
+            'setor': self.setor.nome if self.setor else '',
+            'etapa': self.etapa or '',
+            'atualizado_em': self.atualizado_em.strftime('%d/%m/%Y %H:%M') if self.atualizado_em else '',
+        }
+
+
+class WhatsAppChamadoLog(db.Model):
+    """Últimas mensagens do bot de chamados (entrada/saída)."""
+    __tablename__ = 'whatsapp_chamado_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('whatsapp_chamado_usuarios.id'), index=True)
+    telefone = db.Column(db.String(20), index=True)
+    direcao = db.Column(db.String(8), nullable=False)
+    texto = db.Column(db.Text)
+    criado_em = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    usuario = db.relationship('WhatsAppChamadoUsuario', foreign_keys=[usuario_id])
 
 
 class ChamadoRamal(db.Model):

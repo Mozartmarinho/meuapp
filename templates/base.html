@@ -173,6 +173,14 @@
                 </a>
             </li>
             {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'whatsapp_mensagem') %}
+            <li>
+                <a href="/chamados/whatsapp-mensagem" class="{% if request.path == '/chamados/whatsapp-mensagem' %}active{% endif %}" title="Conf. Mensagem WhatsApp">
+                    <i class="fab fa-whatsapp menu-icon"></i>
+                    <span class="menu-label">Conf. Mensagem WhatsApp</span>
+                </a>
+            </li>
+            {% endif %}
             {% if usuario_atual and usuario_atual.tem_menu('chamados', 'auditoria') %}
             <li>
                 <a href="{{ url_for('main.auditoria') }}" class="{% if request.endpoint == 'main.auditoria' %}active{% endif %}" title="Auditoria">

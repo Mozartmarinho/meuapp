@@ -4,11 +4,15 @@ from __future__ import annotations
 import json
 import logging
 import os
+import secrets
 import shutil
 import socket
 import subprocess
 import threading
 import time
+import urllib.error
+import urllib.request
+import zipfile
 from datetime import date, datetime, time as dt_time, timedelta
 from pathlib import Path
 
@@ -25,9 +29,15 @@ BRIDGE_PORT = int(os.environ.get('PESAGEM_WA_BRIDGE_PORT', '31085'))
 BRIDGE_HOST = os.environ.get('PESAGEM_WA_BRIDGE_HOST', '127.0.0.1')
 BRIDGE_URL = f'http://{BRIDGE_HOST}:{BRIDGE_PORT}'
 SCHEDULER_INTERVAL = int(os.environ.get('PESAGEM_WA_SCHEDULER_SEC', '20'))
+NODE_RUNTIME_DIR = BRIDGE_DIR / 'runtime' / 'node'
+NODE_WIN_ZIP_URL = os.environ.get(
+    'PESAGEM_WA_NODE_ZIP',
+    'https://nodejs.org/dist/v20.19.5/node-v20.19.5-win-x64.zip',
+)
 
 _bg_lock = threading.Lock()
 _bg_started = False
+_node_provision_lock = threading.Lock()
 
 
 def formatar_kg(valor):
@@ -133,28 +143,267 @@ def _port_open(host, port, timeout=0.4):
         sock.close()
 
 
+def _portable_node():
+    direct = NODE_RUNTIME_DIR / ('node.exe' if os.name == 'nt' else 'bin/node')
+    if direct.is_file():
+        return str(direct)
+    runtime_root = BRIDGE_DIR / 'runtime'
+    if not runtime_root.is_dir():
+        return None
+    name = 'node.exe' if os.name == 'nt' else 'node'
+    for candidate in runtime_root.rglob(name):
+        if candidate.is_file() and candidate.name == name:
+            return str(candidate)
+    return None
+
+
 def _which_node():
-    return shutil.which('node') or shutil.which('nodejs')
+    found = shutil.which('node') or shutil.which('nodejs')
+    if found:
+        return found
+    extras = [
+        Path(r'C:\Program Files\nodejs\node.exe'),
+        Path(r'C:\Program Files (x86)\nodejs\node.exe'),
+        Path('/usr/bin/node'),
+        Path('/usr/local/bin/node'),
+    ]
+    for candidate in extras:
+        if candidate.is_file():
+            return str(candidate)
+    return _portable_node()
 
 
 def _which_npm():
-    return shutil.which('npm')
+    found = shutil.which('npm') or shutil.which('npm.cmd')
+    if found:
+        return found
+    node = _which_node()
+    if node:
+        npm_name = 'npm.cmd' if os.name == 'nt' else 'npm'
+        sibling = Path(node).parent / npm_name
+        if sibling.is_file():
+            return str(sibling)
+    extras = [
+        Path(r'C:\Program Files\nodejs\npm.cmd'),
+        Path(r'C:\Program Files (x86)\nodejs\npm.cmd'),
+        Path('/usr/bin/npm'),
+        Path('/usr/local/bin/npm'),
+    ]
+    for candidate in extras:
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def inbound_token():
+    path = BRIDGE_DIR / '.token'
+    try:
+        if path.is_file():
+            token = path.read_text(encoding='utf-8').strip()
+            if token:
+                return token
+        token = secrets.token_hex(24)
+        path.write_text(token, encoding='utf-8')
+        return token
+    except OSError:
+        return os.environ.get('PESAGEM_WA_INBOUND_TOKEN', '')
+
+
+def _inbound_url():
+    if os.environ.get('PESAGEM_WA_INBOUND_URL'):
+        return os.environ['PESAGEM_WA_INBOUND_URL']
+    port = str(os.environ.get('PORT', '80') or '80')
+    if port in ('80', '443'):
+        return 'http://127.0.0.1/api/chamados/whatsapp/inbound'
+    return 'http://127.0.0.1:%s/api/chamados/whatsapp/inbound' % port
+
+
+def _bridge_env():
+    env = os.environ.copy()
+    node = _which_node()
+    if node:
+        node_dir = str(Path(node).parent)
+        env['PATH'] = node_dir + os.pathsep + env.get('PATH', '')
+    env['PESAGEM_WA_BRIDGE_PORT'] = str(BRIDGE_PORT)
+    env['PESAGEM_WA_BRIDGE_HOST'] = BRIDGE_HOST
+    env['PUPPETEER_SKIP_DOWNLOAD'] = '1'
+    env['PESAGEM_WA_INBOUND_URL'] = _inbound_url()
+    env['PESAGEM_WA_INBOUND_TOKEN'] = inbound_token()
+    return env
+
+
+def _npm_argv():
+    node = _which_node()
+    if node:
+        cli = Path(node).parent / 'node_modules' / 'npm' / 'bin' / 'npm-cli.js'
+        if cli.is_file():
+            return [node, str(cli)]
+    npm = _which_npm()
+    if npm:
+        return [npm]
+    return None
+
+
+def ensure_node_runtime():
+    """Usa Node do sistema ou baixa um portátil (Windows) sem instalação de administrador."""
+    if _which_node():
+        return True
+    if os.name != 'nt' or _disabled():
+        return False
+    with _node_provision_lock:
+        if _which_node():
+            return True
+        NODE_RUNTIME_DIR.parent.mkdir(parents=True, exist_ok=True)
+        zip_path = NODE_RUNTIME_DIR.parent / 'node.zip'
+        extract_dir = NODE_RUNTIME_DIR.parent / 'node-extract'
+        try:
+            logger.info('Baixando Node.js portátil para o WhatsApp Web interno')
+            req = urllib.request.Request(
+                NODE_WIN_ZIP_URL,
+                headers={'User-Agent': 'Mozilla/5.0 pesagem-whatsapp'},
+            )
+            with urllib.request.urlopen(req, timeout=180) as resp, open(zip_path, 'wb') as out:
+                shutil.copyfileobj(resp, out)
+            if extract_dir.exists():
+                shutil.rmtree(extract_dir, ignore_errors=True)
+            extract_dir.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                zf.extractall(extract_dir)
+            inner = None
+            for child in extract_dir.iterdir():
+                if child.is_dir() and (child / 'node.exe').is_file():
+                    inner = child
+                    break
+            if NODE_RUNTIME_DIR.exists():
+                shutil.rmtree(NODE_RUNTIME_DIR, ignore_errors=True)
+            if inner:
+                shutil.move(str(inner), str(NODE_RUNTIME_DIR))
+            elif (extract_dir / 'node.exe').is_file():
+                shutil.move(str(extract_dir), str(NODE_RUNTIME_DIR))
+            else:
+                logger.warning('Zip do Node.js sem node.exe')
+                return False
+            shutil.rmtree(extract_dir, ignore_errors=True)
+            try:
+                zip_path.unlink()
+            except OSError:
+                pass
+        except (OSError, zipfile.BadZipFile, urllib.error.URLError) as exc:
+            logger.warning('Falha ao baixar Node.js portátil: %s', exc)
+            return False
+        return bool(_portable_node())
+
+
+def _kill_pid(pid):
+    if not pid or pid <= 0:
+        return
+    try:
+        if os.name == 'nt':
+            subprocess.run(
+                ['taskkill', '/PID', str(pid), '/T', '/F'],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        else:
+            os.kill(pid, 15)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def _pids_listening(port):
+    pids = set()
+    try:
+        if os.name == 'nt':
+            proc = subprocess.run(
+                ['netstat', '-ano'],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            needle = ':%s' % port
+            for line in (proc.stdout or '').splitlines():
+                if needle not in line:
+                    continue
+                upper = line.upper()
+                if 'LISTENING' not in upper and 'OUVINDO' not in upper:
+                    continue
+                parts = line.split()
+                if not parts:
+                    continue
+                try:
+                    pids.add(int(parts[-1]))
+                except ValueError:
+                    continue
+        else:
+            proc = subprocess.run(
+                ['lsof', '-t', '-iTCP:%s' % port, '-sTCP:LISTEN'],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            for line in (proc.stdout or '').splitlines():
+                try:
+                    pids.add(int(line.strip()))
+                except ValueError:
+                    continue
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    pids.discard(0)
+    return pids
+
+
+def _stop_bridge_process():
+    pid_path = BRIDGE_DIR / 'bridge.pid'
+    if pid_path.is_file():
+        try:
+            _kill_pid(int(pid_path.read_text(encoding='utf-8').strip()))
+        except (OSError, ValueError):
+            pass
+        try:
+            pid_path.unlink()
+        except OSError:
+            pass
+    for pid in _pids_listening(BRIDGE_PORT):
+        _kill_pid(pid)
+    for _ in range(20):
+        if not _port_open(BRIDGE_HOST, BRIDGE_PORT):
+            return True
+        time.sleep(0.2)
+    return not _port_open(BRIDGE_HOST, BRIDGE_PORT)
+
+
+def _bridge_health_engine():
+    """'web', 'legacy' ou None se a porta ainda não responde HTTP."""
+    try:
+        resp = requests.get(BRIDGE_URL + '/health', timeout=1.2)
+        data = resp.json() if resp.content else {}
+        if data.get('engine') == 'web':
+            return 'web'
+        return 'legacy'
+    except (requests.RequestException, ValueError):
+        return None
+
+
+def _web_lib_installed():
+    return (BRIDGE_DIR / 'node_modules' / 'whatsapp-web.js').exists()
 
 
 def ensure_bridge_installed():
-    if (BRIDGE_DIR / 'node_modules' / '@whiskeysockets' / 'baileys').exists():
+    if _web_lib_installed():
         return True
-    npm = _which_npm()
-    if not npm:
+    npm_argv = _npm_argv()
+    if not npm_argv:
         return False
     BRIDGE_DIR.mkdir(parents=True, exist_ok=True)
     try:
         proc = subprocess.run(
-            [npm, 'install', '--omit=dev'],
+            npm_argv + ['install', '--omit=dev'],
             cwd=str(BRIDGE_DIR),
             capture_output=True,
             text=True,
-            timeout=240,
+            timeout=600,
+            env=_bridge_env(),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         logger.warning('npm install WhatsApp bridge falhou: %s', exc)
@@ -162,14 +411,21 @@ def ensure_bridge_installed():
     if proc.returncode != 0:
         logger.warning('npm install WhatsApp bridge rc=%s: %s', proc.returncode, proc.stderr[-800:])
         return False
-    return (BRIDGE_DIR / 'node_modules' / '@whiskeysockets' / 'baileys').exists()
+    return _web_lib_installed()
 
 
 def start_bridge_process():
-    """Sobe o processo Node (QR + sessão) se a porta ainda não estiver em uso."""
+    """Sobe o processo Node (WhatsApp Web no Chrome) se a porta ainda não estiver em uso."""
     if _port_open(BRIDGE_HOST, BRIDGE_PORT):
-        return True
+        engine = _bridge_health_engine()
+        if engine == 'web' or engine is None:
+            return True
+        logger.info('Reiniciando ponte WhatsApp para o motor Web interno')
+        _stop_bridge_process()
     node = _which_node()
+    if not node:
+        ensure_node_runtime()
+        node = _which_node()
     if not node:
         return False
     if not ensure_bridge_installed():
@@ -178,27 +434,31 @@ def start_bridge_process():
     if not index_js.is_file():
         return False
     (BRIDGE_DIR / 'auth').mkdir(parents=True, exist_ok=True)
-    env = os.environ.copy()
-    env['PESAGEM_WA_BRIDGE_PORT'] = str(BRIDGE_PORT)
-    env['PESAGEM_WA_BRIDGE_HOST'] = BRIDGE_HOST
+    env = _bridge_env()
     log_path = BRIDGE_DIR / 'bridge.log'
     try:
         log_f = open(log_path, 'a', encoding='utf-8')
-        subprocess.Popen(
-            [node, str(index_js)],
-            cwd=str(BRIDGE_DIR),
-            env=env,
-            stdout=log_f,
-            stderr=log_f,
-            start_new_session=True,
-        )
+        popen_kw = {
+            'cwd': str(BRIDGE_DIR),
+            'env': env,
+            'stdout': log_f,
+            'stderr': log_f,
+        }
+        if os.name == 'nt':
+            popen_kw['creationflags'] = (
+                getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+                | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
+            )
+        else:
+            popen_kw['start_new_session'] = True
+        subprocess.Popen([node, str(index_js)], **popen_kw)
     except OSError as exc:
         logger.warning('Falha ao iniciar bridge WhatsApp: %s', exc)
         return False
-    for _ in range(40):
+    for _ in range(80):
         if _port_open(BRIDGE_HOST, BRIDGE_PORT):
             return True
-        time.sleep(0.25)
+        time.sleep(0.35)
     return _port_open(BRIDGE_HOST, BRIDGE_PORT)
 
 
@@ -210,7 +470,9 @@ def _bridge_unavailable_reason():
     if _disabled():
         return 'WhatsApp desabilitado neste ambiente.'
     if not _which_node():
-        return 'Instale o Node.js 18+ no servidor para o QR Code do WhatsApp.'
+        ensure_node_runtime()
+    if not _which_node():
+        return 'Não foi possível preparar o Node.js para o WhatsApp Web interno.'
     if not (BRIDGE_DIR / 'index.js').is_file():
         return 'Arquivos da ponte WhatsApp não encontrados.'
     if not ensure_bridge_installed():
@@ -235,6 +497,7 @@ def status_whatsapp(auto_start=True):
         if reason and not _port_open(BRIDGE_HOST, BRIDGE_PORT):
             return {
                 'ok': True,
+                'engine': 'web',
                 'state': 'unavailable',
                 'qr': None,
                 'qr_image': None,
@@ -245,10 +508,14 @@ def status_whatsapp(auto_start=True):
         resp = _bridge_get('/status')
         data = resp.json() if resp.content else {}
         data.setdefault('ok', resp.ok)
+        data.setdefault('engine', 'web')
+        if isinstance(data, dict):
+            data.pop('qr', None)
         return data
     except (requests.RequestException, ValueError) as exc:
         return {
             'ok': False,
+            'engine': 'web',
             'state': 'unavailable',
             'qr': None,
             'qr_image': None,
@@ -258,10 +525,24 @@ def status_whatsapp(auto_start=True):
 
 
 def logout_whatsapp():
-    start_bridge_process()
+    if _disabled():
+        return {'ok': False, 'error': 'WhatsApp desabilitado neste ambiente.'}
+    reason = _bridge_unavailable_reason()
+    if reason and not _port_open(BRIDGE_HOST, BRIDGE_PORT):
+        return {'ok': False, 'error': reason}
+    st = status_whatsapp(auto_start=False)
+    if st.get('state') != 'open':
+        return {
+            'ok': True,
+            'state': st.get('state'),
+            'qr_image': st.get('qr_image'),
+        }
     try:
-        resp = _bridge_post('/logout', timeout=20)
-        return resp.json() if resp.content else {'ok': resp.ok}
+        resp = _bridge_post('/logout', timeout=90)
+        data = resp.json() if resp.content else {'ok': resp.ok}
+        if isinstance(data, dict):
+            data.setdefault('ok', resp.ok)
+        return data
     except (requests.RequestException, ValueError) as exc:
         return {'ok': False, 'error': str(exc)}
 

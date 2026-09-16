@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Conf. Mensagem WhatsApp{% endblock %}
+{% block content %}
+<div class="mdk-crud wa-msg-page">
+  <h1>Conf. Mensagem WhatsApp</h1>
+  <p class="chamados-sub">Toda mensagem recebida no número logado inicia o cadastro ou a abertura de ticket de manutenção.</p>
+
+  <div class="wa-msg-grid">
+    <section class="mdk-card">
+      <h3><i class="fab fa-whatsapp"></i> Número logado</h3>
+      <p class="mdk-empty" style="text-align:left;padding:0 0 0.6rem">O WhatsApp Web interno deste servidor recebe as mensagens e responde automaticamente.</p>
+      <div class="wa-status-row">
+        <span class="wa-pill" id="waPill">Verificando…</span>
+        <span id="waStatusText" class="wa-status-text"></span>
+      </div>
+      <label class="wa-toggle">
+        <input type="checkbox" id="waAtivo" {% if config.ativo %}checked{% endif %}>
+        Atender mensagens de chamado
+      </label>
+    </section>
+
+    <section class="mdk-card">
+      <h3>Fluxo da conversa</h3>
+      <ol class="wa-fluxo">
+        <li>Número novo: cumprimento + nome completo.</li>
+        <li>Lista de unidades (clientes) de 1 até o último.</li>
+        <li>Lista de setores cadastrados de 1 até o último.</li>
+        <li>Número já cadastrado: confirma cliente e setor (1 sim / 2 não).</li>
+        <li>Se 2: editar unidade, setor ou voltar.</li>
+        <li>Se 1: pede o patrimônio e abre o ticket vinculado.</li>
+      </ol>
+    </section>
+  </div>
+
+  <section class="mdk-card" style="padding:0;overflow:visible;">
+    <div class="wa-dest-head">
+      <div>
+        <h3 style="margin:0">Cadastro de usuário WhatsApp</h3>
+        <p class="mdk-empty" style="text-align:left;margin:0.25rem 0 0;padding:0">Contatos que já informaram nome, unidade e setor.</p>
+      </div>
+    </div>
+    <table class="mdk-table">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Telefone</th>
+          <th>Unidade</th>
+          <th>Setor</th>
+          <th>Etapa</th>
+          <th>Atualizado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in usuarios %}
+        <tr>
+          <td>{{ u.nome or '—' }}</td>
+          <td>{{ u.telefone }}</td>
+          <td>{{ u.cliente or '—' }}</td>
+          <td>{{ u.setor or '—' }}</td>
+          <td>{{ u.etapa }}</td>
+          <td>{{ u.atualizado_em or '—' }}</td>
+          <td>
+            <button type="button" class="mdk-btn" onclick="excluirUsuario({{ u.id }})">Excluir</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="mdk-empty">Nenhum usuário WhatsApp cadastrado ainda.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+<style>
+.wa-msg-grid { display:grid; grid-template-columns: 1fr 1fr; gap:0.8rem; margin-bottom:0.8rem; }
+@media (max-width: 860px) { .wa-msg-grid { grid-template-columns: 1fr; } }
+.wa-status-row { display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.7rem; }
+.wa-pill { display:inline-flex; padding:0.18rem 0.55rem; border-radius:999px; font-size:0.72rem; font-weight:700; background:#e2e8f0; color:#334155; }
+.wa-pill.is-open { background:#dcfce7; color:#166534; }
+.wa-pill.is-qr { background:#fef9c3; color:#854d0e; }
+.wa-pill.is-off { background:#fee2e2; color:#991b1b; }
+.wa-status-text { font-size:0.78rem; color:#475569; }
+.wa-toggle { display:flex; align-items:center; gap:0.45rem; font-size:0.84rem; color:#0f2a5c; }
+.wa-fluxo { margin:0; padding-left:1.15rem; font-size:0.8rem; color:#334155; line-height:1.45; }
+.wa-dest-head { padding:1rem 1.15rem 0.5rem; }
+</style>
+{% endblock %}
+{% block scripts %}
+<script>
+function setPill(state, text) {
+  const pill = document.getElementById('waPill');
+  pill.className = 'wa-pill';
+  let title = 'Verificando';
+  if (state === 'open') { pill.classList.add('is-open'); title = 'Conectado'; }
+  else if (state === 'qr') { pill.classList.add('is-qr'); title = 'Leia o QR'; }
+  else { pill.classList.add('is-off'); title = state === 'unavailable' ? 'Indisponível' : 'Desconectado'; }
+  pill.textContent = title;
+  document.getElementById('waStatusText').textContent = text || '';
+}
+async function atualizarStatus() {
+  try {
+    const r = await fetch('/api/chamados/whatsapp/status');
+    const j = await r.json();
+    const st = j.state || 'unavailable';
+    const u = j.user || {};
+    let text = j.error || '';
+    if (st === 'open') text = u.number ? ('Número ' + u.number) : 'Sessão ativa';
+    else if (st === 'qr') text = 'Conecte o WhatsApp pelo QR em Controle de Pesagem → Conf. WhatsApp, ou aguarde o QR neste servidor.';
+    setPill(st, text);
+    if (typeof j.atendimento_ativo === 'boolean') {
+      document.getElementById('waAtivo').checked = j.atendimento_ativo;
+    }
+  } catch (e) {
+    setPill('unavailable', 'Falha ao consultar o WhatsApp.');
+  }
+}
+document.getElementById('waAtivo').addEventListener('change', async function () {
+  try {
+    const r = await fetch('/api/chamados/whatsapp/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ativo: this.checked }),
+    });
+    const j = await r.json();
+    if (!r.ok || j.ok === false) throw new Error(j.error || 'Falha');
+    if (window.showToast) showToast(this.checked ? 'Atendimento ligado' : 'Atendimento desligado', 'success');
+  } catch (e) {
+    this.checked = !this.checked;
+    if (window.showToast) showToast('Não foi possível salvar', 'error');
+  }
+});
+async function excluirUsuario(id) {
+  if (!confirm('Excluir este cadastro WhatsApp?')) return;
+  const r = await fetch('/api/chamados/whatsapp/usuarios/' + id, { method: 'DELETE' });
+  const j = await r.json();
+  if (!r.ok || j.ok === false) {
+    if (window.showToast) showToast(j.error || 'Falha ao excluir', 'error');
+    return;
+  }
+  location.reload();
+}
+atualizarStatus();
+setInterval(atualizarStatus, 4000);
+</script>
+{% endblock %}

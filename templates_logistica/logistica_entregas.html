@@ -1,0 +1,134 @@
+{% extends "base_logistica.html" %}
+{% block title %}Mapa de entregas{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+{% endblock %}
+{% block content %}
+<div class="page-header" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;justify-content:space-between;">
+  <div>
+    <h1>Mapa de entregas</h1>
+    <p>Pontos da grade com latitude, longitude e status da entrega.</p>
+  </div>
+  <button class="btn btn-primary" type="button" id="btnNovo"><i class="fas fa-plus"></i> Novo ponto</button>
+</div>
+<div id="mapaEntregas" style="height:380px;border-radius:12px;margin-bottom:1rem;border:1px solid #dbe4f0;"></div>
+<div class="card" style="padding:0;overflow:auto;">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Ponto</th>
+        <th>Rota</th>
+        <th>Endereço</th>
+        <th>Lat / Lng</th>
+        <th>Status</th>
+        <th>Ações</th>
+      </tr>
+    </thead>
+    <tbody id="tbodyEntregas"></tbody>
+  </table>
+</div>
+<style>
+.data-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.data-table th, .data-table td { padding: 0.55rem 0.7rem; border-bottom: 1px solid #e5e7eb; text-align: left; }
+.data-table th { background: #1f2d4d; color: #fff; }
+.form-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.7rem; }
+.form-grid .full { grid-column: 1 / -1; }
+</style>
+{% endblock %}
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+(function () {
+  var rotas = {{ rotas_js | default([], true) | tojson }};
+  var statusList = {{ status_entrega | list | tojson }};
+  var map = L.map('mapaEntregas').setView([-22.9068, -43.1729], 11);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
+  var layer = L.layerGroup().addTo(map);
+
+  function escapeHtml(str) {
+    return String(str || '').replace(/[&<>"']/g, function (ch) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+    });
+  }
+  function optionsRota(selected) {
+    return '<option value="">—</option>' + rotas.map(function (r) {
+      return '<option value="' + r.id + '"' + (String(r.id) === String(selected) ? ' selected' : '') + '>' + escapeHtml(r.nome) + '</option>';
+    }).join('');
+  }
+  function optionsStatus(selected) {
+    return statusList.map(function (s) {
+      return '<option value="' + s + '"' + (s === selected ? ' selected' : '') + '>' + s + '</option>';
+    }).join('');
+  }
+
+  async function load() {
+    var res = await fetch('/api/logistica/entregas');
+    var data = await res.json();
+    var rows = data.rows || [];
+    layer.clearLayers();
+    var bounds = [];
+    rows.forEach(function (row) {
+      if (row.lat != null && row.lng != null) {
+        var m = L.marker([row.lat, row.lng]).bindPopup('<strong>' + escapeHtml(row.nome) + '</strong><br>' + escapeHtml(row.endereco || '') + '<br>' + escapeHtml(row.status || ''));
+        layer.addLayer(m);
+        bounds.push([row.lat, row.lng]);
+      }
+    });
+    if (bounds.length) map.fitBounds(bounds, { padding: [24, 24] });
+    var body = document.getElementById('tbodyEntregas');
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:1.2rem;color:#64748b;">Nenhum ponto cadastrado.</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map(function (row) {
+      return '<tr><td><strong>' + escapeHtml(row.nome) + '</strong></td><td>' + escapeHtml(row.rota) + '</td><td>' + escapeHtml(row.endereco) + '</td><td>' +
+        (row.lat != null ? row.lat + ', ' + row.lng : '—') + '</td><td>' + escapeHtml(row.status) + '</td><td>' +
+        '<button class="btn btn-ghost btn-sm" type="button" data-edit=\'' + encodeURIComponent(JSON.stringify(row)) + '\'><i class="fas fa-edit"></i></button> ' +
+        '<button class="btn btn-ghost btn-sm" type="button" data-del="' + row.id + '"><i class="fas fa-trash"></i></button></td></tr>';
+    }).join('');
+  }
+
+  function openForm(row) {
+    row = row || {};
+    var html = '<div class="form-grid">' +
+      '<div class="form-group full"><label class="form-label">Ponto</label><input class="form-control" id="f-nome" value="' + escapeHtml(row.nome || '') + '"></div>' +
+      '<div class="form-group"><label class="form-label">Rota</label><select class="form-control" id="f-rota_id">' + optionsRota(row.rota_id) + '</select></div>' +
+      '<div class="form-group"><label class="form-label">Status</label><select class="form-control" id="f-status">' + optionsStatus(row.status || 'Pendente') + '</select></div>' +
+      '<div class="form-group full"><label class="form-label">Endereço</label><input class="form-control" id="f-endereco" value="' + escapeHtml(row.endereco || '') + '"></div>' +
+      '<div class="form-group"><label class="form-label">Latitude</label><input class="form-control" id="f-lat" value="' + (row.lat != null ? row.lat : '') + '"></div>' +
+      '<div class="form-group"><label class="form-label">Longitude</label><input class="form-control" id="f-lng" value="' + (row.lng != null ? row.lng : '') + '"></div>' +
+      '</div>';
+    abrirModal(row.id ? 'Editar ponto' : 'Novo ponto', html, 'Gravar', async function () {
+      var payload = {
+        nome: document.getElementById('f-nome').value,
+        rota_id: document.getElementById('f-rota_id').value,
+        status: document.getElementById('f-status').value,
+        endereco: document.getElementById('f-endereco').value,
+        lat: document.getElementById('f-lat').value,
+        lng: document.getElementById('f-lng').value
+      };
+      var url = '/api/logistica/entregas' + (row.id ? '/' + row.id : '');
+      var res = await fetch(url, { method: row.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      var data = await res.json();
+      if (!data.ok) { showToast(data.error || 'Falha ao gravar.', 'error'); return; }
+      fecharModal();
+      showToast('Ponto gravado.');
+      load();
+    });
+  }
+
+  document.getElementById('btnNovo').addEventListener('click', function () { openForm({}); });
+  document.getElementById('tbodyEntregas').addEventListener('click', async function (ev) {
+    var edit = ev.target.closest('[data-edit]');
+    if (edit) { openForm(JSON.parse(decodeURIComponent(edit.getAttribute('data-edit')))); return; }
+    var del = ev.target.closest('[data-del]');
+    if (!del) return;
+    if (!confirm('Excluir este ponto?')) return;
+    await fetch('/api/logistica/entregas/' + del.getAttribute('data-del'), { method: 'DELETE' });
+    showToast('Ponto excluído.');
+    load();
+  });
+  load();
+})();
+</script>
+{% endblock %}

@@ -134,10 +134,22 @@ class PesagemWhatsAppTest(unittest.TestCase):
         self.assertIn('Conf. WhatsApp', html)
         self.assertIn('Enviar para', html)
         self.assertIn('QR Code', html)
+        self.assertIn('Desconectar', html)
+        self.assertIn('btnWaLogout', html)
+        self.assertIn('/api/pesagem/whatsapp/logout', html)
+        self.assertIn('WhatsApp Web interno', html)
+        self.assertIn('waConnected', html)
+        self.assertNotIn('id="btnWaLogout" hidden', html)
         self.assertIn('d-nome', html)
         self.assertIn('d-telefone', html)
         self.assertIn('d-hora', html)
         self.assertIn('d-mensagem', html)
+
+    def test_logout_desabilitado_no_ambiente_de_teste(self):
+        from whatsapp_pesagem import logout_whatsapp
+        result = logout_whatsapp()
+        self.assertFalse(result.get('ok'))
+        self.assertIn('desabilitado', (result.get('error') or '').lower())
 
     def test_crud_destino(self):
         r = self.client.post('/api/pesagem/whatsapp/destinos', json={

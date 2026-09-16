@@ -37,6 +37,7 @@ from models import (
     ChamadoEstoqueUso,
     ConhecimentoPasta,
     SetorFuncao,
+    WhatsAppChamadoUsuario,
     now_brasilia,
     TIPO_FOTO_CONSERTO,
     TIPO_FOTO_ENCAMINHAMENTO,
@@ -211,6 +212,10 @@ _CHAMADOS_ENDPOINT_MENUS = {
     'main.ver_conhecimento': 'conhecimentos',
     'main.nova_pasta_conhecimento': 'conhecimentos',
     'main.automacoes': 'automacoes',
+    'main.whatsapp_mensagem': 'whatsapp_mensagem',
+    'main.api_chamados_whatsapp_status': 'whatsapp_mensagem',
+    'main.api_chamados_whatsapp_config': 'whatsapp_mensagem',
+    'main.api_chamados_whatsapp_usuario': 'whatsapp_mensagem',
     'main.auditoria': 'auditoria',
     'main.mensagem_chamado': 'chamados',
     'main.atualizar_mesa_chamado': 'chamados',
@@ -4119,3 +4124,72 @@ def equipamentos_por_cliente(cliente_ref):
         }
         for e in equipamentos
     ])
+
+
+@main.route('/chamados/whatsapp-mensagem')
+@login_required
+def whatsapp_mensagem():
+    from whatsapp_chamados import config_ativa
+    cfg = config_ativa()
+    usuarios = WhatsAppChamadoUsuario.query.order_by(
+        WhatsAppChamadoUsuario.atualizado_em.desc()
+    ).all()
+    return render_template(
+        'whatsapp_mensagem.html',
+        config=cfg,
+        usuarios=[u.to_dict() for u in usuarios],
+        clientes=[{'id': c.id, 'nome': c.nome} for c in _clientes_para_chamados()],
+        setores=[{'id': s.id, 'nome': s.nome} for s in ChamadoSetor.query.filter_by(ativo=True).order_by(ChamadoSetor.nome).all()],
+    )
+
+
+@main.route('/api/chamados/whatsapp/status')
+@login_required
+def api_chamados_whatsapp_status():
+    from whatsapp_pesagem import status_whatsapp
+    from whatsapp_chamados import config_ativa
+    data = status_whatsapp()
+    if isinstance(data, dict):
+        data.pop('qr', None)
+        data['atendimento_ativo'] = bool(config_ativa().ativo)
+    return jsonify(data)
+
+
+@main.route('/api/chamados/whatsapp/config', methods=['POST'])
+@login_required
+def api_chamados_whatsapp_config():
+    from whatsapp_chamados import config_ativa
+    cfg = config_ativa()
+    data = request.get_json(silent=True) or {}
+    if 'ativo' in data:
+        cfg.ativo = bool(data.get('ativo'))
+        db.session.commit()
+    return jsonify({'ok': True, 'ativo': bool(cfg.ativo)})
+
+
+@main.route('/api/chamados/whatsapp/usuarios/<int:uid>', methods=['DELETE'])
+@login_required
+def api_chamados_whatsapp_usuario(uid):
+    from models import WhatsAppChamadoLog
+    row = WhatsAppChamadoUsuario.query.get_or_404(uid)
+    WhatsAppChamadoLog.query.filter_by(usuario_id=row.id).delete(synchronize_session=False)
+    db.session.delete(row)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@main.route('/api/chamados/whatsapp/inbound', methods=['POST'])
+def api_chamados_whatsapp_inbound():
+    from whatsapp_pesagem import inbound_token, send_whatsapp
+    from whatsapp_chamados import process_inbound
+    expected = inbound_token()
+    got = (request.headers.get('X-WA-Token') or '').strip()
+    if not expected or got != expected:
+        return jsonify({'ok': False, 'error': 'token inválido'}), 403
+    payload = request.get_json(silent=True) or {}
+    telefone = payload.get('from') or payload.get('telefone') or ''
+    texto = payload.get('text') or payload.get('texto') or ''
+    result = process_inbound(telefone, texto, sender=send_whatsapp)
+    code = 200 if result.get('ok') else 400
+    return jsonify(result), code
+

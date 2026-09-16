@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ordem das colunas e endereço na coluna Local do cadastro de equipamentos."""
+"""Ordem das colunas do cadastro/relatório de equipamentos."""
 import os
 import re
 import unittest
@@ -10,7 +10,7 @@ MODELS = os.path.join(ROOT, 'models.py')
 
 
 class EquipamentosColunasTest(unittest.TestCase):
-    def test_ordem_colunas_e_endereco_no_local(self):
+    def test_ordem_colunas_sem_local(self):
         with open(TEMPLATE, encoding='utf-8') as fh:
             html = fh.read()
         thead = re.search(r'<thead>\s*<tr>(.*?)</tr>\s*</thead>', html, re.S)
@@ -20,18 +20,16 @@ class EquipamentosColunasTest(unittest.TestCase):
             for t in re.findall(r'<th[^>]*>(.*?)</th>', thead.group(1), re.S)
         ]
         self.assertEqual(
-            ths[:8],
-            ['Código', 'Nome', 'Marca', 'Modelo', 'Cliente', 'Local', 'Setor', 'Data da compra'],
+            ths[:7],
+            ['Código', 'Nome', 'Marca', 'Modelo', 'Cliente', 'Setor', 'Data da compra'],
         )
-        self.assertEqual(ths[8], 'Ações')
-        self.assertIn("eq.cliente.endereco", html)
+        self.assertEqual(ths[7], 'Ações')
+        self.assertNotIn('<th>Local</th>', html)
+        self.assertNotIn('eq-col-local', html)
         self.assertIn("eq.cliente.nome if eq.cliente else '—'", html)
         tbody_start = html.find('<tbody>')
         tbody = html[tbody_start:html.find('</tbody>', tbody_start)]
-        cliente_td = tbody.find("eq.cliente.nome if eq.cliente else '—'")
-        endereco_td = tbody.find("endereco or '—'")
-        self.assertGreater(cliente_td, 0)
-        self.assertGreater(endereco_td, cliente_td)
+        self.assertNotIn("endereco or '—'", tbody)
 
     def test_to_dict_inclui_endereco_do_cliente(self):
         with open(MODELS, encoding='utf-8') as fh:

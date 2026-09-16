@@ -26,10 +26,13 @@ venv/
 # --- WhatsApp pesagem (sessão QR / node) ---
 whatsapp_bridge/node_modules/
 whatsapp_bridge/auth/
+whatsapp_bridge/.wwebjs_auth/
+whatsapp_bridge/.wwebjs_cache/
 whatsapp_bridge/.token
 whatsapp_bridge/*.pid
 whatsapp_bridge/npm-debug.log*
 whatsapp_bridge/bridge.log
+whatsapp_bridge/runtime/
 
 # --- Agente pesagem (build local) ---
 agente_pesagem/.venv/
@@ -84,6 +87,7 @@ certs/
 # --- IDEs ---
 .vscode/
 .idea/
+.codex/
 
 # --- SO ---
 .DS_Store

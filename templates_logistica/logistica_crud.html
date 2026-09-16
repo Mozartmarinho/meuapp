@@ -1,0 +1,48 @@
+{% extends "base_logistica.html" %}
+{% block title %}{{ page_title }}{% endblock %}
+{% block content %}
+<div class="page-header balanca-header" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;justify-content:space-between;">
+  <div>
+    <h1>{{ page_title }}</h1>
+    <p>{{ page_desc }}</p>
+  </div>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+    {% if crud_kind == 'folgas' %}
+    <form method="get" action="{{ url_for('logistica.folgas_page') }}" style="display:flex;gap:0.5rem;align-items:center;">
+      <input class="form-control" type="month" name="mes" value="{{ mes }}" onchange="this.form.submit()">
+    </form>
+    {% endif %}
+    <button class="btn btn-primary" type="button" id="btnNovo"><i class="fas fa-plus"></i> Novo</button>
+  </div>
+</div>
+<div class="card" style="padding:0;overflow:auto;">
+  <table class="data-table" id="tabelaCrud">
+    <thead><tr id="theadRow"></tr></thead>
+    <tbody id="tbodyCrud">
+      <tr><td style="text-align:center;padding:1.2rem;color:#64748b;">Carregando…</td></tr>
+    </tbody>
+  </table>
+</div>
+<style>
+.data-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.data-table th, .data-table td { padding: 0.55rem 0.7rem; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: top; }
+.data-table th { background: #1f2d4d; color: #fff; white-space: nowrap; }
+.data-table tbody tr:nth-child(even) { background: #f8fafc; }
+.form-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.7rem; }
+.form-grid .full { grid-column: 1 / -1; }
+@media (max-width: 720px) { .form-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+{% block scripts %}
+<script>
+window.LOGISTICA = {
+  kind: {{ crud_kind | tojson }},
+  veiculos: {{ veiculos_js | default([], true) | tojson }},
+  categorias: {{ categorias | list | tojson }},
+  mes: {{ (mes or '') | tojson }},
+  colaboradores: {{ colaboradores_js | default([], true) | tojson }},
+  extras: {{ extras | default([], true) | list | tojson }}
+};
+</script>
+<script src="{{ url_for('static', filename='js/logistica.js') }}?v=2"></script>
+{% endblock %}
