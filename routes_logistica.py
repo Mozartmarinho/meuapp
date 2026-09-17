@@ -1,4 +1,5 @@
 """Rotas do Sistema de Controle de Logística."""
+import json
 from datetime import datetime
 from functools import wraps
 
@@ -15,6 +16,7 @@ from logistica_service import (
     STATUS_ENTREGA,
     STATUS_MANUTENCAO,
     STATUS_REVISAO,
+    STATUS_ROTA,
     TIPOS_CHECKLIST,
     TIPOS_SERVICO,
     alertas_dashboard,
@@ -23,9 +25,11 @@ from logistica_service import (
     evolucao_custos,
     geocodificar_endereco,
     periodo_padrao,
+    polyline_entre_pontos,
     seed_logistica,
+    sincronizar_pontos_clientes,
 )
-from models import Usuario, db
+from models import Cliente, Usuario, db
 from models_logistica import (
     LogisticaChecklist,
     LogisticaColeta,
@@ -74,6 +78,8 @@ _LOGISTICA_ENDPOINT_MENUS = {
     'logistica.api_entregas': 'entregas',
     'logistica.api_entrega': 'entregas',
     'logistica.api_geocode': 'entregas',
+    'logistica.api_sincronizar_clientes': 'entregas',
+    'logistica.api_mapa': 'entregas',
     'logistica.api_colaboradores': 'dp',
     'logistica.api_colaborador': 'dp',
     'logistica.api_folhas': 'dp',
@@ -113,6 +119,12 @@ def _checar_permissao_menu_logistica():
     if not menu_key:
         return None
     if user.tem_menu('logistica', menu_key):
+        return None
+    if (
+        menu_key == 'rotas'
+        and request.endpoint in ('logistica.api_rotas', 'logistica.api_rota')
+        and user.tem_menu('logistica', 'entregas')
+    ):
         return None
     if (request.path or '').startswith('/api/logistica/'):
         return jsonify({'ok': False, 'error': 'Você não tem permissão para acessar esta aba.'}), 403
@@ -240,13 +252,16 @@ def frota_page():
 @logistica.route('/logistica/rotas')
 @login_required
 def rotas_page():
+    pontos = LogisticaEntrega.query.order_by(LogisticaEntrega.nome).all()
     return _page(
         'logistica_crud.html',
         'rotas',
         page_title='Grade de rotas',
-        page_desc='Rotas, quilometragem, motorista e ajudante.',
+        page_desc='Selecione dois pontos cadastrados, o status e a rota é traçada pelas vias no mapa.',
         crud_kind='rotas',
-        categorias=(),
+        categorias=STATUS_ROTA,
+        pontos=pontos,
+        pontos_js=[p.to_dict() for p in pontos],
     )
 
 
@@ -280,13 +295,11 @@ def revisoes_page():
 @logistica.route('/logistica/entregas')
 @login_required
 def entregas_page():
-    rotas = LogisticaRota.query.order_by(LogisticaRota.nome).all()
     return _page(
         'logistica_entregas.html',
         'entregas',
-        rotas=rotas,
-        rotas_js=[r.to_dict() for r in rotas],
         status_entrega=STATUS_ENTREGA,
+        status_rota=STATUS_ROTA,
     )
 
 
@@ -693,30 +706,95 @@ def api_revisao(item_id):
     return jsonify({'ok': True, 'row': item.to_dict()})
 
 
+def _clientes_para_pontos():
+    rows = Cliente.query.order_by(Cliente.nome).all()
+    out = []
+    for cli in rows:
+        if cli.ativo is False:
+            continue
+        out.append({
+            'id': cli.id,
+            'nome': cli.nome or '',
+            'endereco': cli.endereco or '',
+        })
+    return out
+
+
+def _pontos_por_id():
+    return {p.id: p for p in LogisticaEntrega.query.all()}
+
+
+def _rota_to_dict(item, pontos=None):
+    data = item.to_dict()
+    pontos = pontos if pontos is not None else _pontos_por_id()
+    origem = pontos.get(item.origem_ponto_id)
+    destino = pontos.get(item.destino_ponto_id)
+    data['origem_ponto'] = origem.to_dict() if origem else None
+    data['destino_ponto'] = destino.to_dict() if destino else None
+    if origem:
+        data['origem'] = origem.nome
+    if destino:
+        data['destino'] = destino.nome
+    return data
+
+
+def _status_rota(value, default='Pendente'):
+    status = (value or default or 'Pendente').strip()[:40]
+    if status not in STATUS_ROTA:
+        return default if default in STATUS_ROTA else 'Pendente'
+    return status
+
+
+def _preencher_rota_pontos(item, d, geocode=None, route_fetch=None):
+    origem_id = _parse_int(d.get('origem_ponto_id')) if 'origem_ponto_id' in d else item.origem_ponto_id
+    destino_id = _parse_int(d.get('destino_ponto_id')) if 'destino_ponto_id' in d else item.destino_ponto_id
+    if not origem_id or not destino_id:
+        return 'Selecione os dois pontos cadastrados da rota.'
+    if origem_id == destino_id:
+        return 'Origem e destino devem ser pontos diferentes.'
+    origem = LogisticaEntrega.query.get(origem_id)
+    destino = LogisticaEntrega.query.get(destino_id)
+    if not origem or not destino:
+        return 'Ponto de origem ou destino não encontrado.'
+    item.origem_ponto_id = origem.id
+    item.destino_ponto_id = destino.id
+    item.origem = origem.nome[:120]
+    item.destino = destino.nome[:120]
+    nome = (d.get('nome') or '').strip()
+    if not nome:
+        nome = f'{origem.nome} -> {destino.nome}'
+    item.nome = nome[:120]
+    traced = polyline_entre_pontos(origem, destino, geocode=geocode, route_fetch=route_fetch)
+    if traced:
+        item.polyline = json.dumps(traced['polyline'])
+        km_user = _parse_float(d.get('km')) if 'km' in d else None
+        item.km = km_user if km_user is not None else traced['km']
+    elif 'km' in d:
+        item.km = _parse_float(d.get('km'))
+    return None
+
+
 @logistica.route('/api/logistica/rotas', methods=['GET', 'POST'])
 @login_required
 def api_rotas():
     if request.method == 'GET':
+        pontos = _pontos_por_id()
         q = LogisticaRota.query.order_by(LogisticaRota.nome)
-        return jsonify({'ok': True, 'rows': [r.to_dict() for r in q.all()]})
+        return jsonify({'ok': True, 'rows': [_rota_to_dict(r, pontos) for r in q.all()]})
     d = _json_body()
-    nome = (d.get('nome') or '').strip()
-    if not nome:
-        return jsonify({'ok': False, 'error': 'Informe o nome da rota.'}), 400
-    item = LogisticaRota(
-        nome=nome[:120],
-        setor=(d.get('setor') or '').strip()[:80] or None,
-        origem=(d.get('origem') or '').strip()[:120] or None,
-        destino=(d.get('destino') or '').strip()[:120] or None,
-        km=_parse_float(d.get('km')),
-        placa_padrao=(d.get('placa_padrao') or '').strip().upper()[:12] or None,
-        motorista=(d.get('motorista') or '').strip()[:120] or None,
-        ajudante=(d.get('ajudante') or '').strip()[:120] or None,
-        ativa=_parse_bool(d.get('ativa'), True),
-    )
+    item = LogisticaRota(nome='Rota', status='Pendente', ativa=True)
+    err = _preencher_rota_pontos(item, d)
+    if err:
+        return jsonify({'ok': False, 'error': err}), 400
+    item.setor = (d.get('setor') or '').strip()[:80] or None
+    item.placa_padrao = (d.get('placa_padrao') or '').strip().upper()[:12] or None
+    item.motorista = (d.get('motorista') or '').strip()[:120] or None
+    item.ajudante = (d.get('ajudante') or '').strip()[:120] or None
+    item.status = _status_rota(d.get('status'))
+    item.ativa = item.status != 'Cancelada'
     db.session.add(item)
     db.session.commit()
-    return jsonify({'ok': True, 'row': item.to_dict()})
+    return jsonify({'ok': True, 'row': _rota_to_dict(item)})
 
 
 @logistica.route('/api/logistica/rotas/<int:item_id>', methods=['PUT', 'DELETE'])
@@ -724,23 +802,25 @@ def api_rotas():
 def api_rota(item_id):
     item = LogisticaRota.query.get_or_404(item_id)
     if request.method == 'DELETE':
+        LogisticaEntrega.query.filter_by(rota_id=item.id).update({'rota_id': None})
         db.session.delete(item)
         db.session.commit()
         return jsonify({'ok': True})
     d = _json_body()
-    item.nome = (d.get('nome') or item.nome).strip()[:120]
+    err = _preencher_rota_pontos(item, d)
+    if err:
+        return jsonify({'ok': False, 'error': err}), 400
     item.setor = (d.get('setor') or '').strip()[:80] or None
-    item.origem = (d.get('origem') or '').strip()[:120] or None
-    item.destino = (d.get('destino') or '').strip()[:120] or None
-    if 'km' in d:
-        item.km = _parse_float(d.get('km'))
     item.placa_padrao = (d.get('placa_padrao') or '').strip().upper()[:12] or None
     item.motorista = (d.get('motorista') or '').strip()[:120] or None
     item.ajudante = (d.get('ajudante') or '').strip()[:120] or None
+    if 'status' in d:
+        item.status = _status_rota(d.get('status'), item.status)
+    item.ativa = item.status != 'Cancelada'
     if 'ativa' in d:
-        item.ativa = _parse_bool(d.get('ativa'), True)
+        item.ativa = _parse_bool(d.get('ativa'), item.ativa)
     db.session.commit()
-    return jsonify({'ok': True, 'row': item.to_dict()})
+    return jsonify({'ok': True, 'row': _rota_to_dict(item)})
 
 
 def _lat_lng_do_endereco(d, endereco, lat=None, lng=None):
@@ -767,20 +847,62 @@ def api_geocode():
     return jsonify({'ok': True, **hit})
 
 
+def _aplicar_cliente_no_ponto(d, nome, endereco):
+    cliente_id = _parse_int(d.get('cliente_id'))
+    if not cliente_id:
+        return None, nome, endereco
+    cli = Cliente.query.get(cliente_id)
+    if not cli:
+        return None, nome, endereco
+    if not nome:
+        nome = (cli.nome or '').strip()
+    if not endereco:
+        endereco = (cli.endereco or '').strip()[:255] or None
+    return cli.id, nome, endereco
+
+
+@logistica.route('/api/logistica/entregas/sincronizar-clientes', methods=['POST'])
+@login_required
+def api_sincronizar_clientes():
+    resumo = sincronizar_pontos_clientes()
+    return jsonify({'ok': True, **resumo})
+
+
+@logistica.route('/api/logistica/mapa')
+@login_required
+def api_mapa():
+    pontos = _pontos_por_id()
+    rotas = LogisticaRota.query.order_by(LogisticaRota.nome).all()
+    return jsonify({
+        'ok': True,
+        'pontos': [p.to_dict() for p in LogisticaEntrega.query.order_by(LogisticaEntrega.nome).all()],
+        'rotas': [_rota_to_dict(r, pontos) for r in rotas],
+        'clientes': _clientes_para_pontos(),
+    })
+
+
 @logistica.route('/api/logistica/entregas', methods=['GET', 'POST'])
 @login_required
 def api_entregas():
     if request.method == 'GET':
         q = LogisticaEntrega.query.order_by(LogisticaEntrega.nome)
-        return jsonify({'ok': True, 'rows': [r.to_dict() for r in q.all()]})
+        return jsonify({
+            'ok': True,
+            'rows': [r.to_dict() for r in q.all()],
+            'clientes': _clientes_para_pontos(),
+        })
     d = _json_body()
     nome = (d.get('nome') or '').strip()
-    if not nome:
-        return jsonify({'ok': False, 'error': 'Informe o ponto de entrega.'}), 400
     endereco = (d.get('endereco') or '').strip()[:255] or None
+    cliente_id, nome, endereco = _aplicar_cliente_no_ponto(d, nome, endereco)
+    if not nome:
+        return jsonify({'ok': False, 'error': 'Informe o nome do ponto.'}), 400
+    if not endereco:
+        return jsonify({'ok': False, 'error': 'Informe o endereço do ponto.'}), 400
     lat, lng = _lat_lng_do_endereco(d, endereco)
     item = LogisticaEntrega(
         rota_id=_parse_int(d.get('rota_id')),
+        cliente_id=cliente_id,
         nome=nome[:160],
         endereco=endereco,
         lat=lat,
@@ -798,14 +920,35 @@ def api_entregas():
 def api_entrega(item_id):
     item = LogisticaEntrega.query.get_or_404(item_id)
     if request.method == 'DELETE':
+        usada = LogisticaRota.query.filter(
+            db.or_(
+                LogisticaRota.origem_ponto_id == item.id,
+                LogisticaRota.destino_ponto_id == item.id,
+            )
+        ).first()
+        if usada:
+            return jsonify({
+                'ok': False,
+                'error': 'Este ponto está em uma rota. Exclua ou altere a rota antes.',
+            }), 400
         db.session.delete(item)
         db.session.commit()
         return jsonify({'ok': True})
     d = _json_body()
     if 'rota_id' in d:
         item.rota_id = _parse_int(d.get('rota_id'))
-    item.nome = (d.get('nome') or item.nome).strip()[:160]
-    item.endereco = (d.get('endereco') or '').strip()[:255] or None
+    nome = (d.get('nome') or item.nome).strip()
+    endereco = (d.get('endereco') if 'endereco' in d else item.endereco) or ''
+    endereco = endereco.strip()[:255] or None
+    cliente_id, nome, endereco = _aplicar_cliente_no_ponto(d, nome, endereco)
+    if 'cliente_id' in d:
+        item.cliente_id = cliente_id
+    if not nome:
+        return jsonify({'ok': False, 'error': 'Informe o nome do ponto.'}), 400
+    if not endereco:
+        return jsonify({'ok': False, 'error': 'Informe o endereço do ponto.'}), 400
+    item.nome = nome[:160]
+    item.endereco = endereco
     lat = _parse_float(d.get('lat')) if 'lat' in d else item.lat
     lng = _parse_float(d.get('lng')) if 'lng' in d else item.lng
     item.lat, item.lng = _lat_lng_do_endereco(d, item.endereco, lat, lng)

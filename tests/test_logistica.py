@@ -11,8 +11,8 @@ sys.path.insert(0, ROOT)
 os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
 
 from app import create_app  # noqa: E402
-from logistica_service import geocodificar_endereco  # noqa: E402
-from models import db, Usuario  # noqa: E402
+from logistica_service import geocodificar_endereco, rotear_coordenadas  # noqa: E402
+from models import Cliente, db, Usuario  # noqa: E402
 from models_logistica import (  # noqa: E402
     LogisticaChecklist,
     LogisticaColeta,
@@ -21,6 +21,7 @@ from models_logistica import (  # noqa: E402
     LogisticaLancamento,
     LogisticaManutencao,
     LogisticaOciosidade,
+    LogisticaRota,
     LogisticaVeiculo,
 )
 from password_utils import generate_password_hash  # noqa: E402
@@ -51,8 +52,10 @@ class LogisticaModuloTest(unittest.TestCase):
         LogisticaLancamento.query.delete()
         LogisticaManutencao.query.delete()
         LogisticaOciosidade.query.delete()
+        LogisticaRota.query.delete()
         LogisticaEntrega.query.delete()
         LogisticaVeiculo.query.delete()
+        Cliente.query.delete()
         Usuario.query.delete()
         db.session.commit()
 
@@ -274,6 +277,96 @@ class LogisticaModuloTest(unittest.TestCase):
         self.assertIn('/api/logistica/geocode', html)
         self.assertIn('mapaPonto', html)
         self.assertIn('ponto-label', html)
+        self.assertIn('L.polyline', html)
+        self.assertIn('origem_ponto_id', html)
+        self.assertIn('sincronizar-clientes', html)
+
+    def test_rotear_coordenadas_usa_osrm_e_cai_para_linha(self):
+        def fake_osrm(url):
+            self.assertIn('router.project-osrm.org', url)
+            return {
+                'code': 'Ok',
+                'routes': [{
+                    'distance': 15200,
+                    'geometry': {
+                        'coordinates': [
+                            [-43.1729, -22.9068],
+                            [-43.1800, -22.9100],
+                            [-43.1900, -22.9200],
+                        ]
+                    },
+                }],
+            }
+
+        hit = rotear_coordenadas(-22.9068, -43.1729, -22.9200, -43.1900, fetch=fake_osrm)
+        self.assertEqual(hit['fonte'], 'osrm')
+        self.assertAlmostEqual(hit['km'], 15.2)
+        self.assertEqual(hit['polyline'][0], [-22.9068, -43.1729])
+        self.assertEqual(hit['polyline'][-1], [-22.9200, -43.1900])
+
+        def boom(_url):
+            raise TimeoutError('offline')
+
+        fallback = rotear_coordenadas(-22.9, -43.1, -22.91, -43.2, fetch=boom)
+        self.assertEqual(fallback['fonte'], 'linha')
+        self.assertEqual(len(fallback['polyline']), 2)
+
+    def test_importa_cliente_como_ponto_e_rota_entre_dois_pontos(self):
+        self._login(is_master=True, tipo='admin', email='mapa@test.local')
+        origem = Cliente(nome='Matriz SG', endereco='Estrada da Conceicao, 834', ativo=True)
+        destino = Cliente(nome='Hospital Central', endereco='Rua da Praia, 100', ativo=True)
+        db.session.add_all([origem, destino])
+        db.session.commit()
+
+        def fake_geo(endereco, **_kwargs):
+            if 'Conceicao' in (endereco or ''):
+                return {'lat': -22.8211, 'lng': -43.0512, 'display_name': 'Matriz'}
+            return {'lat': -22.9068, 'lng': -43.1729, 'display_name': 'Hospital'}
+
+        fake_trace = {
+            'polyline': [[-22.8211, -43.0512], [-22.8500, -43.1000], [-22.9068, -43.1729]],
+            'km': 18.4,
+            'fonte': 'osrm',
+        }
+        with patch('logistica_service.geocodificar_endereco', side_effect=fake_geo):
+            sync = self.client.post('/api/logistica/entregas/sincronizar-clientes')
+        self.assertEqual(sync.status_code, 200)
+        self.assertTrue(sync.get_json()['ok'])
+        self.assertEqual(sync.get_json()['criados'], 2)
+
+        pontos = self.client.get('/api/logistica/entregas').get_json()['rows']
+        self.assertEqual(len(pontos), 2)
+        nomes = sorted(p['nome'] for p in pontos)
+        self.assertEqual(nomes, ['Hospital Central', 'Matriz SG'])
+        ids = {p['nome']: p['id'] for p in pontos}
+
+        with patch('routes_logistica.polyline_entre_pontos', return_value=fake_trace):
+            created = self.client.post(
+                '/api/logistica/rotas',
+                json={
+                    'origem_ponto_id': ids['Matriz SG'],
+                    'destino_ponto_id': ids['Hospital Central'],
+                    'status': 'Em rota',
+                },
+            )
+        self.assertEqual(created.status_code, 200)
+        row = created.get_json()['row']
+        self.assertTrue(created.get_json()['ok'])
+        self.assertEqual(row['status'], 'Em rota')
+        self.assertEqual(row['origem'], 'Matriz SG')
+        self.assertEqual(row['destino'], 'Hospital Central')
+        self.assertIn('->', row['nome'])
+        self.assertEqual(len(row['polyline']), 3)
+        self.assertAlmostEqual(row['km'], 18.4)
+
+        sem_pontos = self.client.post('/api/logistica/rotas', json={'nome': 'Vazia', 'status': 'Pendente'})
+        self.assertEqual(sem_pontos.status_code, 400)
+
+        mapa = self.client.get('/api/logistica/mapa').get_json()
+        self.assertTrue(mapa['ok'])
+        self.assertEqual(len(mapa['pontos']), 2)
+        self.assertEqual(len(mapa['rotas']), 1)
+        self.assertEqual(len(mapa['rotas'][0]['polyline']), 3)
 
 
 if __name__ == '__main__':

@@ -547,7 +547,7 @@ def ensure_pesagem_schema():
 
 def ensure_logistica_schema():
     """Garante tabelas do Sistema de Controle de Logística e coluna perm_logistica."""
-    from sqlalchemy import Boolean, Date, DateTime, Float, Integer, String, inspect, text
+    from sqlalchemy import Boolean, Date, DateTime, Float, Integer, String, Text, inspect, text
     from models_logistica import (
         LogisticaChecklist,
         LogisticaColeta,
@@ -592,7 +592,9 @@ def ensure_logistica_schema():
                 if col.primary_key:
                     continue
                 t = col.type
-                if isinstance(t, String):
+                if isinstance(t, Text) and not getattr(t, 'length', None):
+                    ddl = 'MEDIUMTEXT NULL'
+                elif isinstance(t, String):
                     ddl = f'VARCHAR({t.length or 255}) NULL'
                 elif isinstance(t, Integer):
                     ddl = 'INT NULL'
@@ -622,6 +624,15 @@ def ensure_logistica_schema():
                 except Exception as exc:
                     db.session.rollback()
                     print(f'Aviso: não foi possível criar {tabela}.{col}: {exc}')
+        if 'logistica_rotas' in tables:
+            try:
+                db.session.execute(text(
+                    'ALTER TABLE logistica_rotas MODIFY COLUMN `polyline` MEDIUMTEXT NULL'
+                ))
+                db.session.commit()
+            except Exception as exc:
+                db.session.rollback()
+                print(f'Aviso ao ampliar logistica_rotas.polyline: {exc}')
     except Exception as exc:
         db.session.rollback()
         print(f'Aviso ao ajustar schema de logística: {exc}')

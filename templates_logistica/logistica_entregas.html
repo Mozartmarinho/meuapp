@@ -7,24 +7,48 @@
 <div class="page-header" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;justify-content:space-between;">
   <div>
     <h1>Mapa de entregas</h1>
-    <p>Pontos da grade com latitude, longitude e status da entrega.</p>
+    <p>Pontos do cadastro de clientes e rotas traçadas pelas vias entre dois pontos.</p>
   </div>
-  <button class="btn btn-primary" type="button" id="btnNovo"><i class="fas fa-plus"></i> Novo ponto</button>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+    <button class="btn btn-secondary" type="button" id="btnSyncClientes"><i class="fas fa-building"></i> Importar clientes</button>
+    <button class="btn btn-secondary" type="button" id="btnNovaRota"><i class="fas fa-route"></i> Nova rota</button>
+    <button class="btn btn-primary" type="button" id="btnNovo"><i class="fas fa-plus"></i> Novo ponto</button>
+  </div>
 </div>
-<div id="mapaEntregas" style="height:380px;border-radius:12px;margin-bottom:1rem;border:1px solid #dbe4f0;"></div>
-<div class="card" style="padding:0;overflow:auto;">
+<div id="mapaEntregas" style="height:440px;border-radius:12px;margin-bottom:0.7rem;border:1px solid #dbe4f0;"></div>
+<div class="mapa-legenda">
+  <span><i class="leg-dot" style="background:#2563eb;"></i> Ponto</span>
+  <span><i class="leg-line" style="background:#64748b;"></i> Pendente</span>
+  <span><i class="leg-line" style="background:#2563eb;"></i> Em rota</span>
+  <span><i class="leg-line" style="background:#15803d;"></i> Concluída</span>
+  <span><i class="leg-line" style="background:#b91c1c;"></i> Cancelada</span>
+</div>
+<div class="card" style="padding:0;overflow:auto;margin-bottom:1rem;">
   <table class="data-table">
     <thead>
       <tr>
         <th>Ponto</th>
-        <th>Rota</th>
         <th>Endereço</th>
         <th>Lat / Lng</th>
-        <th>Status</th>
         <th>Ações</th>
       </tr>
     </thead>
     <tbody id="tbodyEntregas"></tbody>
+  </table>
+</div>
+<div class="card" style="padding:0;overflow:auto;">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Rota</th>
+        <th>Origem</th>
+        <th>Destino</th>
+        <th>Status</th>
+        <th>Km</th>
+        <th>Ações</th>
+      </tr>
+    </thead>
+    <tbody id="tbodyRotas"></tbody>
   </table>
 </div>
 <style>
@@ -37,6 +61,15 @@
 .geo-status { margin-top: 0.35rem; font-size: 0.8rem; color: #64748b; min-height: 1.1em; }
 .geo-status.ok { color: #15803d; }
 .geo-status.err { color: #b91c1c; }
+.mapa-legenda {
+  display: flex; flex-wrap: wrap; gap: 0.85rem; align-items: center;
+  margin: 0 0 1rem; color: #475569; font-size: 0.8rem; font-weight: 600;
+}
+.leg-dot, .leg-line {
+  display: inline-block; vertical-align: middle; margin-right: 0.3rem; border-radius: 999px;
+}
+.leg-dot { width: 10px; height: 10px; }
+.leg-line { width: 18px; height: 4px; border-radius: 4px; }
 .leaflet-tooltip.ponto-label {
   background: #1f2d4d;
   color: #fff;
@@ -48,14 +81,23 @@
   box-shadow: 0 2px 8px rgba(15, 42, 86, 0.28);
 }
 .leaflet-tooltip.ponto-label::before { border-top-color: #1f2d4d; }
+.leaflet-tooltip.rota-label {
+  background: #0f766e;
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-weight: 700;
+  font-size: 0.72rem;
+}
+.leaflet-tooltip.rota-label::before { border-top-color: #0f766e; }
 </style>
 {% endblock %}
 {% block scripts %}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
 (function () {
-  var rotas = {{ rotas_js | default([], true) | tojson }};
-  var statusList = {{ status_entrega | list | tojson }};
+  var statusRota = {{ status_rota | list | tojson }};
   var map = L.map('mapaEntregas').setView([-22.9068, -43.1729], 11);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
   var layer = L.layerGroup().addTo(map);
@@ -63,19 +105,35 @@
   var miniMarker = null;
   var geoTimer = null;
   var lastGeoQuery = '';
+  var pontos = [];
+  var rotas = [];
+  var clientes = [];
+  var coresRota = {
+    'Pendente': '#64748b',
+    'Em rota': '#2563eb',
+    'Concluída': '#15803d',
+    'Cancelada': '#b91c1c'
+  };
 
   function escapeHtml(str) {
     return String(str || '').replace(/[&<>"']/g, function (ch) {
       return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
     });
   }
-  function optionsRota(selected) {
-    return '<option value="">—</option>' + rotas.map(function (r) {
-      return '<option value="' + r.id + '"' + (String(r.id) === String(selected) ? ' selected' : '') + '>' + escapeHtml(r.nome) + '</option>';
+  function optionsClientes(selected) {
+    return '<option value="">— cadastro de clientes —</option>' + clientes.map(function (c) {
+      return '<option value="' + c.id + '"' + (String(c.id) === String(selected) ? ' selected' : '') + '>' +
+        escapeHtml(c.nome) + (c.endereco ? ' — ' + escapeHtml(c.endereco) : '') + '</option>';
     }).join('');
   }
-  function optionsStatus(selected) {
-    return statusList.map(function (s) {
+  function optionsPontos(selected) {
+    return '<option value="">Selecione o ponto</option>' + pontos.map(function (p) {
+      return '<option value="' + p.id + '"' + (String(p.id) === String(selected) ? ' selected' : '') + '>' +
+        escapeHtml(p.nome) + (p.endereco ? ' — ' + escapeHtml(p.endereco) : '') + '</option>';
+    }).join('');
+  }
+  function optionsStatusRota(selected) {
+    return statusRota.map(function (s) {
       return '<option value="' + s + '"' + (s === selected ? ' selected' : '') + '>' + s + '</option>';
     }).join('');
   }
@@ -158,46 +216,121 @@
     geoTimer = setTimeout(function () { buscarGeo(false); }, 700);
   }
 
-  async function load() {
-    var res = await fetch('/api/logistica/entregas');
-    var data = await res.json();
-    var rows = data.rows || [];
+  function renderMapa() {
     layer.clearLayers();
     var bounds = [];
-    rows.forEach(function (row) {
+    pontos.forEach(function (row) {
       if (row.lat != null && row.lng != null) {
         addPontoMarker(
           layer,
           row.lat,
           row.lng,
           row.nome,
-          '<strong>' + escapeHtml(row.nome) + '</strong><br>' + escapeHtml(row.endereco || '') + '<br>' + escapeHtml(row.status || '')
+          '<strong>' + escapeHtml(row.nome) + '</strong><br>' + escapeHtml(row.endereco || '')
         );
         bounds.push([row.lat, row.lng]);
       }
     });
-    if (bounds.length) map.fitBounds(bounds, { padding: [24, 24] });
+    rotas.forEach(function (rota) {
+      var coords = rota.polyline || [];
+      if (coords.length < 2) {
+        var o = rota.origem_ponto || {};
+        var d = rota.destino_ponto || {};
+        if (o.lat != null && o.lng != null && d.lat != null && d.lng != null) {
+          coords = [[o.lat, o.lng], [d.lat, d.lng]];
+        }
+      }
+      if (coords.length < 2) return;
+      var cor = coresRota[rota.status] || '#0f766e';
+      var line = L.polyline(coords, { color: cor, weight: 5, opacity: 0.85 });
+      line.bindPopup(
+        '<strong>' + escapeHtml(rota.nome) + '</strong><br>' +
+        escapeHtml(rota.origem || '') + ' → ' + escapeHtml(rota.destino || '') + '<br>' +
+        escapeHtml(rota.status || '') + (rota.km != null ? ' · ' + rota.km + ' km' : '')
+      );
+      line.bindTooltip(escapeHtml(rota.nome || 'Rota'), {
+        sticky: true,
+        className: 'rota-label'
+      });
+      layer.addLayer(line);
+      coords.forEach(function (pair) {
+        if (pair && pair.length >= 2) bounds.push([pair[0], pair[1]]);
+      });
+    });
+    if (bounds.length) map.fitBounds(bounds, { padding: [28, 28] });
+  }
+
+  function renderTabelas() {
     var body = document.getElementById('tbodyEntregas');
-    if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:1.2rem;color:#64748b;">Nenhum ponto cadastrado.</td></tr>';
+    if (!pontos.length) {
+      body.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:1.2rem;color:#64748b;">Nenhum ponto cadastrado.</td></tr>';
+    } else {
+      body.innerHTML = pontos.map(function (row) {
+        return '<tr><td><strong>' + escapeHtml(row.nome) + '</strong></td><td>' + escapeHtml(row.endereco) + '</td><td>' +
+          (row.lat != null ? row.lat + ', ' + row.lng : '—') + '</td><td>' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-edit=\'' + encodeURIComponent(JSON.stringify(row)) + '\'><i class="fas fa-edit"></i></button> ' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-del="' + row.id + '"><i class="fas fa-trash"></i></button></td></tr>';
+      }).join('');
+    }
+    var bodyR = document.getElementById('tbodyRotas');
+    if (!rotas.length) {
+      bodyR.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:1.2rem;color:#64748b;">Nenhuma rota. Selecione dois pontos cadastrados para criar.</td></tr>';
       return;
     }
-    body.innerHTML = rows.map(function (row) {
-      return '<tr><td><strong>' + escapeHtml(row.nome) + '</strong></td><td>' + escapeHtml(row.rota) + '</td><td>' + escapeHtml(row.endereco) + '</td><td>' +
-        (row.lat != null ? row.lat + ', ' + row.lng : '—') + '</td><td>' + escapeHtml(row.status) + '</td><td>' +
-        '<button class="btn btn-ghost btn-sm" type="button" data-edit=\'' + encodeURIComponent(JSON.stringify(row)) + '\'><i class="fas fa-edit"></i></button> ' +
-        '<button class="btn btn-ghost btn-sm" type="button" data-del="' + row.id + '"><i class="fas fa-trash"></i></button></td></tr>';
+    bodyR.innerHTML = rotas.map(function (row) {
+      return '<tr><td><strong>' + escapeHtml(row.nome) + '</strong></td><td>' + escapeHtml(row.origem) + '</td><td>' +
+        escapeHtml(row.destino) + '</td><td>' + escapeHtml(row.status) + '</td><td>' +
+        (row.km != null ? row.km : '—') + '</td><td>' +
+        '<button class="btn btn-ghost btn-sm" type="button" data-rota-edit=\'' + encodeURIComponent(JSON.stringify(row)) + '\'><i class="fas fa-edit"></i></button> ' +
+        '<button class="btn btn-ghost btn-sm" type="button" data-rota-del="' + row.id + '"><i class="fas fa-trash"></i></button></td></tr>';
     }).join('');
+  }
+
+  async function load() {
+    var res = await fetch('/api/logistica/mapa');
+    var data = await res.json();
+    pontos = data.pontos || [];
+    rotas = data.rotas || [];
+    clientes = data.clientes || [];
+    renderMapa();
+    renderTabelas();
+  }
+
+  async function syncClientes(silent) {
+    var res = await fetch('/api/logistica/entregas/sincronizar-clientes', { method: 'POST' });
+    var data = await res.json();
+    if (!data.ok) {
+      if (!silent) showToast(data.error || 'Não foi possível importar os clientes.', 'error');
+      return;
+    }
+    var criados = data.criados || 0;
+    if (!silent || criados) {
+      showToast(criados ? (criados + ' cliente(s) importado(s) como ponto.') : 'Cadastro de clientes já está no mapa.');
+    }
+    await load();
+  }
+
+  function preencherCliente() {
+    var sel = document.getElementById('f-cliente_id');
+    if (!sel || !sel.value) return;
+    var cli = clientes.filter(function (c) { return String(c.id) === String(sel.value); })[0];
+    if (!cli) return;
+    var elNome = document.getElementById('f-nome');
+    var elEnd = document.getElementById('f-endereco');
+    if (elNome) elNome.value = cli.nome || '';
+    if (elEnd) {
+      elEnd.value = cli.endereco || '';
+      if ((cli.endereco || '').trim().length >= 5) buscarGeo(true);
+    }
   }
 
   function openForm(row) {
     row = row || {};
     var html = '<div class="form-grid">' +
-      '<div class="form-group full"><label class="form-label">Ponto</label><input class="form-control" id="f-nome" value="' + escapeHtml(row.nome || '') + '"></div>' +
-      '<div class="form-group"><label class="form-label">Rota</label><select class="form-control" id="f-rota_id">' + optionsRota(row.rota_id) + '</select></div>' +
-      '<div class="form-group"><label class="form-label">Status</label><select class="form-control" id="f-status">' + optionsStatus(row.status || 'Pendente') + '</select></div>' +
+      '<div class="form-group full"><label class="form-label">Cliente (cadastro)</label><select class="form-control" id="f-cliente_id">' + optionsClientes(row.cliente_id) + '</select></div>' +
+      '<div class="form-group full"><label class="form-label">Nome do ponto</label><input class="form-control" id="f-nome" value="' + escapeHtml(row.nome || '') + '"></div>' +
       '<div class="form-group full"><label class="form-label">Endereço</label><input class="form-control" id="f-endereco" value="' + escapeHtml(row.endereco || '') + '" placeholder="Rua, número, bairro, cidade">' +
-      '<div id="geo-status" class="geo-status">Ao preencher o endereço, latitude e longitude são buscadas automaticamente.</div></div>' +
+      '<div id="geo-status" class="geo-status">Ao preencher o endereço, o ponto é marcado no mapa.</div></div>' +
       '<div class="form-group full"><div id="mapaPonto" class="mapa-ponto"></div></div>' +
       '<div class="form-group"><label class="form-label">Latitude</label><input class="form-control" id="f-lat" value="' + (row.lat != null ? row.lat : '') + '"></div>' +
       '<div class="form-group"><label class="form-label">Longitude</label><input class="form-control" id="f-lng" value="' + (row.lng != null ? row.lng : '') + '"></div>' +
@@ -205,8 +338,7 @@
     abrirModal(row.id ? 'Editar ponto' : 'Novo ponto', html, 'Gravar', async function () {
       var payload = {
         nome: document.getElementById('f-nome').value,
-        rota_id: document.getElementById('f-rota_id').value,
-        status: document.getElementById('f-status').value,
+        cliente_id: document.getElementById('f-cliente_id').value,
         endereco: document.getElementById('f-endereco').value,
         lat: document.getElementById('f-lat').value,
         lng: document.getElementById('f-lng').value
@@ -224,6 +356,8 @@
       initMini(row);
       var elEnd = document.getElementById('f-endereco');
       var elNome = document.getElementById('f-nome');
+      var elCli = document.getElementById('f-cliente_id');
+      if (elCli) elCli.addEventListener('change', preencherCliente);
       if (elEnd) {
         elEnd.addEventListener('input', scheduleGeo);
         elEnd.addEventListener('blur', function () { buscarGeo(false); });
@@ -239,6 +373,60 @@
     }, 40);
   }
 
+  function syncNomeRota() {
+    var elNome = document.getElementById('f-rota-nome');
+    var o = document.getElementById('f-origem_ponto_id');
+    var d = document.getElementById('f-destino_ponto_id');
+    if (!elNome || !o || !d) return;
+    if (elNome.dataset.manual === '1' && elNome.value.trim()) return;
+    if (!o.value || !d.value) return;
+    var oNome = ((o.options[o.selectedIndex] || {}).text || '').split('—')[0].trim();
+    var dNome = ((d.options[d.selectedIndex] || {}).text || '').split('—')[0].trim();
+    elNome.value = oNome + ' -> ' + dNome;
+  }
+
+  function openRota(row) {
+    row = row || {};
+    if (pontos.length < 2) {
+      showToast('Cadastre pelo menos dois pontos antes de criar a rota.', 'error');
+      return;
+    }
+    var html = '<div class="form-grid">' +
+      '<div class="form-group"><label class="form-label">Ponto de origem</label><select class="form-control" id="f-origem_ponto_id">' + optionsPontos(row.origem_ponto_id) + '</select></div>' +
+      '<div class="form-group"><label class="form-label">Ponto de destino</label><select class="form-control" id="f-destino_ponto_id">' + optionsPontos(row.destino_ponto_id) + '</select></div>' +
+      '<div class="form-group"><label class="form-label">Status</label><select class="form-control" id="f-status">' + optionsStatusRota(row.status || 'Pendente') + '</select></div>' +
+      '<div class="form-group full"><label class="form-label">Nome da rota</label><input class="form-control" id="f-rota-nome" value="' + escapeHtml(row.nome || '') + '"></div>' +
+      '</div>' +
+      '<p style="margin:0.35rem 0 0;font-size:0.82rem;color:#64748b;">A linha é desenhada no mapa pelas vias mais usadas entre os dois pontos.</p>';
+    abrirModal(row.id ? 'Editar rota' : 'Nova rota', html, 'Gravar', async function () {
+      var payload = {
+        origem_ponto_id: document.getElementById('f-origem_ponto_id').value,
+        destino_ponto_id: document.getElementById('f-destino_ponto_id').value,
+        status: document.getElementById('f-status').value,
+        nome: document.getElementById('f-rota-nome').value
+      };
+      var url = '/api/logistica/rotas' + (row.id ? '/' + row.id : '');
+      var res = await fetch(url, { method: row.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      var data = await res.json();
+      if (!data.ok) { showToast(data.error || 'Falha ao gravar a rota.', 'error'); return; }
+      fecharModal();
+      showToast('Rota gravada no mapa.');
+      load();
+    });
+    setTimeout(function () {
+      var elNome = document.getElementById('f-rota-nome');
+      var o = document.getElementById('f-origem_ponto_id');
+      var d = document.getElementById('f-destino_ponto_id');
+      if (elNome) {
+        elNome.addEventListener('input', function () { elNome.dataset.manual = elNome.value.trim() ? '1' : '0'; });
+        if (row.nome) elNome.dataset.manual = '1';
+      }
+      if (o) o.addEventListener('change', syncNomeRota);
+      if (d) d.addEventListener('change', syncNomeRota);
+      if (!row.nome) syncNomeRota();
+    }, 40);
+  }
+
   var _fechar = window.fecharModal;
   window.fecharModal = function () {
     destroyMini();
@@ -246,17 +434,33 @@
   };
 
   document.getElementById('btnNovo').addEventListener('click', function () { openForm({}); });
+  document.getElementById('btnNovaRota').addEventListener('click', function () { openRota({}); });
+  document.getElementById('btnSyncClientes').addEventListener('click', function () { syncClientes(false); });
   document.getElementById('tbodyEntregas').addEventListener('click', async function (ev) {
     var edit = ev.target.closest('[data-edit]');
     if (edit) { openForm(JSON.parse(decodeURIComponent(edit.getAttribute('data-edit')))); return; }
     var del = ev.target.closest('[data-del]');
     if (!del) return;
     if (!confirm('Excluir este ponto?')) return;
-    await fetch('/api/logistica/entregas/' + del.getAttribute('data-del'), { method: 'DELETE' });
+    var res = await fetch('/api/logistica/entregas/' + del.getAttribute('data-del'), { method: 'DELETE' });
+    var data = await res.json();
+    if (!data.ok) { showToast(data.error || 'Não foi possível excluir.', 'error'); return; }
     showToast('Ponto excluído.');
     load();
   });
-  load();
+  document.getElementById('tbodyRotas').addEventListener('click', async function (ev) {
+    var edit = ev.target.closest('[data-rota-edit]');
+    if (edit) { openRota(JSON.parse(decodeURIComponent(edit.getAttribute('data-rota-edit')))); return; }
+    var del = ev.target.closest('[data-rota-del]');
+    if (!del) return;
+    if (!confirm('Excluir esta rota?')) return;
+    var res = await fetch('/api/logistica/rotas/' + del.getAttribute('data-rota-del'), { method: 'DELETE' });
+    var data = await res.json();
+    if (!data.ok) { showToast(data.error || 'Não foi possível excluir.', 'error'); return; }
+    showToast('Rota excluída.');
+    load();
+  });
+  syncClientes(true);
 })();
 </script>
 {% endblock %}

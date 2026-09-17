@@ -72,13 +72,17 @@
       url: '/api/logistica/rotas',
       title: 'Rota',
       columns: [
-        ['nome', 'Rota'], ['setor', 'Setor'], ['origem', 'Origem'], ['destino', 'Destino'],
-        ['km', 'Km'], ['placa_padrao', 'Placa'], ['motorista', 'Motorista'], ['ajudante', 'Ajudante']
+        ['nome', 'Rota'], ['origem', 'Origem'], ['destino', 'Destino'],
+        ['status', 'Status'], ['km', 'Km'], ['setor', 'Setor'],
+        ['placa_padrao', 'Placa'], ['motorista', 'Motorista']
       ],
       fields: [
-        ['nome', 'Nome', 'text', true], ['setor', 'Setor', 'text'],
-        ['origem', 'Origem', 'text'], ['destino', 'Destino', 'text'],
-        ['km', 'Km', 'number'], ['placa_padrao', 'Placa padrão', 'text'],
+        ['origem_ponto_id', 'Ponto de origem', 'ponto'],
+        ['destino_ponto_id', 'Ponto de destino', 'ponto'],
+        ['status', 'Status', 'select-cat'],
+        ['nome', 'Nome', 'text', true],
+        ['setor', 'Setor', 'text'], ['km', 'Km', 'number'],
+        ['placa_padrao', 'Placa padrão', 'text'],
         ['motorista', 'Motorista', 'text'], ['ajudante', 'Ajudante', 'text']
       ]
     },
@@ -224,6 +228,40 @@
       return '<option value="' + escapeHtml(c) + '"' + sel + '>' + escapeHtml(c) + '</option>';
     }).join('');
   }
+  function labelPonto(p) {
+    var end = p.endereco ? ' — ' + p.endereco : '';
+    return (p.nome || 'Ponto') + end;
+  }
+  function optionsPonto(selected) {
+    return '<option value="">Selecione o ponto</option>' + (cfg.pontos || []).map(function (p) {
+      var sel = String(p.id) === String(selected) ? ' selected' : '';
+      return '<option value="' + p.id + '"' + sel + '>' + escapeHtml(labelPonto(p)) + '</option>';
+    }).join('');
+  }
+  async function refreshPontos() {
+    if (kind !== 'rotas') return;
+    try {
+      var res = await fetch('/api/logistica/entregas');
+      var data = await res.json();
+      cfg.pontos = (data && data.rows) || [];
+    } catch (err) {
+      cfg.pontos = cfg.pontos || [];
+    }
+  }
+  function syncNomeRota() {
+    if (kind !== 'rotas') return;
+    var elNome = document.getElementById('f-nome');
+    var o = document.getElementById('f-origem_ponto_id');
+    var d = document.getElementById('f-destino_ponto_id');
+    if (!elNome || !o || !d) return;
+    if (elNome.dataset.manual === '1' && elNome.value.trim()) return;
+    var oOpt = o.options[o.selectedIndex];
+    var dOpt = d.options[d.selectedIndex];
+    if (!o.value || !d.value || !oOpt || !dOpt) return;
+    var oNome = (oOpt.text || '').split('—')[0].trim();
+    var dNome = (dOpt.text || '').split('—')[0].trim();
+    elNome.value = oNome + ' -> ' + dNome;
+  }
 
   function fieldHtml(field, row) {
     var key = field[0], label = field[1], type = field[2], full = field[3];
@@ -232,6 +270,7 @@
     var inner;
     if (type === 'veiculo') inner = '<select class="form-control" id="f-' + key + '">' + optionsVeiculo(value) + '</select>';
     else if (type === 'colaborador') inner = '<select class="form-control" id="f-' + key + '">' + optionsColab(value) + '</select>';
+    else if (type === 'ponto') inner = '<select class="form-control" id="f-' + key + '">' + optionsPonto(value) + '</select>';
     else if (type === 'select-cat') inner = '<select class="form-control" id="f-' + key + '">' + optionsCat(value) + '</select>';
     else if (type === 'select-extra') inner = '<select class="form-control" id="f-' + key + '">' + optionsExtra(value) + '</select>';
     else inner = '<input class="form-control" id="f-' + key + '" type="' + type + '" value="' + escapeHtml(value) + '" step="any">';
@@ -256,7 +295,15 @@
 
   function openForm(row) {
     row = row || {};
+    if (kind === 'rotas' && !row.status) row.status = 'Pendente';
+    if (kind === 'rotas' && !row.id && (cfg.pontos || []).length < 2) {
+      showToast('Cadastre dois pontos no mapa de entregas antes de criar a rota.', 'error');
+      return;
+    }
     var html = '<div class="form-grid">' + spec.fields.map(function (f) { return fieldHtml(f, row); }).join('') + '</div>';
+    if (kind === 'rotas') {
+      html += '<p style="margin:0.4rem 0 0;font-size:0.82rem;color:#64748b;">A linha da rota aparece no mapa de entregas, seguindo as vias entre os dois pontos.</p>';
+    }
     abrirModal((row.id ? 'Editar ' : 'Novo ') + spec.title, html, 'Gravar', async function () {
       var payload = readForm();
       var url = spec.url + (row.id ? '/' + row.id : '');
@@ -275,12 +322,28 @@
       showToast('Registro gravado.');
       load();
     });
+    if (kind === 'rotas') {
+      var elNome = document.getElementById('f-nome');
+      var o = document.getElementById('f-origem_ponto_id');
+      var d = document.getElementById('f-destino_ponto_id');
+      if (elNome) {
+        elNome.addEventListener('input', function () { elNome.dataset.manual = elNome.value.trim() ? '1' : '0'; });
+        if (row.nome) elNome.dataset.manual = '1';
+      }
+      if (o) o.addEventListener('change', syncNomeRota);
+      if (d) d.addEventListener('change', syncNomeRota);
+      if (!row.nome) syncNomeRota();
+    }
   }
 
-  document.getElementById('btnNovo').addEventListener('click', function () { openForm({}); });
+  document.getElementById('btnNovo').addEventListener('click', async function () {
+    await refreshPontos();
+    openForm({});
+  });
   document.getElementById('tbodyCrud').addEventListener('click', async function (ev) {
     var edit = ev.target.closest('[data-edit]');
     if (edit) {
+      await refreshPontos();
       openForm(JSON.parse(decodeURIComponent(edit.getAttribute('data-edit'))));
       return;
     }
@@ -298,5 +361,5 @@
     }
   });
 
-  load();
+  refreshPontos().then(load);
 })();

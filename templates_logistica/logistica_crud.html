@@ -41,8 +41,9 @@ window.LOGISTICA = {
   categorias: {{ categorias | list | tojson }},
   mes: {{ (mes or '') | tojson }},
   colaboradores: {{ colaboradores_js | default([], true) | tojson }},
-  extras: {{ extras | default([], true) | list | tojson }}
+  extras: {{ extras | default([], true) | list | tojson }},
+  pontos: {{ pontos_js | default([], true) | tojson }}
 };
 </script>
-<script src="{{ url_for('static', filename='js/logistica.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='js/logistica.js') }}?v=3"></script>
 {% endblock %}

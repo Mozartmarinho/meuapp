@@ -1,4 +1,5 @@
 """Modelos do Sistema de Controle de Logística."""
+import json
 from datetime import datetime
 
 from models import db
@@ -156,12 +157,25 @@ class LogisticaRota(db.Model):
     setor = db.Column(db.String(80))
     origem = db.Column(db.String(120))
     destino = db.Column(db.String(120))
+    origem_ponto_id = db.Column(db.Integer, index=True)
+    destino_ponto_id = db.Column(db.Integer, index=True)
     km = db.Column(db.Float)
     placa_padrao = db.Column(db.String(12))
     motorista = db.Column(db.String(120))
     ajudante = db.Column(db.String(120))
+    status = db.Column(db.String(40), default='Pendente')
+    polyline = db.Column(db.Text)
     ativa = db.Column(db.Boolean, default=True, nullable=False)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def polyline_coords(self):
+        if not self.polyline:
+            return []
+        try:
+            data = json.loads(self.polyline)
+        except (TypeError, ValueError):
+            return []
+        return data if isinstance(data, list) else []
 
     def to_dict(self):
         return {
@@ -170,10 +184,14 @@ class LogisticaRota(db.Model):
             'setor': self.setor or '',
             'origem': self.origem or '',
             'destino': self.destino or '',
+            'origem_ponto_id': self.origem_ponto_id,
+            'destino_ponto_id': self.destino_ponto_id,
             'km': float(self.km) if self.km is not None else None,
             'placa_padrao': self.placa_padrao or '',
             'motorista': self.motorista or '',
             'ajudante': self.ajudante or '',
+            'status': self.status or 'Pendente',
+            'polyline': self.polyline_coords(),
             'ativa': bool(self.ativa),
         }
 
@@ -184,6 +202,7 @@ class LogisticaEntrega(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     rota_id = db.Column(db.Integer, db.ForeignKey('logistica_rotas.id'), nullable=True, index=True)
     rota = db.relationship('LogisticaRota', backref='entregas')
+    cliente_id = db.Column(db.Integer, index=True)
     nome = db.Column(db.String(160), nullable=False)
     endereco = db.Column(db.String(255))
     lat = db.Column(db.Float)
@@ -197,6 +216,7 @@ class LogisticaEntrega(db.Model):
             'id': self.id,
             'rota_id': self.rota_id,
             'rota': self.rota.nome if self.rota else '',
+            'cliente_id': self.cliente_id,
             'nome': self.nome or '',
             'endereco': self.endereco or '',
             'lat': float(self.lat) if self.lat is not None else None,

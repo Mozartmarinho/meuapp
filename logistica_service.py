@@ -8,6 +8,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 
 from models_logistica import (
+    LogisticaEntrega,
     LogisticaLancamento,
     LogisticaManutencao,
     LogisticaOciosidade,
@@ -20,6 +21,7 @@ TIPOS_SERVICO = ('Manutenção do veículo', 'Plataforma', 'Lavagem', 'Revisão'
 STATUS_MANUTENCAO = ('Aberto', 'Em andamento', 'Concluído', 'Cancelado')
 STATUS_REVISAO = ('Pendente', 'Agendada', 'Realizada', 'Atrasada')
 STATUS_ENTREGA = ('Pendente', 'Em rota', 'Entregue', 'Falhou')
+STATUS_ROTA = ('Pendente', 'Em rota', 'Concluída', 'Cancelada')
 FUNCOES_DP = ('Motorista', 'Ajudante', 'Encarregado', 'Administrativo')
 TIPOS_CHECKLIST = ('Saída', 'Retorno')
 
@@ -552,3 +554,150 @@ def geocodificar_endereco(endereco, search=None, cep_lookup=None):
 def seed_logistica():
     """Módulo começa vazio: o cadastro operacional fica nas telas."""
     return
+
+
+def _haversine_km(lat1, lng1, lat2, lng2):
+    from math import atan2, cos, radians, sin, sqrt
+    r = 6371.0
+    dlat = radians(lat2 - lat1)
+    dlng = radians(lng2 - lng1)
+    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlng / 2) ** 2
+    return round(2 * r * atan2(sqrt(a), sqrt(1 - a)), 1)
+
+
+def _osrm_fetch(url):
+    req = urllib.request.Request(url, headers={'User-Agent': NOMINATIM_UA})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode('utf-8', errors='replace'))
+
+
+def rotear_coordenadas(lat1, lng1, lat2, lng2, fetch=None):
+    """Traça rota de carro pelas vias mais usadas (OSRM). Retorna polyline [[lat,lng],...] e km."""
+    try:
+        lat1 = float(lat1)
+        lng1 = float(lng1)
+        lat2 = float(lat2)
+        lng2 = float(lng2)
+    except (TypeError, ValueError):
+        return None
+    fallback = {
+        'polyline': [[lat1, lng1], [lat2, lng2]],
+        'km': _haversine_km(lat1, lng1, lat2, lng2),
+        'fonte': 'linha',
+    }
+    url = (
+        'https://router.project-osrm.org/route/v1/driving/'
+        f'{lng1},{lat1};{lng2},{lat2}?overview=full&geometries=geojson'
+    )
+    try:
+        payload = (fetch or _osrm_fetch)(url) or {}
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError, json.JSONDecodeError):
+        return fallback
+    routes = payload.get('routes') if isinstance(payload, dict) else None
+    if not routes:
+        return fallback
+    route = routes[0] or {}
+    geometry = route.get('geometry') or {}
+    coords = geometry.get('coordinates') if isinstance(geometry, dict) else None
+    polyline = []
+    if isinstance(coords, list):
+        for pair in coords:
+            if not isinstance(pair, (list, tuple)) or len(pair) < 2:
+                continue
+            try:
+                polyline.append([float(pair[1]), float(pair[0])])
+            except (TypeError, ValueError):
+                continue
+    if len(polyline) < 2:
+        return fallback
+    km = None
+    try:
+        km = round(float(route.get('distance') or 0) / 1000.0, 1)
+    except (TypeError, ValueError):
+        km = None
+    if not km:
+        km = fallback['km']
+    return {'polyline': polyline, 'km': km, 'fonte': 'osrm'}
+
+
+def garantir_coordenadas_ponto(ponto, geocode=None):
+    if ponto is None:
+        return False
+    if ponto.lat is not None and ponto.lng is not None:
+        return True
+    if not (ponto.endereco or '').strip():
+        return False
+    hit = (geocode or geocodificar_endereco)(ponto.endereco)
+    if not hit:
+        return False
+    ponto.lat = hit['lat']
+    ponto.lng = hit['lng']
+    return True
+
+
+def polyline_entre_pontos(origem, destino, geocode=None, route_fetch=None):
+    """Garante coords dos pontos e devolve traçado pelas vias."""
+    if not garantir_coordenadas_ponto(origem, geocode=geocode):
+        return None
+    if not garantir_coordenadas_ponto(destino, geocode=geocode):
+        return None
+    return rotear_coordenadas(origem.lat, origem.lng, destino.lat, destino.lng, fetch=route_fetch)
+
+
+def sincronizar_pontos_clientes(geocode=None, limit_geo=10):
+    """Cria pontos de entrega a partir do cadastro de clientes (nome + endereço)."""
+    from models import Cliente, db
+
+    fetch = geocode or geocodificar_endereco
+    clientes = Cliente.query.filter(
+        Cliente.endereco.isnot(None),
+        Cliente.endereco != '',
+    ).order_by(Cliente.nome).all()
+    clientes = [cli for cli in clientes if cli.ativo is not False]
+    existentes = {
+        e.cliente_id: e
+        for e in LogisticaEntrega.query.filter(LogisticaEntrega.cliente_id.isnot(None)).all()
+    }
+    criados = 0
+    atualizados = 0
+    geocodificados = 0
+    tentativas_geo = 0
+    for cli in clientes:
+        endereco = (cli.endereco or '').strip()[:255]
+        nome = (cli.nome or 'Cliente').strip()[:160]
+        item = existentes.get(cli.id)
+        if not item:
+            item = LogisticaEntrega(
+                cliente_id=cli.id,
+                nome=nome,
+                endereco=endereco or None,
+                status='Pendente',
+            )
+            db.session.add(item)
+            existentes[cli.id] = item
+            criados += 1
+        else:
+            mudou = False
+            if nome and item.nome != nome:
+                item.nome = nome
+                mudou = True
+            if endereco and item.endereco != endereco:
+                item.endereco = endereco
+                item.lat = None
+                item.lng = None
+                mudou = True
+            if mudou:
+                atualizados += 1
+        if (item.lat is None or item.lng is None) and item.endereco and tentativas_geo < limit_geo:
+            tentativas_geo += 1
+            hit = fetch(item.endereco)
+            if hit:
+                item.lat = hit['lat']
+                item.lng = hit['lng']
+                geocodificados += 1
+    db.session.commit()
+    return {
+        'criados': criados,
+        'atualizados': atualizados,
+        'geocodificados': geocodificados,
+    }
