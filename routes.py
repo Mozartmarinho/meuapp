@@ -1235,6 +1235,58 @@ def _pode_gerenciar_clientes(user):
     )
 
 
+def _rotulo_vinculo_cliente(table_name):
+    if str(table_name).startswith('nut_'):
+        return 'nutrição'
+    return {
+        'chamados': 'chamados',
+        'equipamentos': 'equipamentos',
+        'contratos': 'contratos',
+    }.get(table_name, str(table_name).replace('_', ' '))
+
+
+def _excluir_cliente(cliente):
+    """Remove o cliente após desvincular FKs opcionais; bloqueia se houver dados obrigatórios."""
+    cid = int(cliente.id)
+    ignorar = {'usuarios', 'whatsapp_chamado_usuarios', 'recurso_grupos'}
+    vinculos = []
+    for table in db.metadata.tables.values():
+        if table.name == 'clientes' or table.name in ignorar:
+            continue
+        for col in table.columns:
+            if not any(
+                fk.column.table.name == 'clientes' and fk.column.name == 'id'
+                for fk in col.foreign_keys
+            ):
+                continue
+            if db.session.execute(table.select().where(col == cid).limit(1)).first():
+                vinculos.append(_rotulo_vinculo_cliente(table.name))
+    if vinculos:
+        nomes = sorted(set(vinculos))
+        raise ValueError(
+            'Não é possível excluir: há ' + ', '.join(nomes)
+            + ' vinculados a este cliente.'
+        )
+
+    Usuario.query.filter_by(cliente_id=cid).update(
+        {Usuario.cliente_id: None}, synchronize_session=False
+    )
+    WhatsAppChamadoUsuario.query.filter_by(cliente_id=cid).update(
+        {WhatsAppChamadoUsuario.cliente_id: None}, synchronize_session=False
+    )
+    RecursoGrupo.query.filter_by(cliente_id=cid).delete(synchronize_session=False)
+    try:
+        from models_logistica import LogisticaEntrega
+        LogisticaEntrega.query.filter_by(cliente_id=cid).update(
+            {LogisticaEntrega.cliente_id: None}, synchronize_session=False
+        )
+    except Exception:
+        pass
+
+    db.session.delete(cliente)
+    db.session.commit()
+
+
 @main.route('/')
 @login_required
 def inicio():
@@ -2129,6 +2181,45 @@ def editar_cliente(id):
             flash(f'Erro ao atualizar cliente: {str(e)}', 'error')
 
     return render_template('editar_cliente.html', cliente=cliente)
+
+
+@main.route('/clientes/<int:id>/excluir', methods=['POST', 'DELETE'])
+@login_required
+def excluir_cliente(id):
+    """Exclui cliente do cadastro unificado (portal / chamados / nutrição)."""
+    user = Usuario.query.get(session['user_id'])
+    if not _pode_gerenciar_clientes(user):
+        if _wants_json():
+            return jsonify({'ok': False, 'message': 'Sem permissão para gerenciar clientes.'}), 403
+        flash('Você não tem permissão para gerenciar clientes.', 'error')
+        return redirect(url_for('main.inicio'))
+    cliente = Cliente.query.get_or_404(id)
+    try:
+        _excluir_cliente(cliente)
+        if _wants_json():
+            return jsonify({'ok': True, 'message': 'Cliente excluído com sucesso.', 'id': id})
+        flash('Cliente excluído com sucesso.', 'success')
+        return redirect(url_for('main.listar_clientes'))
+    except ValueError as e:
+        db.session.rollback()
+        if _wants_json():
+            return jsonify({'ok': False, 'message': str(e)}), 400
+        flash(str(e), 'error')
+        return redirect(url_for('main.listar_clientes'))
+    except IntegrityError:
+        db.session.rollback()
+        msg = 'Não é possível excluir este cliente porque há registros vinculados.'
+        if _wants_json():
+            return jsonify({'ok': False, 'message': msg}), 400
+        flash(msg, 'error')
+        return redirect(url_for('main.listar_clientes'))
+    except Exception as e:
+        db.session.rollback()
+        if _wants_json():
+            return jsonify({'ok': False, 'message': str(e)}), 400
+        flash(str(e), 'error')
+        return redirect(url_for('main.listar_clientes'))
+
 
 @main.route('/api/chamados/<int:id>/status', methods=['POST'])
 @login_required

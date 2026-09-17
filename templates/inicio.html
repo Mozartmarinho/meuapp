@@ -367,8 +367,11 @@
         #modal-acessos .badge,
         #modal-clientes .badge { padding: 3px 7px; font-size: 8px; }
         #modal-acessos .acessos-table th:last-child,
-        #modal-acessos .acessos-table td:last-child { text-align: right; }
-        #modal-acessos .portal-btn.danger { padding: 0.45rem 0.55rem; }
+        #modal-acessos .acessos-table td:last-child,
+        #modal-clientes .acessos-table th:last-child,
+        #modal-clientes .acessos-table td:last-child { text-align: right; }
+        #modal-acessos .portal-btn.danger,
+        #modal-clientes .portal-btn.danger { padding: 0.45rem 0.55rem; }
         #modal-acessos .portal-form .grid,
         #modal-clientes .portal-form .grid { gap: 10px; }
         #modal-acessos .portal-form label,
@@ -913,7 +916,14 @@
                                 <td>{{ item.telefone_responsavel or '-' }}</td>
                                 <td><span class="badge {{ 'on' if item.habilitado_chamados is none or item.habilitado_chamados else 'off' }}">{{ 'Sim' if item.habilitado_chamados is none or item.habilitado_chamados else 'Não' }}</span></td>
                                 <td><span class="badge {{ 'on' if item.habilitado_nutricao else 'off' }}">{{ 'Sim' if item.habilitado_nutricao else 'Não' }}</span></td>
-                                <td><button type="button" class="portal-btn pri" data-editar-cliente="{{ item.id }}">Editar</button></td>
+                                <td>
+                                    <div class="acesso-acoes">
+                                        <button type="button" class="portal-btn pri" data-editar-cliente="{{ item.id }}">Editar</button>
+                                        <button type="button" class="portal-btn danger" data-excluir-cliente="{{ item.id }}" title="Excluir cliente" aria-label="Excluir {{ item.nome }}">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
                             </tr>
                             {% else %}
                             <tr class="clientes-empty"><td colspan="9">Nenhum cliente cadastrado.</td></tr>
@@ -1291,6 +1301,7 @@
         var URL_EXCLUIR_TPL = {{ url_for('main.excluir_acesso', id=0) | tojson }};
         var URL_NOVO_CLIENTE = {{ url_for('main.novo_cliente') | tojson }};
         var URL_EDITAR_CLIENTE_TPL = {{ url_for('main.editar_cliente', id=0) | tojson }};
+        var URL_EXCLUIR_CLIENTE_TPL = {{ url_for('main.excluir_cliente', id=0) | tojson }};
         var URL_CONFIG = {{ url_for('main.configuracoes') | tojson }};
         var URL_SETOR = {{ url_for('main.criar_setor_funcao') | tojson }};
         var SETORES = {
@@ -1319,6 +1330,18 @@
 
         function urlEditarCliente(id) {
             return URL_EDITAR_CLIENTE_TPL.replace('/0/', '/' + id + '/');
+        }
+
+        function urlExcluirCliente(id) {
+            return URL_EXCLUIR_CLIENTE_TPL.replace('/0/', '/' + id + '/');
+        }
+
+        function clienteAcoesHtml(item) {
+            return '<td><div class="acesso-acoes">' +
+                '<button type="button" class="portal-btn pri" data-editar-cliente="' + item.id + '">Editar</button>' +
+                '<button type="button" class="portal-btn danger" data-excluir-cliente="' + item.id +
+                '" title="Excluir cliente" aria-label="Excluir"><i class="fas fa-trash"></i></button>' +
+                '</div></td>';
         }
 
         function badge(on) {
@@ -1802,7 +1825,7 @@
                 '<td>' + dash(item.telefone_responsavel) + '</td>' +
                 '<td>' + badge(!!item.habilitado_chamados) + '</td>' +
                 '<td>' + badge(!!item.habilitado_nutricao) + '</td>' +
-                '<td><button type="button" class="portal-btn pri" data-editar-cliente="' + item.id + '">Editar</button></td>' +
+                clienteAcoesHtml(item) +
                 '</tr>';
         }
 
@@ -1877,7 +1900,45 @@
         document.getElementById('btn-cancelar-cliente').addEventListener('click', function () {
             showClienteLista();
         });
-        document.getElementById('clientes-tbody').addEventListener('click', function (ev) {
+        function removeClienteDaLista(id) {
+            CLIENTES = CLIENTES.filter(function (c) { return c.id !== id; });
+            var tbody = document.getElementById('clientes-tbody');
+            var existing = tbody.querySelector('tr[data-id="' + id + '"]');
+            if (existing) existing.remove();
+            if (!tbody.querySelector('tr')) {
+                tbody.innerHTML = '<tr class="clientes-empty"><td colspan="9">Nenhum cliente cadastrado.</td></tr>';
+            }
+            var select = document.getElementById('acesso-cliente');
+            if (select) {
+                var opt = select.querySelector('option[value="' + id + '"]');
+                if (opt) opt.remove();
+            }
+        }
+
+        document.getElementById('clientes-tbody').addEventListener('click', async function (ev) {
+            var delBtn = ev.target.closest('[data-excluir-cliente]');
+            if (delBtn) {
+                var delId = parseInt(delBtn.getAttribute('data-excluir-cliente'), 10);
+                var delItem = CLIENTES.find(function (c) { return c.id === delId; });
+                var nome = (delItem && delItem.nome) || 'este cliente';
+                if (!confirm('Excluir o cliente ' + nome + '? Esta ação não pode ser desfeita.')) return;
+                delBtn.disabled = true;
+                var msg = document.getElementById('clientes-lista-msg');
+                try {
+                    var r = await fetch(urlExcluirCliente(delId), {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+                    var data = await r.json();
+                    showMsg(msg, !!data.ok, data.message || (data.ok ? 'Cliente excluído.' : 'Falha ao excluir.'));
+                    if (data.ok) removeClienteDaLista(delId);
+                } catch (e) {
+                    showMsg(msg, false, 'Falha ao excluir o cliente.');
+                } finally {
+                    delBtn.disabled = false;
+                }
+                return;
+            }
             var btn = ev.target.closest('[data-editar-cliente]');
             if (!btn) return;
             var id = parseInt(btn.getAttribute('data-editar-cliente'), 10);

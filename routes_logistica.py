@@ -24,8 +24,10 @@ from logistica_service import (
     custo_por_veiculo,
     evolucao_custos,
     geocodificar_endereco,
+    km_da_polyline,
     periodo_padrao,
     polyline_entre_pontos,
+    retracar_rotas_incompletas,
     seed_logistica,
     sincronizar_pontos_clientes,
 )
@@ -80,6 +82,7 @@ _LOGISTICA_ENDPOINT_MENUS = {
     'logistica.api_geocode': 'entregas',
     'logistica.api_sincronizar_clientes': 'entregas',
     'logistica.api_mapa': 'entregas',
+    'logistica.api_preparar_mapa': 'entregas',
     'logistica.api_colaboradores': 'dp',
     'logistica.api_colaborador': 'dp',
     'logistica.api_folhas': 'dp',
@@ -764,13 +767,27 @@ def _preencher_rota_pontos(item, d, geocode=None, route_fetch=None):
     if not nome:
         nome = f'{origem.nome} -> {destino.nome}'
     item.nome = nome[:120]
+    km_user = _parse_float(d.get('km')) if 'km' in d else None
+    coords = d.get('polyline') if isinstance(d.get('polyline'), list) else None
+    cleaned = []
+    if coords:
+        for pair in coords:
+            if not isinstance(pair, (list, tuple)) or len(pair) < 2:
+                continue
+            try:
+                cleaned.append([float(pair[0]), float(pair[1])])
+            except (TypeError, ValueError):
+                continue
+    if len(cleaned) > 2:
+        item.polyline = json.dumps(cleaned)
+        item.km = km_user if km_user is not None else km_da_polyline(cleaned)
+        return None
     traced = polyline_entre_pontos(origem, destino, geocode=geocode, route_fetch=route_fetch)
     if traced:
         item.polyline = json.dumps(traced['polyline'])
-        km_user = _parse_float(d.get('km')) if 'km' in d else None
         item.km = km_user if km_user is not None else traced['km']
     elif 'km' in d:
-        item.km = _parse_float(d.get('km'))
+        item.km = km_user
     return None
 
 
@@ -868,17 +885,34 @@ def api_sincronizar_clientes():
     return jsonify({'ok': True, **resumo})
 
 
-@logistica.route('/api/logistica/mapa')
-@login_required
-def api_mapa():
+def _payload_mapa(resumo=None, rotas_retracadas=0):
     pontos = _pontos_por_id()
     rotas = LogisticaRota.query.order_by(LogisticaRota.nome).all()
-    return jsonify({
+    data = {
         'ok': True,
         'pontos': [p.to_dict() for p in LogisticaEntrega.query.order_by(LogisticaEntrega.nome).all()],
         'rotas': [_rota_to_dict(r, pontos) for r in rotas],
         'clientes': _clientes_para_pontos(),
-    })
+        'rotas_retracadas': int(rotas_retracadas or 0),
+    }
+    if resumo:
+        data.update(resumo)
+    return data
+
+
+@logistica.route('/api/logistica/mapa')
+@login_required
+def api_mapa():
+    return jsonify(_payload_mapa())
+
+
+@logistica.route('/api/logistica/mapa/preparar', methods=['POST'])
+@login_required
+def api_preparar_mapa():
+    resumo = sincronizar_pontos_clientes(limit_geo=30)
+    pontos = _pontos_por_id()
+    retracadas = retracar_rotas_incompletas(pontos=pontos)
+    return jsonify(_payload_mapa(resumo, retracadas))
 
 
 @logistica.route('/api/logistica/entregas', methods=['GET', 'POST'])

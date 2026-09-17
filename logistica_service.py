@@ -556,46 +556,51 @@ def seed_logistica():
     return
 
 
-def _haversine_km(lat1, lng1, lat2, lng2):
+def _haversine_km(lat1, lng1, lat2, lng2, ndigits=1):
     from math import atan2, cos, radians, sin, sqrt
     r = 6371.0
     dlat = radians(lat2 - lat1)
     dlng = radians(lng2 - lng1)
     a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlng / 2) ** 2
-    return round(2 * r * atan2(sqrt(a), sqrt(1 - a)), 1)
+    dist = 2 * r * atan2(sqrt(a), sqrt(1 - a))
+    return round(dist, ndigits) if ndigits is not None else dist
+
+
+OSRM_ENDPOINTS = (
+    'https://router.project-osrm.org/route/v1/driving/',
+    'https://routing.openstreetmap.de/routed-car/route/v1/driving/',
+)
 
 
 def _osrm_fetch(url):
     req = urllib.request.Request(url, headers={'User-Agent': NOMINATIM_UA})
-    with urllib.request.urlopen(req, timeout=15) as resp:
+    with urllib.request.urlopen(req, timeout=12) as resp:
         return json.loads(resp.read().decode('utf-8', errors='replace'))
 
 
-def rotear_coordenadas(lat1, lng1, lat2, lng2, fetch=None):
-    """Traça rota de carro pelas vias mais usadas (OSRM). Retorna polyline [[lat,lng],...] e km."""
-    try:
-        lat1 = float(lat1)
-        lng1 = float(lng1)
-        lat2 = float(lat2)
-        lng2 = float(lng2)
-    except (TypeError, ValueError):
+def polyline_e_incompleta(coords):
+    return not isinstance(coords, list) or len(coords) < 3
+
+
+def km_da_polyline(coords):
+    if not isinstance(coords, list) or len(coords) < 2:
         return None
-    fallback = {
-        'polyline': [[lat1, lng1], [lat2, lng2]],
-        'km': _haversine_km(lat1, lng1, lat2, lng2),
-        'fonte': 'linha',
-    }
-    url = (
-        'https://router.project-osrm.org/route/v1/driving/'
-        f'{lng1},{lat1};{lng2},{lat2}?overview=full&geometries=geojson'
-    )
-    try:
-        payload = (fetch or _osrm_fetch)(url) or {}
-    except (urllib.error.URLError, TimeoutError, ValueError, OSError, json.JSONDecodeError):
-        return fallback
+    total = 0.0
+    prev = coords[0]
+    for cur in coords[1:]:
+        if not isinstance(prev, (list, tuple)) or not isinstance(cur, (list, tuple)):
+            continue
+        if len(prev) < 2 or len(cur) < 2:
+            continue
+        total += _haversine_km(prev[0], prev[1], cur[0], cur[1], ndigits=None)
+        prev = cur
+    return round(total, 1)
+
+
+def _polyline_de_osrm(payload, fallback):
     routes = payload.get('routes') if isinstance(payload, dict) else None
     if not routes:
-        return fallback
+        return None
     route = routes[0] or {}
     geometry = route.get('geometry') or {}
     coords = geometry.get('coordinates') if isinstance(geometry, dict) else None
@@ -608,8 +613,8 @@ def rotear_coordenadas(lat1, lng1, lat2, lng2, fetch=None):
                 polyline.append([float(pair[1]), float(pair[0])])
             except (TypeError, ValueError):
                 continue
-    if len(polyline) < 2:
-        return fallback
+    if polyline_e_incompleta(polyline):
+        return None
     km = None
     try:
         km = round(float(route.get('distance') or 0) / 1000.0, 1)
@@ -618,6 +623,37 @@ def rotear_coordenadas(lat1, lng1, lat2, lng2, fetch=None):
     if not km:
         km = fallback['km']
     return {'polyline': polyline, 'km': km, 'fonte': 'osrm'}
+
+
+def rotear_coordenadas(lat1, lng1, lat2, lng2, fetch=None, endpoints=None):
+    """Traça rota de carro pelas rodovias mais usadas (OSRM). Retorna polyline [[lat,lng],...] e km."""
+    try:
+        lat1 = float(lat1)
+        lng1 = float(lng1)
+        lat2 = float(lat2)
+        lng2 = float(lng2)
+    except (TypeError, ValueError):
+        return None
+    fallback = {
+        'polyline': [[lat1, lng1], [lat2, lng2]],
+        'km': _haversine_km(lat1, lng1, lat2, lng2),
+        'fonte': 'linha',
+    }
+    fetch_fn = fetch or _osrm_fetch
+    for base in (endpoints or OSRM_ENDPOINTS):
+        url = (
+            str(base)
+            + f'{lng1},{lat1};{lng2},{lat2}'
+            + '?overview=full&geometries=geojson'
+        )
+        try:
+            payload = fetch_fn(url) or {}
+        except (urllib.error.URLError, TimeoutError, ValueError, OSError, json.JSONDecodeError):
+            continue
+        parsed = _polyline_de_osrm(payload, fallback)
+        if parsed:
+            return parsed
+    return fallback
 
 
 def garantir_coordenadas_ponto(ponto, geocode=None):
@@ -642,6 +678,35 @@ def polyline_entre_pontos(origem, destino, geocode=None, route_fetch=None):
     if not garantir_coordenadas_ponto(destino, geocode=geocode):
         return None
     return rotear_coordenadas(origem.lat, origem.lng, destino.lat, destino.lng, fetch=route_fetch)
+
+
+def retracar_rotas_incompletas(pontos=None, geocode=None, route_fetch=None, limit=20):
+    """Refaz o traçado de rotas que ficaram como linha reta (sem vias)."""
+    from models import db
+
+    pontos = pontos if pontos is not None else {
+        p.id: p for p in LogisticaEntrega.query.all()
+    }
+    retracadas = 0
+    for rota in LogisticaRota.query.order_by(LogisticaRota.id).all():
+        if retracadas >= limit:
+            break
+        if not polyline_e_incompleta(rota.polyline_coords()):
+            continue
+        origem = pontos.get(rota.origem_ponto_id)
+        destino = pontos.get(rota.destino_ponto_id)
+        traced = polyline_entre_pontos(
+            origem, destino, geocode=geocode, route_fetch=route_fetch
+        )
+        if not traced or polyline_e_incompleta(traced.get('polyline')):
+            continue
+        rota.polyline = json.dumps(traced['polyline'])
+        if traced.get('km') is not None:
+            rota.km = traced['km']
+        retracadas += 1
+    if retracadas:
+        db.session.commit()
+    return retracadas
 
 
 def sincronizar_pontos_clientes(geocode=None, limit_geo=10):

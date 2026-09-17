@@ -39,9 +39,17 @@
                     <td>{{ 'Sim' if cliente.habilitado_chamados is none or cliente.habilitado_chamados else 'Não' }}</td>
                     <td>{{ 'Sim' if cliente.habilitado_nutricao else 'Não' }}</td>
                     <td>
-                        <a href="{{ url_for('main.editar_cliente', id=cliente.id) }}" class="btn btn-primary btn-sm">
-                            <i class="fas fa-edit"></i> Editar
-                        </a>
+                        <div class="cli-acoes">
+                            <a href="{{ url_for('main.editar_cliente', id=cliente.id) }}" class="btn btn-primary btn-sm">
+                                <i class="fas fa-edit"></i> Editar
+                            </a>
+                            <form method="post" action="{{ url_for('main.excluir_cliente', id=cliente.id) }}"
+                                  onsubmit="return confirm('Excluir o cliente {{ cliente.nome|e }}? Esta ação não pode ser desfeita.');">
+                                <button type="submit" class="btn btn-danger btn-sm" title="Excluir cliente" aria-label="Excluir {{ cliente.nome }}">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}
@@ -70,5 +78,8 @@
 .empty-state { text-align: center; padding: 60px 20px; color: #666; }
 .empty-state i { font-size: 48px; margin-bottom: 20px; opacity: 0.5; }
 .btn-sm { padding: 4px 8px; font-size: 12px; }
+.cli-acoes { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.cli-acoes form { margin: 0; }
+.btn-danger { background: #dc2626; color: #fff; border: none; }
 </style>
 {% endblock %}

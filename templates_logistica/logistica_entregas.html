@@ -7,7 +7,7 @@
 <div class="page-header" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;justify-content:space-between;">
   <div>
     <h1>Mapa de entregas</h1>
-    <p>Pontos do cadastro de clientes e rotas traçadas pelas vias entre dois pontos.</p>
+    <p>Pontos do cadastro de clientes e rotas traçadas pelas rodovias mais usadas.</p>
   </div>
   <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
     <button class="btn btn-secondary" type="button" id="btnSyncClientes"><i class="fas fa-building"></i> Importar clientes</button>
@@ -15,6 +15,15 @@
     <button class="btn btn-primary" type="button" id="btnNovo"><i class="fas fa-plus"></i> Novo ponto</button>
   </div>
 </div>
+<div class="mapa-entregas-stage" id="mapaEntregasStage">
+  <div id="mapaProcessando" class="mapa-processando is-visible" role="status" aria-live="polite" aria-busy="true">
+    <div class="mapa-processando-card">
+      <div class="sg-app-loading-spinner" aria-hidden="true"></div>
+      <p class="mapa-processando-text" id="mapaProcessandoText">Processando…</p>
+      <p class="mapa-processando-sub" id="mapaProcessandoSub">Localizando pontos e traçando rotas pelas rodovias.</p>
+    </div>
+  </div>
+  <div id="mapaEntregasReady" hidden>
 <div id="mapaEntregas" style="height:440px;border-radius:12px;margin-bottom:0.7rem;border:1px solid #dbe4f0;"></div>
 <div class="mapa-legenda">
   <span><i class="leg-dot" style="background:#2563eb;"></i> Ponto</span>
@@ -50,6 +59,8 @@
     </thead>
     <tbody id="tbodyRotas"></tbody>
   </table>
+</div>
+  </div>
 </div>
 <style>
 .data-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
@@ -91,6 +102,43 @@
   font-size: 0.72rem;
 }
 .leaflet-tooltip.rota-label::before { border-top-color: #0f766e; }
+.mapa-entregas-stage {
+  position: relative;
+  min-height: 28rem;
+}
+.mapa-processando {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(248, 250, 252, 0.96);
+  border-radius: 12px;
+  border: 1px solid #dbe4f0;
+}
+.mapa-processando.is-visible { display: flex; }
+.mapa-processando-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.85rem;
+  max-width: 360px;
+  text-align: center;
+}
+.mapa-processando-text {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0D2B5C;
+}
+.mapa-processando-sub {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: #5a6b85;
+}
 </style>
 {% endblock %}
 {% block scripts %}
@@ -98,9 +146,8 @@
 <script>
 (function () {
   var statusRota = {{ status_rota | list | tojson }};
-  var map = L.map('mapaEntregas').setView([-22.9068, -43.1729], 11);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
-  var layer = L.layerGroup().addTo(map);
+  var map = null;
+  var layer = null;
   var miniMap = null;
   var miniMarker = null;
   var geoTimer = null;
@@ -108,12 +155,45 @@
   var pontos = [];
   var rotas = [];
   var clientes = [];
+  var osrmBases = [
+    'https://router.project-osrm.org/route/v1/driving/',
+    'https://routing.openstreetmap.de/routed-car/route/v1/driving/'
+  ];
   var coresRota = {
     'Pendente': '#64748b',
     'Em rota': '#2563eb',
     'Concluída': '#15803d',
     'Cancelada': '#b91c1c'
   };
+
+  function setProcessando(on, msg, sub) {
+    var el = document.getElementById('mapaProcessando');
+    var ready = document.getElementById('mapaEntregasReady');
+    var txt = document.getElementById('mapaProcessandoText');
+    var subEl = document.getElementById('mapaProcessandoSub');
+    if (txt && msg) txt.textContent = msg;
+    if (subEl && sub != null) subEl.textContent = sub;
+    if (el) {
+      el.classList.toggle('is-visible', !!on);
+      el.setAttribute('aria-busy', on ? 'true' : 'false');
+    }
+    if (ready) ready.hidden = !!on;
+    if (on && window.showAppLoading) {
+      window.showAppLoading(msg || 'Processando…', sub || 'Localizando pontos e traçando rotas pelas rodovias.');
+    }
+    if (!on && window.hideAppLoading) window.hideAppLoading();
+  }
+
+  function garantirMapa() {
+    if (map) return map;
+    map = L.map('mapaEntregas').setView([-22.9068, -43.1729], 11);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+    layer = L.layerGroup().addTo(map);
+    return map;
+  }
 
   function escapeHtml(str) {
     return String(str || '').replace(/[&<>"']/g, function (ch) {
@@ -217,6 +297,7 @@
   }
 
   function renderMapa() {
+    garantirMapa();
     layer.clearLayers();
     var bounds = [];
     pontos.forEach(function (row) {
@@ -242,7 +323,7 @@
       }
       if (coords.length < 2) return;
       var cor = coresRota[rota.status] || '#0f766e';
-      var line = L.polyline(coords, { color: cor, weight: 5, opacity: 0.85 });
+      var line = L.polyline(coords, { color: cor, weight: 5, opacity: 0.9 });
       line.bindPopup(
         '<strong>' + escapeHtml(rota.nome) + '</strong><br>' +
         escapeHtml(rota.origem || '') + ' → ' + escapeHtml(rota.destino || '') + '<br>' +
@@ -258,6 +339,7 @@
       });
     });
     if (bounds.length) map.fitBounds(bounds, { padding: [28, 28] });
+    setTimeout(function () { if (map) map.invalidateSize(); }, 80);
   }
 
   function renderTabelas() {
@@ -286,28 +368,104 @@
     }).join('');
   }
 
-  async function load() {
-    var res = await fetch('/api/logistica/mapa');
-    var data = await res.json();
-    pontos = data.pontos || [];
-    rotas = data.rotas || [];
-    clientes = data.clientes || [];
-    renderMapa();
+  function aplicarDados(data) {
+    pontos = (data && data.pontos) || [];
+    rotas = (data && data.rotas) || [];
+    clientes = (data && data.clientes) || [];
+  }
+
+  function rotaNasVias(rota) {
+    return Array.isArray(rota.polyline) && rota.polyline.length > 2;
+  }
+
+  async function tracarOsrm(lat1, lng1, lat2, lng2) {
+    for (var i = 0; i < osrmBases.length; i++) {
+      try {
+        var url = osrmBases[i] + lng1 + ',' + lat1 + ';' + lng2 + ',' + lat2 +
+          '?overview=full&geometries=geojson';
+        var res = await fetch(url, { sgSkipLoading: true });
+        var data = await res.json();
+        var route = (data.routes || [])[0] || {};
+        var coords = (route.geometry || {}).coordinates || [];
+        if (!Array.isArray(coords) || coords.length < 3) continue;
+        var polyline = coords.map(function (p) { return [p[1], p[0]]; });
+        var km = route.distance != null ? Math.round(Number(route.distance) / 100) / 10 : null;
+        return { polyline: polyline, km: km };
+      } catch (err) { /* tenta o próximo servidor */ }
+    }
+    return null;
+  }
+
+  async function completarRotasNasVias() {
+    for (var i = 0; i < rotas.length; i++) {
+      var rota = rotas[i];
+      if (rotaNasVias(rota)) continue;
+      var o = rota.origem_ponto || {};
+      var d = rota.destino_ponto || {};
+      if (o.lat == null || o.lng == null || d.lat == null || d.lng == null) continue;
+      setProcessando(true, 'Processando…', 'Traçando ' + (rota.nome || 'rota') + ' pelas rodovias.');
+      var traced = await tracarOsrm(o.lat, o.lng, d.lat, d.lng);
+      if (!traced) continue;
+      rota.polyline = traced.polyline;
+      if (traced.km != null) rota.km = traced.km;
+      try {
+        await fetch('/api/logistica/rotas/' + rota.id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            origem_ponto_id: rota.origem_ponto_id,
+            destino_ponto_id: rota.destino_ponto_id,
+            status: rota.status,
+            nome: rota.nome,
+            polyline: rota.polyline,
+            km: rota.km
+          }),
+          sgSkipLoading: true
+        });
+      } catch (err) { /* mapa já recebe o traçado local */ }
+    }
+  }
+
+  async function mostrarMapaPronto() {
+    setProcessando(false);
     renderTabelas();
+    renderMapa();
+  }
+
+  async function prepararMapa(opts) {
+    opts = opts || {};
+    setProcessando(true, 'Processando…', 'Localizando pontos e traçando rotas pelas rodovias.');
+    try {
+      var res = await fetch('/api/logistica/mapa/preparar', {
+        method: 'POST',
+        sgSkipLoading: true
+      });
+      var data = await res.json();
+      if (!data.ok) {
+        if (!opts.silent) showToast(data.error || 'Não foi possível montar o mapa.', 'error');
+        aplicarDados(data);
+        await mostrarMapaPronto();
+        return;
+      }
+      aplicarDados(data);
+      var criados = data.criados || 0;
+      if (opts.toastImport && (criados || !opts.silent)) {
+        showToast(criados ? (criados + ' cliente(s) importado(s) como ponto.') : 'Cadastro de clientes já está no mapa.');
+      }
+      await completarRotasNasVias();
+      await mostrarMapaPronto();
+    } catch (err) {
+      if (!opts.silent) showToast('Não foi possível montar o mapa.', 'error');
+      setProcessando(false);
+    }
+  }
+
+  async function load() {
+    await prepararMapa({ silent: true });
   }
 
   async function syncClientes(silent) {
-    var res = await fetch('/api/logistica/entregas/sincronizar-clientes', { method: 'POST' });
-    var data = await res.json();
-    if (!data.ok) {
-      if (!silent) showToast(data.error || 'Não foi possível importar os clientes.', 'error');
-      return;
-    }
-    var criados = data.criados || 0;
-    if (!silent || criados) {
-      showToast(criados ? (criados + ' cliente(s) importado(s) como ponto.') : 'Cadastro de clientes já está no mapa.');
-    }
-    await load();
+    await prepararMapa({ silent: !!silent, toastImport: !silent });
   }
 
   function preencherCliente() {
@@ -350,7 +508,7 @@
       destroyMini();
       fecharModal();
       showToast('Ponto gravado.');
-      load();
+      await load();
     });
     setTimeout(function () {
       initMini(row);
@@ -406,12 +564,22 @@
         nome: document.getElementById('f-rota-nome').value
       };
       var url = '/api/logistica/rotas' + (row.id ? '/' + row.id : '');
-      var res = await fetch(url, { method: row.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      setProcessando(true, 'Processando…', 'Traçando a rota pelas rodovias mais usadas.');
+      var res = await fetch(url, {
+        method: row.id ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        sgSkipLoading: true
+      });
       var data = await res.json();
-      if (!data.ok) { showToast(data.error || 'Falha ao gravar a rota.', 'error'); return; }
+      if (!data.ok) {
+        setProcessando(false);
+        showToast(data.error || 'Falha ao gravar a rota.', 'error');
+        return;
+      }
       fecharModal();
       showToast('Rota gravada no mapa.');
-      load();
+      await load();
     });
     setTimeout(function () {
       var elNome = document.getElementById('f-rota-nome');
@@ -446,7 +614,7 @@
     var data = await res.json();
     if (!data.ok) { showToast(data.error || 'Não foi possível excluir.', 'error'); return; }
     showToast('Ponto excluído.');
-    load();
+    await load();
   });
   document.getElementById('tbodyRotas').addEventListener('click', async function (ev) {
     var edit = ev.target.closest('[data-rota-edit]');
@@ -458,9 +626,9 @@
     var data = await res.json();
     if (!data.ok) { showToast(data.error || 'Não foi possível excluir.', 'error'); return; }
     showToast('Rota excluída.');
-    load();
+    await load();
   });
-  syncClientes(true);
+  prepararMapa({ silent: true });
 })();
 </script>
 {% endblock %}

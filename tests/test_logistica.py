@@ -279,7 +279,10 @@ class LogisticaModuloTest(unittest.TestCase):
         self.assertIn('ponto-label', html)
         self.assertIn('L.polyline', html)
         self.assertIn('origem_ponto_id', html)
-        self.assertIn('sincronizar-clientes', html)
+        self.assertIn('mapa/preparar', html)
+        self.assertIn('Processando', html)
+        self.assertIn('mapaProcessando', html)
+        self.assertIn('routing.openstreetmap.de', html)
 
     def test_rotear_coordenadas_usa_osrm_e_cai_para_linha(self):
         def fake_osrm(url):
@@ -310,6 +313,33 @@ class LogisticaModuloTest(unittest.TestCase):
         fallback = rotear_coordenadas(-22.9, -43.1, -22.91, -43.2, fetch=boom)
         self.assertEqual(fallback['fonte'], 'linha')
         self.assertEqual(len(fallback['polyline']), 2)
+
+    def test_rotear_usa_servidor_reserva_quando_o_primeiro_falha(self):
+        calls = []
+
+        def fetch(url):
+            calls.append(url)
+            if 'project-osrm.org' in url:
+                raise TimeoutError('offline')
+            self.assertIn('routing.openstreetmap.de', url)
+            return {
+                'code': 'Ok',
+                'routes': [{
+                    'distance': 22100,
+                    'geometry': {
+                        'coordinates': [
+                            [-43.1729, -22.9068],
+                            [-43.1800, -22.9100],
+                            [-43.2000, -22.9300],
+                        ]
+                    },
+                }],
+            }
+
+        hit = rotear_coordenadas(-22.9068, -43.1729, -22.9300, -43.2000, fetch=fetch)
+        self.assertEqual(hit['fonte'], 'osrm')
+        self.assertEqual(len(hit['polyline']), 3)
+        self.assertEqual(len(calls), 2)
 
     def test_importa_cliente_como_ponto_e_rota_entre_dois_pontos(self):
         self._login(is_master=True, tipo='admin', email='mapa@test.local')
@@ -367,6 +397,29 @@ class LogisticaModuloTest(unittest.TestCase):
         self.assertEqual(len(mapa['pontos']), 2)
         self.assertEqual(len(mapa['rotas']), 1)
         self.assertEqual(len(mapa['rotas'][0]['polyline']), 3)
+
+        with patch('logistica_service.geocodificar_endereco', side_effect=fake_geo), \
+                patch('logistica_service.rotear_coordenadas', return_value=fake_trace):
+            reta = LogisticaRota(
+                nome='Linha reta',
+                origem_ponto_id=ids['Matriz SG'],
+                destino_ponto_id=ids['Hospital Central'],
+                origem='Matriz SG',
+                destino='Hospital Central',
+                status='Pendente',
+                polyline='[[-22.8211, -43.0512], [-22.9068, -43.1729]]',
+                km=12.0,
+                ativa=True,
+            )
+            db.session.add(reta)
+            db.session.commit()
+            prep = self.client.post('/api/logistica/mapa/preparar')
+        self.assertEqual(prep.status_code, 200)
+        body = prep.get_json()
+        self.assertTrue(body['ok'])
+        self.assertGreaterEqual(body.get('rotas_retracadas') or 0, 1)
+        retracada = [r for r in body['rotas'] if r['nome'] == 'Linha reta'][0]
+        self.assertEqual(len(retracada['polyline']), 3)
 
 
 if __name__ == '__main__':
