@@ -59,6 +59,7 @@ _PESAGEM_ENDPOINT_MENUS = {
     'pesagem.download_agente_arquivo': 'dashboard',
     'pesagem.api_listar_leituras': 'dashboard',
     'pesagem.api_excluir_leitura': 'dashboard',
+    'pesagem.api_editar_leitura': 'dashboard',
     'pesagem.api_balancas': 'balancas',
     'pesagem.api_balanca': 'balancas',
     'pesagem.api_listar_clientes': 'clientes',
@@ -75,13 +76,26 @@ _PESAGEM_ENDPOINT_MENUS = {
 
 @pesagem.before_request
 def _checar_permissao_menu_pesagem():
-    if request.endpoint in ('pesagem.api_health', 'pesagem.api_receber_leitura'):
+    if request.endpoint in (
+        'pesagem.api_health',
+        'pesagem.api_receber_leitura',
+        'pesagem.api_listar_leituras',
+    ):
         return None
     path = (request.path or '').rstrip('/')
-    # AgentePesagem.exe: lista somente leitura do Cadastro de Cliente (pesagem_clientes)
+    # AgentePesagem.exe: cadastro de cliente + pesados do dia (listar/editar/excluir)
+    if _check_api_key() and request.endpoint in (
+        'pesagem.api_listar_clientes',
+        'pesagem.api_listar_leituras',
+        'pesagem.api_excluir_leitura',
+        'pesagem.api_editar_leitura',
+    ):
+        return None
     if request.method == 'GET' and path == '/api/pesagem/clientes' and _check_api_key():
         return None
-    if request.endpoint == 'pesagem.api_listar_clientes' and _check_api_key():
+    if request.method == 'GET' and path == '/api/pesagem/leituras' and _check_api_key():
+        return None
+    if request.method in ('PUT', 'PATCH', 'DELETE') and path.startswith('/api/pesagem/leituras/') and _check_api_key():
         return None
     if 'user_id' not in session:
         return None
@@ -119,6 +133,11 @@ def api_key_required(f):
             return jsonify({'ok': False, 'error': 'API key inválida'}), 401
         return f(*args, **kwargs)
     return decorated
+
+
+def _agente_ou_login():
+    """AgentePesagem.exe (X-API-Key) ou sessão web."""
+    return bool(_check_api_key() or session.get('user_id'))
 
 
 def seed_pesagem():
@@ -342,14 +361,11 @@ def _aplicar_filtros_leituras(query, filtros):
     data_de = filtros.get('data_de')
     data_ate = filtros.get('data_ate')
     if data_de:
-        query = query.filter(
-            PesagemLeitura.data_leitura >= datetime.combine(data_de, datetime.min.time())
-        )
+        inicio = datetime.combine(data_de, datetime.min.time())
+        query = query.filter(PesagemLeitura.data_leitura >= inicio)
     if data_ate:
-        query = query.filter(
-            PesagemLeitura.data_leitura
-            <= datetime.combine(data_ate, datetime.max.time()).replace(microsecond=0)
-        )
+        fim = datetime.combine(data_ate + timedelta(days=1), datetime.min.time())
+        query = query.filter(PesagemLeitura.data_leitura < fim)
     if filtros.get('cliente_id'):
         query = query.filter(PesagemLeitura.cliente_id == filtros['cliente_id'])
     if filtros.get('balanca'):
@@ -683,8 +699,10 @@ def api_receber_leitura():
 
 
 @pesagem.route('/api/pesagem/leituras', methods=['GET'])
-@login_required
 def api_listar_leituras():
+    """Lista lançamentos. A tela web usa a sessão; o agente usa X-API-Key."""
+    if not _agente_ou_login():
+        return jsonify({'ok': False, 'error': 'Não autorizado'}), 401
     filtros = {
         'data_de': _parse_date_arg(request.args.get('data_de')),
         'data_ate': _parse_date_arg(request.args.get('data_ate')),
@@ -709,15 +727,58 @@ def api_listar_leituras():
 
 
 @pesagem.route('/api/pesagem/leituras/<int:lid>', methods=['DELETE'])
-@login_required
 def api_excluir_leitura(lid):
-    """Remove um lançamento de pesagem da listagem."""
+    """Remove um lançamento de pesagem da listagem (dashboard ou agente)."""
+    if not _agente_ou_login():
+        return jsonify({'ok': False, 'error': 'Não autorizado'}), 401
     leitura = PesagemLeitura.query.get(lid)
     if not leitura:
         return jsonify({'ok': False, 'error': 'Lançamento não encontrado'}), 404
     db.session.delete(leitura)
     db.session.commit()
     return jsonify({'ok': True, 'id': lid})
+
+
+@pesagem.route('/api/pesagem/leituras/<int:lid>', methods=['PUT', 'PATCH'])
+def api_editar_leitura(lid):
+    """Altera cliente e/ou líquido de um lançamento (dashboard ou agente)."""
+    if not _agente_ou_login():
+        return jsonify({'ok': False, 'error': 'Não autorizado'}), 401
+    leitura = PesagemLeitura.query.get(lid)
+    if not leitura:
+        return jsonify({'ok': False, 'error': 'Lançamento não encontrado'}), 404
+    d = request.get_json(force=True, silent=True) or {}
+
+    if any(k in d for k in ('cliente_id', 'cliente_nome', 'cliente')):
+        cliente_id, cliente_nome = _resolver_cliente_leitura(d)
+        if not cliente_id:
+            return jsonify({
+                'ok': False,
+                'error': 'Cliente selecionado é obrigatório e deve estar cadastrado.',
+            }), 400
+        leitura.cliente_id = cliente_id
+        leitura.cliente_nome = cliente_nome
+
+    tara = _parse_float(d.get('tara'))
+    if tara is None:
+        tara = leitura.tara if leitura.tara is not None else 0.0
+    peso_liquido = _parse_float(d.get('peso_liquido'))
+    if peso_liquido is None:
+        peso_liquido = _parse_float(d.get('peso'))
+    if peso_liquido is None:
+        peso_liquido = leitura.peso_liquido if leitura.peso_liquido is not None else leitura.peso
+    if peso_liquido is None or peso_liquido <= 0:
+        return jsonify({'ok': False, 'error': 'Informe o peso líquido.'}), 400
+    peso_bruto = _parse_float(d.get('peso_bruto'))
+    if peso_bruto is None:
+        peso_bruto = round(float(peso_liquido) + float(tara or 0.0), 4)
+
+    leitura.tara = tara
+    leitura.peso_liquido = peso_liquido
+    leitura.peso = peso_liquido
+    leitura.peso_bruto = peso_bruto
+    db.session.commit()
+    return jsonify({'ok': True, 'id': leitura.id, 'leitura': leitura.to_dict()})
 
 
 @pesagem.route('/api/pesagem/balancas', methods=['GET', 'POST'])

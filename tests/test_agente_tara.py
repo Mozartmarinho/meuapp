@@ -74,9 +74,21 @@ class TaraFixaTest(unittest.TestCase):
         self.assertIn('_preview_tara_digitada', src)
         self.assertIn('_selecionar_campo_tara', src)
         self.assertIn("origem='ja_pesado'", src)
-        self.assertIn("APP_VERSION = '1.5.0'", src)
+        self.assertIn("APP_VERSION = '1.7.1'", src)
         self.assertIn("self.title('Roupa já pesada')", src)
         self.assertIn("self.var_tara = tk.StringVar", src)
+        self.assertIn("text=' Pesados '", src)
+        self.assertIn("text='P. LIQUIDO'", src)
+        self.assertIn("text='Peso recebido'", src)
+        self.assertIn('class PesoRecebidoDialog', src)
+        self.assertIn('class EditarPesadoDialog', src)
+        self.assertIn('carregar_enviados_dia', src)
+        self.assertIn('_modo_aguardando_peso', src)
+        self.assertIn('_pedir_editar_pesado', src)
+        self.assertIn('_pedir_excluir_enviado', src)
+        self.assertIn('allow_redirects=False', src)
+        self.assertIn('_filtrar_pesados_hoje', src)
+        self.assertIn('_mesclar_pesado', src)
         led = src.split('class LedPesoDisplay', 1)[1][:900]
         self.assertIn("text='Líquido'", led)
         self.assertNotIn("text='Peso'", led)
@@ -91,6 +103,17 @@ class TaraFixaTest(unittest.TestCase):
         with open(path, encoding='utf-8') as fh:
             html = fh.read()
         self.assertIn('Roupa já pesada', html)
+        self.assertGreaterEqual(html.count('data-no-loading'), 3)
+        self.assertIn('download="config.json"', html)
+        self.assertIn('download="instalar_inicio_windows.bat"', html)
+
+    def test_overlay_ignora_download_do_agente(self):
+        path = os.path.join(ROOT, 'static', 'js', 'loading-overlay.js')
+        with open(path, encoding='utf-8') as fh:
+            src = fh.read()
+        self.assertIn('function isFileDownloadHref', src)
+        self.assertIn("path.indexOf('/download')", src)
+        self.assertIn("a.hasAttribute('data-no-loading')", src)
 
 
 if __name__ == '__main__':

@@ -68,6 +68,7 @@ CLR_LED_ON = '#FF1A1A'
 CLR_LED_OFF = '#220505'
 FOTO_MAX_W = 160
 FOTO_MAX_H = 140
+PESADOS_MIN_H = 160
 # RS-232 ao vivo (ACBr BALUrano, digital_scale, UDC, balanca-cli).
 # Ethernet 33581 = Urano Connect: só envia ao [Imprimir] / [Modo Autom.] — escuta, não consulta.
 CMD_URAN12 = b'\x04\x05 '   # EOT+ENQ+espaço (balanca-cli / UDC Uran12)
@@ -114,7 +115,7 @@ PORTA_UDP_BROADCAST = 33584
 # Manual não documenta bytes de login TCP — só a topologia UDP 168/169.
 HANDSHAKE_UDP_CONNECT = b'\x00\x00'
 PORTAS_TCP_COMUNS = (33581, 4001, 23, 2222, 8000, 9000, 33582, 10001, 9100)
-APP_VERSION = '1.5.0'
+APP_VERSION = '1.7.1'
 ICON_NAME = 'sao_geraldo.ico'
 
 # Aceita formatos WT1000, Urano ST/GS e genéricos
@@ -800,6 +801,19 @@ def formatar_peso_ui(peso: float | None) -> str:
     if p < 0:
         return f'-{abs(p):06.2f}'
     return f'{p:06.2f}'
+
+
+def formatar_peso_lista(peso: float | None) -> str:
+    """Peso compacto na lista Pesados (65 kg / 12.50 kg)."""
+    if peso is None:
+        return '— kg'
+    try:
+        p = float(peso)
+    except (TypeError, ValueError):
+        return '— kg'
+    if abs(p - round(p)) < 0.005:
+        return f'{int(round(p))} kg'
+    return f'{p:.2f} kg'
 
 
 # Segmentos LED: a=topo, b=dir-sup, c=dir-inf, d=base, e=esq-inf, f=esq-sup, g=meio
@@ -1593,6 +1607,175 @@ class JaPesadoDialog(tk.Toplevel):
         self.destroy()
 
 
+class PesoRecebidoDialog(tk.Toplevel):
+    """Popup após o servidor gravar o peso: ticagem verde + OK."""
+
+    def __init__(self, master):
+        super().__init__(master)
+        self.title('Peso recebido')
+        self.configure(bg=CLR_BG)
+        self.resizable(False, False)
+        self.transient(master)
+        self.grab_set()
+        _aplicar_icone(self)
+
+        body = tk.Frame(self, bg=CLR_BG, padx=22, pady=16)
+        body.pack(fill='both', expand=True)
+
+        cv = tk.Canvas(body, width=78, height=78, bg=CLR_BG, highlightthickness=0, bd=0)
+        cv.pack(pady=(2, 8))
+        cv.create_oval(6, 6, 72, 72, outline='#157A32', fill='#22A84A', width=2)
+        cv.create_line(
+            22, 42, 34, 56, 58, 26,
+            fill='white', width=6, capstyle=tk.ROUND, joinstyle=tk.ROUND,
+        )
+
+        tk.Label(
+            body, text='Peso recebido', font=('Tahoma', 14, 'bold'),
+            bg=CLR_BG, fg=CLR_NAVY,
+        ).pack()
+
+        tk.Button(
+            body, text='OK', font=('Tahoma', 10, 'bold'), bg=CLR_BTN,
+            width=12, command=self.destroy,
+        ).pack(pady=(14, 2))
+
+        self.bind('<Return>', lambda e: self.destroy())
+        self.bind('<Escape>', lambda e: self.destroy())
+        self.update_idletasks()
+        w, h = max(self.winfo_reqwidth(), 280), max(self.winfo_reqheight(), 210)
+        try:
+            x = master.winfo_rootx() + max((master.winfo_width() - w) // 2, 0)
+            y = master.winfo_rooty() + max((master.winfo_height() - h) // 2, 0)
+        except tk.TclError:
+            x, y = 80, 80
+        self.geometry(f'{w}x{h}+{x}+{y}')
+        self.focus_set()
+
+
+class EditarPesadoDialog(tk.Toplevel):
+    """Altera cliente e líquido de um lançamento já enviado no dia."""
+
+    def __init__(self, master, item: dict, labels: tuple, cliente_por_label: dict, placeholder: str):
+        super().__init__(master)
+        self.result = None
+        self.item = dict(item or {})
+        self.cliente_por_label = dict(cliente_por_label or {})
+        self.placeholder = placeholder
+        self.title('Editar pesado')
+        self.configure(bg=CLR_BG)
+        self.resizable(False, False)
+        self.transient(master)
+        self.grab_set()
+        _aplicar_icone(self)
+
+        body = tk.Frame(self, bg=CLR_BG, padx=14, pady=12)
+        body.pack(fill='both', expand=True)
+        tk.Label(
+            body,
+            text='Altere o cliente ou o peso líquido deste envio do dia.',
+            font=FONT_UI, bg=CLR_BG, fg=CLR_BLACK, justify='left', anchor='w',
+        ).pack(fill='x', pady=(0, 10))
+
+        row_c = tk.Frame(body, bg=CLR_BG)
+        row_c.pack(fill='x', pady=(0, 6))
+        tk.Label(row_c, text='Cliente', width=10, anchor='w', bg=CLR_BG, font=FONT_UI).pack(side='left')
+        nome_atual = (self.item.get('cliente_nome') or '').strip()
+        self.var_cli = tk.StringVar(value=placeholder)
+        for lab, cli in self.cliente_por_label.items():
+            if int(cli.get('id') or 0) == int(self.item.get('cliente_id') or 0):
+                self.var_cli.set(lab)
+                break
+            if (cli.get('nome') or '').strip() == nome_atual and self.var_cli.get() == placeholder:
+                self.var_cli.set(lab)
+        self.cmb = ttk.Combobox(
+            row_c, textvariable=self.var_cli, state='readonly', font=FONT_UI, width=28
+        )
+        vals = list(labels or ())
+        if nome_atual and self.var_cli.get() == placeholder:
+            vals.append(nome_atual)
+            self.var_cli.set(nome_atual)
+        self.cmb['values'] = tuple(vals)
+        self.cmb.pack(side='left', fill='x', expand=True)
+
+        row_l = tk.Frame(body, bg=CLR_BG)
+        row_l.pack(fill='x', pady=(0, 6))
+        tk.Label(row_l, text='Líquido', width=10, anchor='w', bg=CLR_BG, font=FONT_UI).pack(side='left')
+        liq = self.item.get('peso_liquido')
+        if liq is None:
+            liq = self.item.get('peso')
+        self.var_liq = tk.StringVar(value=formatar_peso_ui(liq) if liq is not None else '')
+        ent = tk.Entry(
+            row_l, textvariable=self.var_liq, font=('Consolas', 14, 'bold'),
+            width=12, bg=CLR_WHITE, relief='sunken', justify='right',
+        )
+        ent.pack(side='left', padx=(0, 6))
+        tk.Label(row_l, text='kg', font=FONT_UI, bg=CLR_BG).pack(side='left')
+        ent.focus_set()
+        ent.bind('<Return>', lambda e: self._ok())
+
+        row_t = tk.Frame(body, bg=CLR_BG)
+        row_t.pack(fill='x')
+        tk.Label(row_t, text='Tara', width=10, anchor='w', bg=CLR_BG, font=FONT_UI).pack(side='left')
+        tara0 = self.item.get('tara')
+        try:
+            tara0 = max(0.0, float(tara0 or 0.0))
+        except (TypeError, ValueError):
+            tara0 = 0.0
+        self.var_tara = tk.StringVar(value=formatar_peso_ui(tara0))
+        ent_t = tk.Entry(
+            row_t, textvariable=self.var_tara, font=('Consolas', 14, 'bold'),
+            width=12, bg='#FFF8C6', relief='sunken', justify='right',
+        )
+        ent_t.pack(side='left', padx=(0, 6))
+        tk.Label(row_t, text='kg  (opcional)', font=FONT_UI, bg=CLR_BG).pack(side='left')
+        ent_t.bind('<Return>', lambda e: self._ok())
+
+        btns = tk.Frame(self, bg=CLR_BG, padx=14, pady=10)
+        btns.pack(fill='x', side='bottom')
+        tk.Button(
+            btns, text='Salvar', font=('Tahoma', 9, 'bold'),
+            bg=CLR_BTN, command=self._ok, width=12,
+        ).pack(side='right', padx=(6, 0))
+        tk.Button(btns, text='Cancelar', font=FONT_UI, bg=CLR_BTN, command=self.destroy, width=10).pack(side='right')
+
+        self.update_idletasks()
+        w, h = max(self.winfo_reqwidth(), 460), max(self.winfo_reqheight(), 210)
+        try:
+            x = master.winfo_rootx() + 60
+            y = master.winfo_rooty() + 80
+        except tk.TclError:
+            x, y = 80, 80
+        self.geometry(f'{w}x{h}+{x}+{y}')
+        self.bind('<Escape>', lambda e: self.destroy())
+
+    def _ok(self):
+        valor = parse_peso_digitado(self.var_liq.get())
+        if valor is None or valor <= 0:
+            messagebox.showwarning('Editar pesado', 'Informe o peso líquido em kg (ex.: 12,50).', parent=self)
+            return
+        tara = parse_peso_digitado(self.var_tara.get())
+        if tara is None:
+            tara = 0.0
+        if tara < 0:
+            messagebox.showwarning('Editar pesado', 'A tara não pode ser negativa.', parent=self)
+            return
+        lab = self.var_cli.get()
+        cli = self.cliente_por_label.get(lab)
+        if not cli:
+            messagebox.showwarning('Editar pesado', 'Selecione um cliente cadastrado.', parent=self)
+            return
+        self.result = {
+            'id': self.item.get('id'),
+            'cliente_id': cli.get('id'),
+            'cliente_nome': cli.get('nome') or lab,
+            'peso_liquido': valor,
+            'tara': tara,
+            'peso_bruto': round(valor + tara, 4),
+        }
+        self.destroy()
+
+
 class ConfigDialog(tk.Toplevel):
     """Janela de configuração estilo Delphi."""
 
@@ -2157,15 +2340,18 @@ class AgenteApp:
         self.porta_atual = self.cfg.get('porta_com', 'COM3')
         self.clientes = []
         self.cliente_por_label = {}
+        self.enviados_dia = []
         self._foto_cliente = None
         self._foto_orig = None
         self._foto_size = (0, 0)
         self._img_req_seq = 0
+        self._enviados_win = None
 
         self._build_ui()
         self._start_reader()
         self.root.after(80, self._poll_queue)
         self.root.after(250, self.carregar_clientes)
+        self.root.after(400, self.carregar_enviados_dia)
         self.root.protocol('WM_DELETE_WINDOW', self._on_close)
 
     def _build_ui(self):
@@ -2235,7 +2421,7 @@ class AgenteApp:
         row_meio = tk.Frame(body, bg=CLR_BG)
         row_meio.grid(row=1, column=0, sticky='nsew', pady=(0, 6))
         row_meio.grid_columnconfigure(0, weight=5, minsize=520)
-        row_meio.grid_columnconfigure(1, weight=0, minsize=250)
+        row_meio.grid_columnconfigure(1, weight=0, minsize=280)
         row_meio.grid_rowconfigure(0, weight=1)
 
         # GroupBox: Peso (esquerda — visor dominante)
@@ -2293,9 +2479,12 @@ class AgenteApp:
         tk.Label(det, text='kg', font=FONT_UI, bg=CLR_BG).pack(side='left')
         self.detalhe_peso_var = tk.StringVar(value=self._texto_detalhe_peso())
 
+        col_dir = tk.Frame(row_meio, bg=CLR_BG)
+        col_dir.grid(row=0, column=1, sticky='nsew')
+
         # GroupBox: combo + miniatura (não cresce no maximize)
-        grp_cli = tk.LabelFrame(row_meio, text=' Cliente ', font=FONT_UI, bg=CLR_BG, fg=CLR_BLACK, padx=8, pady=6)
-        grp_cli.grid(row=0, column=1, sticky='ne')
+        grp_cli = tk.LabelFrame(col_dir, text=' Cliente ', font=FONT_UI, bg=CLR_BG, fg=CLR_BLACK, padx=8, pady=6)
+        grp_cli.pack(fill='x', anchor='n')
         row_cli = tk.Frame(grp_cli, bg=CLR_BG)
         row_cli.pack(fill='x')
         tk.Label(row_cli, text='Cliente', width=8, anchor='w', bg=CLR_BG, font=FONT_UI).pack(side='left')
@@ -2325,6 +2514,42 @@ class AgenteApp:
         )
         self.lbl_cliente_img.pack(fill='both', expand=True)
         self.lbl_cliente_img.bind('<Configure>', self._on_foto_resize)
+
+        grp_env = tk.LabelFrame(col_dir, text=' Pesados ', font=FONT_UI, bg=CLR_BG, fg=CLR_BLACK, padx=8, pady=6)
+        grp_env.pack(fill='both', expand=True, pady=(8, 0))
+        env_outer = tk.Frame(grp_env, bg=CLR_SHADOW, padx=1, pady=1, height=PESADOS_MIN_H)
+        env_outer.pack(fill='both', expand=True)
+        env_outer.pack_propagate(False)
+        env_inner = tk.Frame(env_outer, bg=CLR_WHITE)
+        env_inner.pack(fill='both', expand=True)
+
+        hdr_env = tk.Frame(env_inner, bg='#F3F1EC')
+        hdr_env.pack(fill='x')
+        tk.Label(
+            hdr_env, text='CLIENTE', font=('Tahoma', 8, 'bold'), bg='#F3F1EC', fg=CLR_DARK, anchor='w'
+        ).pack(side='left', padx=(6, 0), pady=3)
+        tk.Label(
+            hdr_env, text='P. LIQUIDO', font=('Tahoma', 8, 'bold'), bg='#F3F1EC', fg=CLR_DARK, anchor='e'
+        ).pack(side='left', fill='x', expand=True, padx=(8, 0), pady=3)
+        tk.Button(
+            hdr_env, text='Atualizar', font=('Tahoma', 8), bg=CLR_BTN,
+            command=self.carregar_enviados_dia,
+        ).pack(side='right', padx=(0, 4), pady=1)
+
+        lista_wrap = tk.Frame(env_inner, bg=CLR_WHITE)
+        lista_wrap.pack(fill='both', expand=True)
+        self.canvas_enviados = tk.Canvas(lista_wrap, bg=CLR_WHITE, highlightthickness=0, bd=0)
+        sb_env = tk.Scrollbar(lista_wrap, orient='vertical', command=self.canvas_enviados.yview)
+        self.frm_enviados = tk.Frame(self.canvas_enviados, bg=CLR_WHITE)
+        self._enviados_win = self.canvas_enviados.create_window((0, 0), window=self.frm_enviados, anchor='nw')
+        self.canvas_enviados.configure(yscrollcommand=sb_env.set)
+        self.canvas_enviados.pack(side='left', fill='both', expand=True)
+        sb_env.pack(side='right', fill='y')
+        self.frm_enviados.bind('<Configure>', self._sync_enviados_scroll)
+        self.canvas_enviados.bind('<Configure>', self._sync_enviados_scroll)
+        self.canvas_enviados.bind('<Enter>', self._bind_scroll_enviados)
+        self.canvas_enviados.bind('<Leave>', self._unbind_scroll_enviados)
+        self._mostrar_enviados_vazio()
 
         # Botões estilo Delphi
         btn_row = tk.Frame(body, bg=CLR_BG)
@@ -2465,6 +2690,266 @@ class AgenteApp:
         n = len(self.clientes)
         self._set_status(f'{n} cliente(s) do Cadastro de Cliente em {self.cfg.get("servidor_url")}')
 
+    def _headers_api(self, cfg: dict | None = None) -> dict:
+        cfg = cfg or self.cfg
+        return {'X-API-Key': cfg.get('api_key', '')}
+
+    def _sync_enviados_scroll(self, _evt=None):
+        canvas = getattr(self, 'canvas_enviados', None)
+        if canvas is None:
+            return
+        canvas.configure(scrollregion=canvas.bbox('all') or (0, 0, 0, 0))
+        win = getattr(self, '_enviados_win', None)
+        if win is not None:
+            canvas.itemconfigure(win, width=max(int(canvas.winfo_width() or 1), 1))
+
+    def _on_mousewheel_enviados(self, evt):
+        canvas = getattr(self, 'canvas_enviados', None)
+        if canvas is None:
+            return
+        delta = int(getattr(evt, 'delta', 0) or 0)
+        if delta:
+            canvas.yview_scroll(int(-1 * (delta / 120)), 'units')
+
+    def _bind_scroll_enviados(self, _evt=None):
+        self.canvas_enviados.bind_all('<MouseWheel>', self._on_mousewheel_enviados)
+
+    def _unbind_scroll_enviados(self, _evt=None):
+        self.canvas_enviados.unbind_all('<MouseWheel>')
+
+    def _mostrar_enviados_vazio(self, texto: str | None = None):
+        for w in self.frm_enviados.winfo_children():
+            w.destroy()
+        tk.Label(
+            self.frm_enviados,
+            text=texto or 'Nenhum pesado hoje',
+            font=FONT_UI, bg=CLR_WHITE, fg=CLR_DARK, anchor='w', justify='left',
+            wraplength=220,
+        ).pack(fill='x', padx=8, pady=10)
+        self._sync_enviados_scroll()
+
+    def _filtrar_pesados_hoje(self, leituras: list, hoje: str) -> list:
+        out = []
+        for item in leituras or []:
+            dh = str(item.get('data_leitura') or item.get('data_hora') or '')
+            if dh.startswith(hoje):
+                out.append(item)
+        return out
+
+    def _mesclar_pesado(self, item: dict):
+        if not item:
+            return
+        lid = item.get('id')
+        rows = [x for x in (self.enviados_dia or []) if x.get('id') != lid]
+        rows.insert(0, item)
+        self._aplicar_enviados_dia(rows)
+
+    def carregar_enviados_dia(self):
+        cfg = dict(self.cfg)
+        hoje = datetime.now().strftime('%Y-%m-%d')
+
+        def work():
+            base = (cfg.get('servidor_url') or SERVIDOR_PADRAO).rstrip('/')
+            url = base + '/api/pesagem/leituras'
+            headers = self._headers_api(cfg)
+            tentativas = (
+                {'api_key': cfg.get('api_key', ''), 'data_de': hoje, 'data_ate': hoje, 'limit': 200},
+                {'api_key': cfg.get('api_key', ''), 'limit': 200},
+            )
+            ultimo_erro = None
+            lista_ok_vazia = False
+            for params in tentativas:
+                try:
+                    r = requests.get(
+                        url, headers=headers, params=params, timeout=8, allow_redirects=False,
+                    )
+                except requests.RequestException as exc:
+                    ultimo_erro = f'Servidor inacessível ({base}): {exc}'
+                    continue
+                if r.status_code in (301, 302, 303, 307, 401, 403):
+                    ultimo_erro = (
+                        'Servidor recusou a lista de pesados. '
+                        'Reinicie o Flask com o meuapp atual.'
+                    )
+                    continue
+                data = {}
+                try:
+                    data = r.json()
+                except Exception:
+                    data = {}
+                if r.status_code == 200 and data.get('ok'):
+                    rows = self._filtrar_pesados_hoje(data.get('leituras') or [], hoje)
+                    if rows:
+                        self.q.put(('enviados', rows))
+                        return
+                    lista_ok_vazia = True
+                    continue
+                ultimo_erro = _resumo_http_erro(r, url)
+            if lista_ok_vazia:
+                self.q.put(('enviados', []))
+                return
+            self.q.put(('enviados_erro', ultimo_erro or 'Falha ao buscar pesados do dia'))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _aplicar_enviados_dia(self, leituras: list):
+        self.enviados_dia = list(leituras or [])
+        for w in self.frm_enviados.winfo_children():
+            w.destroy()
+        if not self.enviados_dia:
+            self._mostrar_enviados_vazio()
+            return
+        for item in self.enviados_dia:
+            self._montar_linha_enviado(item)
+        self._sync_enviados_scroll()
+
+    def _montar_linha_enviado(self, item: dict):
+        lid = item.get('id')
+        nome = (item.get('cliente_nome') or '').strip() or '—'
+        liq = item.get('peso_liquido')
+        if liq is None:
+            liq = item.get('peso')
+        row = tk.Frame(self.frm_enviados, bg=CLR_WHITE)
+        row.pack(fill='x', padx=2, pady=1)
+        tk.Label(
+            row, text=nome if len(nome) <= 18 else (nome[:16] + '…'),
+            font=FONT_UI, bg=CLR_WHITE, fg=CLR_BLACK,
+            anchor='w',
+        ).pack(side='left', padx=(4, 0))
+        tk.Label(
+            row, text=' ---- ', font=FONT_UI, bg=CLR_WHITE, fg=CLR_DARK,
+        ).pack(side='left')
+        tk.Label(
+            row, text=formatar_peso_lista(liq), font=('Consolas', 9, 'bold'),
+            bg=CLR_WHITE, fg=CLR_BLACK, anchor='w',
+        ).pack(side='left', padx=(0, 4))
+        tk.Button(
+            row, text='✕', font=('Tahoma', 8, 'bold'), fg='#C00000', bg=CLR_WHITE,
+            activebackground='#F5D0D0', relief='raised', bd=1, width=2,
+            command=lambda i=lid, n=nome, p=liq: self._pedir_excluir_enviado(i, n, p),
+        ).pack(side='right', padx=(0, 4), pady=1)
+        tk.Button(
+            row, text='✎', font=('Tahoma', 8, 'bold'), fg=CLR_NAVY, bg=CLR_WHITE,
+            activebackground='#D6E4F5', relief='raised', bd=1, width=2,
+            command=lambda it=item: self._pedir_editar_pesado(it),
+        ).pack(side='right', padx=(0, 2), pady=1)
+        tk.Frame(self.frm_enviados, bg='#E4E0D8', height=1).pack(fill='x')
+
+    def _pedir_excluir_enviado(self, lid, nome='', liquido=None):
+        if not lid:
+            return
+        extra = ''
+        if nome:
+            extra += f'\nCliente: {nome}'
+        if liquido is not None:
+            extra += f'\nP. líquido: {formatar_peso_lista(liquido)}'
+        if not messagebox.askyesno(
+            'Excluir pesado',
+            'Excluir este peso enviado?' + extra + '\nEsta ação não pode ser desfeita.',
+            parent=self.root,
+        ):
+            return
+        self._excluir_enviado(int(lid))
+
+    def _pedir_editar_pesado(self, item: dict):
+        if not item or not item.get('id'):
+            return
+        labels = tuple(self.cmb_cliente['values']) if hasattr(self, 'cmb_cliente') else (self._placeholder_cliente(),)
+        dlg = EditarPesadoDialog(
+            self.root,
+            item,
+            labels=labels,
+            cliente_por_label=self.cliente_por_label,
+            placeholder=self._placeholder_cliente(),
+        )
+        self.root.wait_window(dlg)
+        if not dlg.result:
+            return
+        self._salvar_edicao_pesado(dlg.result)
+
+    def _salvar_edicao_pesado(self, dados: dict):
+        cfg = dict(self.cfg)
+        lid = dados.get('id')
+
+        def work():
+            base = (cfg.get('servidor_url') or SERVIDOR_PADRAO).rstrip('/')
+            url = f'{base}/api/pesagem/leituras/{lid}'
+            headers = self._headers_api(cfg)
+            headers['Content-Type'] = 'application/json'
+            payload = {
+                'cliente_id': dados.get('cliente_id'),
+                'cliente_nome': dados.get('cliente_nome') or '',
+                'peso': dados.get('peso_liquido'),
+                'peso_liquido': dados.get('peso_liquido'),
+                'tara': dados.get('tara') or 0.0,
+                'peso_bruto': dados.get('peso_bruto'),
+                'api_key': cfg.get('api_key', ''),
+            }
+            try:
+                r = requests.put(url, json=payload, headers=headers, timeout=8)
+            except requests.RequestException as exc:
+                self.q.put(('editar_erro', f'Erro de rede: {exc}'))
+                return
+            data = {}
+            try:
+                data = r.json()
+            except Exception:
+                data = {}
+            if r.status_code == 200 and data.get('ok'):
+                self.q.put(('editar_ok', lid))
+                return
+            self.q.put(('editar_erro', _resumo_http_erro(r, url)))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _excluir_enviado(self, lid: int):
+        cfg = dict(self.cfg)
+
+        def work():
+            base = (cfg.get('servidor_url') or SERVIDOR_PADRAO).rstrip('/')
+            url = f'{base}/api/pesagem/leituras/{lid}'
+            headers = self._headers_api(cfg)
+            headers['Content-Type'] = 'application/json'
+            try:
+                r = requests.delete(
+                    url, headers=headers, params={'api_key': cfg.get('api_key', '')}, timeout=8
+                )
+            except requests.RequestException as exc:
+                self.q.put(('excluir_erro', f'Erro de rede: {exc}'))
+                return
+            data = {}
+            try:
+                data = r.json()
+            except Exception:
+                data = {}
+            if r.status_code == 200 and data.get('ok'):
+                self.q.put(('excluir_ok', lid))
+                return
+            self.q.put(('excluir_erro', _resumo_http_erro(r, url)))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _modo_aguardando_peso(self):
+        """Visor zerado, à espera do próximo peso da balança."""
+        self.peso_atual = None
+        self.peso_bruto_atual = None
+        self.peso_liquido_atual = None
+        self.bruto_atual = ''
+        self.estavel_atual = False
+        if hasattr(self, 'peso_var'):
+            self.peso_var.set('000.00')
+        if hasattr(self, 'led_peso'):
+            self.led_peso.set_peso(0.0, aceso=True)
+        if hasattr(self, 'bruto_var'):
+            self.bruto_var.set('000.00')
+        if hasattr(self, 'liquido_var'):
+            self.liquido_var.set('000.00')
+        if hasattr(self, 'estavel_var'):
+            self.estavel_var.set('Aguardando peso da balança...')
+        if hasattr(self, 'detalhe_peso_var'):
+            self.detalhe_peso_var.set(self._texto_detalhe_peso())
+        self._set_status('Aguardando peso da balança...')
+
     def _on_cliente_sel(self, _evt=None):
         cli = self._cliente_selecionado()
         if not cli:
@@ -2564,6 +3049,7 @@ class AgenteApp:
         self._set_status(f'Configuração salva em {user_config_path()}. Reconectando...')
         self._reconectar()
         self.carregar_clientes()
+        self.carregar_enviados_dia()
 
     def _reconectar(self):
         self.stop_event.set()
@@ -2626,13 +3112,42 @@ class AgenteApp:
                 elif kind == 'envio_ok':
                     self.enviando = False
                     self._set_botoes_envio(True)
-                    self._set_status(f'Enviado OK (id={payload})')
-                    messagebox.showinfo('Enviado', f'Peso enviado ao servidor.\nID: {payload}', parent=self.root)
+                    info = payload if isinstance(payload, dict) else {'id': payload}
+                    lid = info.get('id')
+                    silencioso = bool(info.get('silencioso'))
+                    if info.get('leitura'):
+                        self._mesclar_pesado(info.get('leitura'))
+                    self._set_status(
+                        f'Peso recebido pelo servidor (id={lid})' if lid else 'Peso recebido pelo servidor'
+                    )
+                    if not silencioso:
+                        dlg = PesoRecebidoDialog(self.root)
+                        self.root.wait_window(dlg)
+                        self._modo_aguardando_peso()
+                    self.carregar_enviados_dia()
                 elif kind == 'envio_erro':
                     self.enviando = False
                     self._set_botoes_envio(True)
                     self._set_status(str(payload))
                     messagebox.showerror('Falha', str(payload), parent=self.root)
+                elif kind == 'enviados':
+                    self._aplicar_enviados_dia(payload)
+                elif kind == 'enviados_erro':
+                    self._set_status(str(payload))
+                    if not self.enviados_dia:
+                        self._mostrar_enviados_vazio(str(payload))
+                elif kind == 'excluir_ok':
+                    self._set_status(f'Pesado {payload} excluído')
+                    self.carregar_enviados_dia()
+                elif kind == 'excluir_erro':
+                    self._set_status(str(payload))
+                    messagebox.showerror('Excluir', str(payload), parent=self.root)
+                elif kind == 'editar_ok':
+                    self._set_status(f'Pesado {payload} atualizado')
+                    self.carregar_enviados_dia()
+                elif kind == 'editar_erro':
+                    self._set_status(str(payload))
+                    messagebox.showerror('Editar pesado', str(payload), parent=self.root)
                 elif kind == 'clientes':
                     self._aplicar_lista_clientes(payload)
                 elif kind == 'clientes_erro':
@@ -2916,7 +3431,20 @@ class AgenteApp:
                 if r.status_code == 200 and data.get('ok'):
                     self.ultimo_envio = time.time()
                     self.ultimo_peso_enviado = peso_liquido
-                    self.q.put(('envio_ok', data.get('id')))
+                    self.q.put(('envio_ok', {
+                        'id': data.get('id'),
+                        'silencioso': silencioso,
+                        'leitura': data.get('leitura') or {
+                            'id': data.get('id'),
+                            'cliente_id': cliente.get('id'),
+                            'cliente_nome': cliente.get('nome') or '',
+                            'peso': peso_liquido,
+                            'peso_liquido': peso_liquido,
+                            'peso_bruto': peso_bruto,
+                            'tara': tara,
+                            'data_leitura': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        },
+                    }))
                 else:
                     self.q.put(('envio_erro', _resumo_http_erro(r, url)))
             except requests.RequestException as exc:
