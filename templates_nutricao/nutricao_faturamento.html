@@ -36,7 +36,6 @@
   <fieldset class="fat-box">
     <legend>Opções</legend>
     <div class="fat-ops">
-      <label><input type="checkbox" id="fGrupo"> Por grupo de clínica</label>
       <label><input type="checkbox" id="fSintetico"> Relatório sintético</label>
     </div>
   </fieldset>
@@ -96,7 +95,6 @@ function params(){
     data_de: document.getElementById('fDe').value,
     data_ate: document.getElementById('fAte').value,
     tipo: document.querySelector('input[name="tipo"]:checked')?.value || 'espelho_1',
-    por_grupo_clinica: document.getElementById('fGrupo').checked ? '1' : '0',
     sintetico: document.getElementById('fSintetico').checked ? '1' : '0'
   });
   return qs;

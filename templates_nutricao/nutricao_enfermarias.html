@@ -70,7 +70,7 @@
     <select id="selClinicaVinculo" class="form-control" onchange="carregarVinculoClinica()">
       <option value="">Selecione a clínica</option>
       {% for c in clinicas %}
-      <option value="{{ c.id }}" {% if clinica_id_inicial and clinica_id_inicial == c.id %}selected{% endif %}>{{ c.nome }}{% if not c.ativo %} (inativa){% endif %}</option>
+      <option value="{{ c.id }}" {% if clinica_id_inicial and clinica_id_inicial == c.id %}selected{% endif %}>{{ c.nome }}</option>
       {% endfor %}
     </select>
   </div>

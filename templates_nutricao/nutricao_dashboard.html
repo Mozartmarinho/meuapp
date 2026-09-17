@@ -13,12 +13,12 @@
   </div>
 
   <div class="mapa-filtro-clinica">
-    <label for="filtroGrupoClinica">Grupo de clínicas:</label>
-    <select id="filtroGrupoClinica" class="form-control" autocomplete="off" onchange="onFiltroGrupoClinicaChange()">
-      <option value="" selected>Selecione o grupo...</option>
+    <label for="filtroClinica">Clínica:</label>
+    <select id="filtroClinica" class="form-control" autocomplete="off" onchange="onFiltroClinicaChange()">
+      <option value="" selected>Selecione a clínica...</option>
       <option value="__todas__">Todas</option>
-      {% for g in grupos_clinica or [] %}
-      <option value="{{ g.id }}">{{ g.nome }}</option>
+      {% for c in clinicas or [] %}
+      <option value="{{ c.nome }}">{{ c.nome }}</option>
       {% endfor %}
     </select>
   </div>
@@ -72,7 +72,7 @@
         </tr>
       </thead>
       <tbody id="mapaBody">
-        <tr id="mapaVazio"><td colspan="26" style="text-align:center;padding:1.5rem;color:#64748b">Selecione o grupo de clínicas para ver o mapa</td></tr>
+        <tr id="mapaVazio"><td colspan="26" style="text-align:center;padding:1.5rem;color:#64748b">Selecione a clínica para ver o mapa</td></tr>
       </tbody>
     </table>
   </div>
@@ -976,8 +976,8 @@ const CAMPOS_TEXTO = {
 };
 const FILTRO_TODAS = '__todas__';
 const MAPA_COLSPAN = 26;
-const MSG_MAPA_SELECIONE = 'Selecione o grupo de clínicas para ver o mapa';
-const MSG_MAPA_VAZIO = 'Nenhum leito cadastrado para as clínicas deste grupo. Vincule clínicas ao grupo e cadastre leitos nas enfermarias.';
+const MSG_MAPA_SELECIONE = 'Selecione a clínica para ver o mapa';
+const MSG_MAPA_VAZIO = 'Nenhum leito cadastrado para esta clínica. Vincule enfermarias à clínica e cadastre leitos.';
 let dataAtual = DATA_INICIAL ? new Date(DATA_INICIAL + 'T12:00:00') : new Date();
 let ctxLinha = null;
 let ctxCampo = null;
@@ -1035,7 +1035,7 @@ async function alterarData(deltaDias){
 }
 
 function temFiltroMapa(){
-  const cli = document.getElementById('filtroGrupoClinica')?.value || '';
+  const cli = document.getElementById('filtroClinica')?.value || '';
   return cli !== '';
 }
 
@@ -1046,8 +1046,8 @@ function mostrarMapaPlaceholder(msg){
   body.innerHTML = `<tr id="mapaVazio"><td colspan="${MAPA_COLSPAN}" style="text-align:center;padding:1.5rem;color:#64748b">${msg}</td></tr>`;
 }
 
-function grupoClinicaFiltroAtual(){
-  return document.getElementById('filtroGrupoClinica')?.value || '';
+function clinicaFiltroAtual(){
+  return document.getElementById('filtroClinica')?.value || '';
 }
 
 function flagCell(campo, on){
@@ -1166,8 +1166,8 @@ async function carregarMapa(opts){
   }
   try {
     const qs = new URLSearchParams({ data: iso });
-    const grupoVal = grupoClinicaFiltroAtual();
-    if (grupoVal) qs.set('grupo_clinica', grupoVal);
+    const clinicaVal = clinicaFiltroAtual();
+    if (clinicaVal) qs.set('clinica', clinicaVal);
     const r = await fetch('/nutricao/api/mapa?' + qs.toString());
     const j = await r.json();
     if (!r.ok || j.ok === false){
@@ -1326,7 +1326,7 @@ function filtrarTabelaPrincipal(){
   if (vazio) vazio.style.display = visiveis ? 'none' : '';
 }
 
-async function onFiltroGrupoClinicaChange(){
+async function onFiltroClinicaChange(){
   mapaCarregadoParaData = null;
   await garantirMapaVisivel();
 }

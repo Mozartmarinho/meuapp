@@ -21,14 +21,13 @@
 
     <fieldset class="tot-box">
       <legend>Imprimir por</legend>
-      <label><input type="radio" name="imprimirPor" value="grupo_clinica" checked onchange="atualizarLista()"> Grupo de Clínica</label>
-      <label><input type="radio" name="imprimirPor" value="clinica" onchange="atualizarLista()"> Clínica</label>
+      <label><input type="radio" name="imprimirPor" value="clinica" checked onchange="atualizarLista()"> Clínica</label>
       <label><input type="radio" name="imprimirPor" value="enfermaria" onchange="atualizarLista()"> Enfermaria</label>
     </fieldset>
   </div>
 
   <div class="form-group">
-    <label class="form-label" id="lblFiltro" for="fFiltro">Grupo de Clínica:</label>
+    <label class="form-label" id="lblFiltro" for="fFiltro">Clínica:</label>
     <select class="form-control" id="fFiltro" multiple size="8"></select>
     <small class="tot-hint">Segure Ctrl para selecionar vários. Inclui opção TODOS.</small>
   </div>
@@ -138,29 +137,24 @@ function onTotPara(){
 }
 
 function atualizarLista(){
-  const por = document.querySelector('input[name="imprimirPor"]:checked')?.value || 'grupo_clinica';
+  const por = document.querySelector('input[name="imprimirPor"]:checked')?.value || 'clinica';
   const lbl = document.getElementById('lblFiltro');
   const sel = document.getElementById('fFiltro');
   if (por === 'enfermaria'){
     lbl.textContent = 'Enfermaria:';
     sel.innerHTML = '<option value="TODOS" selected>TODOS</option>' +
       ENFERMARIAS.map(e => `<option value="${e.id}">${esc(e.nome)}</option>`).join('');
-  } else if (por === 'clinica'){
+  } else {
     lbl.textContent = 'Clínica:';
     sel.innerHTML = '<option value="TODOS" selected>TODOS</option>' +
       CLINICAS.map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join('');
-  } else {
-    lbl.textContent = 'Grupo de Clínica:';
-    const grupos = GRUPOS_CLINICA || [];
-    sel.innerHTML = '<option value="TODOS" selected>TODOS</option>' +
-      grupos.map(g => `<option value="${g.id}">${esc(g.nome)}</option>`).join('');
   }
 }
 
 function imprimir(){
   const data = document.getElementById('fData').value;
   if (!data){ showToast('Informe a data','error'); return; }
-  const por = document.querySelector('input[name="imprimirPor"]:checked')?.value || 'grupo_clinica';
+  const por = document.querySelector('input[name="imprimirPor"]:checked')?.value || 'clinica';
   const totPara = document.querySelector('input[name="totPara"]:checked')?.value || 'clinicas';
   const metodo = document.querySelector('input[name="metodo"]:checked')?.value || 'mapa';
   const sel = document.getElementById('fFiltro');

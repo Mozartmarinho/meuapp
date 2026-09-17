@@ -310,13 +310,12 @@ def _tag_cliente(obj):
 def dashboard():
     seed_nutricao()
     data_ref = date.today()
-    # Grade só carrega no cliente após filtro de grupo de clínicas
+    # Grade só carrega no cliente após filtro de clínica
     return render_template(
         'nutricao_dashboard.html',
         mapa_linhas=[],
         data_mapa=data_ref.isoformat(),
         clinicas=_list_clinicas_db(somente_ativas=True),
-        grupos_clinica=list_grupos_clinica(somente_ativos=True),
         enfermarias=list_enfermarias(somente_ativas=True),
         dietas=_list_dietas_db(),
         total_pacientes=scoped_query(NutPaciente).filter_by(ativo=True).count(),
@@ -1442,124 +1441,32 @@ def api_clinica_enfermarias(cid):
     return jsonify({'ok': True, 'clinica': clinica.to_dict(include_enfermarias=True)})
 
 
-# ---- GRUPOS DE CLÍNICAS ----
+# ---- GRUPOS DE CLÍNICAS (removido) ----
+def _grupo_clinica_removido():
+    return jsonify({
+        'ok': False,
+        'error': 'O cadastro de grupo de clínicas foi removido. Use o cadastro de clínicas.',
+    }), 410
+
+
 @nutricao.route('/nutricao/grupos-clinicas')
 def grupos_clinicas():
-    seed_nutricao()
-    grupo_id = request.args.get('grupo_id', type=int)
-    return render_template(
-        'nutricao_grupos_clinicas.html',
-        grupos=list_grupos_clinica(somente_ativos=False, include_clinicas=True),
-        clinicas=list_clinicas(somente_ativas=False),
-        grupo_id_inicial=grupo_id,
-        **active('cadastro_grupos_clinicas')
-    )
+    return redirect(url_for('nutricao.clinicas'))
 
 
 @nutricao.route('/nutricao/api/grupos-clinicas', methods=['GET', 'POST'])
 def api_grupos_clinicas():
-    seed_nutricao()
-    if request.method == 'POST':
-        d = request.get_json(force=True) or {}
-        nome = (d.get('nome') or '').strip()
-        if not nome:
-            return jsonify({'ok': False, 'error': 'Nome do grupo é obrigatório'}), 400
-        exists = scoped_query(NutGrupoClinica).filter(
-            db.func.upper(NutGrupoClinica.nome) == nome.upper()
-        ).first()
-        if exists:
-            return jsonify({'ok': False, 'error': 'Já existe grupo com este nome'}), 400
-        row = NutGrupoClinica(
-            cliente_id=write_cliente_id(),
-            nome=nome,
-            ativo=bool(d.get('ativo', True)),
-        )
-        _tag_cliente(row)
-        db.session.add(row)
-        db.session.flush()
-        ids = d.get('clinica_ids')
-        if ids is not None:
-            try:
-                ids = [int(x) for x in ids]
-            except (TypeError, ValueError):
-                return jsonify({'ok': False, 'error': 'clinica_ids inválido'}), 400
-            row.clinicas = scoped_query(NutClinica).filter(NutClinica.id.in_(ids)).all() if ids else []
-        db.session.commit()
-        return jsonify({'ok': True, 'id': row.id, 'grupo': row.to_dict(include_clinicas=True)})
-    somente = str(request.args.get('ativos', '')).lower() in ('1', 'true', 'sim')
-    include = str(request.args.get('include_clinicas', '')).lower() in ('1', 'true', 'sim')
-    return jsonify(list_grupos_clinica(somente_ativos=somente, include_clinicas=include))
+    return _grupo_clinica_removido()
 
 
 @nutricao.route('/nutricao/api/grupos-clinicas/<int:gid>', methods=['GET', 'PUT', 'DELETE'])
 def api_grupo_clinica_ops(gid):
-    seed_nutricao()
-    row = _get_scoped_or_404(NutGrupoClinica, gid)
-    if not row:
-        return jsonify({'ok': False, 'error': 'Grupo não encontrado'}), 404
-
-    if request.method == 'GET':
-        return jsonify({
-            'ok': True,
-            'grupo': row.to_dict(include_clinicas=True),
-            'todas': list_clinicas(somente_ativas=False),
-        })
-
-    if request.method == 'DELETE':
-        row.ativo = False
-        db.session.commit()
-        return jsonify({'ok': True})
-
-    d = request.get_json(force=True) or {}
-    if 'nome' in d:
-        nome = (d.get('nome') or '').strip()
-        if not nome:
-            return jsonify({'ok': False, 'error': 'Nome do grupo é obrigatório'}), 400
-        outro = scoped_query(NutGrupoClinica).filter(
-            db.func.upper(NutGrupoClinica.nome) == nome.upper(),
-            NutGrupoClinica.id != gid,
-        ).first()
-        if outro:
-            return jsonify({'ok': False, 'error': 'Já existe grupo com este nome'}), 400
-        row.nome = nome
-    if 'ativo' in d:
-        row.ativo = bool(d.get('ativo'))
-    if 'clinica_ids' in d:
-        ids = d.get('clinica_ids') or []
-        try:
-            ids = [int(x) for x in ids]
-        except (TypeError, ValueError):
-            return jsonify({'ok': False, 'error': 'clinica_ids inválido'}), 400
-        row.clinicas = scoped_query(NutClinica).filter(NutClinica.id.in_(ids)).all() if ids else []
-    db.session.commit()
-    return jsonify({'ok': True, 'grupo': row.to_dict(include_clinicas=True)})
+    return _grupo_clinica_removido()
 
 
 @nutricao.route('/nutricao/api/grupos-clinicas/<int:gid>/clinicas', methods=['GET', 'PUT'])
 def api_grupo_clinica_clinicas(gid):
-    seed_nutricao()
-    grupo = _get_scoped_or_404(NutGrupoClinica, gid)
-    if not grupo:
-        return jsonify({'ok': False, 'error': 'Grupo não encontrado'}), 404
-
-    if request.method == 'GET':
-        return jsonify({
-            'ok': True,
-            'grupo': grupo.to_dict(include_clinicas=True),
-            'todas': list_clinicas(somente_ativas=False),
-        })
-
-    d = request.get_json(force=True) or {}
-    ids = d.get('clinica_ids')
-    if ids is None:
-        return jsonify({'ok': False, 'error': 'Informe clinica_ids'}), 400
-    try:
-        ids = [int(x) for x in ids]
-    except (TypeError, ValueError):
-        return jsonify({'ok': False, 'error': 'clinica_ids inválido'}), 400
-    grupo.clinicas = scoped_query(NutClinica).filter(NutClinica.id.in_(ids)).all() if ids else []
-    db.session.commit()
-    return jsonify({'ok': True, 'grupo': grupo.to_dict(include_clinicas=True)})
+    return _grupo_clinica_removido()
 
 
 @nutricao.route('/nutricao/enfermarias')
@@ -1569,7 +1476,7 @@ def enfermarias():
     return render_template(
         'nutricao_enfermarias.html',
         enfermarias=list_enfermarias(somente_ativas=False),
-        clinicas=list_clinicas(somente_ativas=False),
+        clinicas=list_clinicas(somente_ativas=True),
         clinica_id_inicial=clinica_id,
         **active('cadastro_enfermarias')
     )
@@ -3123,7 +3030,7 @@ def impressao_etiquetas_imprimir():
     data_ref = _parse_date(request.args.get('data')) or date.today()
     horario = (request.args.get('horario') or 'desjejum').strip()
     modo = (request.args.get('modo') or 'mapa').strip()
-    imprimir_por = (request.args.get('imprimir_por') or 'grupo_clinica').strip()
+    imprimir_por = (request.args.get('imprimir_por') or 'clinica').strip()
     filtro_id = request.args.get('filtro_id', type=int)
     filtro_nome = _filtro_nome_imprimir(
         imprimir_por,
@@ -3591,7 +3498,7 @@ def api_relatorio_mapa_uma():
     d = request.get_json(force=True) or {}
     data_ref = _parse_date(d.get('data')) or date.today()
     categoria = (d.get('categoria') or 'enteral').strip()
-    imprimir_por = (d.get('imprimir_por') or 'grupo_clinica').strip()
+    imprimir_por = (d.get('imprimir_por') or 'clinica').strip()
     filtro_id = d.get('filtro_id')
     filtro_nome = _filtro_nome_imprimir(
         imprimir_por,
@@ -3636,7 +3543,7 @@ def totalizacao_dietas_imprimir():
     seed_nutricao()
     data_ref = _parse_date(request.args.get('data')) or date.today()
     totalizacao_para = (request.args.get('totalizacao_para') or 'clinicas').strip()
-    imprimir_por = (request.args.get('imprimir_por') or 'grupo_clinica').strip()
+    imprimir_por = (request.args.get('imprimir_por') or 'clinica').strip()
     filtros = [x for x in (request.args.get('filtros') or '').split('|') if x.strip()]
     horarios = [x for x in (request.args.get('horarios') or '').split(',') if x.strip()]
     metodo = (request.args.get('metodo') or 'mapa').strip()
@@ -3682,7 +3589,7 @@ def totalizacao_dietas_refeicoes_imprimir():
     seed_nutricao()
     data_ref = _parse_date(request.args.get('data')) or date.today()
     totalizacao_para = (request.args.get('totalizacao_para') or 'clinicas').strip()
-    imprimir_por = (request.args.get('imprimir_por') or 'grupo_clinica').strip()
+    imprimir_por = (request.args.get('imprimir_por') or 'clinica').strip()
     filtros = [x for x in (request.args.get('filtros') or '').split('|') if x.strip()]
     horarios = [x for x in (request.args.get('horarios') or '').split(',') if x.strip()]
     metodo = (request.args.get('metodo') or 'todas').strip()
@@ -3714,7 +3621,7 @@ def relatorio_mapa_uma_imprimir():
     seed_nutricao()
     data_ref = _parse_date(request.args.get('data')) or date.today()
     categoria = (request.args.get('categoria') or 'enteral').strip()
-    imprimir_por = (request.args.get('imprimir_por') or 'grupo_clinica').strip()
+    imprimir_por = (request.args.get('imprimir_por') or 'clinica').strip()
     filtro_id = request.args.get('filtro_id', type=int)
     filtro_nome = _filtro_nome_imprimir(
         imprimir_por,

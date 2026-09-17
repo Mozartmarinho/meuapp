@@ -34,12 +34,11 @@
 
     <div class="eti-inline-label eti-lbl-por">Imprimir por:</div>
     <div class="eti-radios eti-radios-por">
-      <label><input type="radio" name="imprimirPor" value="grupo_clinica" checked onchange="atualizarFiltro()"> Grupo de Clínica</label>
-      <label><input type="radio" name="imprimirPor" value="clinica" onchange="atualizarFiltro()"> Clínica</label>
+      <label><input type="radio" name="imprimirPor" value="clinica" checked onchange="atualizarFiltro()"> Clínica</label>
       <label><input type="radio" name="imprimirPor" value="enfermaria" onchange="atualizarFiltro()"> Enfermaria</label>
     </div>
     <div class="form-group eti-campo-filtro">
-      <label class="form-label" id="lblFiltro" for="fFiltro">Grupo de Clínica:</label>
+      <label class="form-label" id="lblFiltro" for="fFiltro">Clínica:</label>
       <select class="form-control" id="fFiltro"></select>
     </div>
   </fieldset>
@@ -235,7 +234,7 @@ function esc(s){
 }
 
 function atualizarFiltro(){
-  const por = document.querySelector('input[name="imprimirPor"]:checked')?.value || 'grupo_clinica';
+  const por = document.querySelector('input[name="imprimirPor"]:checked')?.value || 'clinica';
   const lbl = document.getElementById('lblFiltro');
   const sel = document.getElementById('fFiltro');
   if (por === 'enfermaria'){
@@ -243,16 +242,10 @@ function atualizarFiltro(){
     sel.innerHTML = '<option value="">Todas</option>' + ENFERMARIAS.map(e =>
       `<option value="${e.id}" data-nome="${esc(e.nome)}">${esc(e.nome)}</option>`
     ).join('');
-  } else if (por === 'clinica'){
+  } else {
     lbl.textContent = 'Clínica:';
     sel.innerHTML = '<option value="">Todos</option>' + CLINICAS.map(c =>
       `<option value="${c.id}" data-nome="${esc(c.nome)}">${esc(c.nome)}</option>`
-    ).join('');
-  } else {
-    lbl.textContent = 'Grupo de Clínica:';
-    const grupos = GRUPOS_CLINICA || [];
-    sel.innerHTML = '<option value="">Todos</option>' + grupos.map(g =>
-      `<option value="${g.id}" data-nome="${esc(g.nome)}">${esc(g.nome)}</option>`
     ).join('');
   }
 }
@@ -304,7 +297,7 @@ function modeloSelecionado(){
 }
 
 function coletar(){
-  const por = document.querySelector('input[name="imprimirPor"]:checked')?.value || 'grupo_clinica';
+  const por = document.querySelector('input[name="imprimirPor"]:checked')?.value || 'clinica';
   const sel = document.getElementById('fFiltro');
   const opt = sel.selectedOptions[0];
   return {

@@ -41,9 +41,11 @@ class NutricaoPaginaTest(unittest.TestCase):
         self.assertIn('Impressão mapa da nutrição', html)
         self.assertIn('Impressão mapa distribuição', html)
         self.assertIn('/nutricao/impressao-mapa-distribuicao', html)
-        self.assertIn('Selecione o grupo de clínicas para ver o mapa', html)
-        self.assertIn('filtroGrupoClinica', html)
-        self.assertIn('Grupo de clínicas:', html)
+        self.assertIn('Selecione a clínica para ver o mapa', html)
+        self.assertIn('filtroClinica', html)
+        self.assertIn('Clínica:', html)
+        self.assertNotIn('filtroGrupoClinica', html)
+        self.assertNotIn('Grupo de clínicas:', html)
         self.assertNotIn('filtroEnfermaria', html)
         self.assertIn('São Geraldo Service ·', html)
         self.assertIn('projeto-versao-bar', html)
@@ -90,47 +92,24 @@ class NutricaoPaginaTest(unittest.TestCase):
         self.assertIn('Impressão mapa da nutrição', mapa.get_data(as_text=True))
         self.assertIn('MAPA DISTRIBUIÇÃO', dist.get_data(as_text=True).upper())
 
-    def test_menu_e_pagina_grupo_de_clinicas(self):
+    def test_cadastro_grupo_de_clinicas_foi_removido(self):
         resp = self.client.get('/nutricao')
         self.assertEqual(resp.status_code, 200)
         html = resp.get_data(as_text=True)
-        self.assertIn('Grupo de Clínicas', html)
-        self.assertIn('/nutricao/grupos-clinicas', html)
-        self.assertIn('filtroGrupoClinica', html)
+        self.assertNotIn('/nutricao/grupos-clinicas', html)
+        self.assertNotIn('Grupo de Clínicas', html)
+        self.assertIn('filtroClinica', html)
 
         pagina = self.client.get('/nutricao/grupos-clinicas')
-        self.assertEqual(pagina.status_code, 200)
-        corpo = pagina.get_data(as_text=True)
-        self.assertIn('Cadastro de Grupo de Clínicas', corpo)
-        self.assertIn('Novo Grupo', corpo)
-        self.assertIn('Vínculo Grupo', corpo)
-
-    def test_api_grupo_clinicas_cria_e_vincula(self):
-        from models_nutricao import NutClinica
-        from nutricao_tenant import ensure_cliente_hfb
-
-        cid = ensure_cliente_hfb().id
-        clinica = NutClinica(nome='CTI GRUPO TESTE', ativo=True, cliente_id=cid)
-        db.session.add(clinica)
-        db.session.commit()
+        self.assertEqual(pagina.status_code, 302)
+        self.assertTrue((pagina.headers.get('Location') or '').endswith('/nutricao/clinicas'))
 
         criado = self.client.post(
             '/nutricao/api/grupos-clinicas',
             json={'nome': 'GRUPO CTI TESTE', 'ativo': True},
         )
-        self.assertEqual(criado.status_code, 200)
-        data = criado.get_json()
-        self.assertTrue(data.get('ok'))
-        gid = data['id']
-
-        vinculo = self.client.put(
-            f'/nutricao/api/grupos-clinicas/{gid}/clinicas',
-            json={'clinica_ids': [clinica.id]},
-        )
-        self.assertEqual(vinculo.status_code, 200)
-        grupo = vinculo.get_json().get('grupo') or {}
-        self.assertEqual(grupo.get('num_clinicas'), 1)
-        self.assertEqual(grupo['clinicas'][0]['id'], clinica.id)
+        self.assertEqual(criado.status_code, 410)
+        self.assertFalse(criado.get_json().get('ok'))
 
     def test_excluir_clinica_exige_sem_enfermaria(self):
         from models_nutricao import NutClinica, NutEnfermaria
@@ -177,6 +156,21 @@ class NutricaoPaginaTest(unittest.TestCase):
         ok = self.client.delete(f'/nutricao/api/enfermarias/{enf.id}')
         self.assertEqual(ok.status_code, 200)
         self.assertIsNone(NutEnfermaria.query.get(enf.id))
+
+    def test_vinculo_clinica_enfermaria_lista_so_ativas(self):
+        from models_nutricao import NutClinica
+        from nutricao_tenant import ensure_cliente_hfb
+
+        cid = ensure_cliente_hfb().id
+        ativa = NutClinica(nome='CLINICA VINCULO ATIVA', ativo=True, cliente_id=cid)
+        inativa = NutClinica(nome='CLINICA VINCULO INATIVA', ativo=False, cliente_id=cid)
+        db.session.add_all([ativa, inativa])
+        db.session.commit()
+        html = self.client.get('/nutricao/enfermarias').get_data(as_text=True)
+        self.assertIn('selClinicaVinculo', html)
+        self.assertIn('CLINICA VINCULO ATIVA', html)
+        self.assertNotIn('CLINICA VINCULO INATIVA', html)
+        self.assertNotIn('(inativa)', html)
 
     def test_menu_categoria_acima_de_dietas(self):
         html = self.client.get('/nutricao').get_data(as_text=True)

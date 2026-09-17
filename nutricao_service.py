@@ -4420,7 +4420,7 @@ def _grupo_dieta_totalizacao(nome_dieta, dieta_cat_map=None):
 def totalizacao_dietas(
     data_ref=None,
     totalizacao_para='clinicas',
-    imprimir_por='grupo_clinica',
+    imprimir_por='clinica',
     filtros=None,
     horarios=None,
     metodo='mapa',
@@ -4577,7 +4577,7 @@ def totalizacao_dietas(
 def totalizacao_dietas_refeicoes(
     data_ref=None,
     totalizacao_para='clinicas',
-    imprimir_por='grupo_clinica',
+    imprimir_por='clinica',
     filtros=None,
     horarios=None,
     metodo='todas',
@@ -5067,7 +5067,7 @@ def gerar_impressao_etiquetas(
     data_ref=None,
     horario='desjejum',
     modo='mapa',
-    imprimir_por='grupo_clinica',
+    imprimir_por='clinica',
     filtro_id=None,
     filtro_nome=None,
     ordenar='grupo_dieta_data',
