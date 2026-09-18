@@ -404,16 +404,38 @@
 .nc-modal:not([hidden]) { display: flex; }
 .nc-dialog {
     max-width: 512px;
+    width: 100%;
     max-height: 90vh;
+    max-height: 90dvh;
     overflow: hidden;
     display: flex;
     flex-direction: column;
     font-size: 0.8rem;
 }
-.nc-dialog .modal-header { padding: 0.92rem 1rem 0; gap: 0.6rem; }
+.nc-dialog .modal-header {
+    padding: 0.92rem 1rem 0;
+    gap: 0.6rem;
+    flex-shrink: 0;
+}
 .nc-dialog .modal-header h2 { font-size: 0.96rem; margin: 0; }
 .nc-dialog .modal-close { font-size: 1.2rem; }
-.nc-dialog .modal-body { padding: 0.72rem 1rem 0.4rem; overflow-y: auto; }
+.nc-dialog form {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+.nc-dialog .modal-body {
+    padding: 0.72rem 1rem 0.4rem;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    flex: 1 1 auto;
+    min-height: 0;
+    scrollbar-gutter: stable;
+}
 .nc-dialog .form-group { margin-bottom: 0.56rem; }
 .nc-dialog label { font-size: 0.72rem; margin-bottom: 0.16rem; }
 .nc-dialog input[type="text"],
@@ -435,8 +457,10 @@
     padding: 0.64rem 1rem 0.8rem;
     flex-wrap: wrap;
     border-top: 1px solid var(--gray-200);
+    flex-shrink: 0;
+    background: var(--white);
 }
-.nc-footer-right { display: flex; gap: 0.4rem; }
+.nc-footer-right { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .nc-dialog .btn {
     gap: 0.32rem;
     padding: 0.45rem 0.8rem;
@@ -617,6 +641,61 @@
     cursor: pointer;
 }
 body.modal-open { overflow: hidden; }
+
+@media (max-width: 768px) {
+    .nc-modal {
+        padding: 0.4rem;
+        padding-bottom: max(0.4rem, env(safe-area-inset-bottom, 0px));
+        align-items: flex-start;
+        justify-content: flex-start;
+    }
+    .nc-dialog {
+        max-width: 100%;
+        max-height: calc(100vh - 0.8rem);
+        max-height: calc(100dvh - 0.8rem);
+        max-height: calc(100svh - 0.8rem);
+        border-radius: 0.7rem;
+    }
+    #modalAtender .nc-dialog {
+        height: calc(100svh - 0.8rem);
+        max-height: calc(100svh - 0.8rem);
+    }
+    #modalAtender .modal-body {
+        scrollbar-width: thin;
+        scrollbar-color: #94a3b8 transparent;
+    }
+    #modalAtender .modal-body::-webkit-scrollbar {
+        width: 8px;
+    }
+    #modalAtender .modal-body::-webkit-scrollbar-thumb {
+        background: #94a3b8;
+        border-radius: 8px;
+    }
+    #modalAtender .nc-footer {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.45rem;
+        padding: 0.55rem 0.75rem max(0.65rem, env(safe-area-inset-bottom, 0px));
+    }
+    #modalAtender .nc-footer > .btn {
+        width: 100%;
+        justify-content: center;
+    }
+    #modalAtender .nc-footer-right {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        width: 100%;
+        gap: 0.4rem;
+    }
+    #modalAtender .nc-footer-right .btn {
+        width: 100%;
+        justify-content: center;
+        white-space: nowrap;
+    }
+    #modalAtender .nc-footer-right .btn-finalizar {
+        grid-column: 1 / -1;
+    }
+}
 </style>
 
 <script>
