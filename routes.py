@@ -346,9 +346,46 @@ def _tecnico_vinculado(usuario):
         return None
 
 
+FUNCOES_CAMPANHA_TICKET = frozenset({'tecnico', 'supervisor', 'gestor'})
+
+
 def _eh_tecnico_do_sistema(usuario):
     """Usuário cadastrado em Técnicos (ou gestor) — vê a fila de tickets abertos."""
     return bool(_tecnico_vinculado(usuario) or _eh_gestor(usuario))
+
+
+def _registros_tecnico_usuario(usuario):
+    """Cadastros ativos em Técnicos ligados ao acesso (usuario_id ou e-mail)."""
+    if not usuario or not getattr(usuario, 'id', None):
+        return []
+    try:
+        email = _normalizar_email(getattr(usuario, 'email', None))
+        conds = [ChamadoTecnico.usuario_id == usuario.id]
+        if email:
+            conds.append(func.lower(ChamadoTecnico.email) == email)
+        return (
+            ChamadoTecnico.query
+            .filter(
+                ChamadoTecnico.ativo == True,  # noqa: E712
+                or_(*conds),
+            )
+            .all()
+        )
+    except Exception:
+        return []
+
+
+def _recebe_campanha_ticket(usuario):
+    """Técnico, supervisor, gestor (cadastro) ou admin/master recebem o aviso de chamado novo."""
+    if not usuario:
+        return False
+    if _eh_gestor(usuario):
+        return True
+    for tec in _registros_tecnico_usuario(usuario):
+        funcao = (tec.funcao or 'tecnico').strip().lower()
+        if funcao in FUNCOES_CAMPANHA_TICKET:
+            return True
+    return False
 
 
 def _tecnico_com_email_vinculado(usuario):
@@ -2241,6 +2278,48 @@ def excluir_cliente(id):
             return jsonify({'ok': False, 'message': str(e)}), 400
         flash(str(e), 'error')
         return redirect(url_for('main.listar_clientes'))
+
+
+@main.route('/api/chamados/campanha')
+def api_campanha_ticket():
+    """Tickets novos para popup de campanha enquanto técnico/supervisor/gestor está logado."""
+    if 'user_id' not in session:
+        return jsonify({'ok': False, 'enabled': False, 'campanhas': [], 'latest_id': 0}), 401
+    user = Usuario.query.get(session['user_id'])
+    if not _recebe_campanha_ticket(user):
+        return jsonify({'ok': True, 'enabled': False, 'campanhas': [], 'latest_id': 0})
+    after_id = request.args.get('after_id', type=int) or 0
+    latest = db.session.query(func.max(Chamado.id)).scalar() or 0
+    if after_id <= 0:
+        return jsonify({'ok': True, 'enabled': True, 'campanhas': [], 'latest_id': latest})
+    rows = (
+        Chamado.query.options(joinedload(Chamado.cliente))
+        .filter(
+            Chamado.id > after_id,
+            ~Chamado.status.in_(STATUS_FECHADOS),
+        )
+        .order_by(Chamado.id.desc())
+        .limit(8)
+        .all()
+    )
+    campanhas = []
+    for chamado in rows:
+        if chamado.tecnico_id == user.id:
+            continue
+        campanhas.append({
+            'id': chamado.id,
+            'numero_chamado': chamado.numero_chamado,
+            'cliente': chamado.cliente.nome if chamado.cliente else '—',
+            'titulo': _titulo_chamado(chamado),
+            'status': chamado.status,
+            'url': url_for('main.listar_chamados', atender=chamado.id),
+        })
+    return jsonify({
+        'ok': True,
+        'enabled': True,
+        'latest_id': latest,
+        'campanhas': campanhas,
+    })
 
 
 @main.route('/api/chamados/<int:id>/status', methods=['POST'])
