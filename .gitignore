@@ -23,6 +23,10 @@ docs/acesso/dumps/*.sql.bz2
 venv/
 .venv/
 
+# --- LLM skeleton (rtt) ---
+.rtt/
+.rtt-cache/
+
 # --- WhatsApp pesagem (sessão QR / node) ---
 whatsapp_bridge/node_modules/
 whatsapp_bridge/auth/
