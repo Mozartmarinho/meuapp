@@ -114,7 +114,14 @@ else
   log "AVISO: nginx -t via sudo indisponível"
 fi
 
-log ">>> 5/5 Verificação pós-deploy (porta 80)"
+log ">>> 4b/5 HTTPS (Let's Encrypt) para acesso no celular"
+if [[ -x "${APP_DIR}/scripts/ensure_https.sh" ]]; then
+  bash "${APP_DIR}/scripts/ensure_https.sh" || log "AVISO: ensure_https.sh retornou erro (HTTP continua no ar)"
+else
+  log "AVISO: scripts/ensure_https.sh ausente"
+fi
+
+log ">>> 5/5 Verificação pós-deploy (porta 80 e HTTPS)"
 [[ -S "${APP_DIR}/meuapp.sock" ]] || fail "Socket meuapp.sock ausente"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1/login}"
 HTTP_CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${HEALTH_URL}" || true)"
@@ -128,6 +135,6 @@ ls -1t "${LOG_DIR}"/deploy_*.log 2>/dev/null | tail -n +31 | xargs -r rm -f || t
 ln -sfn "${LOG_FILE}" "${LOG_DIR}/latest.log"
 log "========== DEPLOY CONCLUÍDO COM SUCESSO =========="
 log "Commit em produção: $(git rev-parse --short HEAD)"
-log "Acesso: http://192.168.0.253/ (Nginx :80)"
+log "Acesso: https://sistemas.saogeraldoservice.com/ (Nginx 443) e http://192.168.0.253/ (LAN)"
 log "Log completo: ${LOG_FILE}"
 exit 0
