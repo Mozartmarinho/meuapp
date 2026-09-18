@@ -347,6 +347,8 @@ def _tecnico_vinculado(usuario):
 
 
 FUNCOES_CAMPANHA_TICKET = frozenset({'tecnico', 'supervisor', 'gestor'})
+CAMPANHA_TICKET_JANELA_MIN = 30
+STATUS_CAMPANHA_AGUARDANDO = 'Pendente'
 
 
 def _eh_tecnico_do_sistema(usuario):
@@ -2280,45 +2282,66 @@ def excluir_cliente(id):
         return redirect(url_for('main.listar_clientes'))
 
 
+def _payload_campanha(chamado):
+    return {
+        'id': chamado.id,
+        'numero_chamado': chamado.numero_chamado,
+        'cliente': chamado.cliente.nome if chamado.cliente else '—',
+        'titulo': _titulo_chamado(chamado),
+        'status': chamado.status,
+        'url': url_for('main.listar_chamados', atender=chamado.id),
+    }
+
+
 @main.route('/api/chamados/campanha')
 def api_campanha_ticket():
-    """Tickets novos para popup de campanha enquanto técnico/supervisor/gestor está logado."""
+    """Tickets novos e ainda sem atendimento para campainha enquanto técnico/supervisor/gestor está logado."""
     if 'user_id' not in session:
-        return jsonify({'ok': False, 'enabled': False, 'campanhas': [], 'latest_id': 0}), 401
+        return jsonify({'ok': False, 'enabled': False, 'campanhas': [], 'pendentes': [], 'latest_id': 0}), 401
     user = Usuario.query.get(session['user_id'])
     if not _recebe_campanha_ticket(user):
-        return jsonify({'ok': True, 'enabled': False, 'campanhas': [], 'latest_id': 0})
+        return jsonify({'ok': True, 'enabled': False, 'campanhas': [], 'pendentes': [], 'latest_id': 0})
     after_id = request.args.get('after_id', type=int) or 0
     latest = db.session.query(func.max(Chamado.id)).scalar() or 0
-    if after_id <= 0:
-        return jsonify({'ok': True, 'enabled': True, 'campanhas': [], 'latest_id': latest})
+    filtros = [~Chamado.status.in_(STATUS_FECHADOS)]
+    if after_id > 0:
+        filtros.append(Chamado.id > after_id)
+    else:
+        corte = datetime.utcnow() - timedelta(minutes=CAMPANHA_TICKET_JANELA_MIN)
+        filtros.append(Chamado.data_criacao >= corte)
     rows = (
         Chamado.query.options(joinedload(Chamado.cliente))
-        .filter(
-            Chamado.id > after_id,
-            ~Chamado.status.in_(STATUS_FECHADOS),
-        )
+        .filter(*filtros)
         .order_by(Chamado.id.desc())
         .limit(8)
         .all()
     )
-    campanhas = []
-    for chamado in rows:
-        if chamado.tecnico_id == user.id:
-            continue
-        campanhas.append({
-            'id': chamado.id,
-            'numero_chamado': chamado.numero_chamado,
-            'cliente': chamado.cliente.nome if chamado.cliente else '—',
-            'titulo': _titulo_chamado(chamado),
-            'status': chamado.status,
-            'url': url_for('main.listar_chamados', atender=chamado.id),
-        })
+    campanhas = [_payload_campanha(chamado) for chamado in rows]
+    watch_ids = []
+    for part in (request.args.get('ids') or '').split(','):
+        part = part.strip()
+        if part.isdigit():
+            watch_ids.append(int(part))
+        if len(watch_ids) >= 30:
+            break
+    pendentes = []
+    if watch_ids:
+        watch_rows = (
+            Chamado.query.options(joinedload(Chamado.cliente))
+            .filter(
+                Chamado.id.in_(watch_ids),
+                Chamado.status == STATUS_CAMPANHA_AGUARDANDO,
+            )
+            .order_by(Chamado.id.desc())
+            .all()
+        )
+        pendentes = [_payload_campanha(chamado) for chamado in watch_rows]
     return jsonify({
         'ok': True,
         'enabled': True,
         'latest_id': latest,
         'campanhas': campanhas,
+        'pendentes': pendentes,
     })
 
 

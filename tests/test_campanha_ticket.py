@@ -3,6 +3,7 @@
 import os
 import sys
 import unittest
+from datetime import datetime, timedelta
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, ROOT)
@@ -117,12 +118,23 @@ class CampanhaTicketTest(unittest.TestCase):
         opener = self._usuario('Solicitante', 'abre@example.com')
         tec = self._tecnico('Ana', 'ana@example.com')
         chamado = self._chamado(opener)
+        chamado.data_criacao = datetime.utcnow() - timedelta(hours=3)
+        db.session.commit()
         client = self._login(tec)
         r = client.get('/api/chamados/campanha?after_id=0')
         data = r.get_json()
         self.assertTrue(data['enabled'])
         self.assertEqual(data['campanhas'], [])
         self.assertEqual(data['latest_id'], chamado.id)
+
+    def test_primeira_consulta_lista_recente(self):
+        opener = self._usuario('Solicitante', 'abre@example.com')
+        tec = self._tecnico('Ana', 'ana@example.com')
+        chamado = self._chamado(opener)
+        client = self._login(tec)
+        r = client.get('/api/chamados/campanha?after_id=0')
+        data = r.get_json()
+        self.assertIn(chamado.id, [c['id'] for c in data['campanhas']])
 
     def test_tecnico_recebe_chamado_novo(self):
         opener = self._usuario('Solicitante', 'abre@example.com')
@@ -138,7 +150,7 @@ class CampanhaTicketTest(unittest.TestCase):
         self.assertEqual(data['campanhas'][0]['numero_chamado'], 'OS222')
         self.assertIn('atender=', data['campanhas'][0]['url'])
 
-    def test_quem_abriu_nao_recebe(self):
+    def test_quem_abriu_tecnico_tambem_recebe(self):
         opener = self._tecnico('Ana', 'ana@example.com')
         outro = self._usuario('Outro', 'outro@example.com')
         velho = self._chamado(opener, 'OS300')
@@ -146,7 +158,7 @@ class CampanhaTicketTest(unittest.TestCase):
         client = self._login(opener)
         r = client.get('/api/chamados/campanha?after_id=%s' % velho.id)
         ids = [c['id'] for c in r.get_json()['campanhas']]
-        self.assertNotIn(chamado.id, ids)
+        self.assertIn(chamado.id, ids)
         client_outro = self._login(outro)
         self.assertFalse(client_outro.get('/api/chamados/campanha').get_json()['enabled'])
 
@@ -161,6 +173,22 @@ class CampanhaTicketTest(unittest.TestCase):
                 '/api/chamados/campanha?after_id=%s' % velho.id
             ).get_json()
             self.assertIn(chamado.id, [c['id'] for c in data['campanhas']])
+
+
+    def test_pendente_continua_na_lista_ate_atender(self):
+        opener = self._usuario('Solicitante', 'abre@example.com')
+        tec = self._tecnico('Ana', 'ana@example.com')
+        velho = self._chamado(opener, 'OS500')
+        novo = self._chamado(opener, 'OS555')
+        client = self._login(tec)
+        r = client.get('/api/chamados/campanha?after_id=%s&ids=%s' % (novo.id, novo.id))
+        data = r.get_json()
+        self.assertIn(novo.id, [c['id'] for c in data['pendentes']])
+        self.assertNotIn(velho.id, [c['id'] for c in data['pendentes']])
+        novo.status = 'Em Andamento'
+        db.session.commit()
+        r2 = client.get('/api/chamados/campanha?after_id=%s&ids=%s' % (novo.id, novo.id))
+        self.assertNotIn(novo.id, [c['id'] for c in r2.get_json()['pendentes']])
 
 
 if __name__ == '__main__':
