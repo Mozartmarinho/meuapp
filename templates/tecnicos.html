@@ -27,6 +27,7 @@
             <tr>
                 <th>Nome</th>
                 <th>E-mail</th>
+                <th>WhatsApp</th>
                 <th>Função</th>
                 <th>Setor</th>
                 <th>Acesso</th>
@@ -39,6 +40,7 @@
             <tr id="tec-row-{{ t.id }}">
                 <td>{{ t.nome }}</td>
                 <td>{{ t.email or '—' }}</td>
+                <td>{{ t.whatsapp or '—' }}</td>
                 <td>{{ t.funcao_label or '—' }}</td>
                 <td>{{ t.setor.nome if t.setor else '—' }}</td>
                 <td>
@@ -51,7 +53,7 @@
                 <td><span class="tec-badge {% if t.ativo %}tec-badge-ok{% else %}tec-badge-off{% endif %}">{{ 'Ativo' if t.ativo else 'Inativo' }}</span></td>
                 <td>
                     <button class="btn tec-btn-sm tec-btn-muted"
-                            onclick="abrirEditarTecnico({{ t.id }}, '{{ t.nome|e }}', '{{ (t.email or '')|e }}', '{{ t.funcao or '' }}', '{{ t.setor_id or '' }}')">
+                            onclick="abrirEditarTecnico({{ t.id }}, '{{ t.nome|e }}', '{{ (t.email or '')|e }}', '{{ (t.whatsapp or '')|e }}', '{{ t.funcao or '' }}', '{{ t.setor_id or '' }}')">
                         <i class="fas fa-edit"></i>
                     </button>
                     <button class="btn tec-btn-sm tec-btn-danger"
@@ -61,7 +63,7 @@
                 </td>
             </tr>
             {% else %}
-            <tr id="tec-vazio"><td colspan="7" style="text-align:center;color:var(--gray-500)">Nenhum técnico cadastrado.</td></tr>
+            <tr id="tec-vazio"><td colspan="8" style="text-align:center;color:var(--gray-500)">Nenhum técnico cadastrado.</td></tr>
             {% endfor %}
         </tbody>
     </table>
@@ -161,6 +163,11 @@
             <small class="tec-hint">Vincula automaticamente ao Cadastro de Acessos com o mesmo e-mail.</small>
         </div>
         <div class="form-group">
+            <label>WhatsApp</label>
+            <input type="tel" id="tecWhatsapp" placeholder="(21) 98888-0000" maxlength="20">
+            <small class="tec-hint">Número para notificações do sistema (técnico, supervisor ou gestor).</small>
+        </div>
+        <div class="form-group">
             <label>Função *</label>
             <select id="tecFuncao">
                 <option value="">Selecione...</option>
@@ -252,15 +259,17 @@ function _acessoBadgeHtml(vinculado) {
 function _tecRowHtml(d) {
     const nome = _escAttr(d.nome);
     const email = _escAttr(d.email || '');
+    const whatsapp = _escAttr(d.whatsapp || '');
     const funcao = _escAttr(d.funcao || '');
     return '<td>' + (d.nome || '') + '</td>' +
         '<td>' + (d.email || '—') + '</td>' +
+        '<td>' + (d.whatsapp || '—') + '</td>' +
         '<td>' + (d.funcao_label || '—') + '</td>' +
         '<td>' + (d.setor || '—') + '</td>' +
         '<td>' + _acessoBadgeHtml(d.vinculado) + '</td>' +
         '<td><span class="tec-badge tec-badge-ok">Ativo</span></td>' +
         '<td>' +
-        '<button class="btn tec-btn-sm tec-btn-muted" onclick="abrirEditarTecnico(' + d.id + ', \'' + nome + '\', \'' + email + '\', \'' + funcao + '\', \'' + (d.setor_id || '') + '\')"><i class="fas fa-edit"></i></button> ' +
+        '<button class="btn tec-btn-sm tec-btn-muted" onclick="abrirEditarTecnico(' + d.id + ', \'' + nome + '\', \'' + email + '\', \'' + whatsapp + '\', \'' + funcao + '\', \'' + (d.setor_id || '') + '\')"><i class="fas fa-edit"></i></button> ' +
         '<button class="btn tec-btn-sm tec-btn-danger" onclick="excluirTecnico(' + d.id + ')"><i class="fas fa-trash"></i></button>' +
         '</td>';
 }
@@ -268,6 +277,7 @@ function abrirModalTecnico() {
     document.getElementById('tecId').value = '';
     document.getElementById('tecNome').value = '';
     document.getElementById('tecEmail').value = '';
+    document.getElementById('tecWhatsapp').value = '';
     document.getElementById('tecFuncao').value = '';
     document.getElementById('tecSetor').value = '';
     document.getElementById('tecErro').style.display = 'none';
@@ -276,10 +286,11 @@ function abrirModalTecnico() {
     document.getElementById('modalTecnico').style.display = '';
     document.getElementById('tecNome').focus();
 }
-function abrirEditarTecnico(id, nome, email, funcao, setorId) {
+function abrirEditarTecnico(id, nome, email, whatsapp, funcao, setorId) {
     document.getElementById('tecId').value = id;
     document.getElementById('tecNome').value = nome;
     document.getElementById('tecEmail').value = email;
+    document.getElementById('tecWhatsapp').value = whatsapp || '';
     document.getElementById('tecFuncao').value = funcao || '';
     document.getElementById('tecSetor').value = setorId;
     document.getElementById('tecErro').style.display = 'none';
@@ -296,6 +307,7 @@ function salvarTecnico() {
     const id = document.getElementById('tecId').value;
     const nome = document.getElementById('tecNome').value.trim();
     const email = document.getElementById('tecEmail').value.trim();
+    const whatsapp = document.getElementById('tecWhatsapp').value.trim();
     const funcao = document.getElementById('tecFuncao').value;
     const setorId = document.getElementById('tecSetor').value;
     const erro = document.getElementById('tecErro');
@@ -305,7 +317,7 @@ function salvarTecnico() {
     fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome, email, funcao, setor_id: setorId }),
+        body: JSON.stringify({ nome, email, whatsapp, funcao, setor_id: setorId }),
     })
         .then(r => r.json())
         .then(d => {

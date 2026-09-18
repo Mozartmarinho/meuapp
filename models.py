@@ -453,6 +453,7 @@ class ChamadoTecnico(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(120))
+    whatsapp = db.Column(db.String(20))
     funcao = db.Column(db.String(20), nullable=True)
     setor_id = db.Column(db.Integer, db.ForeignKey('chamado_setores.id'), nullable=True)
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)

@@ -10,6 +10,7 @@ from models import (
     Chamado,
     ChamadoMensagem,
     ChamadoSetor,
+    ChamadoTecnico,
     Cliente,
     Equipamento,
     Usuario,
@@ -21,7 +22,7 @@ from models import (
     db,
     mesa_padrao,
 )
-from whatsapp_pesagem import normalizar_telefone
+from whatsapp_pesagem import normalizar_telefone, telefone_valido
 
 logger = logging.getLogger('whatsapp_chamados')
 
@@ -35,6 +36,8 @@ ETAPA_EDIT_CLIENTE = 'edit_cliente'
 ETAPA_EDIT_SETOR = 'edit_setor'
 ETAPA_PATRIMONIO = 'wait_patrimonio'
 ETAPA_IDLE = 'idle'
+FUNCOES_AVISO_ABERTURA = ('supervisor', 'gestor')
+MAX_DEFEITO_WHATSAPP = 400
 
 
 def saudacao(agora=None):
@@ -224,6 +227,93 @@ def _gerar_os():
         if not Chamado.query.filter_by(numero_chamado=numero).first():
             return numero
     return 'OS' + ''.join(random.choices(string.digits, k=6))
+
+
+def _texto_ou_traco(valor):
+    texto = ' '.join(str(valor or '').split())
+    return texto or '—'
+
+
+def montar_mensagem_abertura(chamado):
+    unidade = chamado.cliente.nome if getattr(chamado, 'cliente', None) else ''
+    setor = ''
+    if getattr(chamado, 'setor_tecnico', None) and chamado.setor_tecnico.nome:
+        setor = chamado.setor_tecnico.nome
+    elif chamado.setor_destino:
+        setor = chamado.setor_destino
+    defeito = _texto_ou_traco(chamado.descricao)
+    if len(defeito) > MAX_DEFEITO_WHATSAPP:
+        defeito = defeito[: MAX_DEFEITO_WHATSAPP - 1] + '…'
+    return (
+        '*Abertura de chamado*\n'
+        'Ticket: %s\n'
+        'Unidade: %s\n'
+        'Setor: %s\n'
+        'Patrimônio: %s\n'
+        'Defeito: %s'
+        % (
+            _texto_ou_traco(chamado.numero_chamado),
+            _texto_ou_traco(unidade),
+            _texto_ou_traco(setor),
+            _texto_ou_traco(chamado.patrimonio),
+            defeito,
+        )
+    )
+
+
+def destinos_aviso_abertura(chamado):
+    rows = (
+        ChamadoTecnico.query
+        .filter(
+            ChamadoTecnico.ativo == True,  # noqa: E712
+            ChamadoTecnico.funcao.in_(FUNCOES_AVISO_ABERTURA),
+        )
+        .all()
+    )
+    setor_id = getattr(chamado, 'setor_tecnico_id', None)
+    destinos = []
+    vistos = set()
+    for row in rows:
+        phone = normalizar_telefone(row.whatsapp)
+        if not telefone_valido(phone):
+            continue
+        if setor_id and row.setor_id and row.setor_id != setor_id:
+            continue
+        if phone in vistos:
+            continue
+        vistos.add(phone)
+        destinos.append(row)
+    return destinos
+
+
+def notificar_abertura_chamado(chamado, sender=None):
+    """Avisa supervisores e gestores no WhatsApp. Não interrompe a abertura do ticket."""
+    if not chamado:
+        return []
+    from whatsapp_pesagem import send_whatsapp
+    sender = sender or send_whatsapp
+    texto = montar_mensagem_abertura(chamado)
+    enviados = []
+    for dest in destinos_aviso_abertura(chamado):
+        try:
+            res = sender(dest.whatsapp, texto) or {}
+            if res.get('ok'):
+                enviados.append(normalizar_telefone(dest.whatsapp))
+            else:
+                logger.warning(
+                    'WhatsApp abertura %s para %s: %s',
+                    chamado.numero_chamado,
+                    dest.whatsapp,
+                    res.get('error') or 'falha',
+                )
+        except Exception as exc:
+            logger.warning(
+                'WhatsApp abertura %s para %s: %s',
+                getattr(chamado, 'numero_chamado', ''),
+                getattr(dest, 'whatsapp', ''),
+                exc,
+            )
+    return enviados
 
 
 def _pedir_clientes(usuario):
@@ -440,6 +530,11 @@ def process_inbound(telefone, texto, sender=None, agora=None):
                 )
             )
         db.session.commit()
+        if chamado:
+            try:
+                notificar_abertura_chamado(chamado)
+            except Exception as exc:
+                logger.warning('Falha ao notificar abertura WhatsApp: %s', exc)
         return {'ok': True, 'replies': replies, 'chamado_id': getattr(chamado, 'id', None)}
 
     usuario.etapa = ETAPA_CONFIRM if usuario.completo() else ETAPA_NOME

@@ -53,6 +53,10 @@ def create_app():
         except Exception as exc:
             print(f"Aviso ao ajustar schema WhatsApp chamado: {exc}")
         try:
+            ensure_tecnicos_schema()
+        except Exception as exc:
+            print(f"Aviso ao ajustar schema de técnicos: {exc}")
+        try:
             ensure_logistica_schema()
         except Exception as extra:
             print(f"Aviso ao ajustar schema de logística: {extra}")
@@ -710,6 +714,9 @@ def ensure_tecnicos_schema():
                     db.session.rollback()
             if 'funcao' not in tec_cols:
                 db.session.execute(text('ALTER TABLE chamado_tecnicos ADD COLUMN funcao VARCHAR(20) NULL'))
+                db.session.commit()
+            if 'whatsapp' not in tec_cols:
+                db.session.execute(text('ALTER TABLE chamado_tecnicos ADD COLUMN whatsapp VARCHAR(20) NULL'))
                 db.session.commit()
         # Add setor_tecnico_id to chamados if missing
         if 'chamados' in tables:

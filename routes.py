@@ -485,6 +485,15 @@ def _avisar_abertura_ticket(chamado, opener):
         print(f'Falha ao enviar visualização de ticket: {exc}')
 
 
+def _avisar_abertura_whatsapp(chamado):
+    """WhatsApp para supervisores e gestores cadastrados. Não derruba a criação."""
+    try:
+        from whatsapp_chamados import notificar_abertura_chamado
+        notificar_abertura_chamado(chamado)
+    except Exception as exc:
+        print(f'Falha ao enviar WhatsApp de abertura de ticket: {exc}')
+
+
 def _ultima_movimentacao(chamado):
     stamps = [chamado.data_criacao, chamado.encaminhado_em]
     try:
@@ -2070,6 +2079,7 @@ def novo_chamado():
             aplicar_automacoes(chamado, 'criar', user)
             db.session.commit()
             _avisar_abertura_ticket(chamado, user)
+            _avisar_abertura_whatsapp(chamado)
 
             if _wants_json():
                 return jsonify({
@@ -2760,6 +2770,7 @@ def _tecnico_json(t):
         'id': t.id,
         'nome': t.nome,
         'email': t.email or '',
+        'whatsapp': t.whatsapp or '',
         'funcao': t.funcao or '',
         'funcao_label': t.funcao_label or '',
         'setor': setor_nome,
@@ -2779,6 +2790,16 @@ def _parse_funcao_tecnico(data):
     return funcao, None
 
 
+def _parse_whatsapp_tecnico(data):
+    from whatsapp_pesagem import normalizar_telefone, telefone_valido
+    raw = (data.get('whatsapp') or '').strip()
+    if not raw:
+        return '', None
+    if not telefone_valido(raw):
+        return None, 'Informe um WhatsApp válido com DDD (ex.: 21988880000).'
+    return normalizar_telefone(raw), None
+
+
 @main.route('/tecnicos/tecnico/adicionar', methods=['POST'])
 @login_required
 def adicionar_chamado_tecnico():
@@ -2789,16 +2810,20 @@ def adicionar_chamado_tecnico():
     nome = (data.get('nome') or '').strip()
     email = _normalizar_email(data.get('email'))
     funcao, err_funcao = _parse_funcao_tecnico(data)
+    whatsapp, err_whatsapp = _parse_whatsapp_tecnico(data)
     setor_id_raw = (data.get('setor_id') or '').strip()
     setor_id = int(setor_id_raw) if setor_id_raw.isdigit() else None
     if not nome:
         return jsonify({'ok': False, 'error': 'Informe o nome do técnico.'}), 400
     if err_funcao:
         return jsonify({'ok': False, 'error': err_funcao}), 400
+    if err_whatsapp:
+        return jsonify({'ok': False, 'error': err_whatsapp}), 400
     usuario_vinculado = _usuario_por_email(email)
     t = ChamadoTecnico(
         nome=nome,
         email=email,
+        whatsapp=whatsapp or None,
         funcao=funcao,
         setor_id=setor_id,
         usuario_id=usuario_vinculado.id if usuario_vinculado else None,
@@ -2820,14 +2845,18 @@ def editar_chamado_tecnico(tid):
     nome = (data.get('nome') or '').strip()
     email = _normalizar_email(data.get('email'))
     funcao, err_funcao = _parse_funcao_tecnico(data)
+    whatsapp, err_whatsapp = _parse_whatsapp_tecnico(data)
     setor_id_raw = (data.get('setor_id') or '').strip()
     setor_id = int(setor_id_raw) if setor_id_raw.isdigit() else None
     if not nome:
         return jsonify({'ok': False, 'error': 'Informe o nome do técnico.'}), 400
     if err_funcao:
         return jsonify({'ok': False, 'error': err_funcao}), 400
+    if err_whatsapp:
+        return jsonify({'ok': False, 'error': err_whatsapp}), 400
     t.nome = nome
     t.email = email
+    t.whatsapp = whatsapp or None
     t.funcao = funcao
     t.setor_id = setor_id
     u = _usuario_por_email(email)

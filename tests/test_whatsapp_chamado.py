@@ -4,18 +4,20 @@ import os
 import sys
 import unittest
 from datetime import datetime
+from unittest.mock import patch
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, ROOT)
 os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
 os.environ['PESAGEM_WA_DISABLE'] = '1'
 
-from app import create_app, ensure_whatsapp_chamado_schema  # noqa: E402
+from app import create_app, ensure_whatsapp_chamado_schema, ensure_tecnicos_schema  # noqa: E402
 from models import (  # noqa: E402
     db,
     Usuario,
     Cliente,
     ChamadoSetor,
+    ChamadoTecnico,
     Equipamento,
     Chamado,
     ChamadoMensagem,
@@ -23,7 +25,13 @@ from models import (  # noqa: E402
     WhatsAppChamadoLog,
 )
 from password_utils import generate_password_hash  # noqa: E402
-from whatsapp_chamados import process_inbound, saudacao  # noqa: E402
+from whatsapp_chamados import (  # noqa: E402
+    destinos_aviso_abertura,
+    montar_mensagem_abertura,
+    notificar_abertura_chamado,
+    process_inbound,
+    saudacao,
+)
 
 
 class WhatsAppChamadoTest(unittest.TestCase):
@@ -37,6 +45,7 @@ class WhatsAppChamadoTest(unittest.TestCase):
         cls.ctx.push()
         db.create_all()
         ensure_whatsapp_chamado_schema()
+        ensure_tecnicos_schema()
         cls.client = cls.app.test_client()
         user = Usuario(
             nome='Admin Chamado',
@@ -65,6 +74,7 @@ class WhatsAppChamadoTest(unittest.TestCase):
         Equipamento.query.delete()
         WhatsAppChamadoLog.query.delete()
         WhatsAppChamadoUsuario.query.delete()
+        ChamadoTecnico.query.delete()
         ChamadoSetor.query.delete()
         Cliente.query.delete()
         db.session.commit()
@@ -144,6 +154,129 @@ class WhatsAppChamadoTest(unittest.TestCase):
     def test_inbound_sem_token(self):
         r = self.client.post('/api/chamados/whatsapp/inbound', json={'from': '2199', 'text': 'Oi'})
         self.assertEqual(r.status_code, 403)
+
+    def test_cadastro_tecnico_whatsapp(self):
+        r = self.client.get('/tecnicos')
+        self.assertEqual(r.status_code, 200)
+        html = r.get_data(as_text=True)
+        self.assertIn('tecWhatsapp', html)
+        self.assertIn('Número para notificações do sistema', html)
+        r = self.client.post('/tecnicos/tecnico/adicionar', json={
+            'nome': 'Ana Supervisor',
+            'funcao': 'supervisor',
+            'whatsapp': '21988881111',
+            'setor_id': str(self.setor.id),
+        })
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        data = r.get_json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['whatsapp'], '5521988881111')
+        tec = ChamadoTecnico.query.get(data['id'])
+        self.assertEqual(tec.whatsapp, '5521988881111')
+        r2 = self.client.post('/tecnicos/tecnico/%s/editar' % tec.id, json={
+            'nome': 'Ana Supervisor',
+            'funcao': 'gestor',
+            'whatsapp': '21977772222',
+            'setor_id': str(self.setor.id),
+        })
+        self.assertEqual(r2.status_code, 200)
+        self.assertEqual(r2.get_json()['whatsapp'], '5521977772222')
+        r3 = self.client.post('/tecnicos/tecnico/adicionar', json={
+            'nome': 'Sem Whats',
+            'funcao': 'tecnico',
+            'whatsapp': '123',
+        })
+        self.assertEqual(r3.status_code, 400)
+
+    def test_aviso_abertura_so_supervisor_gestor(self):
+        ChamadoTecnico.query.delete()
+        db.session.add_all([
+            ChamadoTecnico(
+                nome='Técnico João', funcao='tecnico', whatsapp='21911110000',
+                setor_id=self.setor.id, ativo=True,
+            ),
+            ChamadoTecnico(
+                nome='Supervisora Ana', funcao='supervisor', whatsapp='21922220000',
+                setor_id=self.setor.id, ativo=True,
+            ),
+            ChamadoTecnico(
+                nome='Gestor Carlos', funcao='gestor', whatsapp='21933330000',
+                ativo=True,
+            ),
+            ChamadoTecnico(
+                nome='Supervisor outro setor', funcao='supervisor', whatsapp='21944440000',
+                setor_id=None, ativo=True,
+            ),
+        ])
+        outro = ChamadoSetor(nome='Elétrica', ativo=True)
+        db.session.add(outro)
+        db.session.flush()
+        db.session.add(ChamadoTecnico(
+            nome='Supervisor elétrica', funcao='supervisor', whatsapp='21955550000',
+            setor_id=outro.id, ativo=True,
+        ))
+        db.session.commit()
+        chamado = Chamado(
+            numero_chamado='OS999001',
+            cliente_id=self.cli.id,
+            tipo_servico='Manutenção',
+            descricao='Bomba não liga',
+            status='Pendente',
+            tecnico_id=self.user_id,
+            setor_tecnico_id=self.setor.id,
+            patrimonio='PAT-100',
+        )
+        db.session.add(chamado)
+        db.session.commit()
+        msg = montar_mensagem_abertura(chamado)
+        self.assertIn('OS999001', msg)
+        self.assertIn('Hospital CCD', msg)
+        self.assertIn('Enfermaria', msg)
+        self.assertIn('PAT-100', msg)
+        self.assertIn('Bomba não liga', msg)
+        destinos = destinos_aviso_abertura(chamado)
+        nomes = {d.nome for d in destinos}
+        self.assertIn('Supervisora Ana', nomes)
+        self.assertIn('Gestor Carlos', nomes)
+        self.assertIn('Supervisor outro setor', nomes)
+        self.assertNotIn('Técnico João', nomes)
+        self.assertNotIn('Supervisor elétrica', nomes)
+        enviados = []
+
+        def fake(to, texto):
+            enviados.append((to, texto))
+            return {'ok': True}
+
+        phones = notificar_abertura_chamado(chamado, sender=fake)
+        self.assertEqual(len(phones), 3)
+        self.assertTrue(all('OS999001' in texto for _, texto in enviados))
+
+    def test_novo_chamado_envia_whatsapp_gestor(self):
+        db.session.add(ChamadoTecnico(
+            nome='Gestor WA', funcao='gestor', whatsapp='21966660000', ativo=True,
+        ))
+        db.session.commit()
+        enviados = []
+
+        def fake(to, texto):
+            enviados.append((to, texto))
+            return {'ok': True}
+
+        with patch('whatsapp_pesagem.send_whatsapp', fake):
+            r = self.client.post('/novo_chamado', data={
+                'cliente_id': str(self.cli.id),
+                'tipo_servico': 'Reparo',
+                'descricao': 'Vazamento no motor',
+                'patrimonio': 'PAT-100',
+                'setor_tecnico_id': str(self.setor.id),
+                'prioridade': 'Alta',
+            }, follow_redirects=True)
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        self.assertTrue(enviados)
+        self.assertTrue(any('Vazamento no motor' in t for _, t in enviados))
+        self.assertTrue(any('Abertura de chamado' in t for _, t in enviados))
+        self.assertTrue(any('PAT-100' in t for _, t in enviados))
+        self.assertTrue(any('Hospital CCD' in t for _, t in enviados))
 
 
 if __name__ == '__main__':

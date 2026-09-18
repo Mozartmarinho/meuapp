@@ -18,10 +18,11 @@ with app.app_context():
     except Exception as extra:
         print(f"Aviso schema logistica: {extra}")
     try:
-        from app import ensure_whatsapp_chamado_schema
+        from app import ensure_whatsapp_chamado_schema, ensure_tecnicos_schema
         ensure_whatsapp_chamado_schema()
+        ensure_tecnicos_schema()
     except Exception as extra:
-        print(f"Aviso schema whatsapp chamado: {extra}")
+        print(f"Aviso schema whatsapp/tecnicos: {extra}")
     try:
         from nutricao_tenant import ensure_nutricao_cliente_schema
         ensure_nutricao_cliente_schema()
