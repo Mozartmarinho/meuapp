@@ -338,6 +338,11 @@ def _tecnico_vinculado(usuario):
         return None
 
 
+def _eh_tecnico_do_sistema(usuario):
+    """Usuário cadastrado em Técnicos (ou gestor) — vê a fila de tickets abertos."""
+    return bool(_tecnico_vinculado(usuario) or _eh_gestor(usuario))
+
+
 def _tecnico_com_email_vinculado(usuario):
     """Técnico só vale para o cumprimento se o cadastro tiver e-mail."""
     tecnico = _tecnico_vinculado(usuario)
@@ -357,10 +362,13 @@ def _primeiro_nome(usuario):
 
 
 def _filtro_chamados_usuario(user):
+    """Tickets visíveis: os que o usuário abriu, encaminhados ao setor e, para técnicos, todos os abertos."""
     conds = [Chamado.tecnico_id == user.id]
     setor = _setor_usuario(user)
     if setor:
         conds.append(and_(Chamado.setor_destino == setor, ~Chamado.status.in_(STATUS_FECHADOS)))
+    if _eh_tecnico_do_sistema(user):
+        conds.append(~Chamado.status.in_(STATUS_FECHADOS))
     return or_(*conds)
 
 
@@ -707,11 +715,12 @@ def _setores_tecnico_usuario(usuario):
 
 
 def _pendencias_chamados(usuario):
-    """Pendências do login: encaminhamentos ao setor do usuário e chamados aguardando peça."""
+    """Pendências do login: tickets abertos (técnicos), encaminhamentos e aguardando peça."""
     if not usuario:
         return []
     setor = _setor_usuario(usuario)
     gestor = _eh_gestor(usuario)
+    tecnico_sistema = _eh_tecnico_do_sistema(usuario)
     meus_setores_tecnicos = _setores_tecnico_usuario(usuario)
     seen = set()
     items = []
@@ -730,7 +739,8 @@ def _pendencias_chamados(usuario):
         ticket_do_meu_setor = bool(
             meus_setores_tecnicos and chamado.setor_tecnico_id in meus_setores_tecnicos
         )
-        if not encaminhado_para_mim and not aguardar_peca and not ticket_do_meu_setor:
+        ticket_aberto = tecnico_sistema and chamado.status == 'Pendente'
+        if not encaminhado_para_mim and not aguardar_peca and not ticket_do_meu_setor and not ticket_aberto:
             continue
         if chamado.id in seen:
             continue
@@ -742,6 +752,8 @@ def _pendencias_chamados(usuario):
             tipo = 'Aguardar peça / Encaminhado'
         elif encaminhado_para_mim:
             tipo = 'Encaminhado'
+        elif ticket_aberto:
+            tipo = 'Ticket aberto'
         elif ticket_do_meu_setor:
             nome_setor = chamado.setor_tecnico.nome if chamado.setor_tecnico else 'Setor'
             tipo = f'Ticket aberto para {nome_setor}'
@@ -1840,14 +1852,16 @@ def dashboard():
 @main.route('/chamados')
 @login_required
 def listar_chamados():
-    """Lista chamados abertos pelo usuário e encaminhamentos ao seu setor."""
+    """Lista chamados visíveis ao usuário (técnicos veem todos os abertos)."""
     user = Usuario.query.get(session['user_id'])
     user_id = session['user_id']
     setor = _setor_usuario(user)
     chamados = _query_chamados_usuario(user).all()
     clientes = _clientes_para_chamados()
     grupos, fechados = _grupos_tickets(chamados)
-    if setor:
+    if _eh_tecnico_do_sistema(user):
+        subtitulo = 'Tickets abertos do sistema e os que você abriu'
+    elif setor:
         subtitulo = f'Chamados que você abriu e encaminhamentos para {setor}'
     else:
         subtitulo = 'Chamados que você abriu — todos os status'
