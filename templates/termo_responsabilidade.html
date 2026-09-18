@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>
+        {% if modo == 'invalido' %}Termo inválido
+        {% elif modo == 'assinar' %}Assinar termo de responsabilidade
+        {% else %}Termo de responsabilidade assinado
+        {% endif %}
+        — São Geraldo Service
+    </title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        :root { --ink:#1f2937; --muted:#4b5563; --line:#d1d5db; --brand:#0f766e; }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: #e5e7eb;
+            color: var(--ink);
+            font-family: "Times New Roman", Times, serif;
+            font-size: 12.5px;
+            line-height: 1.45;
+        }
+        .wrap { max-width: 820px; margin: 1.2rem auto 2.5rem; padding: 0 0.8rem; }
+        .toolbar {
+            display: flex; gap: 0.5rem; justify-content: flex-end;
+            margin-bottom: 0.7rem; font-family: Arial, Helvetica, sans-serif;
+        }
+        .toolbar .btn {
+            border: 0; border-radius: 0.3rem; padding: 0.45rem 0.85rem;
+            cursor: pointer; font-size: 0.8rem; color: #fff; background: var(--brand);
+        }
+        .toolbar .btn-muted { background: #6b7280; }
+        .paper {
+            background: #fff;
+            padding: 1.6rem 1.8rem 2rem;
+            box-shadow: 0 8px 24px rgba(0,0,0,.08);
+        }
+        h1 { text-align: center; font-size: 1.05rem; margin: 0 0 0.85rem; letter-spacing: .02em; }
+        .lead { text-align: justify; margin: 0 0 1rem; }
+        h2 { font-size: 0.92rem; margin: 1.1rem 0 0.4rem; }
+        p, li { text-align: justify; }
+        ol { padding-left: 1.2rem; }
+        ol li { margin-bottom: 0.35rem; }
+        .linha { margin: 0.28rem 0; }
+        .campo {
+            display: inline-block; min-width: 12rem; border-bottom: 1px solid #111;
+            padding: 0 0.2rem; font-family: Arial, Helvetica, sans-serif; font-size: 12px;
+        }
+        input[type="text"], input[type="date"], textarea {
+            font-family: Arial, Helvetica, sans-serif; font-size: 12px;
+            border: 0; border-bottom: 1px solid #111; background: transparent;
+            min-width: 12rem; padding: 0.1rem 0.2rem;
+        }
+        textarea { width: 100%; min-height: 2.4rem; border: 1px solid var(--line); min-width: 0; }
+        table.acc { width: 100%; border-collapse: collapse; margin: 0.4rem 0 0.8rem; }
+        table.acc th, table.acc td { border: 1px solid #111; padding: 0.28rem 0.4rem; }
+        table.acc th { background: #f3f4f6; text-align: left; }
+        table.acc input { min-width: 0; width: 100%; border-bottom: 0; }
+        .sigs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.2rem; margin-top: 1.6rem; }
+        .sig-box { text-align: center; }
+        .sig-line { border-top: 1px solid #111; margin-top: 3.2rem; padding-top: 0.35rem; font-size: 11px; }
+        .sig-img { max-width: 100%; height: 72px; object-fit: contain; display: block; margin: 0 auto; }
+        canvas#pad {
+            width: 100%; height: 140px; border: 1px dashed #6b7280; background: #fafafa;
+            touch-action: none; cursor: crosshair;
+        }
+        .erro { background: #fee2e2; color: #991b1b; padding: 0.5rem 0.7rem; border-radius: 0.3rem; margin: 0.5rem 0; font-family: Arial, sans-serif; }
+        .ok { background: #d1fae5; color: #065f46; padding: 0.5rem 0.7rem; border-radius: 0.3rem; margin: 0 0 0.8rem; font-family: Arial, sans-serif; }
+        .invalido { background: #fff; padding: 2rem; text-align: center; }
+        .check-assinar { font-family: Arial, sans-serif; font-size: 12px; margin: 0.8rem 0; }
+        @media print {
+            body { background: #fff; }
+            .toolbar, .no-print { display: none !important; }
+            .wrap { margin: 0; max-width: none; padding: 0; }
+            .paper { box-shadow: none; padding: 0; }
+        }
+        @media (max-width: 700px) {
+            .sigs { grid-template-columns: 1fr; }
+            .paper { padding: 1rem; }
+        }
+    </style>
+</head>
+<body>
+{% if modo == 'invalido' or not termo %}
+<div class="wrap">
+    <div class="paper invalido">
+        <h1>Link inválido</h1>
+        <p>Este termo não foi encontrado. Solicite um novo link ao setor de TI.</p>
+    </div>
+</div>
+{% else %}
+{% set acc = termo.acessorios() %}
+{% set edit = modo == 'assinar' %}
+<div class="wrap">
+    <div class="toolbar no-print">
+        <button type="button" class="btn" onclick="window.print()"><i class="fas fa-print"></i> Imprimir</button>
+        {% if edit %}
+        <button type="button" class="btn btn-muted" id="btnLimparPad">Limpar assinatura</button>
+        <button type="button" class="btn" id="btnAssinar">Assinar termo</button>
+        {% endif %}
+    </div>
+    <div class="paper" id="docTermo">
+        {% if termo.status == 'assinado' %}
+        <div class="ok no-print">Termo assinado em {{ termo.assinado_em.strftime('%d/%m/%Y %H:%M') if termo.assinado_em else '—' }}.</div>
+        {% endif %}
+        <h1>TERMO DE RESPONSABILIDADE PELO USO E GUARDA DE EQUIPAMENTO DE TI</h1>
+        <p class="lead">
+            Pelo presente Termo de Responsabilidade, o(a) colaborador(a)
+            <strong>{{ termo.responsavel_nome }}</strong>, declara que recebeu da empresa o equipamento
+            <strong>{{ termo.eq_nome or (equipamento.nome_equipamento if equipamento else '') }}</strong>,
+            conforme identificação e características descritas abaixo, ficando responsável por sua guarda,
+            conservação e utilização adequada durante o período em que permanecer sob sua responsabilidade.
+        </p>
+
+        <h2>1. IDENTIFICAÇÃO DO RESPONSÁVEL</h2>
+        <p class="linha">Nome:
+            {% if edit %}<input type="text" id="t_nome" value="{{ termo.responsavel_nome or '' }}">
+            {% else %}<span class="campo">{{ termo.responsavel_nome or '' }}</span>{% endif %}
+        </p>
+        <p class="linha">Setor:
+            {% if edit %}<input type="text" id="t_setor" value="{{ termo.responsavel_setor or '' }}">
+            {% else %}<span class="campo">{{ termo.responsavel_setor or '' }}</span>{% endif %}
+        </p>
+        <p class="linha">Cargo/Função:
+            {% if edit %}<input type="text" id="t_cargo" value="{{ termo.responsavel_cargo or '' }}">
+            {% else %}<span class="campo">{{ termo.responsavel_cargo or '' }}</span>{% endif %}
+        </p>
+        <p class="linha">Matrícula:
+            {% if edit %}<input type="text" id="t_matricula" value="{{ termo.responsavel_matricula or '' }}">
+            {% else %}<span class="campo">{{ termo.responsavel_matricula or '' }}</span>{% endif %}
+        </p>
+
+        <h2>2. IDENTIFICAÇÃO DO EQUIPAMENTO</h2>
+        <p class="linha">Equipamento: <span class="campo">{{ termo.eq_nome or '' }}</span></p>
+        <p class="linha">Marca: <span class="campo">{{ termo.eq_marca or '' }}</span></p>
+        <p class="linha">Modelo: <span class="campo">{{ termo.eq_modelo or '' }}</span></p>
+        <p class="linha">Número de Patrimônio: <span class="campo">{{ termo.eq_patrimonio or '' }}</span></p>
+        <p class="linha">Número de Série: <span class="campo">{{ termo.eq_serie or '' }}</span></p>
+        <p class="linha">Data de Entrega:
+            {% if edit %}<input type="date" id="t_entrega" value="{{ termo.data_entrega.strftime('%Y-%m-%d') if termo.data_entrega else '' }}">
+            {% else %}<span class="campo">{{ termo.data_entrega.strftime('%d/%m/%Y') if termo.data_entrega else '' }}</span>{% endif %}
+        </p>
+
+        <h2>3. RESPONSABILIDADES DO USUÁRIO</h2>
+        <p>O(a) responsável declara estar ciente de que deverá:</p>
+        <ol>
+            <li>Utilizar o equipamento exclusivamente para atividades relacionadas ao trabalho, observando as normas e procedimentos internos da empresa.</li>
+            <li>Zelar pela conservação, integridade e segurança do equipamento, acessórios e demais itens que lhe forem entregues.</li>
+            <li>Não emprestar, ceder, transferir ou permitir que terceiros utilizem o equipamento sem autorização prévia do responsável pelo setor de Tecnologia da Informação.</li>
+            <li>Não realizar alterações, instalações de programas, configurações ou modificações de hardware sem autorização da equipe de Tecnologia da Informação.</li>
+            <li>Comunicar imediatamente à equipe de Tecnologia da Informação qualquer problema, defeito, perda, furto, roubo, dano ou comportamento anormal apresentado pelo equipamento.</li>
+            <li>Manter o equipamento em local seguro, evitando exposição a líquidos, calor excessivo, quedas, impactos ou outras situações que possam comprometer seu funcionamento.</li>
+            <li>No caso de notebooks, tablets e outros equipamentos portáteis, adotar medidas adequadas para evitar perda, furto ou acesso não autorizado às informações corporativas.</li>
+            <li>Devolver o equipamento e todos os seus acessórios quando solicitado pela empresa, em caso de substituição, transferência de setor, afastamento, desligamento ou quando deixar de existir a necessidade de utilização.</li>
+        </ol>
+
+        <h2>4. ACESSÓRIOS ENTREGUES</h2>
+        <table class="acc">
+            <thead>
+                <tr><th>Item</th><th>Quantidade</th><th>Observação</th></tr>
+            </thead>
+            <tbody>
+                {% for chave, label in [
+                    ('equipamento', 'Equipamento'),
+                    ('fonte', 'Fonte/Carregador'),
+                    ('cabo', 'Cabo de alimentação'),
+                    ('teclado', 'Teclado'),
+                    ('mouse', 'Mouse'),
+                    ('outros', 'Outros')
+                ] %}
+                <tr>
+                    <td>{{ label }}</td>
+                    <td>
+                        {% if edit %}<input type="text" data-acc="{{ chave }}" data-k="qtd" value="{{ acc[chave].qtd }}">
+                        {% else %}{{ acc[chave].qtd or '____' }}{% endif %}
+                    </td>
+                    <td>
+                        {% if edit %}<input type="text" data-acc="{{ chave }}" data-k="obs" value="{{ acc[chave].obs }}">
+                        {% else %}{{ acc[chave].obs or '__________________' }}{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <h2>5. CONDIÇÕES DO EQUIPAMENTO NO MOMENTO DA ENTREGA</h2>
+        <p class="linha">Estado geral:
+            {% if edit %}<input type="text" id="t_estado" style="width:70%" value="{{ termo.estado_geral or '' }}">
+            {% else %}<span class="campo" style="min-width:70%">{{ termo.estado_geral or '' }}</span>{% endif %}
+        </p>
+        <p>Observações:</p>
+        {% if edit %}
+        <textarea id="t_obs">{{ termo.observacoes or '' }}</textarea>
+        {% else %}
+        <p>{{ termo.observacoes or '' }}</p>
+        {% endif %}
+
+        <p>
+            O(a) colaborador(a) declara ter recebido o equipamento acima identificado em condições adequadas de uso,
+            comprometendo-se a utilizá-lo e conservá-lo de acordo com as orientações da empresa e da equipe de Tecnologia da Informação.
+        </p>
+        <p>
+            O presente termo deverá ser assinado pelo responsável pelo equipamento, permanecendo uma via arquivada junto à empresa/Setor de Tecnologia da Informação.
+        </p>
+        <p class="linha">Local:
+            {% if edit %}<input type="text" id="t_local" value="{{ termo.local_assinatura or '' }}">
+            {% else %}<span class="campo">{{ termo.local_assinatura or '' }}</span>{% endif %}
+        </p>
+        <p class="linha">Data:
+            <span class="campo">
+                {% if termo.assinado_em %}{{ termo.assinado_em.strftime('%d/%m/%Y') }}
+                {% elif termo.data_entrega %}{{ termo.data_entrega.strftime('%d/%m/%Y') }}
+                {% endif %}
+            </span>
+        </p>
+
+        {% if edit %}
+        <p class="check-assinar no-print">
+            <label><input type="checkbox" id="t_ciente"> Li e concordo com este Termo de Responsabilidade.</label>
+        </p>
+        <p class="no-print"><strong>Assinatura do responsável pelo equipamento</strong></p>
+        <canvas id="pad" width="740" height="160" class="no-print"></canvas>
+        {% endif %}
+
+        <div class="sigs">
+            <div class="sig-box">
+                {% if termo.assinatura_path %}
+                <img class="sig-img" src="{{ url_for('static', filename=termo.assinatura_path) }}" alt="Assinatura">
+                {% endif %}
+                <div class="sig-line">
+                    <strong>{{ termo.responsavel_nome }}</strong><br>
+                    Responsável pelo equipamento
+                </div>
+            </div>
+            <div class="sig-box">
+                <div class="sig-line">
+                    {{ termo.enviado_por.nome if termo.enviado_por else '' }}<br>
+                    Responsável pela entrega – TI
+                </div>
+            </div>
+            <div class="sig-box">
+                <div class="sig-line">
+                    {{ termo.gestor_nome or '' }}<br>
+                    Responsável pelo setor / Gestor
+                </div>
+            </div>
+        </div>
+        <div id="erroAssinar" class="erro no-print" hidden></div>
+    </div>
+</div>
+{% if edit %}
+<script>
+(function () {
+    const canvas = document.getElementById('pad');
+    const ctx = canvas.getContext('2d');
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    let drawing = false, dirty = false;
+
+    function pos(ev) {
+        const r = canvas.getBoundingClientRect();
+        const src = ev.touches ? ev.touches[0] : ev;
+        return {
+            x: (src.clientX - r.left) * (canvas.width / r.width),
+            y: (src.clientY - r.top) * (canvas.height / r.height)
+        };
+    }
+    function start(ev) { ev.preventDefault(); drawing = true; const p = pos(ev); ctx.beginPath(); ctx.moveTo(p.x, p.y); }
+    function move(ev) {
+        if (!drawing) return;
+        ev.preventDefault();
+        const p = pos(ev);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+        dirty = true;
+    }
+    function end() { drawing = false; }
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('mousemove', move);
+    canvas.addEventListener('mouseup', end);
+    canvas.addEventListener('mouseleave', end);
+    canvas.addEventListener('touchstart', start, { passive: false });
+    canvas.addEventListener('touchmove', move, { passive: false });
+    canvas.addEventListener('touchend', end);
+    document.getElementById('btnLimparPad').addEventListener('click', function () {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        dirty = false;
+    });
+
+    function acc() {
+        const out = {};
+        document.querySelectorAll('[data-acc]').forEach(function (el) {
+            const k = el.getAttribute('data-acc');
+            out[k] = out[k] || { qtd: '', obs: '' };
+            out[k][el.getAttribute('data-k')] = el.value;
+        });
+        return out;
+    }
+
+    document.getElementById('btnAssinar').addEventListener('click', function () {
+        const erro = document.getElementById('erroAssinar');
+        erro.hidden = true;
+        if (!document.getElementById('t_ciente').checked) {
+            erro.textContent = 'Marque a ciência do termo para assinar.';
+            erro.hidden = false;
+            return;
+        }
+        if (!dirty) {
+            erro.textContent = 'Desenhe sua assinatura no campo acima.';
+            erro.hidden = false;
+            return;
+        }
+        const body = {
+            responsavel_nome: document.getElementById('t_nome').value,
+            responsavel_setor: document.getElementById('t_setor').value,
+            responsavel_cargo: document.getElementById('t_cargo').value,
+            responsavel_matricula: document.getElementById('t_matricula').value,
+            data_entrega: document.getElementById('t_entrega').value,
+            estado_geral: document.getElementById('t_estado').value,
+            observacoes: document.getElementById('t_obs').value,
+            local_assinatura: document.getElementById('t_local').value,
+            acessorios: acc(),
+            assinatura: canvas.toDataURL('image/png')
+        };
+        fetch(location.pathname, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify(body)
+        })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+        .then(function (res) {
+            if (res.ok && res.data.ok) {
+                location.reload();
+            } else {
+                erro.textContent = (res.data && res.data.error) || 'Não foi possível assinar.';
+                erro.hidden = false;
+            }
+        })
+        .catch(function () {
+            erro.textContent = 'Falha de rede ao assinar.';
+            erro.hidden = false;
+        });
+    });
+})();
+</script>
+{% endif %}
+{% if modo == 'imprimir' %}
+<script>window.addEventListener('load', function () { window.print(); });</script>
+{% endif %}
+{% endif %}
+</body>
+</html>

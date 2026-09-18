@@ -454,6 +454,15 @@ def ensure_equipamentos_schema():
                     db.session.commit()
                 except Exception:
                     db.session.rollback()
+        from models import EquipamentoPreventiva, EquipamentoTermo
+        try:
+            EquipamentoPreventiva.__table__.create(db.engine, checkfirst=True)
+        except Exception as exc:
+            print(f'Aviso: não foi possível criar equipamento_preventivas: {exc}')
+        try:
+            EquipamentoTermo.__table__.create(db.engine, checkfirst=True)
+        except Exception as extra:
+            print(f'Aviso: não foi possível criar equipamento_termos: {extra}')
         if 'chamados' in tables:
             chamado_cols = {c['name'] for c in insp.get_columns('chamados')}
             if 'equipamento_id' in chamado_cols:
@@ -948,6 +957,11 @@ if __name__ == '__main__':
 
     from whatsapp_pesagem import start_background
     start_background(app)
+    try:
+        from equipamento_service import start_preventiva_background
+        start_preventiva_background(app)
+    except Exception as extra:
+        print(f"Aviso ao iniciar preventiva de equipamentos: {extra}")
 
     host = os.environ.get('HOST', '0.0.0.0')
     port = int(os.environ.get('PORT', '80'))

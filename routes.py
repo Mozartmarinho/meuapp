@@ -17,6 +17,8 @@ from models import (
     Usuario,
     Cliente,
     Equipamento,
+    EquipamentoPreventiva,
+    EquipamentoTermo,
     RecursoGrupo,
     ChamadoSetor,
     ChamadoTecnico,
@@ -79,10 +81,11 @@ from models import (
     sla_horas_tipo_contrato,
     TICKET_PARADO_HORAS,
     TIPOS_RECURSO,
+    FREQUENCIAS_PREVENTIVA,
     grupo_recurso_padrao,
 )
 from permissions_sistemas import SISTEMAS, aplicar_permissoes_formulario, conceder_acesso_total
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy import func, or_, and_
 from sqlalchemy.exc import IntegrityError
 from datetime import date, datetime, timedelta
@@ -178,6 +181,11 @@ _CHAMADOS_ENDPOINT_MENUS = {
     'main.editar_equipamento': 'equipamentos',
     'main.api_equipamentos': 'equipamentos',
     'main.api_equipamento': 'equipamentos',
+    'main.api_equipamento_preventiva': 'equipamentos',
+    'main.api_equipamento_termo': 'equipamentos',
+    'main.api_equipamento_termo_enviar': 'equipamentos',
+    'main.imprimir_termo_equipamento': 'equipamentos',
+    'main.api_equipamentos_cronograma': 'equipamentos',
     'main.adicionar_setor_equipamento': 'equipamentos',
     'main.toggle_setor_equipamento': 'equipamentos',
     'main.cameras': 'cameras',
@@ -3373,17 +3381,33 @@ def excluir_estoque(eid):
 def listar_equipamentos():
     """Cadastro de equipamentos (patrimônios) vinculados ao cliente."""
     equipamentos = (
-        Equipamento.query.options(joinedload(Equipamento.cliente))
+        Equipamento.query.options(
+            joinedload(Equipamento.cliente),
+            joinedload(Equipamento.preventiva),
+            selectinload(Equipamento.termos),
+        )
         .order_by(Equipamento.patrimonio.asc(), Equipamento.nome_equipamento.asc())
         .all()
     )
     clientes = _clientes_para_chamados()
     setores = ChamadoSetor.query.order_by(ChamadoSetor.nome).all()
+    usuarios = [
+        {
+            'id': u.id,
+            'nome': u.nome or '',
+            'email': u.email or '',
+            'telefone': getattr(u, 'telefone', None) or '',
+            'setor': u.setor or '',
+        }
+        for u in Usuario.query.filter_by(ativo=True).order_by(Usuario.nome.asc()).all()
+    ]
     return render_template(
         'equipamentos.html',
         equipamentos=equipamentos,
         clientes=clientes,
         setores=setores,
+        usuarios=usuarios,
+        frequencias_preventiva=FREQUENCIAS_PREVENTIVA,
     )
 
 
@@ -3430,6 +3454,7 @@ def _dados_equipamento_form(data):
     local = (data.get('local') or '').strip()
     marca = (data.get('marca') or '').strip()
     modelo = (data.get('modelo') or '').strip()
+    numero_serie = (data.get('numero_serie') or data.get('serie') or '').strip()
     cliente_raw = data.get('cliente_id')
     cliente_id = int(cliente_raw) if str(cliente_raw or '').isdigit() else None
     if not codigo:
@@ -3452,6 +3477,7 @@ def _dados_equipamento_form(data):
         'nome_equipamento': nome,
         'marca': marca or None,
         'modelo': modelo or None,
+        'numero_serie': numero_serie or None,
         'setor': setor or None,
         'localizacao': setor or None,
         'local': local,
@@ -3522,6 +3548,12 @@ def api_equipamento(id):
             Chamado.query.filter_by(equipamento_id=equipamento.id).update(
                 {Chamado.equipamento_id: None}, synchronize_session=False
             )
+            EquipamentoPreventiva.query.filter_by(equipamento_id=equipamento.id).delete(
+                synchronize_session=False
+            )
+            EquipamentoTermo.query.filter_by(equipamento_id=equipamento.id).delete(
+                synchronize_session=False
+            )
             db.session.delete(equipamento)
             db.session.commit()
             return jsonify({'ok': True, 'success': True, 'message': 'Equipamento excluído.'})
@@ -3535,6 +3567,7 @@ def api_equipamento(id):
         equipamento.nome_equipamento = campos['nome_equipamento']
         equipamento.marca = campos['marca']
         equipamento.modelo = campos['modelo']
+        equipamento.numero_serie = campos.get('numero_serie')
         equipamento.setor = campos['setor']
         equipamento.localizacao = campos['localizacao']
         equipamento.local = campos['local']
@@ -3559,6 +3592,171 @@ def api_equipamento(id):
     except Exception as exc:
         db.session.rollback()
         return jsonify({'ok': False, 'error': str(exc), 'message': str(exc)}), 400
+
+
+
+def _eq_user():
+    return Usuario.query.get(session['user_id'])
+
+
+def _link_termo(token):
+    return url_for('main.assinar_termo_publico', token=token, _external=True)
+
+
+@main.route('/api/equipamentos/cronograma')
+@login_required
+def api_equipamentos_cronograma():
+    from equipamento_service import ocorrencias_preventiva
+    ano = request.args.get('ano', type=int) or date.today().year
+    itens = (
+        EquipamentoPreventiva.query.options(
+            joinedload(EquipamentoPreventiva.equipamento).joinedload(Equipamento.cliente)
+        )
+        .filter_by(ativa=True)
+        .all()
+    )
+    cores = [
+        '#7c3aed', '#dc2626', '#eab308', '#16a34a', '#0f766e', '#2563eb',
+        '#db2777', '#ea580c', '#4f46e5', '#0891b2',
+    ]
+    out = []
+    for i, prev in enumerate(itens):
+        eq = prev.equipamento
+        if not eq:
+            continue
+        dias = [d.isoformat() for d in ocorrencias_preventiva(prev, ano=ano)]
+        out.append({
+            'id': eq.id,
+            'nome': eq.nome_equipamento,
+            'codigo': eq.patrimonio or '',
+            'cor': cores[i % len(cores)],
+            'frequencia': prev.frequencia,
+            'dias': dias,
+        })
+    return jsonify({'ok': True, 'ano': ano, 'itens': out})
+
+
+@main.route('/api/equipamentos/<int:id>/preventiva', methods=['GET', 'POST'])
+@login_required
+def api_equipamento_preventiva(id):
+    from equipamento_service import salvar_preventiva
+    eq = Equipamento.query.get_or_404(id)
+    if request.method == 'GET':
+        return jsonify({'ok': True, 'equipamento': eq.to_dict()})
+    data = request.get_json(silent=True) or request.form
+    try:
+        _prev, chamado = salvar_preventiva(eq, data, _eq_user())
+        payload = {
+            'ok': True,
+            'equipamento': eq.to_dict(),
+            'chamado_id': chamado.id if chamado else None,
+            'chamado_numero': chamado.numero_chamado if chamado else None,
+        }
+        if chamado:
+            payload['message'] = (
+                f'Preventiva gravada. Chamado {chamado.numero_chamado} aberto automaticamente.'
+            )
+        else:
+            payload['message'] = 'Preventiva gravada.'
+        return jsonify(payload)
+    except ValueError as extra:
+        return jsonify({'ok': False, 'error': str(extra)}), 400
+    except Exception as extra:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': str(extra)}), 400
+
+
+@main.route('/api/equipamentos/<int:id>/termo', methods=['GET'])
+@login_required
+def api_equipamento_termo(id):
+    from equipamento_service import termo_para_api
+    eq = Equipamento.query.get_or_404(id)
+    termo = eq.termo_atual()
+    link = _link_termo(termo.token) if termo and termo.token else None
+    return jsonify({
+        'ok': True,
+        'equipamento': eq.to_dict(),
+        'termo': termo_para_api(termo, link=link),
+    })
+
+
+@main.route('/api/equipamentos/<int:id>/termo/enviar', methods=['POST'])
+@login_required
+def api_equipamento_termo_enviar(id):
+    from equipamento_service import criar_ou_reenviar_termo, termo_para_api
+    eq = Equipamento.query.get_or_404(id)
+    data = request.get_json(silent=True) or request.form
+    try:
+        termo, link, canais, erros = criar_ou_reenviar_termo(
+            eq, data, _eq_user(), _link_termo
+        )
+        msg = 'Link gerado.'
+        if 'email' in canais:
+            msg = 'Link enviado por e-mail.'
+        elif 'whatsapp' in canais:
+            msg = 'Link enviado por WhatsApp.'
+        if erros:
+            msg = (msg + ' ' + ' '.join(erros)).strip()
+        return jsonify({
+            'ok': True,
+            'message': msg,
+            'link': link,
+            'canais': canais,
+            'erros': erros,
+            'termo': termo_para_api(termo, link=link),
+            'equipamento': eq.to_dict(),
+        })
+    except ValueError as extra:
+        return jsonify({'ok': False, 'error': str(extra)}), 400
+    except Exception as extra:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': str(extra)}), 400
+
+
+@main.route('/equipamentos/<int:id>/termo/imprimir')
+@login_required
+def imprimir_termo_equipamento(id):
+    eq = Equipamento.query.get_or_404(id)
+    termo = eq.termo_atual()
+    if not termo or termo.status != 'assinado':
+        flash('Este equipamento ainda não tem termo assinado.', 'error')
+        return redirect(url_for('main.listar_equipamentos'))
+    return render_template(
+        'termo_responsabilidade.html',
+        termo=termo,
+        equipamento=eq,
+        modo='imprimir',
+        publico=False,
+    )
+
+
+@main.route('/termo/<token>', methods=['GET', 'POST'])
+def assinar_termo_publico(token):
+    from equipamento_service import assinar_termo
+    termo = EquipamentoTermo.query.filter_by(token=token).first()
+    if not termo:
+        return render_template(
+            'termo_responsabilidade.html', termo=None, modo='invalido', publico=True
+        ), 404
+    eq = termo.equipamento
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or request.form
+        try:
+            assinar_termo(termo, data)
+            if _wants_json() or request.is_json:
+                return jsonify({'ok': True, 'message': 'Termo assinado com sucesso.'})
+            return redirect(url_for('main.assinar_termo_publico', token=token))
+        except ValueError as extra:
+            if _wants_json() or request.is_json:
+                return jsonify({'ok': False, 'error': str(extra)}), 400
+            flash(str(extra), 'error')
+    return render_template(
+        'termo_responsabilidade.html',
+        termo=termo,
+        equipamento=eq,
+        modo='ver' if termo.status == 'assinado' else 'assinar',
+        publico=True,
+    )
 
 
 @main.route('/novo_equipamento', methods=['GET', 'POST'])
@@ -3600,6 +3798,7 @@ def editar_equipamento(id):
         equipamento.nome_equipamento = campos['nome_equipamento']
         equipamento.marca = campos['marca']
         equipamento.modelo = campos['modelo']
+        equipamento.numero_serie = campos.get('numero_serie')
         equipamento.setor = campos['setor']
         equipamento.localizacao = campos['localizacao']
         equipamento.local = campos['local']
@@ -4001,7 +4200,37 @@ def agenda():
             'data': c.data_criacao.strftime('%Y-%m-%d'),
             'hora': c.data_criacao.strftime('%H:%M'),
             'url': url_for('main.ver_chamado', id=c.id),
+            'tipo': 'chamado',
         })
+    try:
+        from equipamento_service import ocorrencias_preventiva
+        ano = date.today().year
+        for prev in EquipamentoPreventiva.query.filter_by(ativa=True).all():
+            eq = prev.equipamento
+            if not eq:
+                continue
+            for dia in ocorrencias_preventiva(prev, ano=ano):
+                eventos.append({
+                    'id': f'prev-{eq.id}-{dia.isoformat()}',
+                    'numero': eq.patrimonio or '',
+                    'titulo': f'Preventiva: {eq.nome_equipamento}',
+                    'data': dia.strftime('%Y-%m-%d'),
+                    'hora': '',
+                    'url': url_for('main.listar_equipamentos'),
+                    'tipo': 'preventiva',
+                })
+            for dia in ocorrencias_preventiva(prev, ano=ano + 1):
+                eventos.append({
+                    'id': f'prev-{eq.id}-{dia.isoformat()}',
+                    'numero': eq.patrimonio or '',
+                    'titulo': f'Preventiva: {eq.nome_equipamento}',
+                    'data': dia.strftime('%Y-%m-%d'),
+                    'hora': '',
+                    'url': url_for('main.listar_equipamentos'),
+                    'tipo': 'preventiva',
+                })
+    except Exception:
+        pass
     return render_template(
         'agenda.html',
         user_name=user.nome,

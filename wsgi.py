@@ -43,3 +43,8 @@ with app.app_context():
     except Exception as extra:
         print(f"Aviso acesso master: {extra}")
 start_background(app)
+try:
+    from equipamento_service import start_preventiva_background
+    start_preventiva_background(app)
+except Exception as extra:
+    print(f"Aviso ao iniciar preventiva de equipamentos: {extra}")

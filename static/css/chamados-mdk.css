@@ -466,6 +466,7 @@ body.mdk-tv .main-content {
 .mdk-cal-cell.is-today { background: #e8f8f5; }
 .mdk-cal-cell.is-today .mdk-cal-n { background: #1ABC9C; color: #fff; border-radius: 50%; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; }
 .mdk-cal-dot { display: block; font-size: 0.62rem; color: #1ABC9C; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mdk-cal-dot.is-prev { color: #7c3aed; font-weight: 700; }
 .mdk-week-head { display: grid; grid-template-columns: 52px repeat(7, 1fr); font-size: 0.7rem; font-weight: 700; text-align: center; margin-bottom: 0.3rem; }
 .mdk-week-head .is-today { color: #1ABC9C; }
 .mdk-week-body { border-top: 1px solid #eef1f4; }

@@ -549,6 +549,19 @@ class Equipamento(db.Model):
     ip = db.Column(db.String(45))
     is_agente = db.Column(db.Boolean, default=False, nullable=False)
 
+    preventiva = db.relationship(
+        'EquipamentoPreventiva',
+        back_populates='equipamento',
+        uselist=False,
+        cascade='all, delete-orphan',
+    )
+    termos = db.relationship(
+        'EquipamentoTermo',
+        back_populates='equipamento',
+        cascade='all, delete-orphan',
+        lazy='select',
+    )
+
     def __repr__(self):
         return f'<Equipamento {self.nome_equipamento}>'
 
@@ -569,7 +582,7 @@ class Equipamento(db.Model):
             'nome': self.nome_equipamento,
             'marca': self.marca or '',
             'modelo': self.modelo or '',
-            'numero_serie': self.numero_serie,
+            'numero_serie': self.numero_serie or '',
             'patrimonio': self.patrimonio,
             'localizacao': self.localizacao,
             'setor': self.setor or self.localizacao,
@@ -588,7 +601,125 @@ class Equipamento(db.Model):
             'ip': self.ip or '',
             'is_agente': bool(self.is_agente),
             'atualizado_em': self.atualizado_em.strftime('%d/%m/%Y %H:%M') if self.atualizado_em else None,
+            **self._dict_preventiva_termo(),
         }
+
+    def termo_atual(self):
+        itens = list(self.termos or [])
+        if not itens:
+            return None
+        return max(itens, key=lambda t: t.id)
+
+    def _dict_preventiva_termo(self):
+        prev = self.preventiva
+        termo = self.termo_atual()
+        return {
+            'preventiva_ativa': bool(prev and prev.ativa),
+            'preventiva_frequencia': (prev.frequencia if prev else '') or '',
+            'preventiva_proxima': prev.proxima_data.strftime('%Y-%m-%d') if prev and prev.proxima_data else None,
+            'preventiva_proxima_br': prev.proxima_data.strftime('%d/%m/%Y') if prev and prev.proxima_data else None,
+            'preventiva_duracao_dias': int(prev.duracao_dias or 1) if prev else 1,
+            'termo_id': termo.id if termo else None,
+            'termo_status': (termo.status if termo else '') or '',
+            'termo_responsavel': (termo.responsavel_nome if termo else '') or '',
+            'termo_assinado_em': termo.assinado_em.strftime('%d/%m/%Y %H:%M') if termo and termo.assinado_em else None,
+        }
+
+
+FREQUENCIAS_PREVENTIVA = (
+    ('semanal', 'Semanal'),
+    ('quinzenal', 'Quinzenal'),
+    ('mensal', 'Mensal'),
+    ('trimestral', 'Trimestral'),
+    ('semestral', 'Semestral'),
+    ('anual', 'Anual'),
+)
+FREQUENCIAS_PREVENTIVA_KEYS = {k for k, _ in FREQUENCIAS_PREVENTIVA}
+
+
+class EquipamentoPreventiva(db.Model):
+    """Agenda de manutenção preventiva por patrimônio; a automação abre o chamado no vencimento."""
+    __tablename__ = 'equipamento_preventivas'
+
+    id = db.Column(db.Integer, primary_key=True)
+    equipamento_id = db.Column(
+        db.Integer, db.ForeignKey('equipamentos.id'), nullable=False, unique=True, index=True
+    )
+    ativa = db.Column(db.Boolean, default=False, nullable=False)
+    frequencia = db.Column(db.String(20), default='mensal', nullable=False)
+    proxima_data = db.Column(db.Date)
+    duracao_dias = db.Column(db.Integer, default=1)
+    ultimo_chamado_id = db.Column(db.Integer, db.ForeignKey('chamados.id', ondelete='SET NULL'))
+    ultimo_em = db.Column(db.DateTime)
+    tecnico_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
+    atualizado_em = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    equipamento = db.relationship('Equipamento', back_populates='preventiva')
+    tecnico = db.relationship('Usuario', foreign_keys=[tecnico_id])
+    ultimo_chamado = db.relationship('Chamado', foreign_keys=[ultimo_chamado_id])
+
+
+class EquipamentoTermo(db.Model):
+    """Termo de responsabilidade pelo uso e guarda do equipamento (link + assinatura)."""
+    __tablename__ = 'equipamento_termos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    equipamento_id = db.Column(db.Integer, db.ForeignKey('equipamentos.id'), nullable=False, index=True)
+    token = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    status = db.Column(db.String(20), default='pendente', nullable=False, index=True)
+    responsavel_usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
+    responsavel_nome = db.Column(db.String(120), nullable=False)
+    responsavel_email = db.Column(db.String(120))
+    responsavel_telefone = db.Column(db.String(20))
+    responsavel_setor = db.Column(db.String(80))
+    responsavel_cargo = db.Column(db.String(80))
+    responsavel_matricula = db.Column(db.String(40))
+    eq_nome = db.Column(db.String(100))
+    eq_marca = db.Column(db.String(100))
+    eq_modelo = db.Column(db.String(100))
+    eq_patrimonio = db.Column(db.String(50))
+    eq_serie = db.Column(db.String(50))
+    data_entrega = db.Column(db.Date)
+    estado_geral = db.Column(db.String(200))
+    observacoes = db.Column(db.Text)
+    local_assinatura = db.Column(db.String(120))
+    acessorios_json = db.Column(db.Text)
+    assinatura_path = db.Column(db.String(255))
+    assinado_em = db.Column(db.DateTime)
+    enviado_em = db.Column(db.DateTime)
+    enviado_por_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
+    canal_envio = db.Column(db.String(40))
+    gestor_nome = db.Column(db.String(120))
+    criado_em = db.Column(db.DateTime, default=datetime.utcnow)
+    equipamento = db.relationship('Equipamento', back_populates='termos')
+    responsavel_usuario = db.relationship('Usuario', foreign_keys=[responsavel_usuario_id])
+    enviado_por = db.relationship('Usuario', foreign_keys=[enviado_por_id])
+
+    def acessorios(self):
+        import json
+        try:
+            data = json.loads(self.acessorios_json or '{}')
+        except (TypeError, ValueError):
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        padrao = {
+            'equipamento': {'qtd': '01', 'obs': ''},
+            'fonte': {'qtd': '', 'obs': ''},
+            'cabo': {'qtd': '', 'obs': ''},
+            'teclado': {'qtd': '', 'obs': ''},
+            'mouse': {'qtd': '', 'obs': ''},
+            'outros': {'qtd': '', 'obs': ''},
+        }
+        out = {}
+        for chave, base in padrao.items():
+            item = data.get(chave) or {}
+            if not isinstance(item, dict):
+                item = {}
+            out[chave] = {
+                'qtd': str(item.get('qtd') or base['qtd'] or ''),
+                'obs': str(item.get('obs') or ''),
+            }
+        return out
 
 
 class ChamadoAtendimento(db.Model):

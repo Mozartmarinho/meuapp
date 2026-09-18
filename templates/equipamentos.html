@@ -13,6 +13,9 @@
             <button type="button" class="btn btn-primary" id="btnAdicionarSetorEq">
                 <i class="fas fa-plus"></i> Adicionar setor
             </button>
+            <button type="button" class="btn nc-btn-muted" id="btnCronogramaEq">
+                <i class="fas fa-calendar-alt"></i> Cronograma preventiva
+            </button>
             <button type="button" class="btn btn-success" id="btnNovoEq">
                 <i class="fas fa-plus"></i> Novo Equipamento
             </button>
@@ -57,15 +60,24 @@
             </thead>
             <tbody>
                 {% for eq in equipamentos %}
+                {% set prev = eq.preventiva %}
+                {% set termo = eq.termo_atual() %}
                 <tr data-id="{{ eq.id }}"
                     data-codigo="{{ eq.patrimonio or '' }}"
                     data-nome="{{ eq.nome_equipamento or '' }}"
                     data-marca="{{ eq.marca or '' }}"
                     data-modelo="{{ eq.modelo or '' }}"
+                    data-serie="{{ eq.numero_serie or '' }}"
                     data-local="{{ eq.cliente.nome if eq.cliente else (eq.local or '') }}"
                     data-setor="{{ eq.setor or eq.localizacao or '' }}"
                     data-compra="{{ eq.data_compra.strftime('%Y-%m-%d') if eq.data_compra else '' }}"
-                    data-cliente="{{ eq.cliente_id or '' }}">
+                    data-cliente="{{ eq.cliente_id or '' }}"
+                    data-prev-ativa="{{ '1' if prev and prev.ativa else '0' }}"
+                    data-prev-freq="{{ prev.frequencia if prev else 'mensal' }}"
+                    data-prev-proxima="{{ prev.proxima_data.strftime('%Y-%m-%d') if prev and prev.proxima_data else '' }}"
+                    data-prev-duracao="{{ prev.duracao_dias if prev else 1 }}"
+                    data-termo-status="{{ termo.status if termo else '' }}"
+                    data-termo-nome="{{ termo.responsavel_nome if termo else '' }}">
                     <td><strong>{{ eq.patrimonio or '—' }}</strong></td>
                     <td>{{ eq.nome_equipamento }}</td>
                     <td>{{ eq.marca or '—' }}</td>
@@ -74,6 +86,24 @@
                     <td>{{ eq.setor or eq.localizacao or '—' }}</td>
                     <td>{{ eq.data_compra.strftime('%d/%m/%Y') if eq.data_compra else '—' }}</td>
                     <td class="acoes-cell no-print">
+                        <button type="button" class="btn btn-sm btn-prev-eq {% if prev and prev.ativa %}is-on{% endif %}"
+                                title="{% if prev and prev.ativa %}Preventiva {{ prev.proxima_data.strftime('%d/%m/%Y') if prev.proxima_data else 'ativa' }}{% else %}Marcar preventiva{% endif %}">
+                            <i class="fas fa-calendar-check"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-termo-eq {% if termo and termo.status == 'assinado' %}is-assinado{% elif termo %}is-pendente{% endif %}"
+                                title="{% if termo and termo.status == 'assinado' %}Termo assinado por {{ termo.responsavel_nome }}{% elif termo %}Termo pendente de assinatura{% else %}Vincular responsável e enviar termo{% endif %}">
+                            {% if termo and termo.status == 'assinado' %}
+                            <i class="fas fa-check-circle"></i>
+                            {% else %}
+                            <i class="fas fa-file-signature"></i>
+                            {% endif %}
+                        </button>
+                        {% if termo and termo.status == 'assinado' %}
+                        <a class="btn btn-sm btn-print-termo" title="Imprimir termo assinado"
+                           href="{{ url_for('main.imprimir_termo_equipamento', id=eq.id) }}" target="_blank" rel="noopener">
+                            <i class="fas fa-print"></i>
+                        </a>
+                        {% endif %}
                         <button type="button" class="btn btn-sm btn-editar-link btn-editar-eq" title="Editar">
                             <i class="fas fa-edit"></i>
                         </button>
@@ -116,6 +146,10 @@
                 <div class="form-group">
                     <label for="eq_modelo">Modelo</label>
                     <input type="text" id="eq_modelo" name="modelo" maxlength="100" placeholder="Ex: OptiPlex 7090">
+                </div>
+                <div class="form-group">
+                    <label for="eq_serie">Número de série</label>
+                    <input type="text" id="eq_serie" name="numero_serie" maxlength="50" placeholder="Opcional">
                 </div>
                 <div class="form-group">
                     <label for="eq_local">Local / Cliente *</label>
@@ -227,6 +261,152 @@
     </div>
 </div>
 
+<!-- ── MODAL PREVENTIVA ───────────────────────────────────────── -->
+<div id="modalPreventiva" class="modal-overlay nc-modal" hidden>
+    <div class="modal-dialog nc-dialog" role="dialog" aria-modal="true" style="max-width:440px">
+        <div class="modal-header">
+            <h2>Manutenção preventiva</h2>
+            <button type="button" class="modal-close" id="btnFecharPrevX" aria-label="Fechar">&times;</button>
+        </div>
+        <form id="formPreventiva">
+            <input type="hidden" id="prev_eq_id" value="">
+            <div class="modal-body">
+                <p class="eq-modal-sub" id="prevEqNome">—</p>
+                <div class="form-group" style="display:flex;align-items:center;gap:0.5rem">
+                    <input type="checkbox" id="prev_ativa" style="width:auto">
+                    <label for="prev_ativa" style="margin:0;cursor:pointer">Ativar preventiva (abre chamado automaticamente)</label>
+                </div>
+                <div class="form-group">
+                    <label for="prev_freq">Período / frequência</label>
+                    <select id="prev_freq">
+                        {% for key, label in frequencias_preventiva|default([('mensal','Mensal')]) %}
+                        <option value="{{ key }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="prev_proxima">Próxima preventiva *</label>
+                    <input type="date" id="prev_proxima">
+                </div>
+                <div class="form-group">
+                    <label for="prev_duracao">Duração do período (dias)</label>
+                    <input type="number" id="prev_duracao" min="1" max="14" value="1">
+                </div>
+            </div>
+            <div class="nc-footer">
+                <button type="button" class="btn nc-btn-muted" id="btnFecharPrev">Fechar</button>
+                <button type="submit" class="btn btn-success" id="btnSalvarPrev">Salvar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ── MODAL TERMO ────────────────────────────────────────────── -->
+<div id="modalTermo" class="modal-overlay nc-modal" hidden>
+    <div class="modal-dialog nc-dialog" role="dialog" aria-modal="true" style="max-width:520px">
+        <div class="modal-header">
+            <h2>Termo de responsabilidade</h2>
+            <button type="button" class="modal-close" id="btnFecharTermoX" aria-label="Fechar">&times;</button>
+        </div>
+        <form id="formTermo">
+            <input type="hidden" id="termo_eq_id" value="">
+            <div class="modal-body">
+                <p class="eq-modal-sub" id="termoEqNome">—</p>
+                <div id="termoStatusBox" class="eq-termo-status" hidden></div>
+                <div class="form-group">
+                    <label for="termo_usuario">Vincular responsável (usuário do sistema)</label>
+                    <select id="termo_usuario">
+                        <option value="">Informar manualmente...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="termo_nome">Nome do responsável *</label>
+                    <input type="text" id="termo_nome" maxlength="120" required>
+                </div>
+                <div class="nc-grid2">
+                    <div class="form-group">
+                        <label for="termo_email">E-mail</label>
+                        <input type="text" id="termo_email" maxlength="120" placeholder="para enviar o link">
+                    </div>
+                    <div class="form-group">
+                        <label for="termo_tel">WhatsApp</label>
+                        <input type="text" id="termo_tel" maxlength="20" placeholder="DDD + número">
+                    </div>
+                </div>
+                <div class="nc-grid2">
+                    <div class="form-group">
+                        <label for="termo_setor">Setor</label>
+                        <input type="text" id="termo_setor" maxlength="80">
+                    </div>
+                    <div class="form-group">
+                        <label for="termo_cargo">Cargo/Função</label>
+                        <input type="text" id="termo_cargo" maxlength="80">
+                    </div>
+                </div>
+                <div class="nc-grid2">
+                    <div class="form-group">
+                        <label for="termo_matricula">Matrícula</label>
+                        <input type="text" id="termo_matricula" maxlength="40">
+                    </div>
+                    <div class="form-group">
+                        <label for="termo_gestor">Gestor do setor</label>
+                        <input type="text" id="termo_gestor" maxlength="120">
+                    </div>
+                </div>
+                <div class="form-group" style="display:flex;gap:1rem;flex-wrap:wrap">
+                    <label style="margin:0;display:flex;gap:0.35rem;align-items:center;cursor:pointer">
+                        <input type="checkbox" id="termo_enviar_email" checked style="width:auto"> Enviar e-mail
+                    </label>
+                    <label style="margin:0;display:flex;gap:0.35rem;align-items:center;cursor:pointer">
+                        <input type="checkbox" id="termo_enviar_wa" style="width:auto"> Enviar WhatsApp
+                    </label>
+                </div>
+                <div class="form-group" id="termoLinkBox" hidden>
+                    <label>Link para assinatura</label>
+                    <div style="display:flex;gap:0.4rem">
+                        <input type="text" id="termo_link" readonly>
+                        <button type="button" class="btn btn-sm btn-primary" id="btnCopiarLink">Copiar</button>
+                    </div>
+                </div>
+            </div>
+            <div class="nc-footer">
+                <button type="button" class="btn nc-btn-muted" id="btnFecharTermo">Fechar</button>
+                <a class="btn btn-primary" id="btnImprimirTermo" href="#" target="_blank" rel="noopener" hidden>
+                    <i class="fas fa-print"></i> Imprimir assinado
+                </a>
+                <button type="submit" class="btn btn-success" id="btnEnviarTermo">
+                    <i class="fas fa-paper-plane"></i> Enviar link
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ── MODAL CRONOGRAMA ───────────────────────────────────────── -->
+<div id="modalCronograma" class="modal-overlay nc-modal" hidden>
+    <div class="modal-dialog nc-dialog eq-crono-dialog" role="dialog" aria-modal="true">
+        <div class="modal-header">
+            <h2 id="cronoTitle">Cronograma de manutenção preventiva</h2>
+            <button type="button" class="modal-close" id="btnFecharCronoX" aria-label="Fechar">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="eq-crono-bar no-print">
+                <button type="button" class="btn btn-sm nc-btn-muted" id="cronoPrevAno">&lt;</button>
+                <strong id="cronoAno">2026</strong>
+                <button type="button" class="btn btn-sm nc-btn-muted" id="cronoNextAno">&gt;</button>
+                <button type="button" class="btn btn-sm btn-primary" id="btnPrintCrono" style="margin-left:auto">
+                    <i class="fas fa-print"></i> Imprimir
+                </button>
+            </div>
+            <div id="cronoLegend" class="eq-crono-legend"></div>
+            <div id="cronoGrid" class="eq-crono-grid"></div>
+        </div>
+        <div class="nc-footer no-print">
+            <button type="button" class="btn nc-btn-muted" id="btnFecharCrono">Fechar</button>
+        </div>
+    </div>
+</div>
+
 <style>
 .chamados-page { padding: 4px 0; }
 .chamados-page .header {
@@ -331,6 +511,40 @@
     border-radius: 0.3rem;
 }
 .nc-btn-muted { background-color: var(--gray-300); color: var(--gray-800); }
+.btn-prev-eq { background: #e0f2fe; color: #075985; }
+.btn-prev-eq.is-on { background: #0284c7; color: #fff; }
+.btn-termo-eq { background: #f3f4f6; color: #374151; }
+.btn-termo-eq.is-pendente { background: #ffedd5; color: #9a3412; }
+.btn-termo-eq.is-assinado { background: #d1fae5; color: #065f46; }
+.btn-print-termo { background: #e0e7ff; color: #3730a3; text-decoration: none; display: inline-flex; align-items: center; }
+.eq-modal-sub { margin: 0 0 0.7rem; color: var(--gray-600); font-size: 0.78rem; }
+.eq-termo-status { font-size: 0.78rem; padding: 0.4rem 0.55rem; border-radius: 0.3rem; margin-bottom: 0.6rem; }
+.eq-termo-status.is-ok { background: #d1fae5; color: #065f46; }
+.eq-termo-status.is-wait { background: #ffedd5; color: #9a3412; }
+.nc-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.eq-crono-dialog { max-width: min(96vw, 1100px); width: 100%; }
+.eq-crono-bar { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.6rem; }
+.eq-crono-legend { display: flex; flex-wrap: wrap; gap: 0.45rem 0.8rem; margin-bottom: 0.7rem; font-size: 0.72rem; }
+.eq-crono-legend span { display: inline-flex; align-items: center; gap: 0.3rem; }
+.eq-crono-sw { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+.eq-crono-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; }
+.eq-crono-mes { border: 1px solid #cbd5e1; }
+.eq-crono-mes h3 {
+    margin: 0; font-size: 0.68rem; text-align: center; padding: 0.28rem;
+    background: #f1f5f9; letter-spacing: .04em; text-transform: uppercase;
+}
+.eq-crono-dias, .eq-crono-cells {
+    display: grid; grid-template-columns: repeat(31, minmax(0, 1fr));
+    font-size: 0.55rem; text-align: center;
+}
+.eq-crono-dias span { padding: 0.12rem 0; border-right: 1px solid #e2e8f0; }
+.eq-crono-cells span {
+    min-height: 16px; border-top: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0;
+    font-weight: 700;
+}
+@media (max-width: 800px) {
+    .eq-crono-grid, .nc-grid2 { grid-template-columns: 1fr; }
+}
 body.modal-open { overflow: hidden; }
 .eq-filters {
     display: flex;
@@ -364,6 +578,20 @@ body.modal-open { overflow: hidden; }
         display: block !important;
         margin: 0 0 1rem;
     }
+    #modalCronograma:not([hidden]) {
+        display: block !important;
+        position: static;
+        background: transparent;
+        padding: 0;
+    }
+    #modalCronograma .eq-crono-dialog {
+        max-width: none;
+        box-shadow: none;
+        max-height: none;
+    }
+    #modalCronograma .modal-header,
+    #modalCronograma .nc-footer { display: none !important; }
+    .eq-crono-grid { grid-template-columns: 1fr 1fr; }
     .eq-print-header h1 {
         margin: 0 0 0.35rem;
         font-size: 1.35rem;
@@ -380,6 +608,10 @@ body.modal-open { overflow: hidden; }
         font-size: 0.8rem;
     }
     .chamados-page .table tr:hover { background: transparent; }
+    body.eq-print-crono .eq-page > .header,
+    body.eq-print-crono .eq-filters,
+    body.eq-print-crono .table-wrap,
+    body.eq-print-crono .eq-print-header { display: none !important; }
 }
 </style>
 
@@ -448,6 +680,7 @@ body.modal-open { overflow: hidden; }
         eqNome.value = dados.nome || '';
         document.getElementById('eq_marca').value = dados.marca || '';
         document.getElementById('eq_modelo').value = dados.modelo || '';
+        document.getElementById('eq_serie').value = dados.serie || '';
         document.getElementById('eq_local').value = dados.cliente_id || '';
         const setorNome = (dados.setor || '').trim();
         ensureSetorOption(document.getElementById('eq_setor'), setorNome);
@@ -464,6 +697,7 @@ body.modal-open { overflow: hidden; }
             nome: tr.getAttribute('data-nome') || '',
             marca: tr.getAttribute('data-marca') || '',
             modelo: tr.getAttribute('data-modelo') || '',
+            serie: tr.getAttribute('data-serie') || '',
             cliente_id: tr.getAttribute('data-cliente') || '',
             setor: tr.getAttribute('data-setor') || '',
             compra: tr.getAttribute('data-compra') || ''
@@ -505,6 +739,7 @@ body.modal-open { overflow: hidden; }
                     nome: eq.nome || eq.nome_equipamento || '',
                     marca: eq.marca || '',
                     modelo: eq.modelo || '',
+                    serie: eq.numero_serie || '',
                     cliente_id: eq.cliente_id || '',
                     setor: eq.setor || eq.localizacao || '',
                     compra: eq.data_compra_iso || ''
@@ -543,6 +778,9 @@ body.modal-open { overflow: hidden; }
                 fecharModalListaSetores();
                 return;
             }
+            if (overlayCrono && !overlayCrono.hidden) { fecharCrono(); return; }
+            if (overlayTermo && !overlayTermo.hidden) { fecharTermo(); return; }
+            if (overlayPrev && !overlayPrev.hidden) { fecharPrev(); return; }
             if (!overlay.hidden) fecharModal();
         }
     });
@@ -585,6 +823,7 @@ body.modal-open { overflow: hidden; }
             nome: (document.getElementById('eq_nome').value || '').trim(),
             marca: (document.getElementById('eq_marca').value || '').trim(),
             modelo: (document.getElementById('eq_modelo').value || '').trim(),
+            numero_serie: (document.getElementById('eq_serie').value || '').trim(),
             local: (clienteNome || '').trim(),
             setor: (document.getElementById('eq_setor').value || '').trim(),
             data_compra: document.getElementById('eq_compra').value || '',
@@ -620,6 +859,247 @@ body.modal-open { overflow: hidden; }
             btnGravar.disabled = false;
         });
     });
+    // ── Preventiva, termo e cronograma ────────────────────────
+    const USUARIOS_EQ = {{ usuarios|default([])|tojson }};
+    const overlayPrev = document.getElementById('modalPreventiva');
+    const overlayTermo = document.getElementById('modalTermo');
+    const overlayCrono = document.getElementById('modalCronograma');
+    const MESES_CRONO = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+
+    function abrirOverlay(el) { if (el) { el.hidden = false; document.body.classList.add('modal-open'); } }
+    function fecharOverlay(el) { if (el) el.hidden = true; }
+
+    function jsonPost(url, body) {
+        return fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body: JSON.stringify(body || {})
+        }).then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); });
+    }
+
+    document.querySelectorAll('.btn-prev-eq').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const tr = btn.closest('tr');
+            document.getElementById('prev_eq_id').value = tr.getAttribute('data-id') || '';
+            document.getElementById('prevEqNome').textContent =
+                (tr.getAttribute('data-codigo') || '') + ' — ' + (tr.getAttribute('data-nome') || '');
+            document.getElementById('prev_ativa').checked = tr.getAttribute('data-prev-ativa') === '1';
+            document.getElementById('prev_freq').value = tr.getAttribute('data-prev-freq') || 'mensal';
+            document.getElementById('prev_proxima').value = tr.getAttribute('data-prev-proxima') || '';
+            document.getElementById('prev_duracao').value = tr.getAttribute('data-prev-duracao') || '1';
+            abrirOverlay(overlayPrev);
+        });
+    });
+    function fecharPrev() { fecharOverlay(overlayPrev); }
+    document.getElementById('btnFecharPrev').addEventListener('click', fecharPrev);
+    document.getElementById('btnFecharPrevX').addEventListener('click', fecharPrev);
+    overlayPrev.addEventListener('click', function (ev) { if (ev.target === overlayPrev) fecharPrev(); });
+    document.getElementById('formPreventiva').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const id = document.getElementById('prev_eq_id').value;
+        jsonPost('/api/equipamentos/' + id + '/preventiva', {
+            ativa: document.getElementById('prev_ativa').checked,
+            frequencia: document.getElementById('prev_freq').value,
+            proxima_data: document.getElementById('prev_proxima').value,
+            duracao_dias: document.getElementById('prev_duracao').value
+        }).then(function (res) {
+            if (res.ok && res.data.ok) {
+                alert(res.data.message || 'Preventiva gravada.');
+                location.reload();
+            } else {
+                alert((res.data && res.data.error) || 'Erro ao gravar preventiva');
+            }
+        }).catch(function () { alert('Erro ao gravar preventiva'); });
+    });
+
+    const selUsuario = document.getElementById('termo_usuario');
+    USUARIOS_EQ.forEach(function (u) {
+        const opt = document.createElement('option');
+        opt.value = u.id;
+        opt.textContent = u.nome + (u.email ? ' (' + u.email + ')' : '');
+        opt.setAttribute('data-nome', u.nome || '');
+        opt.setAttribute('data-email', u.email || '');
+        opt.setAttribute('data-tel', u.telefone || '');
+        opt.setAttribute('data-setor', u.setor || '');
+        selUsuario.appendChild(opt);
+    });
+    selUsuario.addEventListener('change', function () {
+        const opt = selUsuario.options[selUsuario.selectedIndex];
+        if (!opt || !opt.value) return;
+        document.getElementById('termo_nome').value = opt.getAttribute('data-nome') || '';
+        document.getElementById('termo_email').value = opt.getAttribute('data-email') || '';
+        document.getElementById('termo_tel').value = opt.getAttribute('data-tel') || '';
+        if (!document.getElementById('termo_setor').value) {
+            document.getElementById('termo_setor').value = opt.getAttribute('data-setor') || '';
+        }
+    });
+
+    function preencherTermoStatus(termo, eqId) {
+        const box = document.getElementById('termoStatusBox');
+        const linkBox = document.getElementById('termoLinkBox');
+        const btnPrint = document.getElementById('btnImprimirTermo');
+        if (!termo) {
+            box.hidden = true;
+            linkBox.hidden = true;
+            btnPrint.hidden = true;
+            return;
+        }
+        box.hidden = false;
+        if (termo.status === 'assinado') {
+            box.className = 'eq-termo-status is-ok';
+            box.textContent = 'Assinado em ' + (termo.assinado_em || '') + ' por ' + (termo.responsavel_nome || '') + '.';
+            btnPrint.hidden = false;
+            btnPrint.href = '/equipamentos/' + eqId + '/termo/imprimir';
+        } else {
+            box.className = 'eq-termo-status is-wait';
+            box.textContent = 'Aguardando assinatura de ' + (termo.responsavel_nome || 'responsável') + '.';
+            btnPrint.hidden = true;
+        }
+        if (termo.link && termo.status !== 'assinado') {
+            linkBox.hidden = false;
+            document.getElementById('termo_link').value = termo.link;
+        } else {
+            linkBox.hidden = true;
+        }
+        document.getElementById('termo_nome').value = termo.responsavel_nome || '';
+        document.getElementById('termo_email').value = termo.responsavel_email || '';
+        document.getElementById('termo_tel').value = termo.responsavel_telefone || '';
+        document.getElementById('termo_setor').value = termo.responsavel_setor || '';
+        document.getElementById('termo_cargo').value = termo.responsavel_cargo || '';
+        document.getElementById('termo_matricula').value = termo.responsavel_matricula || '';
+        document.getElementById('termo_gestor').value = termo.gestor_nome || '';
+        if (termo.responsavel_usuario_id) selUsuario.value = String(termo.responsavel_usuario_id);
+    }
+
+    document.querySelectorAll('.btn-termo-eq').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const tr = btn.closest('tr');
+            const id = tr.getAttribute('data-id');
+            document.getElementById('termo_eq_id').value = id;
+            document.getElementById('termoEqNome').textContent =
+                (tr.getAttribute('data-codigo') || '') + ' — ' + (tr.getAttribute('data-nome') || '');
+            document.getElementById('formTermo').reset();
+            document.getElementById('termo_eq_id').value = id;
+            document.getElementById('termo_setor').value = tr.getAttribute('data-setor') || '';
+            preencherTermoStatus(null, id);
+            abrirOverlay(overlayTermo);
+            fetch('/api/equipamentos/' + id + '/termo', { headers: { 'Accept': 'application/json' } })
+                .then(function (r) { return r.json(); })
+                .then(function (data) { if (data && data.termo) preencherTermoStatus(data.termo, id); })
+                .catch(function () { /* ignora */ });
+        });
+    });
+    function fecharTermo() { fecharOverlay(overlayTermo); }
+    document.getElementById('btnFecharTermo').addEventListener('click', fecharTermo);
+    document.getElementById('btnFecharTermoX').addEventListener('click', fecharTermo);
+    overlayTermo.addEventListener('click', function (ev) { if (ev.target === overlayTermo) fecharTermo(); });
+    document.getElementById('btnCopiarLink').addEventListener('click', function () {
+        const el = document.getElementById('termo_link');
+        el.select();
+        navigator.clipboard.writeText(el.value).then(function () { alert('Link copiado.'); }).catch(function () {
+            document.execCommand('copy');
+        });
+    });
+    document.getElementById('formTermo').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const id = document.getElementById('termo_eq_id').value;
+        const nome = (document.getElementById('termo_nome').value || '').trim();
+        if (!nome) { alert('Informe o nome do responsável.'); return; }
+        jsonPost('/api/equipamentos/' + id + '/termo/enviar', {
+            responsavel_usuario_id: document.getElementById('termo_usuario').value || '',
+            responsavel_nome: nome,
+            responsavel_email: document.getElementById('termo_email').value,
+            responsavel_telefone: document.getElementById('termo_tel').value,
+            responsavel_setor: document.getElementById('termo_setor').value,
+            responsavel_cargo: document.getElementById('termo_cargo').value,
+            responsavel_matricula: document.getElementById('termo_matricula').value,
+            gestor_nome: document.getElementById('termo_gestor').value,
+            enviar_email: document.getElementById('termo_enviar_email').checked,
+            enviar_whatsapp: document.getElementById('termo_enviar_wa').checked
+        }).then(function (res) {
+            if (res.ok && res.data.ok) {
+                preencherTermoStatus(res.data.termo, id);
+                const tr = document.querySelector('#tabelaEquipamentos tr[data-id="' + id + '"]');
+                if (tr) {
+                    const btn = tr.querySelector('.btn-termo-eq');
+                    if (btn && res.data.termo && res.data.termo.status === 'assinado') {
+                        btn.classList.add('is-assinado');
+                        btn.classList.remove('is-pendente');
+                        btn.innerHTML = '<i class="fas fa-check-circle"></i>';
+                    } else if (btn) {
+                        btn.classList.add('is-pendente');
+                        btn.classList.remove('is-assinado');
+                        btn.innerHTML = '<i class="fas fa-file-signature"></i>';
+                    }
+                }
+                alert(res.data.message || 'Link gerado.');
+            } else {
+                alert((res.data && res.data.error) || 'Erro ao enviar termo');
+            }
+        }).catch(function () { alert('Erro ao enviar termo'); });
+    });
+
+    let cronoAno = new Date().getFullYear();
+    function diasNoMes(ano, mes) { return new Date(ano, mes + 1, 0).getDate(); }
+    function renderCrono(payload) {
+        document.getElementById('cronoAno').textContent = String(payload.ano);
+        document.getElementById('cronoTitle').textContent =
+            'Cronograma de manutenção preventiva ' + payload.ano;
+        const legend = document.getElementById('cronoLegend');
+        legend.innerHTML = (payload.itens || []).map(function (it) {
+            return '<span><i class="eq-crono-sw" style="background:' + it.cor + '"></i>' +
+                (it.codigo ? it.codigo + ' ' : '') + it.nome + '</span>';
+        }).join('') || '<span>Nenhuma preventiva ativa.</span>';
+        const byDay = {};
+        (payload.itens || []).forEach(function (it) {
+            (it.dias || []).forEach(function (iso) {
+                byDay[iso] = byDay[iso] || [];
+                byDay[iso].push(it);
+            });
+        });
+        const grid = document.getElementById('cronoGrid');
+        let html = '';
+        for (let m = 0; m < 12; m++) {
+            const n = diasNoMes(payload.ano, m);
+            html += '<div class="eq-crono-mes"><h3>Cronograma de manutenção preventiva mês de ' +
+                MESES_CRONO[m] + ' ' + payload.ano + '</h3><div class="eq-crono-dias">';
+            for (let d = 1; d <= 31; d++) html += '<span>' + (d <= n ? d : '') + '</span>';
+            html += '</div><div class="eq-crono-cells">';
+            for (let d = 1; d <= 31; d++) {
+                if (d > n) { html += '<span></span>'; continue; }
+                const iso = payload.ano + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+                const dt = new Date(payload.ano, m, d);
+                const wk = dt.getDay();
+                const mark = wk === 0 ? 'D' : (wk === 6 ? 'S' : '');
+                const hits = byDay[iso] || [];
+                const bg = hits.length ? hits[0].cor : '';
+                const title = hits.map(function (h) { return h.nome; }).join(', ');
+                html += '<span style="background:' + bg + '" title="' + title + '">' + mark + '</span>';
+            }
+            html += '</div></div>';
+        }
+        grid.innerHTML = html;
+    }
+    function loadCrono(ano) {
+        fetch('/api/equipamentos/cronograma?ano=' + ano, { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) { if (data && data.ok) renderCrono(data); })
+            .catch(function () { alert('Erro ao carregar cronograma'); });
+    }
+    function abrirCrono() { abrirOverlay(overlayCrono); loadCrono(cronoAno); }
+    function fecharCrono() { fecharOverlay(overlayCrono); document.body.classList.remove('eq-print-crono'); }
+    document.getElementById('btnCronogramaEq').addEventListener('click', abrirCrono);
+    document.getElementById('btnFecharCrono').addEventListener('click', fecharCrono);
+    document.getElementById('btnFecharCronoX').addEventListener('click', fecharCrono);
+    overlayCrono.addEventListener('click', function (ev) { if (ev.target === overlayCrono) fecharCrono(); });
+    document.getElementById('cronoPrevAno').addEventListener('click', function () { cronoAno--; loadCrono(cronoAno); });
+    document.getElementById('cronoNextAno').addEventListener('click', function () { cronoAno++; loadCrono(cronoAno); });
+    document.getElementById('btnPrintCrono').addEventListener('click', function () {
+        document.body.classList.add('eq-print-crono');
+        window.print();
+        setTimeout(function () { document.body.classList.remove('eq-print-crono'); }, 400);
+    });
+
     // ── Filters + print ──────────────────────────────────────
     (function () {
         const tbody = document.querySelector('#tabelaEquipamentos tbody');
