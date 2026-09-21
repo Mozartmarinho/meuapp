@@ -475,11 +475,28 @@ class ChamadoTecnico(db.Model):
 
     @property
     def mesas_ids(self):
-        return [m.id for m in (self.mesas or [])]
+        try:
+            return [int(m.id) for m in (self.mesas or []) if m is not None and getattr(m, 'id', None) is not None]
+        except Exception:
+            return []
 
     @property
     def mesas_label(self):
-        return ', '.join(m.nome for m in (self.mesas or []) if m and m.nome)
+        try:
+            return ', '.join(m.nome for m in (self.mesas or []) if m and m.nome)
+        except Exception:
+            return ''
+
+    def dados_edicao(self):
+        """Dict só com tipos JSON-serializáveis (evita Undefined no |tojson do template)."""
+        return {
+            'id': int(self.id) if self.id is not None else 0,
+            'nome': self.nome or '',
+            'email': self.email or '',
+            'whatsapp': getattr(self, 'whatsapp', None) or '',
+            'funcao': self.funcao or '',
+            'mesa_ids': list(self.mesas_ids or []),
+        }
 
     def __repr__(self):
         return f'<ChamadoTecnico {self.nome}>'

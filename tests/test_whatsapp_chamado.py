@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Conversa WhatsApp da Gestão de Chamados."""
+import json
 import os
 import sys
 import unittest
@@ -18,6 +19,9 @@ from models import (  # noqa: E402
     Cliente,
     ChamadoSetor,
     ChamadoTecnico,
+    ChamadoCamera,
+    ChamadoPortao,
+    ChamadoRamal,
     Equipamento,
     Chamado,
     ChamadoMensagem,
@@ -74,6 +78,9 @@ class WhatsAppChamadoTest(unittest.TestCase):
         ChamadoMensagem.query.delete()
         Chamado.query.delete()
         Equipamento.query.delete()
+        ChamadoCamera.query.delete()
+        ChamadoPortao.query.delete()
+        ChamadoRamal.query.delete()
         WhatsAppChamadoLog.query.delete()
         WhatsAppChamadoUsuario.query.delete()
         ChamadoTecnicoMesa.query.delete()
@@ -96,6 +103,14 @@ class WhatsAppChamadoTest(unittest.TestCase):
             ativo=True,
         )
         db.session.add(self.eq)
+        self.camera = ChamadoCamera(
+            nome='Hall entrada', dvr='DVR-1', setor_id=self.setor.id, ativo=True,
+        )
+        self.portao = ChamadoPortao(local='Portão principal', setor_id=self.setor.id)
+        self.ramal = ChamadoRamal(
+            nome_pessoa='Recepção', numero_ramal='201', setor_id=self.setor.id, ativo=True,
+        )
+        db.session.add_all([self.camera, self.portao, self.ramal])
         db.session.commit()
         self.replies = []
 
@@ -130,13 +145,18 @@ class WhatsAppChamadoTest(unittest.TestCase):
         self.assertTrue(any('1 - Enfermaria' in m for m in r3['replies']))
         r4 = self._send(phone, '1')
         self.assertTrue(any('Cadastro salvo' in m for m in r4['replies']))
-        self.assertTrue(any('mesa de serviço' in m.lower() for m in r4['replies']))
-        self.assertTrue(any('Informática' in m for m in r4['replies']))
-        self.assertTrue(any('Elétrica' in m for m in r4['replies']))
-        r5 = self._send(phone, '2')
+        self.assertTrue(any('tipo de chamado' in m.lower() for m in r4['replies']))
+        self.assertTrue(any('Equipamento' in m for m in r4['replies']))
+        self.assertTrue(any('câmera' in m.lower() for m in r4['replies']))
+        self.assertTrue(any('portão' in m.lower() for m in r4['replies']))
+        self.assertTrue(any('telefone/ramal' in m.lower() for m in r4['replies']))
+        r5 = self._send(phone, '1')
         self.assertTrue(any('patrimônio' in m.lower() for m in r5['replies']))
         r6 = self._send(phone, 'PAT-100')
-        self.assertTrue(any('Ticket' in m and 'aberto' in m for m in r6['replies']))
+        self.assertTrue(any('mesa de serviço' in m.lower() for m in r6['replies']))
+        self.assertTrue(any('Informática' in m for m in r6['replies']))
+        r7 = self._send(phone, '2')
+        self.assertTrue(any('Ticket' in m and 'aberto' in m for m in r7['replies']))
         chamado = Chamado.query.order_by(Chamado.id.desc()).first()
         self.assertIsNotNone(chamado)
         self.assertEqual(chamado.cliente_id, self.cli.id)
@@ -153,6 +173,7 @@ class WhatsAppChamadoTest(unittest.TestCase):
         self._send(phone, '1')
         self._send(phone, '1')
         self._send(phone, 'PAT-100')
+        self._send(phone, '1')
         r = self._send(phone, 'Oi de novo')
         self.assertTrue(any('João' in m and 'Hospital CCD' in m for m in r['replies']))
         self.assertTrue(any('envie 1' in m.lower() for m in r['replies']))
@@ -161,8 +182,8 @@ class WhatsAppChamadoTest(unittest.TestCase):
         r3 = self._send(phone, '0')
         self.assertTrue(any('ainda continua' in m for m in r3['replies']))
         r4 = self._send(phone, '1')
-        self.assertTrue(any('mesa de serviço' in m.lower() for m in r4['replies']))
-        r5 = self._send(phone, '2')
+        self.assertTrue(any('tipo de chamado' in m.lower() for m in r4['replies']))
+        r5 = self._send(phone, '1')
         self.assertTrue(any('patrimônio' in m.lower() for m in r5['replies']))
 
     def test_inbound_sem_token(self):
@@ -215,6 +236,17 @@ class WhatsAppChamadoTest(unittest.TestCase):
         })
         self.assertEqual(r4.status_code, 200, r4.get_data(as_text=True))
         self.assertEqual(r4.get_json()['mesa_ids'], [self.mesa.id])
+        r_get = self.client.get('/tecnicos')
+        self.assertEqual(r_get.status_code, 200, r_get.get_data(as_text=True))
+        html = r_get.get_data(as_text=True)
+        self.assertIn('data-tec=', html)
+        self.assertIn('mesa_ids', html)
+        self.assertIn('abrirEditarTecnico(%s)' % tec.id, html)
+        self.assertNotIn('abrirEditarTecnico(%s, ' % tec.id, html)
+        payload = tec.dados_edicao()
+        self.assertTrue(isinstance(payload['mesa_ids'], list))
+        json.dumps(payload)
+        json.dumps(ChamadoTecnico(nome='X', email=None, whatsapp=None, funcao=None).dados_edicao())
 
     def test_aviso_abertura_so_supervisor_gestor(self):
         ChamadoTecnico.query.delete()
@@ -341,13 +373,99 @@ class WhatsAppChamadoTest(unittest.TestCase):
         self.assertIn('Informática', montar_mensagem_abertura(chamado))
 
     def test_adicionar_mesa_pelo_cadastro(self):
+        html = self.client.get('/tecnicos').get_data(as_text=True)
+        self.assertIn('tabMesas', html)
+        self.assertIn('editarMesa(', html)
+        self.assertIn('excluirMesa(', html)
         r = self.client.post('/tecnicos/mesa/adicionar', json={'nome': 'Máquinas'})
         self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
         data = r.get_json()
         self.assertTrue(data['ok'])
         self.assertEqual(data['nome'], 'Máquinas')
+        mid = data['id']
         r2 = self.client.post('/tecnicos/mesa/adicionar', json={'nome': 'Máquinas'})
         self.assertEqual(r2.status_code, 400)
+        r3 = self.client.post('/tecnicos/mesa/%s/editar' % mid, json={'nome': 'Máquinas pesadas'})
+        self.assertEqual(r3.status_code, 200, r3.get_data(as_text=True))
+        self.assertEqual(r3.get_json()['nome'], 'Máquinas pesadas')
+        r4 = self.client.post('/tecnicos/mesa/%s/excluir' % mid)
+        self.assertEqual(r4.status_code, 200, r4.get_data(as_text=True))
+        r5 = self.client.post('/tecnicos/tecnico/adicionar', json={
+            'nome': 'Tec Mesa',
+            'funcao': 'tecnico',
+            'whatsapp': '21988880001',
+            'mesa_ids': [self.mesa.id],
+        })
+        self.assertEqual(r5.status_code, 200, r5.get_data(as_text=True))
+        r6 = self.client.post('/tecnicos/mesa/%s/excluir' % self.mesa.id)
+        self.assertEqual(r6.status_code, 400)
+
+    def _ate_tipo(self, phone, nome='Maria Silva'):
+        self._send(phone, 'Oi')
+        self._send(phone, nome)
+        self._send(phone, '1')
+        self._send(phone, '1')
+
+    def test_abre_ticket_camera(self):
+        phone = '21980001111'
+        self._ate_tipo(phone)
+        r = self._send(phone, '2')
+        self.assertTrue(any('câmera' in m.lower() for m in r['replies']))
+        self.assertTrue(any('Hall entrada' in m for m in r['replies']))
+        self.assertFalse(any('DVR-1' in m for m in r['replies']))
+        r2 = self._send(phone, '1')
+        self.assertTrue(any('mesa de serviço' in m.lower() for m in r2['replies']))
+        r3 = self._send(phone, '2')
+        self.assertTrue(any('Ticket' in m and 'aberto' in m for m in r3['replies']))
+        chamado = Chamado.query.order_by(Chamado.id.desc()).first()
+        self.assertEqual(chamado.tipo_servico, 'Reparo de câmera')
+        self.assertIn('Hall entrada', chamado.equipamento)
+        self.assertEqual(chamado.mesa_id, self.mesa.id)
+
+    def test_abre_ticket_portao(self):
+        phone = '21980002222'
+        self._ate_tipo(phone)
+        r = self._send(phone, '3')
+        self.assertTrue(any('portão' in m.lower() for m in r['replies']))
+        self.assertTrue(any('Portão principal' in m for m in r['replies']))
+        r2 = self._send(phone, '1')
+        self.assertTrue(any('mesa de serviço' in m.lower() for m in r2['replies']))
+        r3 = self._send(phone, '2')
+        self.assertTrue(any('Ticket' in m and 'aberto' in m for m in r3['replies']))
+        chamado = Chamado.query.order_by(Chamado.id.desc()).first()
+        self.assertEqual(chamado.tipo_servico, 'Reparo de portão')
+        self.assertIn('Portão principal', chamado.equipamento)
+
+    def test_abre_ticket_ramal(self):
+        phone = '21980003333'
+        self._ate_tipo(phone)
+        r = self._send(phone, '4')
+        self.assertTrue(any('telefone/ramal' in m.lower() or 'ramal' in m.lower() for m in r['replies']))
+        self.assertTrue(any('1 - 201' in m for m in r['replies']))
+        self.assertFalse(any('Recepção' in m for m in r['replies']))
+        r2 = self._send(phone, '1')
+        self.assertTrue(any('mesa de serviço' in m.lower() for m in r2['replies']))
+        r3 = self._send(phone, '2')
+        self.assertTrue(any('Ticket' in m and 'aberto' in m for m in r3['replies']))
+        chamado = Chamado.query.order_by(Chamado.id.desc()).first()
+        self.assertEqual(chamado.tipo_servico, 'Reparo de telefone/ramal')
+        self.assertEqual(chamado.patrimonio, '201')
+        self.assertIn('Recepção', chamado.equipamento)
+
+    def test_abre_ticket_camera_sem_cadastro(self):
+        ChamadoCamera.query.delete()
+        db.session.commit()
+        phone = '21980004444'
+        self._ate_tipo(phone)
+        r = self._send(phone, '2')
+        self.assertTrue(any('Não há câmeras' in m for m in r['replies']))
+        r2 = self._send(phone, 'Câmera do corredor 3')
+        self.assertTrue(any('mesa de serviço' in m.lower() for m in r2['replies']))
+        r3 = self._send(phone, '2')
+        self.assertTrue(any('Ticket' in m and 'aberto' in m for m in r3['replies']))
+        chamado = Chamado.query.order_by(Chamado.id.desc()).first()
+        self.assertEqual(chamado.tipo_servico, 'Reparo de câmera')
+        self.assertEqual(chamado.equipamento, 'Câmera do corredor 3')
 
 
 if __name__ == '__main__':

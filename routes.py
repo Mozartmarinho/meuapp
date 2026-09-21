@@ -28,6 +28,7 @@ from models import (
     ChamadoFoto,
     ChamadoConhecimento,
     MesaServico,
+    ChamadoTecnicoMesa,
     SlaPrioridade,
     Contrato,
     ChamadoMensagem,
@@ -2976,6 +2977,53 @@ def adicionar_mesa_tecnico():
     db.session.add(mesa)
     db.session.commit()
     return jsonify({'ok': True, 'id': mesa.id, 'nome': mesa.nome, 'ativa': mesa.ativa})
+
+
+def _pode_mesa_tecnico(user):
+    return bool(user and user.tem_menu('chamados', 'tecnicos'))
+
+
+@main.route('/tecnicos/mesa/<int:mid>/editar', methods=['POST'])
+@login_required
+def editar_mesa_tecnico(mid):
+    user = Usuario.query.get(session['user_id'])
+    if not _pode_mesa_tecnico(user):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    data = request.get_json(silent=True) or request.form
+    nome = (data.get('nome') or '').strip()[:80]
+    if not nome:
+        return jsonify({'ok': False, 'error': 'Informe o nome da mesa de serviço.'}), 400
+    mesa = MesaServico.query.get_or_404(mid)
+    outro = MesaServico.query.filter(MesaServico.nome == nome, MesaServico.id != mid).first()
+    if outro:
+        return jsonify({'ok': False, 'error': 'Mesa de serviço já cadastrada.'}), 400
+    mesa.nome = nome
+    db.session.commit()
+    return jsonify({'ok': True, 'id': mesa.id, 'nome': mesa.nome, 'ativa': mesa.ativa})
+
+
+@main.route('/tecnicos/mesa/<int:mid>/excluir', methods=['POST'])
+@login_required
+def excluir_mesa_tecnico(mid):
+    user = Usuario.query.get(session['user_id'])
+    if not _pode_mesa_tecnico(user):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    mesa = MesaServico.query.get_or_404(mid)
+    usos = []
+    if Chamado.query.filter_by(mesa_id=mid).first():
+        usos.append('chamados')
+    if ChamadoTecnicoMesa.query.filter_by(mesa_id=mid).first():
+        usos.append('técnicos')
+    if ChamadoAutomacao.query.filter_by(mesa_id=mid).first():
+        usos.append('automações')
+    if usos:
+        return jsonify({
+            'ok': False,
+            'error': 'Não é possível excluir: há ' + ', '.join(usos) + ' vinculados a esta mesa.',
+        }), 400
+    db.session.delete(mesa)
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 @main.route('/tecnicos/tecnico/<int:tid>/excluir', methods=['POST'])
