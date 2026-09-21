@@ -13,6 +13,7 @@ from models import (
     ChamadoTecnico,
     Cliente,
     Equipamento,
+    MesaServico,
     Usuario,
     WhatsAppChamadoConfig,
     WhatsAppChamadoLog,
@@ -21,6 +22,7 @@ from models import (
     contrato_vigente,
     db,
     mesa_padrao,
+    mesas_ativas,
 )
 from whatsapp_pesagem import normalizar_telefone, telefone_valido
 
@@ -34,6 +36,7 @@ ETAPA_CONFIRM = 'wait_confirm'
 ETAPA_EDIT_MENU = 'edit_menu'
 ETAPA_EDIT_CLIENTE = 'edit_cliente'
 ETAPA_EDIT_SETOR = 'edit_setor'
+ETAPA_MESA = 'wait_mesa'
 ETAPA_PATRIMONIO = 'wait_patrimonio'
 ETAPA_IDLE = 'idle'
 FUNCOES_AVISO_ABERTURA = ('supervisor', 'gestor')
@@ -77,6 +80,20 @@ def listar_clientes():
 
 def listar_setores():
     return ChamadoSetor.query.filter_by(ativo=True).order_by(ChamadoSetor.nome.asc()).all()
+
+
+def listar_mesas():
+    return mesas_ativas()
+
+
+def mesa_escolhida(usuario):
+    ids = ler_lista(usuario, 'mesa_escolhida')
+    if not ids:
+        return mesa_padrao()
+    mesa = MesaServico.query.get(ids[0])
+    if mesa and mesa.ativa:
+        return mesa
+    return mesa_padrao()
 
 
 def parse_indice(texto, maximo):
@@ -166,7 +183,7 @@ def abrir_ticket(usuario, patrimonio):
         eq = Equipamento.query.filter(Equipamento.patrimonio.ilike(codigo)).first()
     if not eq:
         return None, None
-    mesa = mesa_padrao()
+    mesa = mesa_escolhida(usuario)
     numero = _gerar_os()
     descricao = (
         'Abertura via WhatsApp para manutenção de equipamentos da São Geraldo Service.\n'
@@ -174,12 +191,14 @@ def abrir_ticket(usuario, patrimonio):
         'Telefone: %s\n'
         'Unidade: %s\n'
         'Setor: %s\n'
+        'Mesa de serviço: %s\n'
         'Patrimônio: %s'
         % (
             usuario.nome or '',
             usuario.telefone,
             usuario.cliente.nome if usuario.cliente else '',
             usuario.setor.nome if usuario.setor else '',
+            mesa.nome if mesa else '',
             codigo,
         )
     )
@@ -241,6 +260,7 @@ def montar_mensagem_abertura(chamado):
         setor = chamado.setor_tecnico.nome
     elif chamado.setor_destino:
         setor = chamado.setor_destino
+    mesa = chamado.mesa.nome if getattr(chamado, 'mesa', None) else ''
     defeito = _texto_ou_traco(chamado.descricao)
     if len(defeito) > MAX_DEFEITO_WHATSAPP:
         defeito = defeito[: MAX_DEFEITO_WHATSAPP - 1] + '…'
@@ -249,12 +269,14 @@ def montar_mensagem_abertura(chamado):
         'Ticket: %s\n'
         'Unidade: %s\n'
         'Setor: %s\n'
+        'Mesa de serviço: %s\n'
         'Patrimônio: %s\n'
         'Defeito: %s'
         % (
             _texto_ou_traco(chamado.numero_chamado),
             _texto_ou_traco(unidade),
             _texto_ou_traco(setor),
+            _texto_ou_traco(mesa),
             _texto_ou_traco(chamado.patrimonio),
             defeito,
         )
@@ -271,13 +293,18 @@ def destinos_aviso_abertura(chamado):
         .all()
     )
     setor_id = getattr(chamado, 'setor_tecnico_id', None)
+    mesa_id = getattr(chamado, 'mesa_id', None)
     destinos = []
     vistos = set()
     for row in rows:
         phone = normalizar_telefone(row.whatsapp)
         if not telefone_valido(phone):
             continue
-        if setor_id and row.setor_id and row.setor_id != setor_id:
+        mesas_ids = set(getattr(row, 'mesas_ids', None) or [])
+        if mesas_ids:
+            if mesa_id and mesa_id not in mesas_ids:
+                continue
+        elif setor_id and row.setor_id and row.setor_id != setor_id:
             continue
         if phone in vistos:
             continue
@@ -342,6 +369,19 @@ def _pedir_setores(usuario):
     )]
 
 
+def _pedir_mesas(usuario):
+    mesas = listar_mesas()
+    if not mesas:
+        usuario.etapa = ETAPA_PATRIMONIO
+        return [_msg_patrimonio()]
+    gravar_lista(usuario, 'mesa', [m.id for m in mesas])
+    usuario.etapa = ETAPA_MESA
+    return [formatar_lista(
+        'Qual mesa de serviço deve atender este chamado? Responda com o número da lista:',
+        [m.nome for m in mesas],
+    )]
+
+
 def _msg_confirmacao(usuario):
     nome = primeiro_nome(usuario.nome) or (usuario.nome or '')
     cliente = usuario.cliente.nome if usuario.cliente else '—'
@@ -382,6 +422,20 @@ def _vincular_por_indice(usuario, texto, tipo):
         return None, ['Setor inválido.'] + _pedir_setores(usuario)
     usuario.setor_id = setor.id
     return setor, None
+
+
+def _vincular_mesa(usuario, texto):
+    ids = ler_lista(usuario, 'mesa')
+    if not ids:
+        return None, _pedir_mesas(usuario)
+    indice = parse_indice(texto, len(ids))
+    if not indice:
+        return None, ['Não entendi. Envie só o número da lista (1 a %s).' % len(ids)]
+    mesa = MesaServico.query.get(ids[indice - 1])
+    if not mesa or not mesa.ativa:
+        return None, ['Mesa de serviço inválida.'] + _pedir_mesas(usuario)
+    gravar_lista(usuario, 'mesa_escolhida', [mesa.id])
+    return mesa, None
 
 
 def process_inbound(telefone, texto, sender=None, agora=None):
@@ -467,20 +521,20 @@ def process_inbound(telefone, texto, sender=None, agora=None):
             send('Setor atualizado para %s.' % setor.nome)
             send(_msg_confirmacao(usuario))
         else:
-            usuario.etapa = ETAPA_PATRIMONIO
             send(
                 'Cadastro salvo: %s, unidade %s, setor %s.'
                 % (usuario.nome, usuario.cliente.nome if usuario.cliente else '', setor.nome)
             )
-            send(_msg_patrimonio())
+            for msg in _pedir_mesas(usuario):
+                send(msg)
         db.session.commit()
         return {'ok': True, 'replies': replies}
 
     if etapa == ETAPA_CONFIRM:
         escolha = parse_sim_nao(texto)
         if escolha == 1:
-            usuario.etapa = ETAPA_PATRIMONIO
-            send(_msg_patrimonio())
+            for msg in _pedir_mesas(usuario):
+                send(msg)
         elif escolha == 2:
             usuario.etapa = ETAPA_EDIT_MENU
             send(
@@ -512,6 +566,18 @@ def process_inbound(telefone, texto, sender=None, agora=None):
         db.session.commit()
         return {'ok': True, 'replies': replies}
 
+    if etapa == ETAPA_MESA:
+        mesa, extra = _vincular_mesa(usuario, texto)
+        if extra:
+            for msg in extra:
+                send(msg)
+        else:
+            usuario.etapa = ETAPA_PATRIMONIO
+            send('Mesa de serviço: %s.' % mesa.nome)
+            send(_msg_patrimonio())
+        db.session.commit()
+        return {'ok': True, 'replies': replies}
+
     if etapa == ETAPA_PATRIMONIO:
         chamado, erro = abrir_ticket(usuario, texto)
         if erro:
@@ -522,11 +588,12 @@ def process_inbound(telefone, texto, sender=None, agora=None):
             usuario.etapa = ETAPA_IDLE
             send(
                 'Ticket %s aberto para manutenção de equipamentos da São Geraldo Service, '
-                'vinculado a %s / %s.'
+                'vinculado a %s / %s, mesa %s.'
                 % (
                     chamado.numero_chamado,
                     usuario.cliente.nome if usuario.cliente else '—',
                     usuario.setor.nome if usuario.setor else '—',
+                    chamado.mesa.nome if getattr(chamado, 'mesa', None) else '—',
                 )
             )
         db.session.commit()

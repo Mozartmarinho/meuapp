@@ -17,6 +17,9 @@
             <button type="button" class="btn btn-primary tec-btn-sm" id="btnAdicionarSetor">
                 <i class="fas fa-plus"></i> Adicionar setor
             </button>
+            <button type="button" class="btn btn-primary tec-btn-sm" id="btnAdicionarMesa">
+                <i class="fas fa-plus"></i> Adicionar mesa de serviço
+            </button>
             <button class="btn btn-primary tec-btn-sm" onclick="abrirModalTecnico()">
                 <i class="fas fa-plus"></i> Adicionar técnico
             </button>
@@ -29,7 +32,7 @@
                 <th>E-mail</th>
                 <th>WhatsApp</th>
                 <th>Função</th>
-                <th>Setor</th>
+                <th>Mesa de serviço</th>
                 <th>Acesso</th>
                 <th>Situação</th>
                 <th>Ações</th>
@@ -42,7 +45,7 @@
                 <td>{{ t.email or '—' }}</td>
                 <td>{{ t.whatsapp or '—' }}</td>
                 <td>{{ t.funcao_label or '—' }}</td>
-                <td>{{ t.setor.nome if t.setor else '—' }}</td>
+                <td>{{ t.mesas_label or '—' }}</td>
                 <td>
                     {% if t.usuario_id %}
                     <span class="tec-badge tec-badge-ok">Vinculado</span>
@@ -53,7 +56,7 @@
                 <td><span class="tec-badge {% if t.ativo %}tec-badge-ok{% else %}tec-badge-off{% endif %}">{{ 'Ativo' if t.ativo else 'Inativo' }}</span></td>
                 <td>
                     <button class="btn tec-btn-sm tec-btn-muted"
-                            onclick="abrirEditarTecnico({{ t.id }}, '{{ t.nome|e }}', '{{ (t.email or '')|e }}', '{{ (t.whatsapp or '')|e }}', '{{ t.funcao or '' }}', '{{ t.setor_id or '' }}')">
+                            onclick="abrirEditarTecnico({{ t.id }}, {{ t.nome|tojson }}, {{ (t.email or '')|tojson }}, {{ (t.whatsapp or '')|tojson }}, {{ (t.funcao or '')|tojson }}, {{ t.mesas_ids|tojson }})">
                         <i class="fas fa-edit"></i>
                     </button>
                     <button class="btn tec-btn-sm tec-btn-danger"
@@ -144,6 +147,26 @@
     </div>
 </div>
 
+<!-- ── MODAL ADICIONAR MESA ───────────────────────────────────── -->
+<div class="tec-overlay" id="modalMesaOverlay" style="display:none" onclick="fecharModalMesa()"></div>
+<div class="tec-modal" id="modalMesa" style="display:none">
+    <div class="tec-modal-head">
+        <span>Adicionar mesa de serviço</span>
+        <button type="button" class="tec-modal-close" onclick="fecharModalMesa()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="tec-modal-body">
+        <div class="form-group">
+            <label>Nome da mesa *</label>
+            <input type="text" id="mesaNome" placeholder="Ex: Informática" maxlength="80">
+        </div>
+        <div id="mesaErro" class="tec-erro" style="display:none"></div>
+    </div>
+    <div class="tec-modal-foot">
+        <button type="button" class="btn tec-btn-sm tec-btn-muted" onclick="fecharModalMesa()">Fechar</button>
+        <button type="button" class="btn btn-success tec-btn-sm" onclick="salvarMesa()">Salvar</button>
+    </div>
+</div>
+
 <!-- ── MODAL TÉCNICO ──────────────────────────────────────────── -->
 <div class="tec-overlay" id="modalTecnicoOverlay" style="display:none" onclick="fecharModalTecnico()"></div>
 <div class="tec-modal" id="modalTecnico" style="display:none">
@@ -177,16 +200,35 @@
             </select>
         </div>
         <div class="form-group">
-            <label>Setor</label>
-            <select id="tecSetor">
+            <label id="tecMesaLabel">Mesa de serviço</label>
+            <select id="tecMesa">
                 <option value="">Selecione...</option>
-                {% for s in setores %}
-                {% if s.ativo %}
-                <option value="{{ s.id }}">{{ s.nome }}</option>
+                {% for m in mesas %}
+                {% if m.ativa %}
+                <option value="{{ m.id }}">{{ m.nome }}</option>
                 {% endif %}
                 {% endfor %}
             </select>
+            <div id="tecMesasMulti" class="tec-mesas-multi" hidden>
+                {% for m in mesas %}
+                {% if m.ativa %}
+                <label class="tec-mesa-check">
+                    <input type="checkbox" name="tecMesaCheck" value="{{ m.id }}">
+                    <span>{{ m.nome }}</span>
+                </label>
+                {% endif %}
+                {% endfor %}
+            </div>
+            <small class="tec-hint" id="tecMesaHint">Técnico atende a uma mesa. Supervisor e gestor podem responder por várias.</small>
         </div>
+        <select id="tecSetor" hidden>
+            <option value="">Selecione...</option>
+            {% for s in setores %}
+            {% if s.ativo %}
+            <option value="{{ s.id }}">{{ s.nome }}</option>
+            {% endif %}
+            {% endfor %}
+        </select>
         <div id="tecErro" class="tec-erro" style="display:none"></div>
     </div>
     <div class="tec-modal-foot">
@@ -220,6 +262,11 @@
 .eq-setores-title { font-size: 0.95rem; font-weight: 700; color: var(--gray-700); margin: 0; }
 #modalSetorOverlay, #modalSetor { z-index: 1100; }
 #modalSetor { z-index: 1101; }
+#modalMesaOverlay, #modalMesa { z-index: 1100; }
+#modalMesa { z-index: 1101; }
+.tec-mesas-multi { display: flex; flex-direction: column; gap: 0.35rem; max-height: 180px; overflow-y: auto; border: 1px solid var(--gray-300); border-radius: 0.3rem; padding: 0.45rem 0.55rem; }
+.tec-mesa-check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; font-weight: 500; color: var(--gray-700); margin: 0; }
+.tec-mesa-check input { width: auto; margin: 0; }
 .tec-modal-head { display: flex; justify-content: space-between; align-items: center; padding: 0.8rem 1rem; border-bottom: 1px solid var(--gray-200); font-weight: 700; font-size: 0.9rem; }
 .tec-modal-close { background: none; border: none; cursor: pointer; color: var(--gray-500); font-size: 1rem; padding: 0; }
 .tec-modal-body { padding: 1rem; }
@@ -233,7 +280,8 @@
 
 <script src="{{ url_for('static', filename='js/chamado-setores.js') }}?v=1"></script>
 <script>
-// ── Setor ─────────────────────────────────────────────────────
+const FUNCOES_MESA_MULTIPLA = {{ funcoes_mesa_multipla|tojson }};
+
 function abrirModalListaSetores() {
     document.getElementById('modalListaSetoresOverlay').style.display = '';
     document.getElementById('modalListaSetores').style.display = '';
@@ -247,6 +295,81 @@ document.getElementById('btnAdicionarSetor').addEventListener('click', abrirModa
 document.getElementById('btnNovoSetor').addEventListener('click', function () { ChamadoSetorCadastro.novo(); });
 ChamadoSetorCadastro.init({ addUrl: '/tecnicos/setor/adicionar', idSelects: ['tecSetor'] });
 
+function _ehMultiMesa(funcao) {
+    return FUNCOES_MESA_MULTIPLA.indexOf(funcao) !== -1;
+}
+function _mesasChecks() {
+    return Array.prototype.slice.call(document.querySelectorAll('input[name="tecMesaCheck"]'));
+}
+function atualizarUiMesa() {
+    const funcao = document.getElementById('tecFuncao').value;
+    const multi = _ehMultiMesa(funcao);
+    document.getElementById('tecMesa').hidden = multi;
+    document.getElementById('tecMesasMulti').hidden = !multi;
+    document.getElementById('tecMesaLabel').textContent = multi
+        ? 'Mesas de serviço'
+        : 'Mesa de serviço';
+    document.getElementById('tecMesaHint').textContent = multi
+        ? 'Supervisor e gestor podem responder por mais de uma mesa de serviço.'
+        : 'O chamado aberto nessa mesa cai para esta equipe.';
+}
+function mesasSelecionadas() {
+    if (_ehMultiMesa(document.getElementById('tecFuncao').value)) {
+        return _mesasChecks().filter(function (el) { return el.checked; }).map(function (el) { return el.value; });
+    }
+    const v = document.getElementById('tecMesa').value;
+    return v ? [v] : [];
+}
+function marcarMesas(ids) {
+    const set = {};
+    (ids || []).forEach(function (id) { set[String(id)] = true; });
+    const primeira = (ids && ids.length) ? String(ids[0]) : '';
+    document.getElementById('tecMesa').value = primeira;
+    _mesasChecks().forEach(function (el) { el.checked = !!set[el.value]; });
+}
+function incluirOpcaoMesa(id, nome) {
+    const sel = document.getElementById('tecMesa');
+    const opt = document.createElement('option');
+    opt.value = String(id);
+    opt.textContent = nome;
+    sel.appendChild(opt);
+    const wrap = document.getElementById('tecMesasMulti');
+    const label = document.createElement('label');
+    label.className = 'tec-mesa-check';
+    label.innerHTML = '<input type="checkbox" name="tecMesaCheck" value="' + id + '"><span></span>';
+    label.querySelector('span').textContent = nome;
+    wrap.appendChild(label);
+}
+function abrirModalMesa() {
+    document.getElementById('mesaNome').value = '';
+    document.getElementById('mesaErro').style.display = 'none';
+    document.getElementById('modalMesaOverlay').style.display = '';
+    document.getElementById('modalMesa').style.display = '';
+    document.getElementById('mesaNome').focus();
+}
+function fecharModalMesa() {
+    document.getElementById('modalMesaOverlay').style.display = 'none';
+    document.getElementById('modalMesa').style.display = 'none';
+}
+function salvarMesa() {
+    const nome = document.getElementById('mesaNome').value.trim();
+    const erro = document.getElementById('mesaErro');
+    if (!nome) { erro.textContent = 'Informe o nome da mesa de serviço.'; erro.style.display = ''; return; }
+    fetch('/tecnicos/mesa/adicionar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome: nome }),
+    })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (!d.ok) { erro.textContent = d.error; erro.style.display = ''; return; }
+            incluirOpcaoMesa(d.id, d.nome);
+            fecharModalMesa();
+        });
+}
+document.getElementById('btnAdicionarMesa').addEventListener('click', abrirModalMesa);
+document.getElementById('tecFuncao').addEventListener('change', atualizarUiMesa);
+
 // ── Técnico ───────────────────────────────────────────────────
 function _escAttr(s) {
     return String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -257,19 +380,20 @@ function _acessoBadgeHtml(vinculado) {
         : '<span class="tec-badge tec-badge-off">Sem acesso</span>';
 }
 function _tecRowHtml(d) {
-    const nome = _escAttr(d.nome);
-    const email = _escAttr(d.email || '');
-    const whatsapp = _escAttr(d.whatsapp || '');
-    const funcao = _escAttr(d.funcao || '');
+    const nome = d.nome || '';
+    const email = d.email || '';
+    const whatsapp = d.whatsapp || '';
+    const funcao = d.funcao || '';
+    const mesaIds = d.mesa_ids || [];
     return '<td>' + (d.nome || '') + '</td>' +
         '<td>' + (d.email || '—') + '</td>' +
         '<td>' + (d.whatsapp || '—') + '</td>' +
         '<td>' + (d.funcao_label || '—') + '</td>' +
-        '<td>' + (d.setor || '—') + '</td>' +
+        '<td>' + (d.mesas_label || '—') + '</td>' +
         '<td>' + _acessoBadgeHtml(d.vinculado) + '</td>' +
         '<td><span class="tec-badge tec-badge-ok">Ativo</span></td>' +
         '<td>' +
-        '<button class="btn tec-btn-sm tec-btn-muted" onclick="abrirEditarTecnico(' + d.id + ', \'' + nome + '\', \'' + email + '\', \'' + whatsapp + '\', \'' + funcao + '\', \'' + (d.setor_id || '') + '\')"><i class="fas fa-edit"></i></button> ' +
+        '<button class="btn tec-btn-sm tec-btn-muted" onclick=\'abrirEditarTecnico(' + d.id + ', ' + JSON.stringify(nome) + ', ' + JSON.stringify(email) + ', ' + JSON.stringify(whatsapp) + ', ' + JSON.stringify(funcao) + ', ' + JSON.stringify(mesaIds) + ')\'><i class="fas fa-edit"></i></button> ' +
         '<button class="btn tec-btn-sm tec-btn-danger" onclick="excluirTecnico(' + d.id + ')"><i class="fas fa-trash"></i></button>' +
         '</td>';
 }
@@ -279,20 +403,22 @@ function abrirModalTecnico() {
     document.getElementById('tecEmail').value = '';
     document.getElementById('tecWhatsapp').value = '';
     document.getElementById('tecFuncao').value = '';
-    document.getElementById('tecSetor').value = '';
+    marcarMesas([]);
+    atualizarUiMesa();
     document.getElementById('tecErro').style.display = 'none';
     document.getElementById('modalTecnicoTitulo').textContent = 'Adicionar Técnico';
     document.getElementById('modalTecnicoOverlay').style.display = '';
     document.getElementById('modalTecnico').style.display = '';
     document.getElementById('tecNome').focus();
 }
-function abrirEditarTecnico(id, nome, email, whatsapp, funcao, setorId) {
+function abrirEditarTecnico(id, nome, email, whatsapp, funcao, mesaIds) {
     document.getElementById('tecId').value = id;
     document.getElementById('tecNome').value = nome;
     document.getElementById('tecEmail').value = email;
     document.getElementById('tecWhatsapp').value = whatsapp || '';
     document.getElementById('tecFuncao').value = funcao || '';
-    document.getElementById('tecSetor').value = setorId;
+    marcarMesas(mesaIds || []);
+    atualizarUiMesa();
     document.getElementById('tecErro').style.display = 'none';
     document.getElementById('modalTecnicoTitulo').textContent = 'Editar Técnico';
     document.getElementById('modalTecnicoOverlay').style.display = '';
@@ -309,7 +435,7 @@ function salvarTecnico() {
     const email = document.getElementById('tecEmail').value.trim();
     const whatsapp = document.getElementById('tecWhatsapp').value.trim();
     const funcao = document.getElementById('tecFuncao').value;
-    const setorId = document.getElementById('tecSetor').value;
+    const mesaIds = mesasSelecionadas();
     const erro = document.getElementById('tecErro');
     if (!nome) { erro.textContent = 'Informe o nome do técnico.'; erro.style.display = ''; return; }
     if (!funcao) { erro.textContent = 'Informe a função do técnico.'; erro.style.display = ''; return; }
@@ -317,7 +443,7 @@ function salvarTecnico() {
     fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome, email, whatsapp, funcao, setor_id: setorId }),
+        body: JSON.stringify({ nome, email, whatsapp, funcao, mesa_ids: mesaIds }),
     })
         .then(r => r.json())
         .then(d => {

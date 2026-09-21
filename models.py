@@ -444,10 +444,11 @@ FUNCOES_TECNICO = (
 )
 FUNCOES_TECNICO_KEYS = {k for k, _ in FUNCOES_TECNICO}
 FUNCOES_TECNICO_LABEL = dict(FUNCOES_TECNICO)
+FUNCOES_MESA_MULTIPLA = frozenset({'supervisor', 'gestor'})
 
 
 class ChamadoTecnico(db.Model):
-    """Técnicos vinculados a setores."""
+    """Técnicos vinculados a setores e mesas de serviço."""
     __tablename__ = 'chamado_tecnicos'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -461,10 +462,24 @@ class ChamadoTecnico(db.Model):
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
 
     usuario = db.relationship('Usuario', foreign_keys=[usuario_id])
+    mesas = db.relationship(
+        'MesaServico',
+        secondary='chamado_tecnico_mesas',
+        lazy='selectin',
+        order_by='MesaServico.nome',
+    )
 
     @property
     def funcao_label(self):
         return FUNCOES_TECNICO_LABEL.get(self.funcao or '', self.funcao or '')
+
+    @property
+    def mesas_ids(self):
+        return [m.id for m in (self.mesas or [])]
+
+    @property
+    def mesas_label(self):
+        return ', '.join(m.nome for m in (self.mesas or []) if m and m.nome)
 
     def __repr__(self):
         return f'<ChamadoTecnico {self.nome}>'
@@ -811,6 +826,14 @@ class MesaServico(db.Model):
     nome = db.Column(db.String(80), nullable=False, unique=True)
     ativa = db.Column(db.Boolean, default=True, nullable=False)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class ChamadoTecnicoMesa(db.Model):
+    """Vínculo N:N entre técnico/gestor e mesas de serviço."""
+    __tablename__ = 'chamado_tecnico_mesas'
+
+    tecnico_id = db.Column(db.Integer, db.ForeignKey('chamado_tecnicos.id'), primary_key=True)
+    mesa_id = db.Column(db.Integer, db.ForeignKey('mesas.id'), primary_key=True)
 
 
 class SlaPrioridade(db.Model):

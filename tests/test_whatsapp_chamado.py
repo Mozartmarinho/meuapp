@@ -21,6 +21,8 @@ from models import (  # noqa: E402
     Equipamento,
     Chamado,
     ChamadoMensagem,
+    MesaServico,
+    ChamadoTecnicoMesa,
     WhatsAppChamadoUsuario,
     WhatsAppChamadoLog,
 )
@@ -74,13 +76,17 @@ class WhatsAppChamadoTest(unittest.TestCase):
         Equipamento.query.delete()
         WhatsAppChamadoLog.query.delete()
         WhatsAppChamadoUsuario.query.delete()
+        ChamadoTecnicoMesa.query.delete()
         ChamadoTecnico.query.delete()
         ChamadoSetor.query.delete()
+        MesaServico.query.delete()
         Cliente.query.delete()
         db.session.commit()
         self.cli = Cliente(nome='Hospital CCD', ativo=True, habilitado_chamados=True)
         self.setor = ChamadoSetor(nome='Enfermaria', ativo=True)
-        db.session.add_all([self.cli, self.setor])
+        self.mesa = MesaServico(nome='Informática', ativa=True)
+        self.mesa_eletrica = MesaServico(nome='Elétrica', ativa=True)
+        db.session.add_all([self.cli, self.setor, self.mesa, self.mesa_eletrica])
         db.session.flush()
         self.eq = Equipamento(
             nome_equipamento='Bomba infusão',
@@ -124,13 +130,18 @@ class WhatsAppChamadoTest(unittest.TestCase):
         self.assertTrue(any('1 - Enfermaria' in m for m in r3['replies']))
         r4 = self._send(phone, '1')
         self.assertTrue(any('Cadastro salvo' in m for m in r4['replies']))
-        self.assertTrue(any('patrimônio' in m.lower() for m in r4['replies']))
-        r5 = self._send(phone, 'PAT-100')
-        self.assertTrue(any('Ticket' in m and 'aberto' in m for m in r5['replies']))
+        self.assertTrue(any('mesa de serviço' in m.lower() for m in r4['replies']))
+        self.assertTrue(any('Informática' in m for m in r4['replies']))
+        self.assertTrue(any('Elétrica' in m for m in r4['replies']))
+        r5 = self._send(phone, '2')
+        self.assertTrue(any('patrimônio' in m.lower() for m in r5['replies']))
+        r6 = self._send(phone, 'PAT-100')
+        self.assertTrue(any('Ticket' in m and 'aberto' in m for m in r6['replies']))
         chamado = Chamado.query.order_by(Chamado.id.desc()).first()
         self.assertIsNotNone(chamado)
         self.assertEqual(chamado.cliente_id, self.cli.id)
         self.assertEqual(chamado.setor_tecnico_id, self.setor.id)
+        self.assertEqual(chamado.mesa_id, self.mesa.id)
         self.assertEqual(chamado.patrimonio, 'PAT-100')
         self.assertEqual(chamado.tipo_servico, 'Manutenção')
 
@@ -138,6 +149,7 @@ class WhatsAppChamadoTest(unittest.TestCase):
         phone = '21977770000'
         self._send(phone, 'Oi')
         self._send(phone, 'João Souza')
+        self._send(phone, '1')
         self._send(phone, '1')
         self._send(phone, '1')
         self._send(phone, 'PAT-100')
@@ -149,7 +161,9 @@ class WhatsAppChamadoTest(unittest.TestCase):
         r3 = self._send(phone, '0')
         self.assertTrue(any('ainda continua' in m for m in r3['replies']))
         r4 = self._send(phone, '1')
-        self.assertTrue(any('patrimônio' in m.lower() for m in r4['replies']))
+        self.assertTrue(any('mesa de serviço' in m.lower() for m in r4['replies']))
+        r5 = self._send(phone, '2')
+        self.assertTrue(any('patrimônio' in m.lower() for m in r5['replies']))
 
     def test_inbound_sem_token(self):
         r = self.client.post('/api/chamados/whatsapp/inbound', json={'from': '2199', 'text': 'Oi'})
@@ -161,11 +175,14 @@ class WhatsAppChamadoTest(unittest.TestCase):
         html = r.get_data(as_text=True)
         self.assertIn('tecWhatsapp', html)
         self.assertIn('Número para notificações do sistema', html)
+        self.assertIn('tecMesa', html)
+        self.assertIn('Mesa de serviço', html)
         r = self.client.post('/tecnicos/tecnico/adicionar', json={
             'nome': 'Ana Supervisor',
             'funcao': 'supervisor',
             'whatsapp': '21988881111',
             'setor_id': str(self.setor.id),
+            'mesa_ids': [self.mesa.id, self.mesa_eletrica.id],
         })
         self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
         data = r.get_json()
@@ -173,20 +190,31 @@ class WhatsAppChamadoTest(unittest.TestCase):
         self.assertEqual(data['whatsapp'], '5521988881111')
         tec = ChamadoTecnico.query.get(data['id'])
         self.assertEqual(tec.whatsapp, '5521988881111')
+        self.assertEqual({m.id for m in tec.mesas}, {self.mesa.id, self.mesa_eletrica.id})
         r2 = self.client.post('/tecnicos/tecnico/%s/editar' % tec.id, json={
             'nome': 'Ana Supervisor',
             'funcao': 'gestor',
             'whatsapp': '21977772222',
             'setor_id': str(self.setor.id),
+            'mesa_ids': [self.mesa_eletrica.id],
         })
         self.assertEqual(r2.status_code, 200)
         self.assertEqual(r2.get_json()['whatsapp'], '5521977772222')
+        self.assertEqual(r2.get_json()['mesa_ids'], [self.mesa_eletrica.id])
         r3 = self.client.post('/tecnicos/tecnico/adicionar', json={
             'nome': 'Sem Whats',
             'funcao': 'tecnico',
             'whatsapp': '123',
         })
         self.assertEqual(r3.status_code, 400)
+        r4 = self.client.post('/tecnicos/tecnico/adicionar', json={
+            'nome': 'Técnico João',
+            'funcao': 'tecnico',
+            'whatsapp': '21966660000',
+            'mesa_ids': [self.mesa.id, self.mesa_eletrica.id],
+        })
+        self.assertEqual(r4.status_code, 200, r4.get_data(as_text=True))
+        self.assertEqual(r4.get_json()['mesa_ids'], [self.mesa.id])
 
     def test_aviso_abertura_so_supervisor_gestor(self):
         ChamadoTecnico.query.delete()
@@ -277,6 +305,49 @@ class WhatsAppChamadoTest(unittest.TestCase):
         self.assertTrue(any('Abertura de chamado' in t for _, t in enviados))
         self.assertTrue(any('PAT-100' in t for _, t in enviados))
         self.assertTrue(any('Hospital CCD' in t for _, t in enviados))
+
+    def test_aviso_abertura_filtra_por_mesa(self):
+        sup_info = ChamadoTecnico(
+            nome='Sup Informática', funcao='supervisor', whatsapp='21910100000', ativo=True,
+        )
+        sup_ele = ChamadoTecnico(
+            nome='Sup Elétrica', funcao='supervisor', whatsapp='21920200000', ativo=True,
+        )
+        ges_ambos = ChamadoTecnico(
+            nome='Gestor Duas Mesas', funcao='gestor', whatsapp='21930300000', ativo=True,
+        )
+        db.session.add_all([sup_info, sup_ele, ges_ambos])
+        db.session.flush()
+        sup_info.mesas = [self.mesa]
+        sup_ele.mesas = [self.mesa_eletrica]
+        ges_ambos.mesas = [self.mesa, self.mesa_eletrica]
+        chamado = Chamado(
+            numero_chamado='OS888001',
+            cliente_id=self.cli.id,
+            tipo_servico='Manutenção',
+            descricao='PC não liga',
+            status='Pendente',
+            tecnico_id=self.user_id,
+            setor_tecnico_id=self.setor.id,
+            mesa_id=self.mesa.id,
+            patrimonio='PAT-100',
+        )
+        db.session.add(chamado)
+        db.session.commit()
+        nomes = {d.nome for d in destinos_aviso_abertura(chamado)}
+        self.assertIn('Sup Informática', nomes)
+        self.assertIn('Gestor Duas Mesas', nomes)
+        self.assertNotIn('Sup Elétrica', nomes)
+        self.assertIn('Informática', montar_mensagem_abertura(chamado))
+
+    def test_adicionar_mesa_pelo_cadastro(self):
+        r = self.client.post('/tecnicos/mesa/adicionar', json={'nome': 'Máquinas'})
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        data = r.get_json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['nome'], 'Máquinas')
+        r2 = self.client.post('/tecnicos/mesa/adicionar', json={'nome': 'Máquinas'})
+        self.assertEqual(r2.status_code, 400)
 
 
 if __name__ == '__main__':

@@ -58,6 +58,7 @@ from models import (
     TIPOS_CONTRATO,
     FUNCOES_TECNICO,
     FUNCOES_TECNICO_KEYS,
+    FUNCOES_MESA_MULTIPLA,
     CANAIS_MENSAGEM,
     CANAIS_ENVIO_LIVE,
     PASTA_CONHECIMENTO_PADRAO,
@@ -757,17 +758,35 @@ def _vincular_tecnicos_ao_usuario(usuario):
 def _setores_tecnico_usuario(usuario):
     """IDs de chamado_setores onde o usuário está cadastrado como técnico."""
     try:
-        email = _normalizar_email(getattr(usuario, 'email', None))
-        conds = [ChamadoTecnico.usuario_id == usuario.id]
-        if email:
-            conds.append(func.lower(ChamadoTecnico.email) == email)
-        tec = ChamadoTecnico.query.filter(
-            ChamadoTecnico.ativo == True,  # noqa: E712
-            or_(*conds),
-        ).all()
-        return {t.setor_id for t in tec if t.setor_id}
+        return {t.setor_id for t in _registros_tecnico_usuario(usuario) if t.setor_id}
     except Exception:
         return set()
+
+
+def _mesas_tecnico_usuario(usuario):
+    """IDs das mesas de serviço do cadastro de técnico do login."""
+    ids = set()
+    try:
+        for tec in _registros_tecnico_usuario(usuario):
+            ids.update(m.id for m in (tec.mesas or []))
+    except Exception:
+        return set()
+    return ids
+
+
+def _chamado_da_equipe(usuario, chamado):
+    """True se o chamado cai na mesa (ou equipe) do técnico/gestor."""
+    if not usuario or not chamado:
+        return False
+    if _eh_gestor(usuario):
+        return True
+    mesas = _mesas_tecnico_usuario(usuario)
+    if not mesas:
+        return True
+    mesa_id = getattr(chamado, 'mesa_id', None)
+    if not mesa_id:
+        return True
+    return mesa_id in mesas
 
 
 def _pendencias_chamados(usuario):
@@ -795,7 +814,11 @@ def _pendencias_chamados(usuario):
         ticket_do_meu_setor = bool(
             meus_setores_tecnicos and chamado.setor_tecnico_id in meus_setores_tecnicos
         )
-        ticket_aberto = tecnico_sistema and chamado.status == 'Pendente'
+        ticket_aberto = (
+            tecnico_sistema
+            and chamado.status == 'Pendente'
+            and _chamado_da_equipe(usuario, chamado)
+        )
         if not encaminhado_para_mim and not aguardar_peca and not ticket_do_meu_setor and not ticket_aberto:
             continue
         if chamado.id in seen:
@@ -2323,10 +2346,14 @@ def api_campanha_ticket():
         Chamado.query.options(joinedload(Chamado.cliente))
         .filter(*filtros)
         .order_by(Chamado.id.desc())
-        .limit(8)
+        .limit(24)
         .all()
     )
-    campanhas = [_payload_campanha(chamado) for chamado in rows]
+    campanhas = [
+        _payload_campanha(chamado)
+        for chamado in rows
+        if _chamado_da_equipe(user, chamado)
+    ][:8]
     watch_ids = []
     for part in (request.args.get('ids') or '').split(','):
         part = part.strip()
@@ -2345,7 +2372,11 @@ def api_campanha_ticket():
             .order_by(Chamado.id.desc())
             .all()
         )
-        pendentes = [_payload_campanha(chamado) for chamado in watch_rows]
+        pendentes = [
+            _payload_campanha(chamado)
+            for chamado in watch_rows
+            if _chamado_da_equipe(user, chamado)
+        ]
     return jsonify({
         'ok': True,
         'enabled': True,
@@ -2651,6 +2682,7 @@ def tecnicos():
         flash('Você não tem permissão para acessar Técnicos.', 'error')
         return redirect(url_for('main.inicio'))
     setores = ChamadoSetor.query.order_by(ChamadoSetor.nome).all()
+    mesas = MesaServico.query.order_by(MesaServico.nome).all()
     tecnicos_list = (
         ChamadoTecnico.query
         .options(joinedload(ChamadoTecnico.setor))
@@ -2660,8 +2692,10 @@ def tecnicos():
     return render_template(
         'tecnicos.html',
         setores=setores,
+        mesas=mesas,
         tecnicos=tecnicos_list,
         funcoes=FUNCOES_TECNICO,
+        funcoes_mesa_multipla=sorted(FUNCOES_MESA_MULTIPLA),
     )
 
 
@@ -2788,6 +2822,7 @@ def toggle_chamado_setor(sid):
 
 def _tecnico_json(t):
     setor_nome = t.setor.nome if t.setor else ''
+    mesas = list(t.mesas or [])
     return {
         'ok': True,
         'id': t.id,
@@ -2798,6 +2833,9 @@ def _tecnico_json(t):
         'funcao_label': t.funcao_label or '',
         'setor': setor_nome,
         'setor_id': t.setor_id or '',
+        'mesas': [{'id': m.id, 'nome': m.nome} for m in mesas],
+        'mesa_ids': [m.id for m in mesas],
+        'mesas_label': t.mesas_label or '',
         'ativo': t.ativo,
         'usuario_id': t.usuario_id,
         'vinculado': bool(t.usuario_id),
@@ -2811,6 +2849,31 @@ def _parse_funcao_tecnico(data):
     if funcao not in FUNCOES_TECNICO_KEYS:
         return None, 'Função inválida.'
     return funcao, None
+
+
+def _parse_mesa_ids(data, funcao):
+    raw = data.get('mesa_ids', data.get('mesa_id'))
+    if isinstance(raw, list):
+        parts = raw
+    else:
+        parts = str(raw or '').replace(';', ',').split(',')
+    ids = []
+    for part in parts:
+        s = str(part).strip()
+        if s.isdigit():
+            mid = int(s)
+            if mid not in ids:
+                ids.append(mid)
+    if (funcao or '') not in FUNCOES_MESA_MULTIPLA:
+        ids = ids[:1]
+    if not ids:
+        return [], None
+    rows = MesaServico.query.filter(MesaServico.id.in_(ids)).all()
+    by_id = {m.id: m for m in rows}
+    mesas = [by_id[i] for i in ids if i in by_id]
+    if len(mesas) != len(ids):
+        return None, 'Mesa de serviço inválida.'
+    return mesas, None
 
 
 def _parse_whatsapp_tecnico(data):
@@ -2834,6 +2897,7 @@ def adicionar_chamado_tecnico():
     email = _normalizar_email(data.get('email'))
     funcao, err_funcao = _parse_funcao_tecnico(data)
     whatsapp, err_whatsapp = _parse_whatsapp_tecnico(data)
+    mesas, err_mesas = _parse_mesa_ids(data, funcao)
     setor_id_raw = (data.get('setor_id') or '').strip()
     setor_id = int(setor_id_raw) if setor_id_raw.isdigit() else None
     if not nome:
@@ -2842,6 +2906,8 @@ def adicionar_chamado_tecnico():
         return jsonify({'ok': False, 'error': err_funcao}), 400
     if err_whatsapp:
         return jsonify({'ok': False, 'error': err_whatsapp}), 400
+    if err_mesas:
+        return jsonify({'ok': False, 'error': err_mesas}), 400
     usuario_vinculado = _usuario_por_email(email)
     t = ChamadoTecnico(
         nome=nome,
@@ -2852,6 +2918,7 @@ def adicionar_chamado_tecnico():
         usuario_id=usuario_vinculado.id if usuario_vinculado else None,
         ativo=True,
     )
+    t.mesas = mesas or []
     db.session.add(t)
     db.session.commit()
     return jsonify(_tecnico_json(t))
@@ -2869,6 +2936,7 @@ def editar_chamado_tecnico(tid):
     email = _normalizar_email(data.get('email'))
     funcao, err_funcao = _parse_funcao_tecnico(data)
     whatsapp, err_whatsapp = _parse_whatsapp_tecnico(data)
+    mesas, err_mesas = _parse_mesa_ids(data, funcao)
     setor_id_raw = (data.get('setor_id') or '').strip()
     setor_id = int(setor_id_raw) if setor_id_raw.isdigit() else None
     if not nome:
@@ -2877,15 +2945,37 @@ def editar_chamado_tecnico(tid):
         return jsonify({'ok': False, 'error': err_funcao}), 400
     if err_whatsapp:
         return jsonify({'ok': False, 'error': err_whatsapp}), 400
+    if err_mesas:
+        return jsonify({'ok': False, 'error': err_mesas}), 400
     t.nome = nome
     t.email = email
     t.whatsapp = whatsapp or None
     t.funcao = funcao
     t.setor_id = setor_id
+    t.mesas = mesas or []
     u = _usuario_por_email(email)
     t.usuario_id = u.id if u else None
     db.session.commit()
     return jsonify(_tecnico_json(t))
+
+
+@main.route('/tecnicos/mesa/adicionar', methods=['POST'])
+@login_required
+def adicionar_mesa_tecnico():
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'tecnicos'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    data = request.get_json(silent=True) or request.form
+    nome = (data.get('nome') or '').strip()[:80]
+    if not nome:
+        return jsonify({'ok': False, 'error': 'Informe o nome da mesa de serviço.'}), 400
+    existente = MesaServico.query.filter_by(nome=nome).first()
+    if existente:
+        return jsonify({'ok': False, 'error': 'Mesa de serviço já cadastrada.'}), 400
+    mesa = MesaServico(nome=nome, ativa=True)
+    db.session.add(mesa)
+    db.session.commit()
+    return jsonify({'ok': True, 'id': mesa.id, 'nome': mesa.nome, 'ativa': mesa.ativa})
 
 
 @main.route('/tecnicos/tecnico/<int:tid>/excluir', methods=['POST'])
@@ -2895,6 +2985,7 @@ def excluir_chamado_tecnico(tid):
     if not user or not user.tem_menu('chamados', 'tecnicos'):
         return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
     t = ChamadoTecnico.query.get_or_404(tid)
+    t.mesas = []
     db.session.delete(t)
     db.session.commit()
     return jsonify({'ok': True})

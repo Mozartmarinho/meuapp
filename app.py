@@ -690,16 +690,22 @@ def ensure_setores_funcao_schema():
 def ensure_tecnicos_schema():
     """Cria tabelas chamado_setores e chamado_tecnicos e semeia setores padrão."""
     from sqlalchemy import inspect, text
-    from models import ChamadoSetor, ChamadoTecnico
+    from models import ChamadoSetor, ChamadoTecnico, ChamadoTecnicoMesa, MesaServico
     SETORES_PADRAO = ['Informática', 'Edificação', 'Elétrica', 'Máquinas', 'Compras']
     try:
         insp = inspect(db.engine)
         tables = set(insp.get_table_names())
+        if 'mesas' not in tables:
+            MesaServico.__table__.create(db.engine, checkfirst=True)
         if 'chamado_setores' not in tables:
             ChamadoSetor.__table__.create(db.engine, checkfirst=True)
         if 'chamado_tecnicos' not in tables:
             ChamadoTecnico.__table__.create(db.engine, checkfirst=True)
-        else:
+        if 'chamado_tecnico_mesas' not in tables:
+            ChamadoTecnicoMesa.__table__.create(db.engine, checkfirst=True)
+        insp = inspect(db.engine)
+        tables = set(insp.get_table_names())
+        if 'chamado_tecnicos' in tables:
             tec_cols = {c['name'] for c in insp.get_columns('chamado_tecnicos')}
             if 'usuario_id' not in tec_cols:
                 db.session.execute(text('ALTER TABLE chamado_tecnicos ADD COLUMN usuario_id INT NULL'))
