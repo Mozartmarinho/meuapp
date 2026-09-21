@@ -635,7 +635,7 @@ def _msg_confirmacao(usuario):
     return (
         '%s, %s. Verifiquei no sistema o seu cadastro. '
         'Você ainda continua no "%s" e no setor "%s"? '
-        'Se sim, envie 1. Se não, envie 2.'
+        'Envie 1 se você continua ou 2 para editar seu setor ou cliente (local).'
         % (saudacao(), nome, cliente, setor)
     )
 
@@ -809,12 +809,12 @@ def process_inbound(telefone, texto, sender=None, agora=None):
             usuario.etapa = ETAPA_EDIT_MENU
             send(
                 'Para alterar o cadastro, envie:\n'
-                '1 - Unidade (cliente)\n'
+                '1 - Cliente (local)\n'
                 '2 - Setor\n'
                 '0 - Voltar'
             )
         else:
-            send('Envie 1 para sim ou 2 para não.')
+            send('Envie 1 se você continua ou 2 para editar seu setor ou cliente (local).')
         db.session.commit()
         return {'ok': True, 'replies': replies}
 
@@ -832,7 +832,7 @@ def process_inbound(telefone, texto, sender=None, agora=None):
                 send(msg)
             usuario.etapa = ETAPA_EDIT_SETOR
         else:
-            send('Envie 1 para unidade, 2 para setor ou 0 para voltar.')
+            send('Envie 1 para cliente (local), 2 para setor ou 0 para voltar.')
         db.session.commit()
         return {'ok': True, 'replies': replies}
 

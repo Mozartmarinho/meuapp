@@ -354,6 +354,8 @@ def _tecnico_vinculado(usuario):
 FUNCOES_CAMPANHA_TICKET = frozenset({'tecnico', 'supervisor', 'gestor'})
 CAMPANHA_TICKET_JANELA_MIN = 30
 STATUS_CAMPANHA_AGUARDANDO = 'Pendente'
+STATUS_EM_ANDAMENTO = 'Em Andamento'
+CAMPANHA_SESSAO_ATEND_MIN = 15
 
 
 def _eh_tecnico_do_sistema(usuario):
@@ -393,6 +395,58 @@ def _recebe_campanha_ticket(usuario):
         if funcao in FUNCOES_CAMPANHA_TICKET:
             return True
     return False
+
+
+def _nome_atendente(chamado):
+    att = getattr(chamado, 'atendente', None)
+    if att and att.nome:
+        return att.nome
+    atendente_id = getattr(chamado, 'atendente_id', None)
+    if not atendente_id:
+        return ''
+    user = Usuario.query.get(atendente_id)
+    return (user.nome if user else '') or 'outro técnico'
+
+
+def _pode_tomar_chamado(chamado, user):
+    """Só o técnico que já atendeu (ou admin) assume o ticket."""
+    if not user:
+        return False
+    atendente_id = getattr(chamado, 'atendente_id', None)
+    if not atendente_id:
+        return True
+    if atendente_id == user.id:
+        return True
+    return _eh_gestor(user)
+
+
+def _bloqueio_atendimento(chamado, user):
+    if _pode_tomar_chamado(chamado, user):
+        return None
+    nome = _nome_atendente(chamado) or 'outro técnico'
+    return 'Este chamado já está com %s. Outro técnico não pode atender.' % nome
+
+
+def _assumir_chamado(chamado, user):
+    """Atribui o chamado ao técnico e entra em atendimento (o toque para)."""
+    chamado.atendente_id = user.id
+    chamado.atendendo_em = datetime.utcnow()
+    if (chamado.status or '') == STATUS_CAMPANHA_AGUARDANDO:
+        chamado.status = STATUS_EM_ANDAMENTO
+    db.session.commit()
+
+
+def _liberar_sessao_atendimento(chamado, user):
+    """Sai sem finalizar: permanece atribuído e o toque volta."""
+    if not user or not getattr(chamado, 'atendente_id', None):
+        return True
+    if chamado.atendente_id != user.id:
+        return False
+    chamado.atendendo_em = None
+    if not status_fechado(chamado.status) and (chamado.status or '') == STATUS_EM_ANDAMENTO:
+        chamado.status = STATUS_CAMPANHA_AGUARDANDO
+    db.session.commit()
+    return True
 
 
 def _tecnico_com_email_vinculado(usuario):
@@ -649,7 +703,12 @@ RELATORIOS_LIVE = {
 
 def _query_chamados_usuario(user):
     return (
-        Chamado.query.options(joinedload(Chamado.cliente), joinedload(Chamado.mesa), joinedload(Chamado.contrato))
+        Chamado.query.options(
+            joinedload(Chamado.cliente),
+            joinedload(Chamado.mesa),
+            joinedload(Chamado.contrato),
+            joinedload(Chamado.atendente),
+        )
         .filter(_filtro_chamados_usuario(user))
         .order_by(Chamado.data_criacao.desc())
     )
@@ -946,6 +1005,8 @@ def _chamado_atender_payload(chamado, usuario=None):
         'fotos': [f for f in todas if f['tipo'] != TIPO_FOTO_ENCAMINHAMENTO],
         'fotos_encaminhamento': [f for f in todas if f['tipo'] == TIPO_FOTO_ENCAMINHAMENTO],
         'setores': listar_setores(TIPO_SETOR_CHAMADOS),
+        'atendente_id': getattr(chamado, 'atendente_id', None),
+        'atendente_nome': _nome_atendente(chamado),
     }
 
 @main.route('/instalar-certificado')
@@ -1962,6 +2023,8 @@ def listar_chamados():
         subtitulo=subtitulo,
         atender_id=request.args.get('atender', type=int),
         user_setor=setor,
+        eu_id=user.id if user else 0,
+        eh_gestor=_eh_gestor(user),
         primeiro_nome=_primeiro_nome(user),
         tickets_index=[{'id': c.id, 'numero': c.numero_chamado} for c in chamados],
         mesas=mesas_ativas(),
@@ -2327,17 +2390,22 @@ def _payload_campanha(chamado):
         'titulo': _titulo_chamado(chamado),
         'status': chamado.status,
         'url': url_for('main.listar_chamados', atender=chamado.id),
+        'atendente_id': getattr(chamado, 'atendente_id', None),
+        'atendente_nome': _nome_atendente(chamado),
     }
 
 
 @main.route('/api/chamados/campanha')
 def api_campanha_ticket():
     """Tickets novos e ainda sem atendimento para campainha enquanto técnico/supervisor/gestor está logado."""
+    vazio = {'ok': False, 'enabled': False, 'campanhas': [], 'pendentes': [], 'retomados': [], 'latest_id': 0}
     if 'user_id' not in session:
-        return jsonify({'ok': False, 'enabled': False, 'campanhas': [], 'pendentes': [], 'latest_id': 0}), 401
+        vazio['ok'] = False
+        return jsonify(vazio), 401
     user = Usuario.query.get(session['user_id'])
     if not _recebe_campanha_ticket(user):
-        return jsonify({'ok': True, 'enabled': False, 'campanhas': [], 'pendentes': [], 'latest_id': 0})
+        vazio['ok'] = True
+        return jsonify(vazio)
     after_id = request.args.get('after_id', type=int) or 0
     latest = db.session.query(func.max(Chamado.id)).scalar() or 0
     filtros = [~Chamado.status.in_(STATUS_FECHADOS)]
@@ -2381,12 +2449,29 @@ def api_campanha_ticket():
             for chamado in watch_rows
             if _chamado_da_equipe(user, chamado)
         ]
+    retomados_rows = (
+        Chamado.query.options(joinedload(Chamado.cliente), joinedload(Chamado.atendente))
+        .filter(
+            Chamado.status == STATUS_CAMPANHA_AGUARDANDO,
+            Chamado.atendente_id.isnot(None),
+            Chamado.atendendo_em.is_(None),
+        )
+        .order_by(Chamado.id.desc())
+        .limit(24)
+        .all()
+    )
+    retomados = [
+        _payload_campanha(chamado)
+        for chamado in retomados_rows
+        if _chamado_da_equipe(user, chamado)
+    ]
     return jsonify({
         'ok': True,
         'enabled': True,
         'latest_id': latest,
         'campanhas': campanhas,
         'pendentes': pendentes,
+        'retomados': retomados,
     })
 
 
@@ -2424,13 +2509,33 @@ def atender_chamado(id):
     chamado = Chamado.query.options(
         joinedload(Chamado.cliente),
         joinedload(Chamado.encaminhado_por),
+        joinedload(Chamado.atendente),
     ).get_or_404(id)
     user = Usuario.query.get(session['user_id'])
     if request.method == 'GET':
+        if not user:
+            return jsonify({'ok': False, 'message': 'Sessão inválida.'}), 401
+        if not status_fechado(chamado.status):
+            bloqueio = _bloqueio_atendimento(chamado, user)
+            if bloqueio:
+                return jsonify({
+                    'ok': False,
+                    'message': bloqueio,
+                    'atendente_id': chamado.atendente_id,
+                    'atendente_nome': _nome_atendente(chamado),
+                }), 409
+            _assumir_chamado(chamado, user)
+            db.session.refresh(chamado)
         return jsonify({'ok': True, 'chamado': _chamado_atender_payload(chamado, user)})
 
     if not user:
         return jsonify({'ok': False, 'message': 'Sessão inválida.'}), 401
+    bloqueio = _bloqueio_atendimento(chamado, user)
+    if bloqueio:
+        return jsonify({'ok': False, 'message': bloqueio}), 409
+    if not chamado.atendente_id:
+        chamado.atendente_id = user.id
+        chamado.atendendo_em = datetime.utcnow()
 
     acao = (request.form.get('acao') or 'salvar').strip().lower()
     status_antes = chamado.status
@@ -2529,6 +2634,10 @@ def atender_chamado(id):
         chamado.data_conclusao = None
     elif status_fechado(chamado.status) and not chamado.data_conclusao:
         chamado.data_conclusao = datetime.utcnow()
+    if acao in ('finalizar', 'encaminhar'):
+        chamado.atendendo_em = None
+        if not chamado.atendente_id:
+            chamado.atendente_id = user.id
 
     pendencia_aberta = not status_fechado(chamado.status)
     atendimento = ChamadoAtendimento(
@@ -2588,6 +2697,25 @@ def atender_chamado(id):
         'ok': True,
         'success': True,
         'message': msg,
+        'chamado': _chamado_atender_payload(chamado, user),
+    })
+
+
+@main.route('/api/chamados/<int:id>/liberar-atendimento', methods=['POST'])
+@login_required
+def liberar_atendimento_chamado(id):
+    """Fecha o modal sem finalizar: o chamado continua do técnico e o toque volta."""
+    chamado = Chamado.query.get_or_404(id)
+    user = Usuario.query.get(session['user_id'])
+    if not user:
+        return jsonify({'ok': False, 'message': 'Sessão inválida.'}), 401
+    if not _liberar_sessao_atendimento(chamado, user):
+        return jsonify({
+            'ok': False,
+            'message': 'Só quem está atendendo pode liberar a sessão.',
+        }), 409
+    return jsonify({
+        'ok': True,
         'chamado': _chamado_atender_payload(chamado, user),
     })
 

@@ -190,6 +190,52 @@ class CampanhaTicketTest(unittest.TestCase):
         r2 = client.get('/api/chamados/campanha?after_id=%s&ids=%s' % (novo.id, novo.id))
         self.assertNotIn(novo.id, [c['id'] for c in r2.get_json()['pendentes']])
 
+    def test_atender_atribui_e_bloqueia_outro(self):
+        opener = self._usuario('Solicitante', 'abre@example.com')
+        ana = self._tecnico('Ana', 'ana@example.com')
+        bia = self._tecnico('Bia', 'bia@example.com')
+        chamado = self._chamado(opener, 'OS777')
+        r = self._login(ana).get('/api/chamados/%s/atender' % chamado.id)
+        self.assertEqual(r.status_code, 200)
+        data = r.get_json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['chamado']['atendente_id'], ana.id)
+        self.assertEqual(data['chamado']['status'], 'Em Andamento')
+        r2 = self._login(bia).get('/api/chamados/%s/atender' % chamado.id)
+        self.assertEqual(r2.status_code, 409)
+        self.assertIn('Ana', r2.get_json()['message'])
+        db.session.refresh(chamado)
+        self.assertEqual(chamado.atendente_id, ana.id)
+
+    def test_liberar_volta_pendente_e_retoma_toque(self):
+        opener = self._usuario('Solicitante', 'abre@example.com')
+        ana = self._tecnico('Ana', 'ana@example.com')
+        bia = self._tecnico('Bia', 'bia@example.com')
+        chamado = self._chamado(opener, 'OS778')
+        client_ana = self._login(ana)
+        client_ana.get('/api/chamados/%s/atender' % chamado.id)
+        r = client_ana.post('/api/chamados/%s/liberar-atendimento' % chamado.id)
+        self.assertEqual(r.status_code, 200)
+        db.session.refresh(chamado)
+        self.assertEqual(chamado.status, 'Pendente')
+        self.assertEqual(chamado.atendente_id, ana.id)
+        self.assertIsNone(chamado.atendendo_em)
+        camp = self._login(bia).get('/api/chamados/campanha?after_id=0').get_json()
+        self.assertIn(chamado.id, [c['id'] for c in camp.get('retomados', [])])
+        r2 = self._login(bia).get('/api/chamados/%s/atender' % chamado.id)
+        self.assertEqual(r2.status_code, 409)
+
+    def test_admin_pode_assumir_de_outro(self):
+        opener = self._usuario('Solicitante', 'abre@example.com')
+        ana = self._tecnico('Ana', 'ana@example.com')
+        admin = self._usuario('Admin', 'admin2@example.com', tipo='admin', is_master=True)
+        chamado = self._chamado(opener, 'OS779')
+        self._login(ana).get('/api/chamados/%s/atender' % chamado.id)
+        r = self._login(admin).get('/api/chamados/%s/atender' % chamado.id)
+        self.assertEqual(r.status_code, 200)
+        db.session.refresh(chamado)
+        self.assertEqual(chamado.atendente_id, admin.id)
+
 
 if __name__ == '__main__':
     unittest.main()

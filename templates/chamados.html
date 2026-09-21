@@ -6,6 +6,18 @@
 {% macro ticket_title(c) -%}
 {{ (c.descricao or c.tipo_servico or c.numero_chamado)|replace('\n', ' ') }}
 {%- endmacro %}
+{% macro btn_atender(c, kanban=false) -%}
+{% set pode = (not c.atendente_id) or (c.atendente_id == (eu_id|default(0))) or (eh_gestor|default(false)) %}
+{% if pode %}
+{% if kanban %}
+<button type="button" class="btn-atender" data-id="{{ c.id }}">Atender</button>
+{% else %}
+<button type="button" class="btn btn-primary btn-sm btn-atender" data-id="{{ c.id }}"><i class="fas fa-toolbox"></i> Atender</button>
+{% endif %}
+{% else %}
+<span class="tk-com-tec" title="Chamado já atribuído">Com {{ c.atendente.nome if c.atendente else 'técnico' }}</span>
+{% endif %}
+{%- endmacro %}
 <div class="mdk-tickets-page chamados-page">
     <div class="mdk-tickets-head">
         <h1>Tickets</h1>
@@ -97,7 +109,7 @@
                             <td>{% if c.setor_destino %}<span class="setor-blink">{{ c.setor_destino }}</span>{% else %}—{% endif %}</td>
                             <td><span class="priority-{{ c.prioridade|lower|replace('é', 'e') }}">{{ c.prioridade }}</span></td>
                             <td class="acoes-cell">
-                                <button type="button" class="btn btn-primary btn-sm btn-atender" data-id="{{ c.id }}"><i class="fas fa-toolbox"></i> Atender</button>
+                                {{ btn_atender(c) }}
                                 <a href="{{ url_for('main.editar_chamado', id=c.id) }}" class="btn btn-sm btn-editar-link"><i class="fas fa-edit"></i> Editar</a>
                             </td>
                         </tr>
@@ -138,7 +150,7 @@
                             <td>{% if c.setor_destino %}<span class="setor-blink">{{ c.setor_destino }}</span>{% else %}—{% endif %}</td>
                             <td>{{ c.status }}</td>
                             <td class="acoes-cell">
-                                <button type="button" class="btn btn-primary btn-sm btn-atender" data-id="{{ c.id }}"><i class="fas fa-toolbox"></i> Atender</button>
+                                {{ btn_atender(c) }}
                                 <a href="{{ url_for('main.editar_chamado', id=c.id) }}" class="btn btn-sm btn-editar-link"><i class="fas fa-edit"></i> Editar</a>
                             </td>
                         </tr>
@@ -169,7 +181,7 @@
                         <div class="mdk-kmenu mdk-drop" data-mdk-drop>
                             <button type="button" class="mdk-kdots" data-mdk-drop-btn aria-label="Ações">⋮</button>
                             <div class="mdk-drop-menu" data-mdk-drop-menu hidden>
-                                <button type="button" class="btn-atender" data-id="{{ c.id }}">Atender</button>
+                                {{ btn_atender(c, kanban=true) }}
                                 <a href="{{ url_for('main.ver_chamado', id=c.id) }}">Ver</a>
                                 <a href="{{ url_for('main.editar_chamado', id=c.id) }}">Editar</a>
                             </div>
@@ -385,6 +397,13 @@
 .empty-row { text-align: center; color: var(--gray-600); padding: 1.4rem !important; }
 .acoes-cell { white-space: nowrap; }
 .acoes-cell .btn { margin-right: 0.25rem; }
+.tk-com-tec {
+    display: inline-block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #475569;
+    padding: 0.2rem 0.4rem;
+}
 .btn-editar-link {
     background-color: var(--gray-300);
     color: var(--gray-800);
@@ -812,6 +831,8 @@ body.modal-open { overflow: hidden; }
     const estBody = document.getElementById('estConsultaBody');
     const abrirId = {{ atender_id|tojson }};
     let chamadoId = null;
+    let atendimentoAbertoId = null;
+    let atendimentoFinalizado = false;
     let fotosEncPendentes = [];
     let fotosEncSalvas = [];
     let fotosEncUrls = [];
@@ -1097,7 +1118,38 @@ body.modal-open { overflow: hidden; }
         const boxEnc = document.getElementById('atFotosEncaminhar');
         if (boxEnc) boxEnc.innerHTML = '';
     }
+    function pararToqueLocal(id) {
+        if (window.sgCampanhaParar) window.sgCampanhaParar(id);
+    }
+    function retomarToqueLocal(id) {
+        if (window.sgCampanhaRetomar) {
+            window.sgCampanhaRetomar({ id: id, status: 'Pendente' });
+        }
+    }
+    function liberarAtendimento(beacon) {
+        const id = atendimentoAbertoId;
+        if (!id || atendimentoFinalizado) return;
+        const url = '/api/chamados/' + id + '/liberar-atendimento';
+        try {
+            if (beacon && navigator.sendBeacon) {
+                navigator.sendBeacon(url);
+            } else {
+                fetch(url, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    keepalive: !!beacon,
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                });
+            }
+        } catch (e) { /* ignore */ }
+        retomarToqueLocal(id);
+    }
     function fecharModal() {
+        if (atendimentoAbertoId && !atendimentoFinalizado) {
+            liberarAtendimento(false);
+        }
+        atendimentoAbertoId = null;
+        atendimentoFinalizado = false;
         overlay.hidden = true;
         document.body.classList.remove('modal-open');
         chamadoId = null;
@@ -1261,15 +1313,19 @@ body.modal-open { overflow: hidden; }
     }
 
     function carregar(id) {
+        pararToqueLocal(id);
         fetch('/api/chamados/' + id + '/atender', {
             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
         })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-            if (!data.ok) {
+        .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+        .then(function (res) {
+            const data = res.data || {};
+            if (!res.ok || !data.ok) {
                 alert(data.message || 'Não foi possível abrir o atendimento.');
                 return;
             }
+            atendimentoAbertoId = data.chamado.id;
+            atendimentoFinalizado = false;
             preencher(data.chamado);
             abrirModal();
         })
@@ -1426,6 +1482,10 @@ body.modal-open { overflow: hidden; }
         .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
         .then(function (res) {
             if (res.ok && (res.data.ok || res.data.success)) {
+                if (acao === 'finalizar' || acao === 'encaminhar') {
+                    atendimentoFinalizado = true;
+                    pararToqueLocal(chamadoId);
+                }
                 fecharModal();
                 location.href = '{{ url_for("main.listar_chamados") }}';
             } else {
@@ -1443,6 +1503,11 @@ body.modal-open { overflow: hidden; }
         });
     });
 
+    window.addEventListener('pagehide', function () {
+        if (atendimentoAbertoId && !atendimentoFinalizado) {
+            liberarAtendimento(true);
+        }
+    });
     limparEstoqueUsos();
     if (abrirId) carregar(abrirId);
 })();

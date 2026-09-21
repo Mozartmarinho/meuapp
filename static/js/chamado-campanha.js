@@ -439,6 +439,9 @@
                 }
                 if (data.latest_id) gravar(data.latest_id);
                 if (ids.length) sincronizarPendentes(data.pendentes || [], ids);
+                if (data.retomados && data.retomados.length) {
+                    data.retomados.forEach(function (item) { marcarPendente(item); });
+                }
             })
             .catch(function () { /* ignore */ })
             .then(function () { emVoo = false; });
@@ -459,6 +462,9 @@
             }
         });
     }
+
+    window.sgCampanhaParar = limparPendente;
+    window.sgCampanhaRetomar = marcarPendente;
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', iniciar);

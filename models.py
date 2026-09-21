@@ -285,6 +285,9 @@ class Chamado(db.Model):
     # Obrigatório no MySQL deste servidor
     tecnico_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
     tecnico = db.relationship('Usuario', foreign_keys=[tecnico_id], backref='chamados_tecnico')
+    atendente_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
+    atendente = db.relationship('Usuario', foreign_keys=[atendente_id], backref='chamados_atendente')
+    atendendo_em = db.Column(db.DateTime, nullable=True)
     atendimento_notas = db.Column(db.Text)
     setor_destino = db.Column(db.String(80))
     setor_origem = db.Column(db.String(80))
@@ -328,6 +331,8 @@ class Chamado(db.Model):
             'patrimonio': self.patrimonio,
             'equipamento_id': self.equipamento_id,
             'atendimento_notas': self.atendimento_notas,
+            'atendente_id': self.atendente_id,
+            'atendente': self.atendente.nome if self.atendente else None,
             'setor_destino': self.setor_destino,
             'setor_origem': self.setor_origem,
             'encaminhamento_instrucoes': self.encaminhamento_instrucoes,

@@ -334,6 +334,8 @@ def ensure_chamados_schema():
             'equipamento_id': 'INT NULL',
             'mesa_id': 'INT NULL',
             'contrato_id': 'INT NULL',
+            'atendente_id': 'INT NULL',
+            'atendendo_em': 'DATETIME NULL',
         }
         for col, ddl in extras.items():
             if col not in cols:
