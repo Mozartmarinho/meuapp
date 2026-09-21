@@ -3958,6 +3958,29 @@ def api_equipamento_termo(id):
     })
 
 
+@main.route('/api/equipamentos/<int:id>/termo/salvar', methods=['POST'])
+@login_required
+def api_equipamento_termo_salvar(id):
+    from equipamento_service import salvar_termo, termo_para_api
+    eq = Equipamento.query.get_or_404(id)
+    data = request.get_json(silent=True) or request.form
+    try:
+        termo = salvar_termo(eq, data, _eq_user())
+        link = _link_termo(termo.token) if termo and termo.token else None
+        return jsonify({
+            'ok': True,
+            'message': 'Termo salvo.',
+            'link': link,
+            'termo': termo_para_api(termo, link=link),
+            'equipamento': eq.to_dict(),
+        })
+    except ValueError as extra:
+        return jsonify({'ok': False, 'error': str(extra)}), 400
+    except Exception as extra:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': str(extra)}), 400
+
+
 @main.route('/api/equipamentos/<int:id>/termo/enviar', methods=['POST'])
 @login_required
 def api_equipamento_termo_enviar(id):

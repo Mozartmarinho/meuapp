@@ -391,6 +391,9 @@
             </div>
             <div class="nc-footer">
                 <button type="button" class="btn nc-btn-muted" id="btnFecharTermo">Fechar</button>
+                <button type="button" class="btn btn-primary" id="btnSalvarTermo">
+                    <i class="fas fa-save"></i> Salvar
+                </button>
                 <a class="btn btn-primary" id="btnImprimirTermo" href="#" target="_blank" rel="noopener" hidden>
                     <i class="fas fa-print"></i> Imprimir assinado
                 </a>
@@ -1163,39 +1166,67 @@ body.modal-open { overflow: hidden; }
             document.execCommand('copy');
         });
     });
-    document.getElementById('formTermo').addEventListener('submit', function (e) {
-        e.preventDefault();
-        const id = document.getElementById('termo_eq_id').value;
-        const nome = (document.getElementById('termo_nome').value || '').trim();
-        if (!nome) { alert('Informe o nome do responsável.'); return; }
-        jsonPost('/api/equipamentos/' + id + '/termo/enviar', {
+    function payloadTermo(incluiEnvio) {
+        const body = {
             responsavel_usuario_id: document.getElementById('termo_usuario').value || '',
-            responsavel_nome: nome,
+            responsavel_nome: (document.getElementById('termo_nome').value || '').trim(),
             responsavel_email: document.getElementById('termo_email').value,
             responsavel_telefone: document.getElementById('termo_tel').value,
             responsavel_setor: document.getElementById('termo_setor').value,
             responsavel_cargo: document.getElementById('termo_cargo').value,
             responsavel_matricula: document.getElementById('termo_matricula').value,
             gestor_nome: document.getElementById('termo_gestor').value,
-            acessorios: acessoriosSelecionados(),
-            enviar_email: document.getElementById('termo_enviar_email').checked,
-            enviar_whatsapp: document.getElementById('termo_enviar_wa').checked
-        }).then(function (res) {
-            if (res.ok && res.data.ok) {
-                preencherTermoStatus(res.data.termo, id);
-                const tr = document.querySelector('#tabelaEquipamentos tr[data-id="' + id + '"]');
-                if (tr) {
-                    const btn = tr.querySelector('.btn-termo-eq');
-                    if (btn && res.data.termo && res.data.termo.status === 'assinado') {
-                        btn.classList.add('is-assinado');
-                        btn.classList.remove('is-pendente');
-                        btn.innerHTML = '<i class="fas fa-check-circle"></i>';
-                    } else if (btn) {
-                        btn.classList.add('is-pendente');
-                        btn.classList.remove('is-assinado');
-                        btn.innerHTML = '<i class="fas fa-file-signature"></i>';
-                    }
+            acessorios: acessoriosSelecionados()
+        };
+        if (incluiEnvio) {
+            body.enviar_email = document.getElementById('termo_enviar_email').checked;
+            body.enviar_whatsapp = document.getElementById('termo_enviar_wa').checked;
+        }
+        return body;
+    }
+
+    function aplicarTermoSalvo(id, termo) {
+        preencherTermoStatus(termo, id);
+        const tr = document.querySelector('#tabelaEquipamentos tr[data-id="' + id + '"]');
+        if (!tr || !termo) return;
+        const btn = tr.querySelector('.btn-termo-eq');
+        if (!btn) return;
+        if (termo.status === 'assinado') {
+            btn.classList.add('is-assinado');
+            btn.classList.remove('is-pendente');
+            btn.innerHTML = '<i class="fas fa-check-circle"></i>';
+        } else {
+            btn.classList.add('is-pendente');
+            btn.classList.remove('is-assinado');
+            btn.innerHTML = '<i class="fas fa-file-signature"></i>';
+        }
+    }
+
+    document.getElementById('btnSalvarTermo').addEventListener('click', function () {
+        const id = document.getElementById('termo_eq_id').value;
+        const btn = document.getElementById('btnSalvarTermo');
+        btn.disabled = true;
+        jsonPost('/api/equipamentos/' + id + '/termo/salvar', payloadTermo(false))
+            .then(function (res) {
+                if (res.ok && res.data.ok) {
+                    aplicarTermoSalvo(id, res.data.termo);
+                    alert(res.data.message || 'Termo salvo.');
+                } else {
+                    alert((res.data && res.data.error) || 'Erro ao salvar termo');
                 }
+            })
+            .catch(function () { alert('Erro ao salvar termo'); })
+            .finally(function () { btn.disabled = false; });
+    });
+
+    document.getElementById('formTermo').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const id = document.getElementById('termo_eq_id').value;
+        const nome = (document.getElementById('termo_nome').value || '').trim();
+        if (!nome) { alert('Informe o nome do responsável.'); return; }
+        jsonPost('/api/equipamentos/' + id + '/termo/enviar', payloadTermo(true)).then(function (res) {
+            if (res.ok && res.data.ok) {
+                aplicarTermoSalvo(id, res.data.termo);
                 alert(res.data.message || 'Link gerado.');
             } else {
                 alert((res.data && res.data.error) || 'Erro ao enviar termo');

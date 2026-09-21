@@ -299,10 +299,8 @@ def snapshot_equipamento(eq):
     }
 
 
-def criar_ou_reenviar_termo(eq, data, usuario, link_builder):
+def _resolver_responsavel(data):
     nome = (data.get('responsavel_nome') or data.get('nome') or '').strip()
-    if not nome:
-        raise ValueError('Informe o nome do responsável.')
     email = (data.get('responsavel_email') or data.get('email') or '').strip()
     telefone = (data.get('responsavel_telefone') or data.get('telefone') or '').strip()
     uid_raw = data.get('responsavel_usuario_id') or data.get('usuario_id')
@@ -312,20 +310,13 @@ def criar_ou_reenviar_termo(eq, data, usuario, link_builder):
         nome = (user_resp.nome or nome).strip()
         email = email or (user_resp.email or '')
         telefone = telefone or (user_resp.telefone or '')
-    atual = eq.termo_atual()
-    if atual and atual.status != 'assinado':
-        termo = atual
-        termo.token = termo.token or novo_token_termo()
-    else:
-        termo = EquipamentoTermo(
-            equipamento_id=eq.id,
-            token=novo_token_termo(),
-            status='pendente',
-        )
-        db.session.add(termo)
+    return nome, email, telefone, user_resp
+
+
+def _aplicar_dados_termo(eq, termo, data, usuario, nome, email, telefone, user_resp):
     snap = snapshot_equipamento(eq)
     termo.responsavel_usuario_id = user_resp.id if user_resp else None
-    termo.responsavel_nome = nome[:120]
+    termo.responsavel_nome = (nome or termo.responsavel_nome or 'A definir')[:120]
     termo.responsavel_email = (email or '')[:120] or None
     termo.responsavel_telefone = (telefone or '')[:20] or None
     termo.responsavel_setor = (data.get('responsavel_setor') or data.get('setor') or eq.setor or '')[:80] or None
@@ -342,16 +333,62 @@ def criar_ou_reenviar_termo(eq, data, usuario, link_builder):
         try:
             termo.data_entrega = datetime.strptime(raw_entrega[:10], '%Y-%m-%d').date()
         except ValueError:
-            termo.data_entrega = date.today()
-    else:
+            termo.data_entrega = termo.data_entrega or date.today()
+    elif not termo.data_entrega:
         termo.data_entrega = date.today()
-    termo.estado_geral = (data.get('estado_geral') or '')[:200] or None
-    termo.observacoes = (data.get('observacoes') or '') or None
-    termo.local_assinatura = (data.get('local_assinatura') or '')[:120] or None
+    if 'estado_geral' in data:
+        termo.estado_geral = (data.get('estado_geral') or '')[:200] or None
+    if 'observacoes' in data:
+        termo.observacoes = (data.get('observacoes') or '') or None
+    if 'local_assinatura' in data:
+        termo.local_assinatura = (data.get('local_assinatura') or '')[:120] or None
     termo.gestor_nome = (data.get('gestor_nome') or '')[:120] or None
-    termo.acessorios_json = json.dumps(
-        acessorios_from_payload(data.get('acessorios')), ensure_ascii=False
+    if 'acessorios' in data or data.get('acessorios') is not None:
+        termo.acessorios_json = json.dumps(
+            acessorios_from_payload(data.get('acessorios')), ensure_ascii=False
+        )
+    if usuario and not termo.enviado_por_id:
+        termo.enviado_por_id = usuario.id
+    return termo
+
+
+def _obter_termo_editavel(eq):
+    atual = eq.termo_atual()
+    if atual and atual.status != 'assinado':
+        atual.token = atual.token or novo_token_termo()
+        return atual
+    termo = EquipamentoTermo(
+        equipamento_id=eq.id,
+        token=novo_token_termo(),
+        status='pendente',
+        responsavel_nome='A definir',
     )
+    db.session.add(termo)
+    return termo
+
+
+def salvar_termo(eq, data, usuario):
+    """Grava responsável e acessórios sem enviar e-mail/WhatsApp."""
+    nome, email, telefone, user_resp = _resolver_responsavel(data)
+    atual = eq.termo_atual()
+    if atual:
+        termo = atual
+        termo.token = termo.token or novo_token_termo()
+    else:
+        termo = _obter_termo_editavel(eq)
+    _aplicar_dados_termo(eq, termo, data, usuario, nome, email, telefone, user_resp)
+    if not termo.status:
+        termo.status = 'pendente'
+    db.session.commit()
+    return termo
+
+
+def criar_ou_reenviar_termo(eq, data, usuario, link_builder):
+    nome, email, telefone, user_resp = _resolver_responsavel(data)
+    if not nome:
+        raise ValueError('Informe o nome do responsável.')
+    termo = _obter_termo_editavel(eq)
+    _aplicar_dados_termo(eq, termo, data, usuario, nome, email, telefone, user_resp)
     termo.status = 'enviado'
     termo.enviado_em = now_brasilia()
     termo.enviado_por_id = usuario.id if usuario else None

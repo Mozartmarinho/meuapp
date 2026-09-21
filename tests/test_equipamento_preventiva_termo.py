@@ -28,6 +28,7 @@ from equipamento_service import (  # noqa: E402
     criar_ou_reenviar_termo,
     processar_preventivas,
     salvar_preventiva,
+    salvar_termo,
     assinar_termo,
 )
 
@@ -208,6 +209,30 @@ class EquipamentoPreventivaTermoTest(unittest.TestCase):
         self.assertIn('equipe de Manutenção de Nutrição', html)
         self.assertNotIn('equipe de Tecnologia da Informação', html)
 
+    def test_salvar_termo_guarda_acessorios_sem_enviar(self):
+        r = self.client.post('/api/equipamentos/%s/termo/salvar' % self.eq.id, json={
+            'responsavel_nome': 'Yuri Jaciel',
+            'responsavel_setor': 'Manutenção Nutrição',
+            'acessorios': [
+                {'nome': 'Teclado', 'qtd': '01', 'obs': ''},
+                {'nome': 'Mouse', 'qtd': '01', 'obs': 'sem fio'},
+            ],
+        })
+        self.assertEqual(r.status_code, 200)
+        data = r.get_json()
+        self.assertTrue(data.get('ok'))
+        self.assertEqual(data['termo']['status'], 'pendente')
+        nomes = [i['nome'] for i in data['termo']['acessorios']]
+        self.assertEqual(nomes, ['Teclado', 'Mouse'])
+        termo = EquipamentoTermo.query.filter_by(equipamento_id=self.eq.id).first()
+        self.assertEqual(termo.responsavel_setor, 'Manutenção Nutrição')
+        self.assertIsNone(termo.enviado_em)
+        salvo = salvar_termo(self.eq, {
+            'responsavel_nome': 'Yuri Jaciel',
+            'acessorios': [{'nome': 'Monitor', 'qtd': '01'}],
+        }, self.user)
+        self.assertEqual([i['nome'] for i in salvo.acessorios()], ['Monitor'])
+
     def test_cadastro_grava_tipo_equipamento(self):
         r = self.client.post('/api/equipamentos', json={
             'codigo': 'N-10',
@@ -231,6 +256,7 @@ class EquipamentoPreventivaTermoTest(unittest.TestCase):
         self.assertIn('eq-acc-list', html)
         self.assertIn('tipo_equipamento', html)
         self.assertIn('btnAddAcc', html)
+        self.assertIn('btnSalvarTermo', html)
 
 
 if __name__ == '__main__':
