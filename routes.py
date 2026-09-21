@@ -85,6 +85,9 @@ from models import (
     TIPOS_RECURSO,
     FREQUENCIAS_PREVENTIVA,
     grupo_recurso_padrao,
+    TIPOS_EQUIPAMENTO,
+    acessorios_sugeridos,
+    normalizar_tipo_eq,
 )
 from permissions_sistemas import SISTEMAS, aplicar_permissoes_formulario, conceder_acesso_total
 from sqlalchemy.orm import joinedload, selectinload
@@ -3678,6 +3681,7 @@ def listar_equipamentos():
         setores=setores,
         usuarios=usuarios,
         frequencias_preventiva=FREQUENCIAS_PREVENTIVA,
+        tipos_equipamento=TIPOS_EQUIPAMENTO,
     )
 
 
@@ -3742,6 +3746,7 @@ def _dados_equipamento_form(data):
     usuario = (data.get('usuario_equipamento') or data.get('usuario') or '').strip()
     ip = (data.get('ip') or '').strip()
     grupo = grupo_recurso_padrao(cliente_id)
+    tipo_eq = normalizar_tipo_eq(data.get('tipo_equipamento') or data.get('tipo'))
     return {
         'patrimonio': codigo,
         'nome_equipamento': nome,
@@ -3755,6 +3760,7 @@ def _dados_equipamento_form(data):
         'cliente_id': cliente_id,
         'ativo': True,
         'tipo_recurso': tipo,
+        'tipo_equipamento': tipo_eq,
         'grupo_id': grupo.id if grupo else None,
         'usuario_equipamento': usuario or None,
         'ip': ip or None,
@@ -3843,6 +3849,7 @@ def api_equipamento(id):
         equipamento.local = campos['local']
         equipamento.data_compra = campos['data_compra']
         equipamento.cliente_id = campos['cliente_id']
+        equipamento.tipo_equipamento = campos['tipo_equipamento']
         db.session.commit()
         return jsonify({
             'ok': True,
@@ -3947,6 +3954,7 @@ def api_equipamento_termo(id):
         'ok': True,
         'equipamento': eq.to_dict(),
         'termo': termo_para_api(termo, link=link),
+        'sugeridos': acessorios_sugeridos(eq.tipo_equipamento_norm()),
     })
 
 
@@ -4074,6 +4082,7 @@ def editar_equipamento(id):
         equipamento.local = campos['local']
         equipamento.data_compra = campos['data_compra']
         equipamento.cliente_id = campos['cliente_id']
+        equipamento.tipo_equipamento = campos['tipo_equipamento']
         db.session.commit()
         flash('Equipamento atualizado com sucesso!', 'success')
         return redirect(url_for('main.listar_equipamentos'))

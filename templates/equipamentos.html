@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Cadastro de Equipamentos - São Geraldo Service{% endblock %}
+{% block title %}Cadastro de Equipamentos - Sistemas São Geraldo{% endblock %}
 
 {% block content %}
 <div class="chamados-page eq-page">
@@ -72,6 +72,7 @@
                     data-setor="{{ eq.setor or eq.localizacao or '' }}"
                     data-compra="{{ eq.data_compra.strftime('%Y-%m-%d') if eq.data_compra else '' }}"
                     data-cliente="{{ eq.cliente_id or '' }}"
+                    data-tipo="{% if eq.tipo_equipamento_norm is defined %}{{ eq.tipo_equipamento_norm() }}{% else %}ti{% endif %}"
                     data-prev-ativa="{{ '1' if prev and prev.ativa else '0' }}"
                     data-prev-freq="{{ prev.frequencia if prev else 'mensal' }}"
                     data-prev-proxima="{{ prev.proxima_data.strftime('%Y-%m-%d') if prev and prev.proxima_data else '' }}"
@@ -134,6 +135,14 @@
                 <div class="form-group">
                     <label for="eq_codigo">Código equip *</label>
                     <input type="text" id="eq_codigo" name="codigo" required maxlength="50" placeholder="Código do patrimônio">
+                </div>
+                <div class="form-group">
+                    <label for="eq_tipo">Tipo do equipamento *</label>
+                    <select id="eq_tipo" name="tipo_equipamento" required>
+                        {% for chave, label in tipos_equipamento|default([('ti','Equipamento de TI'),('nutricao','Equipamento da manutenção de nutrição')]) %}
+                        <option value="{{ chave }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
                 </div>
                 <div class="form-group">
                     <label for="eq_nome">Nome *</label>
@@ -303,7 +312,7 @@
 
 <!-- ── MODAL TERMO ────────────────────────────────────────────── -->
 <div id="modalTermo" class="modal-overlay nc-modal" hidden>
-    <div class="modal-dialog nc-dialog" role="dialog" aria-modal="true" style="max-width:520px">
+    <div class="modal-dialog nc-dialog" role="dialog" aria-modal="true" style="max-width:640px">
         <div class="modal-header">
             <h2>Termo de responsabilidade</h2>
             <button type="button" class="modal-close" id="btnFecharTermoX" aria-label="Fechar">&times;</button>
@@ -351,6 +360,17 @@
                     <div class="form-group">
                         <label for="termo_gestor">Gestor do setor</label>
                         <input type="text" id="termo_gestor" maxlength="120">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Acessórios entregues</label>
+                    <p class="eq-acc-hint">Marque os itens, informe a quantidade e adicione ou remova o que precisar.</p>
+                    <div id="termoAccList" class="eq-acc-list"></div>
+                    <div class="eq-acc-add">
+                        <input type="text" id="termo_acc_novo" maxlength="80" placeholder="Novo acessório...">
+                        <button type="button" class="btn btn-sm btn-primary" id="btnAddAcc">
+                            <i class="fas fa-plus"></i> Adicionar
+                        </button>
                     </div>
                 </div>
                 <div class="form-group" style="display:flex;gap:1rem;flex-wrap:wrap">
@@ -522,6 +542,15 @@
 .eq-termo-status.is-ok { background: #d1fae5; color: #065f46; }
 .eq-termo-status.is-wait { background: #ffedd5; color: #9a3412; }
 .nc-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.eq-acc-hint { margin: 0 0 0.4rem; font-size: 0.74rem; color: var(--gray-600); }
+.eq-acc-list { display: flex; flex-direction: column; gap: 0.35rem; max-height: 220px; overflow-y: auto; padding: 0.2rem 0; }
+.eq-acc-row { display: grid; grid-template-columns: 1.2rem minmax(0, 1.4fr) 4.2rem minmax(0, 1fr) 1.8rem; gap: 0.35rem; align-items: center; }
+.eq-acc-row input[type="checkbox"] { width: auto; margin: 0; }
+.eq-acc-row input[type="text"] { width: 100%; font-size: 0.78rem; padding: 0.28rem 0.4rem; }
+.eq-acc-row .eq-acc-nome { font-size: 0.78rem; font-weight: 600; color: var(--gray-700); }
+.eq-acc-rm { border: 0; background: transparent; color: #b91c1c; cursor: pointer; font-size: 0.95rem; line-height: 1; }
+.eq-acc-add { display: flex; gap: 0.4rem; margin-top: 0.45rem; }
+.eq-acc-add input { flex: 1; }
 .eq-crono-dialog { max-width: min(96vw, 1100px); width: 100%; }
 .eq-crono-bar { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.6rem; }
 .eq-crono-legend { display: flex; flex-wrap: wrap; gap: 0.45rem 0.8rem; margin-bottom: 0.7rem; font-size: 0.72rem; }
@@ -655,6 +684,7 @@ body.modal-open { overflow: hidden; }
         document.getElementById('eqModalTitle').textContent = 'Novo Equipamento';
         form.reset();
         document.getElementById('eq_id').value = '';
+        document.getElementById('eq_tipo').value = 'ti';
         limparErroCodigo();
         ultimoCodigoVerificado = '';
         abrirModal();
@@ -686,6 +716,7 @@ body.modal-open { overflow: hidden; }
         ensureSetorOption(document.getElementById('eq_setor'), setorNome);
         document.getElementById('eq_setor').value = setorNome;
         document.getElementById('eq_compra').value = dados.compra || '';
+        document.getElementById('eq_tipo').value = dados.tipo || 'ti';
         limparErroCodigo();
         ultimoCodigoVerificado = (dados.codigo || '').trim();
     }
@@ -700,7 +731,8 @@ body.modal-open { overflow: hidden; }
             serie: tr.getAttribute('data-serie') || '',
             cliente_id: tr.getAttribute('data-cliente') || '',
             setor: tr.getAttribute('data-setor') || '',
-            compra: tr.getAttribute('data-compra') || ''
+            compra: tr.getAttribute('data-compra') || '',
+            tipo: tr.getAttribute('data-tipo') || 'ti'
         });
         abrirModal();
     }
@@ -742,7 +774,8 @@ body.modal-open { overflow: hidden; }
                     serie: eq.numero_serie || '',
                     cliente_id: eq.cliente_id || '',
                     setor: eq.setor || eq.localizacao || '',
-                    compra: eq.data_compra_iso || ''
+                    compra: eq.data_compra_iso || '',
+                    tipo: eq.tipo_equipamento || 'ti'
                 });
                 setTimeout(function () { eqNome.focus(); }, 30);
             } else {
@@ -827,7 +860,8 @@ body.modal-open { overflow: hidden; }
             local: (clienteNome || '').trim(),
             setor: (document.getElementById('eq_setor').value || '').trim(),
             data_compra: document.getElementById('eq_compra').value || '',
-            cliente_id: localSel.value || ''
+            cliente_id: localSel.value || '',
+            tipo_equipamento: document.getElementById('eq_tipo').value || 'ti'
         };
         if (!body.codigo || !body.nome || !body.cliente_id) {
             alert('Preencha código, nome e local (cliente).');
@@ -861,6 +895,10 @@ body.modal-open { overflow: hidden; }
     });
     // ── Preventiva, termo e cronograma ────────────────────────
     const USUARIOS_EQ = {{ usuarios|default([])|tojson }};
+    const SUGERIDOS_ACC = {
+        ti: {{ ['Equipamento','Fonte/Carregador','Cabo de alimentação','Teclado','Mouse','Monitor','Headset','Dock station','Bolsa/Mochila']|tojson }},
+        nutricao: {{ ['Equipamento','Cabo de alimentação','Manual do equipamento','Kit de acessórios','Peças de reposição','Ferramentas']|tojson }}
+    };
     const overlayPrev = document.getElementById('modalPreventiva');
     const overlayTermo = document.getElementById('modalTermo');
     const overlayCrono = document.getElementById('modalCronograma');
@@ -934,6 +972,116 @@ body.modal-open { overflow: hidden; }
         }
     });
 
+    let accItens = [];
+    let accTipoAtual = 'ti';
+
+    function accListaBase(tipo, selecionados) {
+        const tipoKey = tipo === 'nutricao' ? 'nutricao' : 'ti';
+        const sugeridos = SUGERIDOS_ACC[tipoKey] || SUGERIDOS_ACC.ti;
+        const sel = Array.isArray(selecionados) ? selecionados : [];
+        const byNome = {};
+        sel.forEach(function (it) {
+            const nome = (it && it.nome) ? String(it.nome).trim() : '';
+            if (nome) byNome[nome.toLowerCase()] = it;
+        });
+        const out = [];
+        const vistos = {};
+        sugeridos.forEach(function (nome) {
+            const hit = byNome[nome.toLowerCase()];
+            vistos[nome.toLowerCase()] = true;
+            out.push({
+                nome: nome,
+                qtd: hit ? (hit.qtd || '01') : '',
+                obs: hit ? (hit.obs || '') : '',
+                selecionado: !!hit || (nome === 'Equipamento' && sel.length === 0)
+            });
+            if (nome === 'Equipamento' && sel.length === 0 && !out[out.length - 1].qtd) {
+                out[out.length - 1].qtd = '01';
+            }
+        });
+        sel.forEach(function (it) {
+            const nome = (it && it.nome) ? String(it.nome).trim() : '';
+            if (!nome || vistos[nome.toLowerCase()]) return;
+            out.push({
+                nome: nome,
+                qtd: it.qtd || '01',
+                obs: it.obs || '',
+                selecionado: true,
+                extra: true
+            });
+        });
+        return out;
+    }
+
+    function escHtml(s) {
+        return String(s || '').replace(/[&<>"']/g, function (c) {
+            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+        });
+    }
+
+    function renderAccList() {
+        const box = document.getElementById('termoAccList');
+        if (!box) return;
+        box.innerHTML = accItens.map(function (it, idx) {
+            return '<div class="eq-acc-row" data-idx="' + idx + '">' +
+                '<input type="checkbox" class="eq-acc-chk"' + (it.selecionado ? ' checked' : '') + '>' +
+                '<span class="eq-acc-nome">' + escHtml(it.nome || '') + '</span>' +
+                '<input type="text" class="eq-acc-qtd" value="' + escHtml(it.qtd || '') + '" placeholder="Qtd">' +
+                '<input type="text" class="eq-acc-obs" value="' + escHtml(it.obs || '') + '" placeholder="Obs.">' +
+                '<button type="button" class="eq-acc-rm" title="Remover">&times;</button>' +
+                '</div>';
+        }).join('');
+    }
+
+    function lerAccDoDom() {
+        document.querySelectorAll('#termoAccList .eq-acc-row').forEach(function (row) {
+            const idx = parseInt(row.getAttribute('data-idx'), 10);
+            if (isNaN(idx) || !accItens[idx]) return;
+            accItens[idx].selecionado = !!row.querySelector('.eq-acc-chk').checked;
+            accItens[idx].qtd = (row.querySelector('.eq-acc-qtd').value || '').trim();
+            accItens[idx].obs = (row.querySelector('.eq-acc-obs').value || '').trim();
+        });
+    }
+
+    function acessoriosSelecionados() {
+        lerAccDoDom();
+        return accItens.filter(function (it) { return it.selecionado && it.nome; }).map(function (it) {
+            return { nome: it.nome, qtd: it.qtd || '01', obs: it.obs || '' };
+        });
+    }
+
+    document.getElementById('termoAccList').addEventListener('click', function (ev) {
+        const btn = ev.target.closest('.eq-acc-rm');
+        if (!btn) return;
+        const row = btn.closest('.eq-acc-row');
+        const idx = parseInt(row.getAttribute('data-idx'), 10);
+        lerAccDoDom();
+        if (!isNaN(idx)) accItens.splice(idx, 1);
+        renderAccList();
+    });
+    document.getElementById('btnAddAcc').addEventListener('click', function () {
+        const input = document.getElementById('termo_acc_novo');
+        const nome = (input.value || '').trim();
+        if (!nome) { input.focus(); return; }
+        lerAccDoDom();
+        const existe = accItens.some(function (it) { return (it.nome || '').toLowerCase() === nome.toLowerCase(); });
+        if (existe) {
+            accItens.forEach(function (it) {
+                if ((it.nome || '').toLowerCase() === nome.toLowerCase()) it.selecionado = true;
+            });
+        } else {
+            accItens.push({ nome: nome, qtd: '01', obs: '', selecionado: true, extra: true });
+        }
+        input.value = '';
+        renderAccList();
+    });
+    document.getElementById('termo_acc_novo').addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') {
+            ev.preventDefault();
+            document.getElementById('btnAddAcc').click();
+        }
+    });
+
     function preencherTermoStatus(termo, eqId) {
         const box = document.getElementById('termoStatusBox');
         const linkBox = document.getElementById('termoLinkBox');
@@ -969,6 +1117,10 @@ body.modal-open { overflow: hidden; }
         document.getElementById('termo_matricula').value = termo.responsavel_matricula || '';
         document.getElementById('termo_gestor').value = termo.gestor_nome || '';
         if (termo.responsavel_usuario_id) selUsuario.value = String(termo.responsavel_usuario_id);
+        if (Array.isArray(termo.acessorios)) {
+            accItens = accListaBase(accTipoAtual, termo.acessorios);
+            renderAccList();
+        }
     }
 
     document.querySelectorAll('.btn-termo-eq').forEach(function (btn) {
@@ -981,11 +1133,22 @@ body.modal-open { overflow: hidden; }
             document.getElementById('formTermo').reset();
             document.getElementById('termo_eq_id').value = id;
             document.getElementById('termo_setor').value = tr.getAttribute('data-setor') || '';
+            accTipoAtual = tr.getAttribute('data-tipo') || 'ti';
+            accItens = accListaBase(accTipoAtual, []);
+            renderAccList();
             preencherTermoStatus(null, id);
             abrirOverlay(overlayTermo);
             fetch('/api/equipamentos/' + id + '/termo', { headers: { 'Accept': 'application/json' } })
                 .then(function (r) { return r.json(); })
-                .then(function (data) { if (data && data.termo) preencherTermoStatus(data.termo, id); })
+                .then(function (data) {
+                    if (data && data.equipamento && data.equipamento.tipo_equipamento) {
+                        accTipoAtual = data.equipamento.tipo_equipamento;
+                    }
+                    const sel = (data && data.termo && data.termo.acessorios) || [];
+                    accItens = accListaBase(accTipoAtual, sel);
+                    renderAccList();
+                    if (data && data.termo) preencherTermoStatus(data.termo, id);
+                })
                 .catch(function () { /* ignora */ });
         });
     });
@@ -1014,6 +1177,7 @@ body.modal-open { overflow: hidden; }
             responsavel_cargo: document.getElementById('termo_cargo').value,
             responsavel_matricula: document.getElementById('termo_matricula').value,
             gestor_nome: document.getElementById('termo_gestor').value,
+            acessorios: acessoriosSelecionados(),
             enviar_email: document.getElementById('termo_enviar_email').checked,
             enviar_whatsapp: document.getElementById('termo_enviar_wa').checked
         }).then(function (res) {

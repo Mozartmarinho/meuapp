@@ -24,9 +24,11 @@ from models import (
     EquipamentoPreventiva,
     EquipamentoTermo,
     Usuario,
+    acessorios_sugeridos,
     aplicar_automacoes,
     db,
     mesa_padrao,
+    normalizar_acessorios,
     now_brasilia,
 )
 
@@ -46,6 +48,12 @@ ACESORIOS_CHAVES = (
     ('mouse', 'Mouse'),
     ('outros', 'Outros'),
 )
+
+
+def acessorios_from_payload(raw):
+    if raw is None:
+        return [{'nome': 'Equipamento', 'qtd': '01', 'obs': ''}]
+    return normalizar_acessorios(raw)
 
 
 def add_months(d, months):
@@ -280,21 +288,6 @@ def novo_token_termo():
     return secrets.token_urlsafe(32)
 
 
-def acessorios_from_payload(raw):
-    data = raw if isinstance(raw, dict) else {}
-    out = {}
-    for chave, _label in ACESORIOS_CHAVES:
-        item = data.get(chave) or {}
-        if not isinstance(item, dict):
-            item = {}
-        padrao_qtd = '01' if chave == 'equipamento' else ''
-        out[chave] = {
-            'qtd': str(item.get('qtd') or padrao_qtd)[:20],
-            'obs': str(item.get('obs') or '')[:120],
-        }
-    return out
-
-
 def snapshot_equipamento(eq):
     return {
         'eq_nome': eq.nome_equipamento,
@@ -302,6 +295,7 @@ def snapshot_equipamento(eq):
         'eq_modelo': eq.modelo or '',
         'eq_patrimonio': eq.patrimonio or '',
         'eq_serie': eq.numero_serie or '',
+        'eq_tipo': eq.tipo_equipamento_norm(),
     }
 
 
@@ -342,6 +336,7 @@ def criar_ou_reenviar_termo(eq, data, usuario, link_builder):
     termo.eq_modelo = snap['eq_modelo']
     termo.eq_patrimonio = snap['eq_patrimonio']
     termo.eq_serie = snap['eq_serie']
+    termo.eq_tipo = snap['eq_tipo']
     raw_entrega = (data.get('data_entrega') or '').strip()
     if raw_entrega:
         try:
@@ -354,7 +349,9 @@ def criar_ou_reenviar_termo(eq, data, usuario, link_builder):
     termo.observacoes = (data.get('observacoes') or '') or None
     termo.local_assinatura = (data.get('local_assinatura') or '')[:120] or None
     termo.gestor_nome = (data.get('gestor_nome') or '')[:120] or None
-    termo.acessorios_json = json.dumps(acessorios_from_payload(data.get('acessorios') or {}), ensure_ascii=False)
+    termo.acessorios_json = json.dumps(
+        acessorios_from_payload(data.get('acessorios')), ensure_ascii=False
+    )
     termo.status = 'enviado'
     termo.enviado_em = now_brasilia()
     termo.enviado_por_id = usuario.id if usuario else None
@@ -367,7 +364,9 @@ def criar_ou_reenviar_termo(eq, data, usuario, link_builder):
     if enviar_email_flag and email:
         try:
             from email_service import enviar_termo_responsabilidade
-            enviar_termo_responsabilidade(email, nome, eq.nome_equipamento, link)
+            enviar_termo_responsabilidade(
+                email, nome, eq.nome_equipamento, link, eq.tipo_equipamento_norm()
+            )
             canais.append('email')
         except Exception as exc:
             erros.append(f'E-mail: {exc}')
@@ -464,6 +463,10 @@ def termo_para_api(termo, link=None):
         'eq_modelo': termo.eq_modelo or '',
         'eq_patrimonio': termo.eq_patrimonio or '',
         'eq_serie': termo.eq_serie or '',
+        'eq_tipo': termo.tipo_norm(),
+        'eq_tipo_label': termo.textos()['label'],
+        'textos': termo.textos(),
+        'sugeridos': acessorios_sugeridos(termo.tipo_norm()),
         'data_entrega': termo.data_entrega.strftime('%Y-%m-%d') if termo.data_entrega else None,
         'data_entrega_br': termo.data_entrega.strftime('%d/%m/%Y') if termo.data_entrega else None,
         'estado_geral': termo.estado_geral or '',

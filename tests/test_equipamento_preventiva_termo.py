@@ -159,13 +159,21 @@ class EquipamentoPreventivaTermoTest(unittest.TestCase):
         env = self.client.post('/api/equipamentos/%s/termo/enviar' % self.eq.id, json={
             'responsavel_nome': 'João',
             'enviar_email': False,
+            'acessorios': [
+                {'nome': 'Equipamento', 'qtd': '01', 'obs': ''},
+                {'nome': 'Mouse', 'qtd': '01', 'obs': 'sem fio'},
+            ],
         })
         self.assertEqual(env.status_code, 200)
         data = env.get_json()
         token = data['termo']['token']
+        self.assertEqual(len(data['termo']['acessorios']), 2)
         page = self.client.get('/termo/' + token)
         self.assertEqual(page.status_code, 200)
         self.assertIn(b'TERMO DE RESPONSABILIDADE', page.data)
+        self.assertIn(b'EQUIPAMENTO DE TI', page.data)
+        self.assertIn(b'Mouse', page.data)
+        self.assertNotIn(b'Teclado', page.data)
 
         signed = self.client.post('/termo/' + token, json={
             'responsavel_nome': 'João',
@@ -177,6 +185,41 @@ class EquipamentoPreventivaTermoTest(unittest.TestCase):
         self.assertIn(b'is-assinado', lista.data)
         pr = self.client.get('/equipamentos/%s/termo/imprimir' % self.eq.id)
         self.assertEqual(pr.status_code, 200)
+        self.assertIn(b'Mouse', pr.data)
+        self.assertIn(b'@page', pr.data)
+
+    def test_termo_nutricao_usa_titulo_e_acessorios(self):
+        self.eq.tipo_equipamento = 'nutricao'
+        db.session.commit()
+        r = self.client.post('/api/equipamentos/%s/termo/enviar' % self.eq.id, json={
+            'responsavel_nome': 'Ana',
+            'enviar_email': False,
+            'acessorios': [
+                {'nome': 'Equipamento', 'qtd': '01'},
+                {'nome': 'Manual do equipamento', 'qtd': '01'},
+            ],
+        })
+        self.assertEqual(r.status_code, 200)
+        token = r.get_json()['termo']['token']
+        page = self.client.get('/termo/' + token)
+        html = page.get_data(as_text=True)
+        self.assertIn('EQUIPAMENTO DE MANUTENÇÃO DE NUTRIÇÃO', html)
+        self.assertIn('Manual do equipamento', html)
+        self.assertIn('equipe de Manutenção de Nutrição', html)
+        self.assertNotIn('equipe de Tecnologia da Informação', html)
+
+    def test_cadastro_grava_tipo_equipamento(self):
+        r = self.client.post('/api/equipamentos', json={
+            'codigo': 'N-10',
+            'nome': 'Batedeira industrial',
+            'cliente_id': self.cli.id,
+            'tipo_equipamento': 'nutricao',
+        })
+        self.assertEqual(r.status_code, 200)
+        eq = Equipamento.query.filter_by(patrimonio='N-10').first()
+        self.assertIsNotNone(eq)
+        self.assertEqual(eq.tipo_equipamento_norm(), 'nutricao')
+        self.assertEqual(eq.to_dict()['tipo_equipamento_label'], 'Equipamento da manutenção de nutrição')
 
     def test_acoes_template_tem_preventiva_e_termo(self):
         html_path = os.path.join(ROOT, 'templates', 'equipamentos.html')
@@ -185,6 +228,9 @@ class EquipamentoPreventivaTermoTest(unittest.TestCase):
         self.assertIn('btn-prev-eq', html)
         self.assertIn('btn-termo-eq', html)
         self.assertIn('Cronograma preventiva', html)
+        self.assertIn('eq-acc-list', html)
+        self.assertIn('tipo_equipamento', html)
+        self.assertIn('btnAddAcc', html)
 
 
 if __name__ == '__main__':

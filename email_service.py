@@ -197,22 +197,25 @@ def enviar_redefinicao_senha(destinatario: str, nome: str, link: str) -> None:
 ASSUNTO_TERMO = 'Termo de responsabilidade pelo equipamento — São Geraldo Service'
 
 
-def enviar_termo_responsabilidade(destinatario: str, nome: str, equipamento: str, link: str) -> None:
+def enviar_termo_responsabilidade(destinatario: str, nome: str, equipamento: str, link: str, tipo: str = 'ti') -> None:
     eq = _esc(equipamento)
     pessoa = _esc(nome)
     href = _esc(link)
+    from models import textos_termo_eq
+    txt = textos_termo_eq(tipo)
+    label = txt['label']
     texto = (
         f'Olá, {nome}.\n\n'
-        f'Você foi vinculado como responsável pelo equipamento {equipamento}.\n\n'
-        'Abra o link abaixo para ler e assinar o Termo de Responsabilidade '
-        'pelo uso e guarda do equipamento de TI:\n'
+        f'Você foi vinculado como responsável pelo equipamento {equipamento} ({label}).\n\n'
+        f'Abra o link abaixo para ler e assinar o Termo de Responsabilidade '
+        f'pelo uso e guarda do {label.lower()}:\n'
         f'{link}\n\n'
         'São Geraldo Service\n'
     )
     html = f'''
     <p>Olá, {pessoa}.</p>
-    <p>Você foi vinculado como responsável pelo equipamento <strong>{eq}</strong>.</p>
-    <p>Abra o link para ler e assinar o Termo de Responsabilidade pelo uso e guarda do equipamento de TI:</p>
+    <p>Você foi vinculado como responsável pelo equipamento <strong>{eq}</strong> ({_esc(label)}).</p>
+    <p>Abra o link para ler e assinar o Termo de Responsabilidade pelo uso e guarda do {_esc(label.lower())}:</p>
     <p><a href="{href}">Assinar o termo de responsabilidade</a></p>
     <p>São Geraldo Service</p>
     '''

@@ -71,6 +71,7 @@ class EquipamentosColunasTest(unittest.TestCase):
                 'atualizado_em DATETIME,'
                 'cliente_id INTEGER NOT NULL,'
                 'tipo_recurso VARCHAR(40),'
+                'tipo_equipamento VARCHAR(20) DEFAULT "ti",'
                 'grupo_id INTEGER,'
                 'usuario_equipamento VARCHAR(120),'
                 'ip VARCHAR(45),'

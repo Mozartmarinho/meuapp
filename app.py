@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, send_from_directory
 from routes import main
 from routes_nutricao import nutricao
 from routes_pesagem import pesagem
@@ -101,6 +101,14 @@ def create_app():
             'Content-Type': 'text/plain; charset=utf-8',
             'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
         }
+
+    @app.route('/favicon.ico')
+    def favicon():
+        return send_from_directory(
+            os.path.join(app.root_path, 'static', 'img'),
+            'favicon.ico',
+            mimetype='image/vnd.microsoft.icon',
+        )
 
     return app
 
@@ -404,6 +412,7 @@ def ensure_equipamentos_schema():
             'modelo': 'VARCHAR(100) NULL',
             'numero_serie': 'VARCHAR(50) NULL',
             'tipo_recurso': "VARCHAR(40) NULL DEFAULT 'Estação'",
+            'tipo_equipamento': "VARCHAR(20) NOT NULL DEFAULT 'ti'",
             'grupo_id': 'INT NULL',
             'usuario_equipamento': 'VARCHAR(120) NULL',
             'ip': 'VARCHAR(45) NULL',
@@ -470,6 +479,17 @@ def ensure_equipamentos_schema():
             EquipamentoTermo.__table__.create(db.engine, checkfirst=True)
         except Exception as extra:
             print(f'Aviso: não foi possível criar equipamento_termos: {extra}')
+        try:
+            if 'equipamento_termos' in set(insp.get_table_names()):
+                tcols = {c['name'] for c in insp.get_columns('equipamento_termos')}
+                if 'eq_tipo' not in tcols:
+                    db.session.execute(text(
+                        "ALTER TABLE equipamento_termos ADD COLUMN eq_tipo VARCHAR(20) NULL DEFAULT 'ti'"
+                    ))
+                    db.session.commit()
+        except Exception as extra:
+            db.session.rollback()
+            print(f'Aviso: não foi possível criar equipamento_termos.eq_tipo: {extra}')
         if 'chamados' in tables:
             chamado_cols = {c['name'] for c in insp.get_columns('chamados')}
             if 'equipamento_id' in chamado_cols:

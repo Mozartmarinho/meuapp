@@ -556,6 +556,71 @@ def grupo_recurso_padrao(cliente_id):
     return row
 
 
+TIPOS_EQUIPAMENTO = (
+    ('ti', 'Equipamento de TI'),
+    ('nutricao', 'Equipamento da manutenção de nutrição'),
+)
+TIPOS_EQUIPAMENTO_KEYS = {k for k, _ in TIPOS_EQUIPAMENTO}
+ACESORIOS_SUGERIDOS_TI = (
+    'Equipamento',
+    'Fonte/Carregador',
+    'Cabo de alimentação',
+    'Teclado',
+    'Mouse',
+    'Monitor',
+    'Headset',
+    'Dock station',
+    'Bolsa/Mochila',
+)
+ACESORIOS_SUGERIDOS_NUTRICAO = (
+    'Equipamento',
+    'Cabo de alimentação',
+    'Manual do equipamento',
+    'Kit de acessórios',
+    'Peças de reposição',
+    'Ferramentas',
+)
+
+
+def normalizar_tipo_eq(value):
+    raw = (value or '').strip().lower()
+    if raw in ('nutricao', 'nutrição', 'manutencao', 'manutenção', 'manutencao_nutricao'):
+        return 'nutricao'
+    return 'ti'
+
+
+def label_tipo_eq(tipo):
+    tipo = normalizar_tipo_eq(tipo)
+    for chave, label in TIPOS_EQUIPAMENTO:
+        if chave == tipo:
+            return label
+    return 'Equipamento de TI'
+
+
+def textos_termo_eq(tipo):
+    if normalizar_tipo_eq(tipo) == 'nutricao':
+        return {
+            'titulo': 'TERMO DE RESPONSABILIDADE PELO USO E GUARDA DE EQUIPAMENTO DE MANUTENÇÃO DE NUTRIÇÃO',
+            'setor': 'Manutenção de Nutrição',
+            'equipe': 'equipe de Manutenção de Nutrição',
+            'label': 'Equipamento da manutenção de nutrição',
+            'entrega': 'Responsável pela entrega – Nutrição',
+        }
+    return {
+        'titulo': 'TERMO DE RESPONSABILIDADE PELO USO E GUARDA DE EQUIPAMENTO DE TI',
+        'setor': 'Tecnologia da Informação',
+        'equipe': 'equipe de Tecnologia da Informação',
+        'label': 'Equipamento de TI',
+        'entrega': 'Responsável pela entrega – TI',
+    }
+
+
+def acessorios_sugeridos(tipo):
+    if normalizar_tipo_eq(tipo) == 'nutricao':
+        return list(ACESORIOS_SUGERIDOS_NUTRICAO)
+    return list(ACESORIOS_SUGERIDOS_TI)
+
+
 class Equipamento(db.Model):
     __tablename__ = 'equipamentos'
 
@@ -576,6 +641,7 @@ class Equipamento(db.Model):
     cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False)
     cliente = db.relationship('Cliente', backref='equipamentos')
     tipo_recurso = db.Column(db.String(40), default='Estação')
+    tipo_equipamento = db.Column(db.String(20), default='ti', nullable=False)
     grupo_id = db.Column(db.Integer, db.ForeignKey('recurso_grupos.id'), index=True)
     grupo = db.relationship('RecursoGrupo', foreign_keys=[grupo_id])
     usuario_equipamento = db.Column(db.String(120))
@@ -628,6 +694,8 @@ class Equipamento(db.Model):
             'data_compra_iso': self.data_compra.strftime('%Y-%m-%d') if self.data_compra else None,
             'data_manutencao': self.data_manutencao.strftime('%d/%m/%Y') if self.data_manutencao else None,
             'tipo_recurso': self.tipo_recurso or 'Estação',
+            'tipo_equipamento': self.tipo_equipamento_norm(),
+            'tipo_equipamento_label': self.tipo_equipamento_label(),
             'grupo_id': self.grupo_id,
             'grupo_nome': self.grupo.nome if self.grupo else None,
             'usuario_equipamento': self.usuario_equipamento or '',
@@ -636,6 +704,12 @@ class Equipamento(db.Model):
             'atualizado_em': self.atualizado_em.strftime('%d/%m/%Y %H:%M') if self.atualizado_em else None,
             **self._dict_preventiva_termo(),
         }
+
+    def tipo_equipamento_norm(self):
+        return normalizar_tipo_eq(getattr(self, 'tipo_equipamento', None))
+
+    def tipo_equipamento_label(self):
+        return label_tipo_eq(self.tipo_equipamento_norm())
 
     def termo_atual(self):
         itens = list(self.termos or [])
@@ -711,6 +785,7 @@ class EquipamentoTermo(db.Model):
     eq_modelo = db.Column(db.String(100))
     eq_patrimonio = db.Column(db.String(50))
     eq_serie = db.Column(db.String(50))
+    eq_tipo = db.Column(db.String(20), default='ti')
     data_entrega = db.Column(db.Date)
     estado_geral = db.Column(db.String(200))
     observacoes = db.Column(db.Text)
@@ -730,29 +805,70 @@ class EquipamentoTermo(db.Model):
     def acessorios(self):
         import json
         try:
-            data = json.loads(self.acessorios_json or '{}')
+            data = json.loads(self.acessorios_json or '[]')
         except (TypeError, ValueError):
-            data = {}
-        if not isinstance(data, dict):
-            data = {}
-        padrao = {
-            'equipamento': {'qtd': '01', 'obs': ''},
-            'fonte': {'qtd': '', 'obs': ''},
-            'cabo': {'qtd': '', 'obs': ''},
-            'teclado': {'qtd': '', 'obs': ''},
-            'mouse': {'qtd': '', 'obs': ''},
-            'outros': {'qtd': '', 'obs': ''},
+            data = []
+        return normalizar_acessorios(data)
+
+    def tipo_norm(self):
+        if self.eq_tipo:
+            return normalizar_tipo_eq(self.eq_tipo)
+        eq = self.equipamento
+        if eq is not None:
+            return eq.tipo_equipamento_norm()
+        return 'ti'
+
+    def textos(self):
+        return textos_termo_eq(self.tipo_norm())
+
+
+def normalizar_acessorios(raw):
+    """Converte lista nova ou dict legado em lista [{nome, qtd, obs}]."""
+    out = []
+    vistos = set()
+
+    def _add(nome, qtd, obs):
+        nome = str(nome or '').strip()[:80]
+        if not nome:
+            return
+        chave = nome.casefold()
+        if chave in vistos:
+            return
+        vistos.add(chave)
+        out.append({
+            'nome': nome,
+            'qtd': str(qtd or '')[:20],
+            'obs': str(obs or '')[:120],
+        })
+
+    if isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, dict):
+                if item.get('selecionado') in (False, 0, '0', 'false', 'False'):
+                    continue
+                _add(item.get('nome') or item.get('item'), item.get('qtd'), item.get('obs'))
+            elif isinstance(item, str):
+                _add(item, '01', '')
+        return out
+    if isinstance(raw, dict):
+        labels = {
+            'equipamento': 'Equipamento',
+            'fonte': 'Fonte/Carregador',
+            'cabo': 'Cabo de alimentação',
+            'teclado': 'Teclado',
+            'mouse': 'Mouse',
+            'outros': 'Outros',
         }
-        out = {}
-        for chave, base in padrao.items():
-            item = data.get(chave) or {}
+        for chave, label in labels.items():
+            item = raw.get(chave) or {}
             if not isinstance(item, dict):
                 item = {}
-            out[chave] = {
-                'qtd': str(item.get('qtd') or base['qtd'] or ''),
-                'obs': str(item.get('obs') or ''),
-            }
-        return out
+            qtd = str(item.get('qtd') or '').strip()
+            obs = str(item.get('obs') or '').strip()
+            if not qtd and not obs:
+                continue
+            _add(label, qtd, obs)
+    return out
 
 
 class ChamadoAtendimento(db.Model):
