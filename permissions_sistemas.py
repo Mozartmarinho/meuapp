@@ -26,6 +26,7 @@ SISTEMAS = {
             ('agenda', 'Agenda'),
             ('conhecimentos', 'Conhecimentos'),
             ('automacoes', 'Automações'),
+            ('acesso_remoto', 'Acesso remoto'),
             ('whatsapp_mensagem', 'Conf. Mensagem WhatsApp'),
             ('auditoria', 'Auditoria'),
         ],

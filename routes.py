@@ -52,7 +52,9 @@ from models import (
     SETOR_COMPRAS,
     STATUS_AGUARDAR_PECA,
     STATUS_ENCAMINHADO,
+    STATUS_REAGENDADO,
     STATUS_DEVOLVIDO,
+    STATUS_SILENCIA_TOQUE,
     STATUS_ATENDIDO,
     STATUS_FECHADOS,
     TIPO_SETOR_CHAMADOS,
@@ -240,6 +242,7 @@ _CHAMADOS_ENDPOINT_MENUS = {
 ESTAGIOS_TICKET = (
     ('pendente', 'Pendente', ('Pendente',)),
     ('aguardando', 'Aguardando Cliente', (STATUS_AGUARDAR_PECA,)),
+    ('reagendado', 'Reagendado', (STATUS_REAGENDADO,)),
     ('atendimento', 'Em Atendimento', ('Em Andamento',)),
     ('desenvolvimento', 'Em Desenvolvimento', (STATUS_ENCAMINHADO, STATUS_DEVOLVIDO)),
 )
@@ -611,6 +614,32 @@ def montar_texto_finalizacao(chamado, tecnico_nome, hora, o_que_foi_feito):
     )
 
 
+def montar_texto_reagendamento(chamado, tecnico_nome, hora, data_nova, observacao):
+    numero = (getattr(chamado, 'numero_chamado', None) or '').strip() or 'chamado'
+    dia = data_nova.strftime('%d/%m/%Y') if data_nova else '—'
+    linhas = [
+        'Chamado %s foi reagendado.' % numero,
+        '',
+        'Nova data: %s' % dia,
+        'Técnico: %s' % (tecnico_nome or 'técnico'),
+        'Horário do aviso: %s' % (hora or '—'),
+    ]
+    obs = (observacao or '').strip()
+    if obs:
+        linhas.append('Observação: %s' % obs)
+    return '\n'.join(linhas)
+
+
+def _html_texto(valor):
+    return (
+        (valor or '')
+        .replace('&', '&amp;')
+        .replace('<', '&lt;')
+        .replace('>', '&gt;')
+        .replace('\n', '<br>')
+    )
+
+
 def _canal_abertura_chamado(chamado):
     canal = (getattr(chamado, 'canal_abertura', None) or '').strip()
     if canal:
@@ -640,14 +669,11 @@ def _contato_abertura_chamado(chamado, canal):
     return (getattr(opener, 'email', None) or '').strip() if opener else ''
 
 
-def _avisar_finalizacao_ticket(chamado, tecnico, o_que_foi_feito, enviar_wa=None, enviar_mail=None, agora=None):
-    """Avisa quem abriu, no mesmo canal da abertura. Não derruba a finalização."""
+def _enviar_aviso_solicitante(chamado, tecnico, texto, assunto, html, enviar_wa=None, enviar_mail=None):
+    """Avisa quem abriu, no mesmo canal da abertura. Não derruba a ação."""
     if not chamado:
         return {'ok': False, 'skipped': True}
     canal = _canal_abertura_chamado(chamado)
-    hora = fmt_brasilia(agora or now_brasilia(), '%d/%m/%Y %H:%M')
-    nome = _nome_tecnico_aviso(tecnico)
-    texto = montar_texto_finalizacao(chamado, nome, hora, o_que_foi_feito)
     enviado = False
     erro = None
     contato = _contato_abertura_chamado(chamado, canal)
@@ -689,24 +715,7 @@ def _avisar_finalizacao_ticket(chamado, tecnico, o_que_foi_feito, enviar_wa=None
                     else:
                         sender = enviar_email
                 if sender and not erro:
-                    html = (
-                        '<p>Chamado <strong>%s</strong> foi finalizado.</p>'
-                        '<p><strong>Técnico:</strong> %s<br>'
-                        '<strong>Horário:</strong> %s</p>'
-                        '<p><strong>O que foi feito:</strong><br>%s</p>'
-                        % (
-                            (chamado.numero_chamado or '').replace('<', ''),
-                            nome.replace('<', ''),
-                            hora.replace('<', ''),
-                            (o_que_foi_feito or 'Não informado.').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>'),
-                        )
-                    )
-                    sender(
-                        dest,
-                        'Ticket %s finalizado' % (chamado.numero_chamado or ''),
-                        texto,
-                        html,
-                    )
+                    sender(dest, assunto, texto, html)
                     enviado = True
         db.session.add(ChamadoMensagem(
             chamado_id=chamado.id,
@@ -721,10 +730,109 @@ def _avisar_finalizacao_ticket(chamado, tecnico, o_que_foi_feito, enviar_wa=None
     except Exception as exc:
         db.session.rollback()
         erro = str(exc)
-        print(f'Falha ao avisar finalização do ticket: {exc}')
+        print(f'Falha ao avisar solicitante do ticket: {exc}')
     if erro and not enviado:
-        print(f'Aviso de finalização não enviado ({canal}): {erro}')
+        print(f'Aviso ao solicitante não enviado ({canal}): {erro}')
     return {'ok': enviado, 'canal': canal, 'erro': erro, 'texto': texto}
+
+
+def _avisar_finalizacao_ticket(chamado, tecnico, o_que_foi_feito, enviar_wa=None, enviar_mail=None, agora=None):
+    """Avisa quem abriu, no mesmo canal da abertura. Não derruba a finalização."""
+    if not chamado:
+        return {'ok': False, 'skipped': True}
+    hora = fmt_brasilia(agora or now_brasilia(), '%d/%m/%Y %H:%M')
+    nome = _nome_tecnico_aviso(tecnico)
+    texto = montar_texto_finalizacao(chamado, nome, hora, o_que_foi_feito)
+    html = (
+        '<p>Chamado <strong>%s</strong> foi finalizado.</p>'
+        '<p><strong>Técnico:</strong> %s<br>'
+        '<strong>Horário:</strong> %s</p>'
+        '<p><strong>O que foi feito:</strong><br>%s</p>'
+        % (
+            _html_texto(chamado.numero_chamado or ''),
+            _html_texto(nome),
+            _html_texto(hora),
+            _html_texto(o_que_foi_feito or 'Não informado.'),
+        )
+    )
+    return _enviar_aviso_solicitante(
+        chamado,
+        tecnico,
+        texto,
+        'Ticket %s finalizado' % (chamado.numero_chamado or ''),
+        html,
+        enviar_wa=enviar_wa,
+        enviar_mail=enviar_mail,
+    )
+
+
+def _avisar_reagendamento_ticket(chamado, tecnico, observacao=None, enviar_wa=None, enviar_mail=None, agora=None):
+    """Avisa quem abriu que o chamado foi reagendado."""
+    if not chamado:
+        return {'ok': False, 'skipped': True}
+    hora = fmt_brasilia(agora or now_brasilia(), '%d/%m/%Y %H:%M')
+    nome = _nome_tecnico_aviso(tecnico)
+    dia = chamado.data_reagendamento
+    texto = montar_texto_reagendamento(chamado, nome, hora, dia, observacao)
+    dia_txt = dia.strftime('%d/%m/%Y') if dia else '—'
+    html = (
+        '<p>Chamado <strong>%s</strong> foi reagendado.</p>'
+        '<p><strong>Nova data:</strong> %s<br>'
+        '<strong>Técnico:</strong> %s<br>'
+        '<strong>Horário do aviso:</strong> %s</p>'
+        % (
+            _html_texto(chamado.numero_chamado or ''),
+            _html_texto(dia_txt),
+            _html_texto(nome),
+            _html_texto(hora),
+        )
+    )
+    obs = (observacao or '').strip()
+    if obs:
+        html += '<p><strong>Observação:</strong><br>%s</p>' % _html_texto(obs)
+    return _enviar_aviso_solicitante(
+        chamado,
+        tecnico,
+        texto,
+        'Ticket %s reagendado' % (chamado.numero_chamado or ''),
+        html,
+        enviar_wa=enviar_wa,
+        enviar_mail=enviar_mail,
+    )
+
+
+def _exigir_data_reagendamento(raw):
+    """Dia futuro (Brasília) para o status Reagendado."""
+    texto = (raw or '').strip()
+    if not texto:
+        raise ValueError('Informe o dia para reagendar o chamado.')
+    try:
+        dia = datetime.strptime(texto[:10], '%Y-%m-%d').date()
+    except ValueError:
+        raise ValueError('Data de reagendamento inválida.')
+    if dia <= now_brasilia().date():
+        raise ValueError('Escolha um dia futuro para reagendar.')
+    return dia
+
+
+def _reabrir_reagendados_do_dia():
+    """No dia marcado, o chamado volta a Pendente e o toque recomeça."""
+    hoje = now_brasilia().date()
+    rows = (
+        Chamado.query.filter(
+            Chamado.status == STATUS_REAGENDADO,
+            Chamado.data_reagendamento.isnot(None),
+            Chamado.data_reagendamento <= hoje,
+        )
+        .all()
+    )
+    if not rows:
+        return 0
+    for chamado in rows:
+        chamado.status = STATUS_CAMPANHA_AGUARDANDO
+        chamado.atendendo_em = None
+    db.session.commit()
+    return len(rows)
 
 
 def _ultima_movimentacao(chamado):
@@ -790,7 +898,7 @@ def _alertas_sla_e_parada(chamados_abertos):
 
 
 def _status_inicial_novo():
-    allowed = {'Pendente', 'Em Andamento', STATUS_AGUARDAR_PECA, STATUS_ENCAMINHADO, STATUS_DEVOLVIDO}
+    allowed = {'Pendente', 'Em Andamento', STATUS_AGUARDAR_PECA, STATUS_ENCAMINHADO, STATUS_REAGENDADO, STATUS_DEVOLVIDO}
     status = (request.args.get('status') or 'Pendente').strip()
     return status if status in allowed else 'Pendente'
 
@@ -892,6 +1000,7 @@ def _grupos_tickets(chamados):
         grupos.append({
             'key': key,
             'label': label,
+            'status_novo': statuses[0],
             'tickets': [c for c in chamados if c.status in statuses],
         })
     fechados = [c for c in chamados if status_fechado(c.status)]
@@ -1181,6 +1290,12 @@ def _chamado_atender_payload(chamado, usuario=None):
         'atendente_nome': _nome_atendente(chamado),
         'data_inicio_atendimento': fmt_brasilia(getattr(chamado, 'data_inicio_atendimento', None)),
         'data_conclusao': fmt_brasilia(getattr(chamado, 'data_conclusao', None)),
+        'data_reagendamento': (
+            chamado.data_reagendamento.strftime('%d/%m/%Y') if getattr(chamado, 'data_reagendamento', None) else ''
+        ),
+        'data_reagendamento_iso': (
+            chamado.data_reagendamento.isoformat() if getattr(chamado, 'data_reagendamento', None) else ''
+        ),
     }
 
 @main.route('/instalar-certificado')
@@ -2185,6 +2300,7 @@ def _grafico_finalizados_dashboard(args, mesa_filtro):
 @login_required
 def dashboard():
     """Dashboard do sistema de gestão de chamados (widgets com dados reais)."""
+    _reabrir_reagendados_do_dia()
     user = Usuario.query.get(session['user_id'])
     visiveis = _query_chamados_usuario(user).all()
     mesas = mesas_ativas()
@@ -2195,7 +2311,7 @@ def dashboard():
     abertos = [c for c in visiveis if not status_fechado(c.status)]
     st_nao = [c for c in visiveis if c.status == 'Pendente']
     st_and = [c for c in visiveis if c.status in ('Em Andamento', STATUS_ENCAMINHADO, STATUS_DEVOLVIDO, STATUS_AGUARDAR_PECA)]
-    st_pause = [c for c in visiveis if c.status == STATUS_AGUARDAR_PECA]
+    st_pause = [c for c in visiveis if c.status in (STATUS_AGUARDAR_PECA, STATUS_REAGENDADO)]
     venc_at, venc_sol, vencidos = _contar_sla_widgets(abertos)
     ids = [c.id for c in visiveis]
     have_at = set()
@@ -2294,6 +2410,7 @@ def dashboard():
 @login_required
 def listar_chamados():
     """Lista chamados visíveis ao usuário (técnicos veem todos os abertos)."""
+    _reabrir_reagendados_do_dia()
     user = Usuario.query.get(session['user_id'])
     user_id = session['user_id']
     setor = _setor_usuario(user)
@@ -2513,6 +2630,7 @@ def editar_chamado(id):
     if request.method == 'POST':
         try:
             status_antes = chamado.status
+            data_antes = chamado.data_reagendamento
             chamado.cliente_id = int(request.form['cliente_id'])
             _vincular_equipamento_chamado(chamado, request.form, chamado.cliente_id)
             chamado.tipo_servico = request.form['tipo_servico']
@@ -2523,6 +2641,15 @@ def editar_chamado(id):
             mesa_id = resolver_mesa_id(request.form.get('mesa_id'))
             if mesa_id:
                 chamado.mesa_id = mesa_id
+
+            reagendou = False
+            if chamado.status == STATUS_REAGENDADO:
+                dia_reag = _exigir_data_reagendamento(request.form.get('data_reagendamento'))
+                reagendou = status_antes != STATUS_REAGENDADO or data_antes != dia_reag
+                chamado.data_reagendamento = dia_reag
+                chamado.atendendo_em = None
+            elif chamado.status in STATUS_SILENCIA_TOQUE:
+                chamado.atendendo_em = None
 
             if status_fechado(request.form['status']):
                 _marcar_conclusao(chamado)
@@ -2536,6 +2663,12 @@ def editar_chamado(id):
                     chamado,
                     user,
                     chamado.atendimento_notas or chamado.observacoes,
+                )
+            if reagendou:
+                _avisar_reagendamento_ticket(
+                    chamado,
+                    user,
+                    chamado.observacoes or chamado.atendimento_notas,
                 )
             flash('Chamado atualizado com sucesso!', 'success')
             return redirect(url_for('main.listar_chamados'))
@@ -2707,6 +2840,7 @@ def api_campanha_ticket():
     if 'user_id' not in session:
         vazio['ok'] = False
         return jsonify(vazio), 401
+    _reabrir_reagendados_do_dia()
     user = Usuario.query.get(session['user_id'])
     if not _recebe_campanha_ticket(user):
         vazio['ok'] = True
@@ -2943,6 +3077,19 @@ def atender_chamado(id):
                 chamado.encaminhado_por_id = user.id
                 chamado.encaminhado_em = datetime.utcnow()
 
+    reagendou = False
+    if chamado.status == STATUS_REAGENDADO:
+        try:
+            dia_reag = _exigir_data_reagendamento(request.form.get('data_reagendamento'))
+        except ValueError as exc:
+            db.session.rollback()
+            return jsonify({'ok': False, 'message': str(exc)}), 400
+        if status_antes != STATUS_REAGENDADO or chamado.data_reagendamento != dia_reag:
+            reagendou = True
+        chamado.data_reagendamento = dia_reag
+    if chamado.status in STATUS_SILENCIA_TOQUE:
+        chamado.atendendo_em = None
+
     chamado.atendimento_notas = notas or chamado.atendimento_notas
     if chamado.status == STATUS_DEVOLVIDO:
         chamado.data_conclusao = None
@@ -3005,10 +3152,18 @@ def atender_chamado(id):
         msg = f'Atendido e devolvido para {chamado.setor_destino}.'
     elif acao == 'finalizar':
         msg = 'Chamado finalizado.'
+    elif chamado.status == STATUS_REAGENDADO and getattr(chamado, 'data_reagendamento', None):
+        msg = 'Chamado reagendado para %s.' % chamado.data_reagendamento.strftime('%d/%m/%Y')
     else:
         msg = 'Atendimento gravado.'
     if status_fechado(chamado.status) and not status_fechado(status_antes):
         _avisar_finalizacao_ticket(chamado, user, notas)
+    if reagendou:
+        aviso = _avisar_reagendamento_ticket(chamado, user, notas)
+        if aviso.get('ok'):
+            msg += ' O solicitante foi avisado.'
+        elif chamado.status == STATUS_REAGENDADO:
+            msg += ' O aviso ao solicitante não foi enviado.'
     return jsonify({
         'ok': True,
         'success': True,
@@ -5355,4 +5510,8 @@ def api_chamados_whatsapp_inbound():
     result = process_inbound(telefone, texto, sender=send_whatsapp, jid=jid)
     code = 200 if result.get('ok') else 400
     return jsonify(result), code
+
+
+from acesso_remoto_routes import registrar_rotas_acesso_remoto
+registrar_rotas_acesso_remoto(main, _CHAMADOS_ENDPOINT_MENUS)
 

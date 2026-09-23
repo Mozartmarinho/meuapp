@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Acesso remoto São Geraldo{% endblock %}
+{% block content %}
+<div class="mdk-crud ar-page">
+    <h1>Acesso remoto São Geraldo</h1>
+    <p class="chamados-sub">O programa fica ao lado do relógio do Windows, gera o número do equipamento e usa a senha criada nele.</p>
+
+    <div class="mdk-card ar-card">
+        <h3>Programa do equipamento</h3>
+        <p>Instale no computador que será acessado. Ele permanece ativo e mostra o número. A senha é criada lá, não nesta tela.</p>
+        <p class="ar-endereco">Endereço para colar no programa: <strong id="arEndereco">{{ endereco }}</strong></p>
+        {% if exe_disponivel %}
+        <a class="mdk-btn mdk-btn-teal" data-no-loading href="{{ url_for('main.acesso_remoto_baixar') }}">
+            <i class="fas fa-download"></i> Baixar {{ exe_nome }}
+        </a>
+        {% else %}
+        <p class="mdk-empty" style="text-align:left">O instalador ainda não está nesta pasta. Gere com acesso_remoto_agente/build_exe.bat.</p>
+        {% endif %}
+    </div>
+
+    <div class="ar-grid">
+        <div class="mdk-card ar-card">
+            <h3>Conectar</h3>
+            <form id="formConectar" data-no-loading>
+                <label for="arNumero">Número do equipamento</label>
+                <input id="arNumero" name="numero" inputmode="numeric" autocomplete="off" placeholder="000 000 000" required>
+                <label for="arSenha">Senha criada no equipamento</label>
+                <input id="arSenha" name="senha" type="password" autocomplete="off" required>
+                <button type="submit" class="mdk-btn mdk-btn-teal">Conectar</button>
+                <p class="ar-erro" id="arErro" hidden></p>
+            </form>
+        </div>
+        <div class="mdk-card ar-card">
+            <h3>Equipamentos</h3>
+            <table class="mdk-table" id="arTabela">
+                <thead>
+                    <tr><th>Número</th><th>Nome</th><th>Situação</th><th>Senha</th><th>Visto</th></tr>
+                </thead>
+                <tbody>
+                    {% for eq in equipamentos %}
+                    <tr>
+                        <td>{{ eq.numero_formatado }}</td>
+                        <td>{{ eq.nome }}</td>
+                        <td>{% if eq.em_atendimento %}Em atendimento{% elif eq.online %}Online{% else %}Offline{% endif %}</td>
+                        <td>{{ 'Definida' if eq.senha_definida else 'Pendente' }}</td>
+                        <td>{{ eq.ultimo_visto }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="mdk-empty">Nenhum programa instalado ainda.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<style>
+.ar-page h1 { margin-bottom: 0.2rem; }
+.ar-card { margin-bottom: 0.8rem; }
+.ar-card p { margin: 0 0 0.6rem; }
+.ar-endereco { font-size: 0.92rem; }
+.ar-grid { display: grid; grid-template-columns: minmax(240px, 320px) 1fr; gap: 0.8rem; }
+.ar-card label { display: block; font-weight: 700; margin: 0.45rem 0 0.2rem; }
+.ar-card input { width: 100%; box-sizing: border-box; padding: 0.55rem 0.6rem; border: 1px solid #d5dde3; border-radius: 0.35rem; font-size: 1rem; }
+#arNumero { font-size: 1.25rem; letter-spacing: 0.04em; font-weight: 700; }
+.ar-card button { margin-top: 0.7rem; }
+.ar-erro { color: #b42318; font-weight: 700; }
+@media (max-width: 800px) { .ar-grid { grid-template-columns: 1fr; } }
+</style>
+<script>
+(function () {
+    var form = document.getElementById('formConectar');
+    var erro = document.getElementById('arErro');
+    form.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        erro.hidden = true;
+        fetch('{{ url_for("main.acesso_remoto_conectar") }}', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                numero: document.getElementById('arNumero').value,
+                senha: document.getElementById('arSenha').value
+            })
+        }).then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+        .then(function (res) {
+            if (res.ok && res.data.ok && res.data.url) {
+                window.location.href = res.data.url;
+                return;
+            }
+            erro.textContent = (res.data && res.data.message) || 'Não foi possível conectar.';
+            erro.hidden = false;
+        }).catch(function () {
+            erro.textContent = 'Não foi possível conectar.';
+            erro.hidden = false;
+        });
+    });
+    function situacao(eq) {
+        if (eq.em_atendimento) return 'Em atendimento';
+        return eq.online ? 'Online' : 'Offline';
+    }
+    function esc(s) {
+        return String(s || '').replace(/[&<>"']/g, function (ch) {
+            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+        });
+    }
+    setInterval(function () {
+        fetch('{{ url_for("main.api_acesso_remoto_equipamentos") }}', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || !data.ok) return;
+                var body = document.querySelector('#arTabela tbody');
+                var rows = data.equipamentos || [];
+                if (!rows.length) {
+                    body.innerHTML = '<tr><td colspan="5" class="mdk-empty">Nenhum programa instalado ainda.</td></tr>';
+                    return;
+                }
+                body.innerHTML = rows.map(function (eq) {
+                    return '<tr><td>' + esc(eq.numero_formatado) + '</td><td>' + esc(eq.nome) + '</td><td>' + esc(situacao(eq)) +
+                        '</td><td>' + (eq.senha_definida ? 'Definida' : 'Pendente') + '</td><td>' + esc(eq.ultimo_visto) + '</td></tr>';
+                }).join('');
+            }).catch(function () {});
+    }, 5000);
+})();
+</script>
+{% endblock %}

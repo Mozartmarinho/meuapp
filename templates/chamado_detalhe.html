@@ -105,6 +105,9 @@
                     <div class="mdk-field"><label>Prioridade</label><div class="val">{{ chamado.prioridade }}</div></div>
                     <div class="mdk-field"><label>Área / setor</label><div class="val">{{ chamado.setor_destino or user_setor or '—' }}</div></div>
                     <div class="mdk-field"><label>Status</label><div class="val">{{ chamado.status }}</div></div>
+                    {% if chamado.data_reagendamento %}
+                    <div class="mdk-field"><label>Reagendado para</label><div class="val">{{ chamado.data_reagendamento.strftime('%d/%m/%Y') }}</div></div>
+                    {% endif %}
                     <div class="mdk-field"><label>Estágio</label><div class="val">{{ estagio_label }}</div></div>
                     <div class="mdk-field"><label>Responsável</label><div class="val">{{ solicitante.nome if solicitante else '—' }}</div></div>
                     <div class="mdk-field"><label>Atendido por</label><div class="val">{{ chamado.atendente.nome if chamado.atendente else '—' }}</div></div>

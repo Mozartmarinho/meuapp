@@ -45,6 +45,12 @@ agente_pesagem/build/
 agente_pesagem/dist/
 agente_pesagem/*.spec
 
+# --- Acesso remoto (build local) ---
+acesso_remoto_agente/.venv/
+acesso_remoto_agente/build/
+acesso_remoto_agente/dist/
+acesso_remoto_agente/*.spec
+
 # --- OCR / scans locais ---
 .scan_extract/
 

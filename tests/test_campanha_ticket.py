@@ -10,7 +10,7 @@ sys.path.insert(0, ROOT)
 os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
 
 from app import create_app  # noqa: E402
-from models import Chamado, ChamadoTecnico, ChamadoTecnicoMesa, Cliente, MesaServico, Usuario, db  # noqa: E402
+from models import Chamado, ChamadoMensagem, ChamadoTecnico, ChamadoTecnicoMesa, Cliente, MesaServico, Usuario, db, now_brasilia  # noqa: E402
 from password_utils import generate_password_hash  # noqa: E402
 from routes import _recebe_campanha_ticket  # noqa: E402
 
@@ -32,6 +32,7 @@ class CampanhaTicketTest(unittest.TestCase):
         cls.ctx.pop()
 
     def setUp(self):
+        ChamadoMensagem.query.delete()
         Chamado.query.delete()
         ChamadoTecnicoMesa.query.delete()
         ChamadoTecnico.query.delete()
@@ -297,6 +298,98 @@ class CampanhaTicketTest(unittest.TestCase):
         self.assertEqual(chamado.status, 'Atendido')
         self.assertIsNotNone(chamado.data_conclusao)
         self.assertGreaterEqual(chamado.data_conclusao, inicio)
+
+    def _ids(self, payload, chave):
+        return [c['id'] for c in payload.get(chave) or []]
+
+    def test_gravar_aguardar_peca_ou_encaminhado_sai_do_toque(self):
+        opener = self._usuario('Solicitante', 'abre@example.com')
+        ana = self._tecnico('Ana', 'ana@example.com')
+        for numero, status in (('OS910', 'Aguardar peça'), ('OS911', 'Encaminhado')):
+            chamado = self._chamado(opener, numero)
+            client = self._login(ana)
+            self.assertEqual(client.get('/api/chamados/%s/atender' % chamado.id).status_code, 200)
+            r = client.post('/api/chamados/%s/atender' % chamado.id, data={
+                'acao': 'salvar',
+                'status': status,
+            })
+            self.assertEqual(r.status_code, 200, r.get_json())
+            db.session.refresh(chamado)
+            self.assertEqual(chamado.status, status)
+            self.assertIsNone(chamado.atendendo_em)
+            camp = client.get('/api/chamados/campanha?after_id=0&ids=%s' % chamado.id).get_json()
+            self.assertNotIn(chamado.id, self._ids(camp, 'pendentes'))
+            self.assertNotIn(chamado.id, self._ids(camp, 'retomados'))
+
+    def test_reagendar_avisa_solicitante_e_para_toque(self):
+        opener = self._usuario('Solicitante', 'abre-reag@example.com')
+        ana = self._tecnico('Ana', 'ana-reag@example.com')
+        chamado = self._chamado(opener, 'OS912')
+        chamado.canal_abertura = 'E-mail'
+        chamado.contato_abertura = opener.email
+        db.session.commit()
+        dia = now_brasilia().date() + timedelta(days=3)
+        client = self._login(ana)
+        client.get('/api/chamados/%s/atender' % chamado.id)
+        r = client.post('/api/chamados/%s/atender' % chamado.id, data={
+            'acao': 'salvar',
+            'status': 'Reagendado',
+            'data_reagendamento': dia.isoformat(),
+            'atendimento_notas': 'Peça chega na sexta',
+        })
+        self.assertEqual(r.status_code, 200, r.get_json())
+        db.session.refresh(chamado)
+        self.assertEqual(chamado.status, 'Reagendado')
+        self.assertEqual(chamado.data_reagendamento, dia)
+        self.assertIsNone(chamado.atendendo_em)
+        self.assertIn('reagendado', (r.get_json().get('message') or '').lower())
+        textos = [m.texto or '' for m in ChamadoMensagem.query.filter_by(chamado_id=chamado.id).all()]
+        self.assertTrue(any('reagendado' in t.lower() and dia.strftime('%d/%m/%Y') in t for t in textos))
+        camp = client.get('/api/chamados/campanha?after_id=0&ids=%s' % chamado.id).get_json()
+        self.assertNotIn(chamado.id, self._ids(camp, 'pendentes'))
+        self.assertNotIn(chamado.id, self._ids(camp, 'retomados'))
+        self.assertEqual(chamado.status, 'Reagendado')
+
+    def test_reagendar_sem_dia_futuro_recusa(self):
+        opener = self._usuario('Solicitante', 'abre-dia@example.com')
+        ana = self._tecnico('Ana', 'ana-dia@example.com')
+        chamado = self._chamado(opener, 'OS913')
+        client = self._login(ana)
+        client.get('/api/chamados/%s/atender' % chamado.id)
+        r = client.post('/api/chamados/%s/atender' % chamado.id, data={
+            'acao': 'salvar',
+            'status': 'Reagendado',
+            'data_reagendamento': now_brasilia().date().isoformat(),
+        })
+        self.assertEqual(r.status_code, 400)
+        db.session.refresh(chamado)
+        self.assertEqual(chamado.status, 'Em Andamento')
+
+    def test_no_dia_reagendado_volta_pendente_e_toca(self):
+        opener = self._usuario('Solicitante', 'abre-volta@example.com')
+        ana = self._tecnico('Ana', 'ana-volta@example.com')
+        chamado = self._chamado(opener, 'OS914', status='Reagendado')
+        chamado.data_reagendamento = now_brasilia().date()
+        chamado.atendente_id = ana.id
+        chamado.atendendo_em = None
+        db.session.commit()
+        camp = self._login(ana).get('/api/chamados/campanha?after_id=0').get_json()
+        db.session.refresh(chamado)
+        self.assertEqual(chamado.status, 'Pendente')
+        self.assertIn(chamado.id, self._ids(camp, 'retomados'))
+
+    def test_lista_renderiza_reagendado(self):
+        opener = self._usuario('Solicitante', 'abre-lista@example.com')
+        ana = self._tecnico('Ana', 'ana-lista@example.com')
+        chamado = self._chamado(opener, 'OS915', status='Reagendado')
+        chamado.data_reagendamento = now_brasilia().date() + timedelta(days=2)
+        db.session.commit()
+        r = self._login(ana).get('/chamados')
+        self.assertEqual(r.status_code, 200)
+        html = r.get_data(as_text=True)
+        self.assertIn('Reagendado', html)
+        self.assertIn('at_data_reagendamento', html)
+        self.assertIn(chamado.data_reagendamento.strftime('%d/%m/%Y'), html)
 
 
 if __name__ == '__main__':

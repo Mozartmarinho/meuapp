@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Sessão {{ numero_formatado }}{% endblock %}
+{% block content %}
+<div class="ar-sessao">
+    <div class="ar-sessao-bar">
+        <div>
+            <strong>Acesso remoto São Geraldo</strong>
+            <span>{{ sessao.equipamento.nome }} · {{ numero_formatado }}</span>
+        </div>
+        <button type="button" class="mdk-btn" id="arSair">Encerrar</button>
+    </div>
+    <p class="ar-dica" id="arDica">Aguardando a tela do equipamento… Clique na imagem para usar o mouse e o teclado.</p>
+    <div class="ar-palco" id="arPalco" tabindex="0">
+        <img id="arTela" alt="Tela do equipamento" hidden>
+    </div>
+</div>
+<style>
+.ar-sessao { display: flex; flex-direction: column; gap: 0.45rem; min-height: calc(100vh - 90px); }
+.ar-sessao-bar { display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; }
+.ar-sessao-bar span { display: block; color: #64748b; font-size: 0.85rem; }
+.ar-dica { margin: 0; color: #475569; }
+.ar-palco { flex: 1; background: #0c3a38; border-radius: 0.45rem; display: flex; align-items: center; justify-content: center; overflow: auto; outline: none; }
+#arTela { max-width: 100%; max-height: calc(100vh - 180px); cursor: crosshair; background: #000; }
+</style>
+<script>
+(function () {
+    var telaUrl = '{{ url_for("main.acesso_remoto_tela", sessao_id=sessao.id) }}';
+    var cmdUrl = '{{ url_for("main.acesso_remoto_comando", sessao_id=sessao.id) }}';
+    var fimUrl = '{{ url_for("main.acesso_remoto_encerrar", sessao_id=sessao.id) }}';
+    var img = document.getElementById('arTela');
+    var palco = document.getElementById('arPalco');
+    var dica = document.getElementById('arDica');
+    var ultimoMove = 0;
+    var ativa = true;
+
+    function encerrarLocal(msg) {
+        ativa = false;
+        dica.textContent = msg || 'Sessão encerrada.';
+    }
+
+    function pintar() {
+        if (!ativa) return;
+        fetch(telaUrl + '?t=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' })
+            .then(function (r) {
+                if (r.status === 404) {
+                    encerrarLocal('A sessão foi encerrada.');
+                    return null;
+                }
+                if (r.status === 204) return null;
+                return r.blob();
+            })
+            .then(function (blob) {
+                if (!blob) return;
+                var url = URL.createObjectURL(blob);
+                var antiga = img.dataset.url;
+                img.onload = function () {
+                    if (antiga) URL.revokeObjectURL(antiga);
+                };
+                img.dataset.url = url;
+                img.src = url;
+                img.hidden = false;
+                dica.textContent = 'Conectado. Clique na tela para controlar o equipamento.';
+            })
+            .catch(function () {})
+            .then(function () {
+                if (ativa) setTimeout(pintar, 350);
+            });
+    }
+
+    function enviar(comando) {
+        if (!ativa) return;
+        fetch(cmdUrl, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify(comando)
+        }).then(function (r) {
+            if (r.status === 404) encerrarLocal('A sessão foi encerrada.');
+        }).catch(function () {});
+    }
+
+    function ponto(ev) {
+        var rect = img.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+        var x = (ev.clientX - rect.left) / rect.width;
+        var y = (ev.clientY - rect.top) / rect.height;
+        if (x < 0 || y < 0 || x > 1 || y > 1) return null;
+        return { x: x, y: y };
+    }
+
+    img.addEventListener('mousemove', function (ev) {
+        var agora = Date.now();
+        if (agora - ultimoMove < 60) return;
+        ultimoMove = agora;
+        var p = ponto(ev);
+        if (!p) return;
+        enviar({ tipo: 'mouse', acao: 'move', x: p.x, y: p.y });
+    });
+    img.addEventListener('mousedown', function (ev) {
+        palco.focus();
+        var p = ponto(ev);
+        if (!p) return;
+        ev.preventDefault();
+        enviar({ tipo: 'mouse', acao: 'down', x: p.x, y: p.y, botao: ev.button === 2 ? 'right' : 'left' });
+    });
+    img.addEventListener('mouseup', function (ev) {
+        var p = ponto(ev);
+        if (!p) return;
+        enviar({ tipo: 'mouse', acao: 'up', x: p.x, y: p.y, botao: ev.button === 2 ? 'right' : 'left' });
+    });
+    img.addEventListener('contextmenu', function (ev) { ev.preventDefault(); });
+    img.addEventListener('wheel', function (ev) {
+        var p = ponto(ev);
+        if (!p) return;
+        ev.preventDefault();
+        enviar({ tipo: 'mouse', acao: 'wheel', x: p.x, y: p.y, delta: ev.deltaY });
+    }, { passive: false });
+    palco.addEventListener('keydown', function (ev) {
+        if (ev.repeat) return;
+        ev.preventDefault();
+        enviar({
+            tipo: 'tecla',
+            code: ev.code || '',
+            key: ev.key || '',
+            ctrl: ev.ctrlKey,
+            alt: ev.altKey,
+            shift: ev.shiftKey
+        });
+    });
+    document.getElementById('arSair').addEventListener('click', function () {
+        fetch(fimUrl, { method: 'POST', credentials: 'same-origin' }).finally(function () {
+            window.location.href = '{{ url_for("main.acesso_remoto_pagina") }}';
+        });
+    });
+    pintar();
+})();
+</script>
+{% endblock %}

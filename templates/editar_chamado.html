@@ -66,6 +66,7 @@
                         <option value="Em Andamento" {% if chamado.status == 'Em Andamento' %}selected{% endif %}>Em Andamento</option>
                         <option value="Aguardar peça" {% if chamado.status == 'Aguardar peça' %}selected{% endif %}>Aguardar peça</option>
                         <option value="Encaminhado" {% if chamado.status == 'Encaminhado' %}selected{% endif %}>Encaminhado</option>
+                        <option value="Reagendado" {% if chamado.status == 'Reagendado' %}selected{% endif %}>Reagendado</option>
                         <option value="Atendido" {% if chamado.status == 'Atendido' %}selected{% endif %}>Atendido</option>
                         <option value="Concluído" {% if chamado.status == 'Concluído' %}selected{% endif %}>Concluído</option>
                     </select>
@@ -80,6 +81,12 @@
                         <option value="Média" {% if chamado.prioridade == 'Média' %}selected{% endif %}>Média</option>
                     </select>
                 </div>
+            </div>
+
+            <div class="form-group" id="ecReagendaBox">
+                <label for="data_reagendamento">Reagendar para</label>
+                <input type="date" id="data_reagendamento" name="data_reagendamento" value="{{ chamado.data_reagendamento.isoformat() if chamado.data_reagendamento else '' }}">
+                <small>Obrigatório no status Reagendado. Quem abriu o chamado recebe o aviso.</small>
             </div>
 
             <div class="form-group">
@@ -219,6 +226,24 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const statusSelect = document.getElementById('status');
+    const reagendaBox = document.getElementById('ecReagendaBox');
+    const reagendaInput = document.getElementById('data_reagendamento');
+    function sincronizarReagendamento() {
+        const mostra = statusSelect && statusSelect.value === 'Reagendado';
+        if (reagendaBox) reagendaBox.hidden = !mostra;
+        if (!reagendaInput) return;
+        const amanha = new Date();
+        amanha.setDate(amanha.getDate() + 1);
+        const m = String(amanha.getMonth() + 1).padStart(2, '0');
+        const day = String(amanha.getDate()).padStart(2, '0');
+        reagendaInput.min = amanha.getFullYear() + '-' + m + '-' + day;
+        reagendaInput.required = !!mostra;
+    }
+    if (statusSelect) {
+        statusSelect.addEventListener('change', sincronizarReagendamento);
+        sincronizarReagendamento();
+    }
     const clienteSelect = document.getElementById('cliente_id');
     const patrimonioSelect = document.getElementById('patrimonio');
     const equipamentoInput = document.getElementById('equipamento');

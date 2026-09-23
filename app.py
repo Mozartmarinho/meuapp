@@ -341,6 +341,7 @@ def ensure_chamados_schema():
             'atendente_id': 'INT NULL',
             'atendendo_em': 'DATETIME NULL',
             'data_inicio_atendimento': 'DATETIME NULL',
+            'data_reagendamento': 'DATE NULL',
             'canal_abertura': 'VARCHAR(20) NULL',
             'contato_abertura': 'VARCHAR(120) NULL',
         }

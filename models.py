@@ -49,7 +49,9 @@ TIPO_SETOR_NUTRICAO = 'nutricao'
 SETOR_COMPRAS = 'Compras'
 STATUS_AGUARDAR_PECA = 'Aguardar peça'
 STATUS_ENCAMINHADO = 'Encaminhado'
+STATUS_REAGENDADO = 'Reagendado'
 STATUS_DEVOLVIDO = 'Devolvido'
+STATUS_SILENCIA_TOQUE = (STATUS_AGUARDAR_PECA, STATUS_ENCAMINHADO, STATUS_REAGENDADO)
 STATUS_ATENDIDO = 'Atendido'
 STATUS_CONCLUIDO = 'Concluído'
 STATUS_FECHADOS = (STATUS_ATENDIDO, STATUS_CONCLUIDO)
@@ -282,6 +284,7 @@ class Chamado(db.Model):
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     data_conclusao = db.Column(db.DateTime)
     data_inicio_atendimento = db.Column(db.DateTime, nullable=True)
+    data_reagendamento = db.Column(db.Date, nullable=True)
     observacoes = db.Column(db.Text)
     equipamento = db.Column(db.String(100), nullable=True)
     patrimonio = db.Column(db.String(50), nullable=True)
@@ -334,6 +337,7 @@ class Chamado(db.Model):
             'data_criacao': self.data_criacao.strftime('%d/%m/%Y %H:%M') if self.data_criacao else None,
             'data_inicio_atendimento': fmt_brasilia(self.data_inicio_atendimento),
             'data_conclusao': self.data_conclusao.strftime('%d/%m/%Y %H:%M') if self.data_conclusao else None,
+            'data_reagendamento': self.data_reagendamento.strftime('%d/%m/%Y') if self.data_reagendamento else None,
             'observacoes': self.observacoes,
             'equipamento': self.equipamento,
             'patrimonio': self.patrimonio,

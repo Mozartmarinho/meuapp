@@ -48,6 +48,7 @@
                 <option>Em Andamento</option>
                 <option>Aguardar peça</option>
                 <option>Encaminhado</option>
+                <option>Reagendado</option>
                 <option>Devolvido</option>
                 <option>Atendido</option>
                 <option>Concluído</option>
@@ -106,7 +107,7 @@
                             data-cliente="{{ c.cliente.nome if c.cliente else '' }}"
                             data-search="{{ c.numero_chamado }} {{ c.cliente.nome if c.cliente else '' }} {{ c.tipo_servico }} {{ c.prioridade }} {{ ticket_title(c) }}">
                             <td><a class="mdk-num" href="{{ url_for('main.ver_chamado', id=c.id) }}">{{ c.numero_chamado }}</a></td>
-                            <td>{{ ticket_title(c)|truncate(70, True) }}</td>
+                            <td>{{ ticket_title(c)|truncate(70, True) }}{% if c.status == 'Reagendado' and c.data_reagendamento %} <span class="tk-reagenda">{{ c.data_reagendamento.strftime('%d/%m/%Y') }}</span>{% endif %}</td>
                             <td>{{ c.cliente.nome if c.cliente else 'N/A' }}</td>
                             <td>{% if c.setor_destino %}<span class="setor-blink">{{ c.setor_destino }}</span>{% else %}—{% endif %}</td>
                             <td><span class="priority-{{ c.prioridade|lower|replace('é', 'e') }}">{{ c.prioridade }}</span></td>
@@ -177,7 +178,7 @@
             <div class="mdk-col" data-kcol="{{ g.key }}">
                 <div class="mdk-col-h">
                     {{ g.label }} <span data-kcount>{{ g.tickets|length }}</span>
-                    <a class="mdk-col-add" href="{{ url_for('main.novo_chamado', status=('Pendente' if g.key=='pendente' else ('Em Andamento' if g.key=='atendimento' else ('Aguardar peça' if g.key=='aguardando' else 'Encaminhado')))) }}" title="Abrir novo ticket">+</a>
+                    <a class="mdk-col-add" href="{{ url_for('main.novo_chamado', status=g.status_novo) }}" title="Abrir novo ticket">+</a>
                 </div>
                 {% for c in g.tickets %}
                 <article class="mdk-kcard tk-card" data-stage="{{ g.key }}" data-status="{{ c.status }}"
@@ -196,7 +197,7 @@
                         </div>
                     </div>
                     <p class="mdk-ktitle">{{ ticket_title(c)|truncate(90, True) }}</p>
-                    <p class="mdk-kmeta">{{ c.cliente.nome if c.cliente else 'N/A' }}</p>
+                    <p class="mdk-kmeta">{{ c.cliente.nome if c.cliente else 'N/A' }}{% if c.status == 'Reagendado' and c.data_reagendamento %} · {{ c.data_reagendamento.strftime('%d/%m/%Y') }}{% endif %}</p>
                     <div class="mdk-kfoot">
                         <span class="mdk-aberto">Aberto</span>
                         <span class="mdk-av">{{ (c.cliente.nome if c.cliente else 'T')[0]|upper }}</span>
@@ -261,10 +262,16 @@
                         <option value="Em Andamento">Em Andamento</option>
                         <option value="Aguardar peça">Aguardar peça</option>
                         <option value="Encaminhado">Encaminhado</option>
+                        <option value="Reagendado">Reagendado</option>
                         <option value="Devolvido">Devolvido</option>
                         <option value="Atendido">Atendido</option>
                         <option value="Concluído">Concluído</option>
                     </select>
+                </div>
+                <div class="form-group" id="atReagendaBox" hidden>
+                    <label for="at_data_reagendamento">Reagendar para</label>
+                    <input type="date" id="at_data_reagendamento" name="data_reagendamento">
+                    <span class="at-hint">O toque para até esse dia. Quem abriu o chamado recebe o aviso agora.</span>
                 </div>
                 <div class="at-encaminhar">
                     <p class="at-enc-title" id="atEncTitle">Encaminhar para outro setor</p>
@@ -422,7 +429,9 @@
 .status-atendido { color: #0d9488; font-weight: 700; }
 .status-aguardar-peca { color: #c05621; font-weight: 700; }
 .status-encaminhado { color: #6f42c1; font-weight: 700; }
+.status-reagendado { color: #0f766e; font-weight: 700; }
 .status-devolvido { color: #0369a1; font-weight: 700; }
+.tk-reagenda { color: #0f766e; font-weight: 700; font-size: 0.75rem; margin-left: 0.35rem; }
 .priority-alta { color: #dc3545; font-weight: 700; }
 .priority-normal, .priority-media { color: #6c757d; }
 .priority-baixa { color: #28a745; }
@@ -1241,6 +1250,28 @@ body.modal-open { overflow: hidden; }
         return !!(input && input.files && input.files.length);
     }
 
+    const STATUS_SEM_TOQUE = {
+        'Aguardar peça': true,
+        'Encaminhado': true,
+        'Reagendado': true
+    };
+    function isoLocal(d) {
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return d.getFullYear() + '-' + m + '-' + day;
+    }
+    function sincronizarReagendamento() {
+        const box = document.getElementById('atReagendaBox');
+        const input = document.getElementById('at_data_reagendamento');
+        const status = document.getElementById('at_status').value;
+        const mostra = status === 'Reagendado';
+        if (box) box.hidden = !mostra;
+        if (!input) return;
+        const amanha = new Date();
+        amanha.setDate(amanha.getDate() + 1);
+        input.min = isoLocal(amanha);
+        input.required = mostra;
+    }
     function atualizarAcoes() {
         const peca = document.getElementById('at_aguardar_peca').checked;
         const encTitle = document.getElementById('atEncTitle');
@@ -1267,6 +1298,7 @@ body.modal-open { overflow: hidden; }
                 btnFinalizar.innerHTML = '<i class="fas fa-check-circle"></i> Finalizar chamado';
             }
         }
+        sincronizarReagendamento();
     }
 
     function preencher(data) {
@@ -1300,6 +1332,8 @@ body.modal-open { overflow: hidden; }
         document.getElementById('at_notas').value = data.atendimento_notas || '';
         document.getElementById('at_status').value = data.status || 'Em Andamento';
         document.getElementById('at_aguardar_peca').checked = data.status === 'Aguardar peça';
+        const dataReag = document.getElementById('at_data_reagendamento');
+        if (dataReag) dataReag.value = data.data_reagendamento_iso || '';
         if (podeDevolver) {
             document.getElementById('at_setor').value = '';
             document.getElementById('at_instrucoes').value = '';
@@ -1454,6 +1488,20 @@ body.modal-open { overflow: hidden; }
                 return;
             }
         }
+        if (acao === 'salvar' && document.getElementById('at_status').value === 'Reagendado') {
+            const dia = (document.getElementById('at_data_reagendamento').value || '').trim();
+            if (!dia) {
+                alert('Informe o dia para reagendar.');
+                return;
+            }
+            const hoje = new Date();
+            hoje.setHours(0, 0, 0, 0);
+            const escolhido = new Date(dia + 'T00:00:00');
+            if (!(escolhido > hoje)) {
+                alert('Escolha um dia futuro para reagendar.');
+                return;
+            }
+        }
         if (acao === 'finalizar' && estoqueUsos.length) {
             for (let i = 0; i < estoqueUsos.length; i++) {
                 const u = estoqueUsos[i];
@@ -1492,7 +1540,8 @@ body.modal-open { overflow: hidden; }
         .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
         .then(function (res) {
             if (res.ok && (res.data.ok || res.data.success)) {
-                if (acao === 'finalizar' || acao === 'encaminhar') {
+                const stSalvo = (res.data.chamado && res.data.chamado.status) || '';
+                if (acao === 'finalizar' || acao === 'encaminhar' || STATUS_SEM_TOQUE[stSalvo]) {
                     atendimentoFinalizado = true;
                     pararToqueLocal(chamadoId);
                 }
