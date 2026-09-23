@@ -10,7 +10,7 @@ sys.path.insert(0, ROOT)
 os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
 
 from app import create_app  # noqa: E402
-from models import Chamado, ChamadoTecnico, Cliente, Usuario, db  # noqa: E402
+from models import Chamado, ChamadoTecnico, ChamadoTecnicoMesa, Cliente, MesaServico, Usuario, db  # noqa: E402
 from password_utils import generate_password_hash  # noqa: E402
 from routes import _recebe_campanha_ticket  # noqa: E402
 
@@ -33,12 +33,18 @@ class CampanhaTicketTest(unittest.TestCase):
 
     def setUp(self):
         Chamado.query.delete()
+        ChamadoTecnicoMesa.query.delete()
         ChamadoTecnico.query.delete()
+        MesaServico.query.delete()
         Usuario.query.delete()
         Cliente.query.delete()
         db.session.commit()
         self.cli = Cliente(nome='Hospital Teste', ativo=True, habilitado_chamados=True)
+        self.mesa = MesaServico(nome='Informática', ativa=True)
+        self.mesa_outra = MesaServico(nome='Elétrica', ativa=True)
         db.session.add(self.cli)
+        db.session.add(self.mesa)
+        db.session.add(self.mesa_outra)
         db.session.commit()
 
     def _usuario(self, nome, email, **kwargs):
@@ -55,19 +61,23 @@ class CampanhaTicketTest(unittest.TestCase):
         db.session.commit()
         return user
 
-    def _tecnico(self, nome, email, funcao='tecnico', **kwargs):
+    def _tecnico(self, nome, email, funcao='tecnico', mesa=None, **kwargs):
         user = self._usuario(nome, email, **kwargs)
-        db.session.add(ChamadoTecnico(
+        tec = ChamadoTecnico(
             nome=nome,
             email=email,
             usuario_id=user.id,
             funcao=funcao,
             ativo=True,
-        ))
+        )
+        db.session.add(tec)
+        db.session.flush()
+        if mesa is not False:
+            tec.mesas = [mesa or self.mesa]
         db.session.commit()
         return user
 
-    def _chamado(self, opener, numero='OS000001', status='Pendente'):
+    def _chamado(self, opener, numero='OS000001', status='Pendente', mesa=None):
         chamado = Chamado(
             numero_chamado=numero,
             cliente_id=self.cli.id,
@@ -75,6 +85,7 @@ class CampanhaTicketTest(unittest.TestCase):
             descricao='Não liga',
             status=status,
             tecnico_id=opener.id,
+            mesa_id=(mesa or self.mesa).id,
         )
         db.session.add(chamado)
         db.session.commit()
@@ -97,7 +108,7 @@ class CampanhaTicketTest(unittest.TestCase):
         self.assertTrue(_recebe_campanha_ticket(tec))
         self.assertTrue(_recebe_campanha_ticket(sup))
         self.assertTrue(_recebe_campanha_ticket(ges))
-        self.assertTrue(_recebe_campanha_ticket(admin))
+        self.assertFalse(_recebe_campanha_ticket(admin))
         self.assertFalse(_recebe_campanha_ticket(ass))
         self.assertFalse(_recebe_campanha_ticket(op))
 
@@ -235,6 +246,57 @@ class CampanhaTicketTest(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         db.session.refresh(chamado)
         self.assertEqual(chamado.atendente_id, admin.id)
+        self.assertIsNotNone(chamado.data_inicio_atendimento)
+
+    def test_toque_so_da_mesa_do_ticket(self):
+        opener = self._usuario('Solicitante', 'abre@example.com')
+        da_mesa = self._tecnico('Ana', 'ana@example.com')
+        outra = self._tecnico('Bia', 'bia@example.com', mesa=self.mesa_outra)
+        sem_mesa = self._tecnico('Caio', 'caio@example.com', mesa=False)
+        sup = self._tecnico('Duda', 'duda@example.com', 'supervisor')
+        ges = self._tecnico('Eva', 'eva@example.com', 'gestor', mesa=self.mesa_outra)
+        velho = self._chamado(opener, 'OS879')
+        chamado = self._chamado(opener, 'OS880')
+        for user, espera in (
+            (da_mesa, True),
+            (sup, True),
+            (outra, False),
+            (sem_mesa, False),
+            (ges, False),
+        ):
+            data = self._login(user).get(
+                '/api/chamados/campanha?after_id=%s' % velho.id
+            ).get_json()
+            ids = [c['id'] for c in data.get('campanhas') or []]
+            if espera:
+                self.assertTrue(data.get('enabled'), user.nome)
+                self.assertIn(chamado.id, ids, user.nome)
+            else:
+                self.assertNotIn(chamado.id, ids, user.nome)
+
+    def test_atender_grava_inicio_e_finalizar_grava_fim(self):
+        opener = self._usuario('Solicitante', 'abre@example.com')
+        ana = self._tecnico('Ana', 'ana@example.com')
+        chamado = self._chamado(opener, 'OS881')
+        client = self._login(ana)
+        r = client.get('/api/chamados/%s/atender' % chamado.id)
+        self.assertEqual(r.status_code, 200)
+        db.session.refresh(chamado)
+        inicio = chamado.data_inicio_atendimento
+        self.assertIsNotNone(inicio)
+        self.assertIn('data_inicio_atendimento', r.get_json()['chamado'])
+        client.post('/api/chamados/%s/liberar-atendimento' % chamado.id)
+        db.session.refresh(chamado)
+        self.assertEqual(chamado.data_inicio_atendimento, inicio)
+        r2 = client.post(
+            '/api/chamados/%s/atender' % chamado.id,
+            data={'acao': 'finalizar', 'atendimento_notas': 'Trocou a fonte'},
+        )
+        self.assertEqual(r2.status_code, 200)
+        db.session.refresh(chamado)
+        self.assertEqual(chamado.status, 'Atendido')
+        self.assertIsNotNone(chamado.data_conclusao)
+        self.assertGreaterEqual(chamado.data_conclusao, inicio)
 
 
 if __name__ == '__main__':

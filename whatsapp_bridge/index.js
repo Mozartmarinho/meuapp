@@ -8,6 +8,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const QRCode = require('qrcode');
 
 const HOST = process.env.PESAGEM_WA_BRIDGE_HOST || '127.0.0.1';
@@ -15,10 +16,6 @@ const PORT = parseInt(process.env.PESAGEM_WA_BRIDGE_PORT || '31085', 10);
 const AUTH_DIR = path.join(__dirname, 'auth');
 const PID_FILE = path.join(__dirname, 'bridge.pid');
 const HEADLESS = process.env.PESAGEM_WA_HEADLESS !== '0';
-const USER_AGENT = process.env.PESAGEM_WA_UA || (
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-  + '(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'
-);
 
 let Client = null;
 let LocalAuth = null;
@@ -92,12 +89,99 @@ function findChrome() {
   return undefined;
 }
 
+function chromeMajorVersion(chromePath) {
+  const bin = chromePath || 'google-chrome';
+  try {
+    const out = execFileSync(bin, ['--version'], {
+      encoding: 'utf8',
+      timeout: 4000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const match = String(out).match(/(\d+)\./);
+    if (match) return match[1];
+  } catch (err) {
+    /* ignore */
+  }
+  return null;
+}
+
+function buildUserAgent(chromePath) {
+  if (process.env.PESAGEM_WA_UA) return process.env.PESAGEM_WA_UA;
+  const major = chromeMajorVersion(chromePath) || '131';
+  return (
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+    + '(KHTML, like Gecko) Chrome/' + major + '.0.0.0 Safari/537.36'
+  );
+}
+
 function toJid(phone) {
-  let n = String(phone || '').replace(/\D/g, '');
+  const raw = String(phone || '').trim();
+  if (raw.includes('@')) return raw;
+  let n = raw.replace(/\D/g, '');
   if (n.startsWith('00')) n = n.slice(2);
   if (n.startsWith('0')) n = n.slice(1);
   if (n.length <= 11) n = '55' + n;
   return n + '@c.us';
+}
+
+function isDirectChat(jid) {
+  const id = String(jid || '');
+  if (!id || id.includes('status@') || id.endsWith('@broadcast')) return false;
+  if (id.endsWith('@g.us') || id.endsWith('@newsletter')) return false;
+  return (
+    id.endsWith('@c.us')
+    || id.endsWith('@s.whatsapp.net')
+    || id.endsWith('@lid')
+  );
+}
+
+function inboundToken() {
+  if (process.env.PESAGEM_WA_INBOUND_TOKEN) return process.env.PESAGEM_WA_INBOUND_TOKEN;
+  try {
+    return fs.readFileSync(path.join(__dirname, '.token'), 'utf8').trim();
+  } catch (err) {
+    return '';
+  }
+}
+
+async function resolvePhone(jid) {
+  const id = String(jid || '');
+  const userPart = id.split('@')[0].split(':')[0];
+  if (id.endsWith('@c.us') || id.endsWith('@s.whatsapp.net')) return userPart;
+  if (client && typeof client.getContactLidAndPhone === 'function') {
+    try {
+      const mapped = await client.getContactLidAndPhone([id]);
+      const pn = mapped && mapped[0] && mapped[0].pn;
+      if (pn) {
+        const phone = String(pn).split('@')[0].split(':')[0];
+        if (phone) return phone;
+      }
+    } catch (err) {
+      console.error('lid->phone', err && err.message ? err.message : err);
+    }
+  }
+  return userPart;
+}
+
+const inboundSeen = new Set();
+
+async function handleIncoming(msg, source) {
+  if (!msg || msg.fromMe || msg.isStatus) return;
+  const id = msg.id && (msg.id._serialized || msg.id.id);
+  if (id) {
+    if (inboundSeen.has(id)) return;
+    inboundSeen.add(id);
+    if (inboundSeen.size > 400) inboundSeen.clear();
+  }
+  const jid = String(msg.from || '');
+  if (!isDirectChat(jid)) {
+    console.log('inbound ignorado', source, jid, msg.type || '');
+    return;
+  }
+  const phone = await resolvePhone(jid);
+  const text = String(msg.body || '').trim();
+  console.log('inbound', source, jid, phone, (text || '').slice(0, 80));
+  await postInbound({ from: phone, text: text, jid: jid });
 }
 
 function clearQr() {
@@ -186,24 +270,6 @@ async function hydrateStatus() {
   }
 }
 
-async function captureQrFromPage(qr) {
-  try {
-    const page = client && client.pupPage;
-    if (page) {
-      const handle = await page.$('canvas')
-        || await page.$('div[data-ref] canvas')
-        || await page.$('img[alt*="QR"]');
-      if (handle) {
-        const buf = await handle.screenshot({ encoding: 'base64', type: 'png' });
-        if (buf) return 'data:image/png;base64,' + buf;
-      }
-    }
-  } catch (err) {
-    console.error('qr screenshot', err && err.message ? err.message : err);
-  }
-  return QRCode.toDataURL(qr, { margin: 1, width: 280 });
-}
-
 function bindClientEvents(sock) {
   sock.on('qr', async (qr) => {
     state = 'qr';
@@ -211,14 +277,16 @@ function bindClientEvents(sock) {
     qrText = qr;
     user = null;
     try {
-      qrImage = await captureQrFromPage(qr);
+      qrImage = await QRCode.toDataURL(qr, { margin: 1, width: 280, errorCorrectionLevel: 'M' });
     } catch (err) {
       qrImage = null;
       console.error('QR PNG falhou', err);
     }
+    console.log('qr atualizado');
   });
 
   sock.on('ready', () => {
+    console.log('whatsapp-web ready');
     markOpen(sock);
   });
 
@@ -227,6 +295,7 @@ function bindClientEvents(sock) {
   });
 
   sock.on('authenticated', () => {
+    console.log('whatsapp-web authenticated');
     startError = null;
     clearQr();
     if (state !== 'open') state = 'connecting';
@@ -235,6 +304,7 @@ function bindClientEvents(sock) {
 
   sock.on('auth_failure', (msg) => {
     startError = String(msg || 'Falha na autenticação do WhatsApp Web.');
+    console.error('whatsapp-web auth_failure', startError);
     state = 'close';
     user = null;
     clearQr();
@@ -258,15 +328,22 @@ function bindClientEvents(sock) {
 
   sock.on('message', async (msg) => {
     try {
-      if (!msg || msg.fromMe) return;
-      const from = String(msg.from || '');
-      if (!from.endsWith('@c.us')) return;
-      const phone = from.split('@')[0].split(':')[0];
-      const text = String(msg.body || '').trim();
-      await postInbound({ from: phone, text: text });
+      await handleIncoming(msg, 'message');
     } catch (err) {
       console.error('message inbound', err && err.message ? err.message : err);
     }
+  });
+
+  sock.on('message_create', async (msg) => {
+    try {
+      await handleIncoming(msg, 'create');
+    } catch (err) {
+      console.error('message_create inbound', err && err.message ? err.message : err);
+    }
+  });
+
+  sock.on('message_ciphertext', (msg) => {
+    console.log('inbound ciphertext', msg && msg.from);
   });
 }
 
@@ -282,8 +359,10 @@ async function startClient() {
     loadLibs();
     fs.mkdirSync(AUTH_DIR, { recursive: true });
     const chromePath = findChrome();
+    const userAgent = buildUserAgent(chromePath);
+    console.log('chrome', chromePath || 'bundled', 'ua', userAgent);
     const puppeteerOpts = {
-      headless: HEADLESS,
+      headless: HEADLESS ? 'new' : false,
       defaultViewport: { width: 1280, height: 900 },
       ignoreDefaultArgs: ['--enable-automation'],
       args: [
@@ -307,12 +386,11 @@ async function startClient() {
         dataPath: AUTH_DIR,
       }),
       puppeteer: puppeteerOpts,
-      userAgent: USER_AGENT,
+      userAgent: userAgent,
       authTimeoutMs: 0,
       qrMaxRetries: 0,
-      takeoverOnConflict: true,
-      takeoverTimeoutMs: 8000,
-      webVersionCache: { type: 'local' },
+      takeoverOnConflict: false,
+      webVersionCache: { type: 'none' },
     });
     bindClientEvents(sock);
     client = sock;
@@ -395,7 +473,7 @@ async function logoutAndRestart() {
 
 function postInbound(payload) {
   const rawUrl = process.env.PESAGEM_WA_INBOUND_URL || 'http://127.0.0.1/api/chamados/whatsapp/inbound';
-  const token = process.env.PESAGEM_WA_INBOUND_TOKEN || '';
+  const token = inboundToken();
   let parsed;
   try {
     parsed = new URL(rawUrl);
@@ -418,8 +496,15 @@ function postInbound(payload) {
       },
       timeout: 45000,
     }, (res) => {
-      res.resume();
-      resolve();
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        if (res.statusCode >= 400) {
+          const raw = Buffer.concat(chunks).toString('utf8').slice(0, 300);
+          console.error('inbound http', res.statusCode, raw);
+        }
+        resolve();
+      });
     });
     req.on('error', (err) => {
       console.error('inbound', err && err.message ? err.message : err);

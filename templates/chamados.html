@@ -94,6 +94,8 @@
                             <th>Cliente</th>
                             <th>Setor</th>
                             <th>Prioridade</th>
+                            <th>Início</th>
+                            <th>Finalizado</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
@@ -108,13 +110,15 @@
                             <td>{{ c.cliente.nome if c.cliente else 'N/A' }}</td>
                             <td>{% if c.setor_destino %}<span class="setor-blink">{{ c.setor_destino }}</span>{% else %}—{% endif %}</td>
                             <td><span class="priority-{{ c.prioridade|lower|replace('é', 'e') }}">{{ c.prioridade }}</span></td>
+                            <td>{{ c.data_inicio_atendimento.strftime('%d/%m/%Y %H:%M') if c.data_inicio_atendimento else '—' }}</td>
+                            <td>{{ c.data_conclusao.strftime('%d/%m/%Y %H:%M') if c.data_conclusao else '—' }}</td>
                             <td class="acoes-cell">
                                 {{ btn_atender(c) }}
                                 <a href="{{ url_for('main.editar_chamado', id=c.id) }}" class="btn btn-sm btn-editar-link"><i class="fas fa-edit"></i> Editar</a>
                             </td>
                         </tr>
                         {% else %}
-                        <tr class="tk-empty"><td colspan="6" class="empty-row">Nenhum ticket neste estágio.</td></tr>
+                        <tr class="tk-empty"><td colspan="8" class="empty-row">Nenhum ticket neste estágio.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -135,6 +139,8 @@
                             <th>Cliente</th>
                             <th>Setor</th>
                             <th>Status</th>
+                            <th>Início</th>
+                            <th>Finalizado</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
@@ -149,13 +155,15 @@
                             <td>{{ c.cliente.nome if c.cliente else 'N/A' }}</td>
                             <td>{% if c.setor_destino %}<span class="setor-blink">{{ c.setor_destino }}</span>{% else %}—{% endif %}</td>
                             <td>{{ c.status }}</td>
+                            <td>{{ c.data_inicio_atendimento.strftime('%d/%m/%Y %H:%M') if c.data_inicio_atendimento else '—' }}</td>
+                            <td>{{ c.data_conclusao.strftime('%d/%m/%Y %H:%M') if c.data_conclusao else '—' }}</td>
                             <td class="acoes-cell">
                                 {{ btn_atender(c) }}
                                 <a href="{{ url_for('main.editar_chamado', id=c.id) }}" class="btn btn-sm btn-editar-link"><i class="fas fa-edit"></i> Editar</a>
                             </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="6" class="empty-row">Nenhum ticket fechado.</td></tr>
+                        <tr><td colspan="8" class="empty-row">Nenhum ticket fechado.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -1269,7 +1277,9 @@ body.modal-open { overflow: hidden; }
         form.action = '/api/chamados/' + data.id + '/atender';
         document.getElementById('atModalTitle').textContent = 'Atender ' + (data.numero_chamado || '');
         document.getElementById('atMeta').textContent =
-            (data.cliente || 'N/A') + ' · Status atual: ' + (data.status || '—');
+            (data.cliente || 'N/A') + ' · Status atual: ' + (data.status || '—')
+            + (data.data_inicio_atendimento ? ' · Início: ' + data.data_inicio_atendimento : '')
+            + (data.data_conclusao ? ' · Finalizado: ' + data.data_conclusao : '');
         const origemBox = document.getElementById('atOrigemBox');
         const origemTxt = document.getElementById('atOrigemTexto');
         const origemInst = document.getElementById('atOrigemInstrucoes');

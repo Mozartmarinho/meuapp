@@ -208,6 +208,26 @@ body.mdk-tv .main-content {
 .mdk-note-list li { border-bottom: 1px solid #f0f2f4; padding: 0.35rem 0; }
 .mdk-note-list a { color: #1a9e86; text-decoration: none; font-weight: 600; }
 .mdk-note-list small { display: block; color: var(--mdk-muted, #8a97a6); font-size: 0.66rem; }
+.mdk-graf-filtros { display: flex; flex-wrap: wrap; gap: 0.45rem 0.6rem; align-items: flex-end; margin-bottom: 0.7rem; }
+.mdk-graf-filtros label { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.66rem; color: var(--mdk-muted, #8a97a6); font-weight: 600; }
+.mdk-graf-filtros .mdk-select, .mdk-graf-filtros input { min-width: 9rem; }
+.mdk-graf-total { font-size: 0.75rem; font-weight: 700; color: #1a9e86; margin-left: auto; align-self: center; }
+.mdk-graf-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1rem; }
+.mdk-graf-grid h4 { margin: 0 0 0.4rem; font-size: 0.72rem; color: #5c6b7a; }
+.mdk-bars { display: flex; align-items: flex-end; gap: 0.35rem; height: 150px; overflow-x: auto; padding-top: 0.2rem; }
+.mdk-bar { flex: 1 0 2rem; min-width: 2rem; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
+.mdk-bar b { font-size: 0.62rem; color: #2c3e50; line-height: 1; }
+.mdk-bar i { display: block; width: 70%; max-width: 28px; background: #1ABC9C; border-radius: 3px 3px 0 0; }
+.mdk-bar span { font-size: 0.58rem; color: var(--mdk-muted, #8a97a6); margin-top: 0.2rem; white-space: nowrap; }
+.mdk-hbars { display: flex; flex-direction: column; gap: 0.35rem; max-height: 180px; overflow: auto; }
+.mdk-hbar { display: grid; grid-template-columns: 7.5rem 1fr 1.4rem; gap: 0.35rem; align-items: center; font-size: 0.68rem; }
+.mdk-hbar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mdk-hbar em { display: block; height: 8px; background: #eef1f4; border-radius: 99px; overflow: hidden; }
+.mdk-hbar em i { display: block; height: 100%; background: #1ABC9C; border-radius: 99px; }
+.mdk-hbar b { text-align: right; }
+@media (max-width: 800px) {
+    .mdk-graf-grid { grid-template-columns: 1fr; }
+}
 .mdk-chart-empty { height: 110px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--mdk-muted, #8a97a6); }
 .mdk-chart-empty svg { width: 100%; height: 72px; }
 .mdk-pie-wrap { display: flex; align-items: center; gap: 0.8rem; }

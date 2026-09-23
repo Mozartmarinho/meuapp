@@ -1,7 +1,11 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
-from zoneinfo import ZoneInfo
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # Python 3.8 no Linux de produção
+    from backports.zoneinfo import ZoneInfo
 
 db = SQLAlchemy()
 
@@ -52,7 +56,7 @@ STATUS_FECHADOS = (STATUS_ATENDIDO, STATUS_CONCLUIDO)
 TIPO_HOP_ENCAMINHAR = 'encaminhar'
 TIPO_HOP_DEVOLVER = 'devolver'
 TIPO_HOP_PECA = 'peca'
-MESA_PADRAO = 'Suporte'
+MESA_PADRAO = 'Informática'
 PASTA_CONHECIMENTO_PADRAO = 'Conhecimentos'
 TIPOS_CONTRATO = (
     'Suporte',
@@ -277,6 +281,7 @@ class Chamado(db.Model):
     contrato = db.relationship('Contrato', foreign_keys=[contrato_id])
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     data_conclusao = db.Column(db.DateTime)
+    data_inicio_atendimento = db.Column(db.DateTime, nullable=True)
     observacoes = db.Column(db.Text)
     equipamento = db.Column(db.String(100), nullable=True)
     patrimonio = db.Column(db.String(50), nullable=True)
@@ -297,6 +302,8 @@ class Chamado(db.Model):
     encaminhado_por_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
     encaminhado_em = db.Column(db.DateTime)
     encaminhado_por = db.relationship('Usuario', foreign_keys=[encaminhado_por_id])
+    canal_abertura = db.Column(db.String(20))
+    contato_abertura = db.Column(db.String(120))
     atendimentos = db.relationship(
         'ChamadoAtendimento', backref='chamado', cascade='all, delete-orphan', lazy='dynamic'
     )
@@ -325,6 +332,7 @@ class Chamado(db.Model):
             'mesa_id': self.mesa_id,
             'mesa': self.mesa.nome if self.mesa else None,
             'data_criacao': self.data_criacao.strftime('%d/%m/%Y %H:%M') if self.data_criacao else None,
+            'data_inicio_atendimento': fmt_brasilia(self.data_inicio_atendimento),
             'data_conclusao': self.data_conclusao.strftime('%d/%m/%Y %H:%M') if self.data_conclusao else None,
             'observacoes': self.observacoes,
             'equipamento': self.equipamento,
@@ -336,6 +344,8 @@ class Chamado(db.Model):
             'setor_destino': self.setor_destino,
             'setor_origem': self.setor_origem,
             'encaminhamento_instrucoes': self.encaminhamento_instrucoes,
+            'canal_abertura': self.canal_abertura,
+            'contato_abertura': self.contato_abertura,
         }
 
 
@@ -957,7 +967,7 @@ class ChamadoConhecimento(db.Model):
 
 
 class MesaServico(db.Model):
-    """Mesa de serviço (ex.: Suporte) — personalização da operação."""
+    """Mesa de serviço (ex.: Informática) — personalização da operação."""
     __tablename__ = 'mesas'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -1400,15 +1410,115 @@ def mesas_ativas():
         return []
 
 
+def mesa_por_nome(nome):
+    """Mesa cujo nome coincide ignorando acento e caixa (Informatica = Informática)."""
+    key = _fold_setor(nome)
+    if not key:
+        return None
+    try:
+        for row in MesaServico.query.order_by(MesaServico.id.asc()).all():
+            if _fold_setor(row.nome) == key:
+                return row
+    except Exception:
+        return None
+    return None
+
+
 def mesa_padrao():
     try:
-        row = MesaServico.query.filter_by(nome=MESA_PADRAO).first()
+        row = mesa_por_nome(MESA_PADRAO)
         if row:
             return row
         row = MesaServico.query.filter_by(ativa=True).order_by(MesaServico.id.asc()).first()
         return row
     except Exception:
         return None
+
+
+def migrar_mesa_suporte_para_informatica():
+    """Apaga a mesa Suporte e passa chamados, técnicos e automações para Informática."""
+    try:
+        from sqlalchemy import inspect
+        tabelas = set(inspect(db.engine).get_table_names())
+    except Exception:
+        return
+    if 'mesas' not in tabelas or 'chamados' not in tabelas:
+        return
+    destino = mesa_por_nome(MESA_PADRAO)
+    if not destino:
+        destino = MesaServico(nome=MESA_PADRAO, ativa=True)
+        db.session.add(destino)
+        db.session.flush()
+    origem = mesa_por_nome('Suporte')
+    if origem and origem.id != destino.id:
+        Chamado.query.filter(Chamado.mesa_id == origem.id).update(
+            {Chamado.mesa_id: destino.id}, synchronize_session=False
+        )
+        if 'chamado_automacoes' in tabelas:
+            ChamadoAutomacao.query.filter(ChamadoAutomacao.mesa_id == origem.id).update(
+                {ChamadoAutomacao.mesa_id: destino.id}, synchronize_session=False
+            )
+        if 'chamado_tecnico_mesas' in tabelas:
+            for link in ChamadoTecnicoMesa.query.filter_by(mesa_id=origem.id).all():
+                ja = ChamadoTecnicoMesa.query.filter_by(
+                    tecnico_id=link.tecnico_id, mesa_id=destino.id
+                ).first()
+                if ja:
+                    db.session.delete(link)
+                else:
+                    link.mesa_id = destino.id
+            db.session.flush()
+        db.session.delete(origem)
+    Chamado.query.filter(Chamado.mesa_id.is_(None)).update(
+        {Chamado.mesa_id: destino.id}, synchronize_session=False
+    )
+    db.session.commit()
+
+
+def preencher_inicio_atendimento_legado():
+    """Copia o primeiro atendimento já gravado para chamados sem data de início."""
+    try:
+        from sqlalchemy import inspect, text
+        tabelas = set(inspect(db.engine).get_table_names())
+        if 'chamados' not in tabelas:
+            return
+        cols = {c['name'] for c in inspect(db.engine).get_columns('chamados')}
+        if 'data_inicio_atendimento' not in cols:
+            return
+        if 'atendendo_em' in cols:
+            Chamado.query.filter(
+                Chamado.data_inicio_atendimento.is_(None),
+                Chamado.atendendo_em.isnot(None),
+            ).update(
+                {Chamado.data_inicio_atendimento: Chamado.atendendo_em},
+                synchronize_session=False,
+            )
+        if 'chamado_atendimentos' in tabelas:
+            db.session.execute(text(
+                'UPDATE chamados SET data_inicio_atendimento = ('
+                ' SELECT MIN(data_criacao) FROM chamado_atendimentos'
+                ' WHERE chamado_atendimentos.chamado_id = chamados.id'
+                ') WHERE data_inicio_atendimento IS NULL'
+                ' AND EXISTS ('
+                ' SELECT 1 FROM chamado_atendimentos'
+                ' WHERE chamado_atendimentos.chamado_id = chamados.id)'
+            ))
+            fechados = Chamado.query.filter(
+                Chamado.atendente_id.is_(None),
+                Chamado.status.in_(STATUS_FECHADOS),
+            ).all()
+            for chamado in fechados:
+                ultimo = (
+                    ChamadoAtendimento.query
+                    .filter_by(chamado_id=chamado.id)
+                    .order_by(ChamadoAtendimento.id.desc())
+                    .first()
+                )
+                if ultimo and ultimo.usuario_id:
+                    chamado.atendente_id = ultimo.usuario_id
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 def resolver_mesa_id(raw):

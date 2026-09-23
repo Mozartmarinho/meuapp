@@ -107,6 +107,9 @@
                     <div class="mdk-field"><label>Status</label><div class="val">{{ chamado.status }}</div></div>
                     <div class="mdk-field"><label>Estágio</label><div class="val">{{ estagio_label }}</div></div>
                     <div class="mdk-field"><label>Responsável</label><div class="val">{{ solicitante.nome if solicitante else '—' }}</div></div>
+                    <div class="mdk-field"><label>Atendido por</label><div class="val">{{ chamado.atendente.nome if chamado.atendente else '—' }}</div></div>
+                    <div class="mdk-field"><label>Início do atendimento</label><div class="val">{{ chamado.data_inicio_atendimento.strftime('%d/%m/%Y %H:%M') if chamado.data_inicio_atendimento else '—' }}</div></div>
+                    <div class="mdk-field"><label>Finalizado em</label><div class="val">{{ chamado.data_conclusao.strftime('%d/%m/%Y %H:%M') if chamado.data_conclusao else '—' }}</div></div>
                     <div class="mdk-field"><label>Origem</label><div class="val">{{ chamado.setor_origem or 'Sistema de Chamados' }}</div></div>
                     <div class="mdk-field mdk-sla-box">
                         <label>SLA</label>

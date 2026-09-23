@@ -76,12 +76,12 @@ def parse_hora(value):
     return None
 
 
-def peso_bruto_expr():
-    return func.coalesce(PesagemLeitura.peso_bruto, PesagemLeitura.peso, 0.0)
+def peso_liquido_expr():
+    return func.coalesce(PesagemLeitura.peso_liquido, PesagemLeitura.peso, 0.0)
 
 
-def totais_bruto_do_dia(dia=None):
-    """Soma o peso bruto de cada cadastro no dia (ex.: 10 pesagens CCD → um total)."""
+def totais_liquido_do_dia(dia=None):
+    """Soma o peso líquido de cada cadastro no dia (ex.: 10 pesagens CCD → um total)."""
     dia = dia or date.today()
     inicio = datetime.combine(dia, dt_time.min)
     fim = datetime.combine(dia, dt_time.max).replace(microsecond=0)
@@ -89,7 +89,7 @@ def totais_bruto_do_dia(dia=None):
         db.session.query(
             PesagemLeitura.cliente_id,
             PesagemLeitura.cliente_nome,
-            func.sum(peso_bruto_expr()),
+            func.sum(peso_liquido_expr()),
             func.count(PesagemLeitura.id),
         )
         .filter(
@@ -123,7 +123,7 @@ def montar_linhas_totais(totais):
 
 def montar_mensagem(template, totais=None, dia=None):
     dia = dia or date.today()
-    totais = totais if totais is not None else totais_bruto_do_dia(dia)
+    totais = totais if totais is not None else totais_liquido_do_dia(dia)
     cabeca = (template or '').strip()
     corpo = montar_linhas_totais(totais)
     if cabeca:
@@ -530,13 +530,6 @@ def logout_whatsapp():
     reason = _bridge_unavailable_reason()
     if reason and not _port_open(BRIDGE_HOST, BRIDGE_PORT):
         return {'ok': False, 'error': reason}
-    st = status_whatsapp(auto_start=False)
-    if st.get('state') != 'open':
-        return {
-            'ok': True,
-            'state': st.get('state'),
-            'qr_image': st.get('qr_image'),
-        }
     try:
         resp = _bridge_post('/logout', timeout=90)
         data = resp.json() if resp.content else {'ok': resp.ok}
@@ -548,9 +541,19 @@ def logout_whatsapp():
 
 
 def send_whatsapp(telefone, texto):
-    phone = normalizar_telefone(telefone)
-    if not telefone_valido(phone):
-        return {'ok': False, 'error': 'Telefone inválido'}
+    if _disabled():
+        return {'ok': False, 'error': 'WhatsApp desabilitado neste ambiente.'}
+    raw = str(telefone or '').strip()
+    if '@' in raw:
+        to = raw
+        phone = raw.split('@')[0].split(':')[0]
+        if not phone:
+            return {'ok': False, 'error': 'Telefone inválido'}
+    else:
+        phone = normalizar_telefone(raw)
+        if not telefone_valido(phone):
+            return {'ok': False, 'error': 'Telefone inválido'}
+        to = phone
     texto = (texto or '').strip()
     if not texto:
         return {'ok': False, 'error': 'Mensagem vazia'}
@@ -561,7 +564,7 @@ def send_whatsapp(telefone, texto):
     if st.get('state') != 'open':
         return {'ok': False, 'error': 'WhatsApp não está conectado. Leia o QR Code.'}
     try:
-        resp = _bridge_post('/send', {'to': phone, 'text': texto}, timeout=45)
+        resp = _bridge_post('/send', {'to': to, 'text': texto}, timeout=45)
         data = resp.json() if resp.content else {}
         if not resp.ok:
             return {'ok': False, 'error': data.get('error') or ('HTTP %s' % resp.status_code)}
@@ -602,7 +605,7 @@ def _gravar_envio(destino, dia, tipo, status, corpo, erro=None):
 def enviar_para_destino(destino, tipo='manual', dia=None, sender=None):
     dia = dia or date.today()
     sender = sender or send_whatsapp
-    totais = totais_bruto_do_dia(dia)
+    totais = totais_liquido_do_dia(dia)
     corpo = montar_mensagem(destino.mensagem, totais=totais, dia=dia)
     result = sender(destino.telefone, corpo)
     ok = bool(result and result.get('ok'))

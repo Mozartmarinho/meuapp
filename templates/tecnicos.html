@@ -260,7 +260,7 @@
         </div>
         <div class="form-group">
             <label id="tecMesaLabel">Mesa de serviço</label>
-            <select id="tecMesa">
+            <select id="tecMesa" hidden>
                 <option value="">Selecione...</option>
                 {% for m in mesas %}
                 {% if m.ativa %}
@@ -268,7 +268,7 @@
                 {% endif %}
                 {% endfor %}
             </select>
-            <div id="tecMesasMulti" class="tec-mesas-multi" hidden>
+            <div id="tecMesasMulti" class="tec-mesas-multi">
                 {% for m in mesas %}
                 {% if m.ativa %}
                 <label class="tec-mesa-check">
@@ -324,6 +324,8 @@
 #modalMesaOverlay, #modalMesa { z-index: 1100; }
 #modalMesa { z-index: 1101; }
 .tec-mesas-multi { display: flex; flex-direction: column; gap: 0.35rem; max-height: 180px; overflow-y: auto; border: 1px solid var(--gray-300); border-radius: 0.3rem; padding: 0.45rem 0.55rem; }
+.tec-mesas-multi[hidden] { display: none !important; }
+#tecMesa[hidden] { display: none !important; }
 .tec-mesa-check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; font-weight: 500; color: var(--gray-700); margin: 0; }
 .tec-mesa-check input { width: auto; margin: 0; }
 .tec-modal-head { display: flex; justify-content: space-between; align-items: center; padding: 0.8rem 1rem; border-bottom: 1px solid var(--gray-200); font-weight: 700; font-size: 0.9rem; }
@@ -360,24 +362,48 @@ function _ehMultiMesa(funcao) {
 function _mesasChecks() {
     return Array.prototype.slice.call(document.querySelectorAll('input[name="tecMesaCheck"]'));
 }
+function _aoMudarMesaCheck(ev) {
+    if (_ehMultiMesa(document.getElementById('tecFuncao').value)) return;
+    const origem = ev && ev.target && ev.target.checked ? ev.target : null;
+    _mesasChecks().forEach(function (el) {
+        if (origem && el !== origem) el.checked = false;
+    });
+    const marcado = _mesasChecks().filter(function (el) { return el.checked; })[0];
+    document.getElementById('tecMesa').value = marcado ? marcado.value : '';
+}
+function _prenderChecksMesa() {
+    _mesasChecks().forEach(function (el) {
+        el.removeEventListener('change', _aoMudarMesaCheck);
+        el.addEventListener('change', _aoMudarMesaCheck);
+    });
+}
 function atualizarUiMesa() {
     const funcao = document.getElementById('tecFuncao').value;
     const multi = _ehMultiMesa(funcao);
-    document.getElementById('tecMesa').hidden = multi;
-    document.getElementById('tecMesasMulti').hidden = !multi;
+    const sel = document.getElementById('tecMesa');
+    const wrap = document.getElementById('tecMesasMulti');
+    sel.hidden = true;
+    wrap.hidden = false;
     document.getElementById('tecMesaLabel').textContent = multi
         ? 'Mesas de serviço'
         : 'Mesa de serviço';
     document.getElementById('tecMesaHint').textContent = multi
         ? 'Supervisor e gestor podem responder por mais de uma mesa de serviço.'
-        : 'O chamado aberto nessa mesa cai para esta equipe.';
+        : 'Marque a mesa de serviço deste técnico.';
+    if (!multi) {
+        const marcados = _mesasChecks().filter(function (el) { return el.checked; });
+        _mesasChecks().forEach(function (el) {
+            if (marcados[0] && el !== marcados[0]) el.checked = false;
+        });
+        sel.value = marcados[0] ? marcados[0].value : '';
+    }
 }
 function mesasSelecionadas() {
-    if (_ehMultiMesa(document.getElementById('tecFuncao').value)) {
-        return _mesasChecks().filter(function (el) { return el.checked; }).map(function (el) { return el.value; });
-    }
+    const checks = _mesasChecks().filter(function (el) { return el.checked; }).map(function (el) { return el.value; });
+    if (_ehMultiMesa(document.getElementById('tecFuncao').value)) return checks;
     const v = document.getElementById('tecMesa').value;
-    return v ? [v] : [];
+    if (v) return [v];
+    return checks.slice(0, 1);
 }
 function marcarMesas(ids) {
     const set = {};
@@ -416,6 +442,7 @@ function incluirOpcaoMesa(id, nome) {
         label.querySelector('span').textContent = nome;
         wrap.appendChild(label);
     }
+    _prenderChecksMesa();
 }
 function removerOpcaoMesa(id) {
     const sel = document.getElementById('tecMesa');
@@ -522,6 +549,8 @@ function excluirMesa(id) {
 document.getElementById('btnAdicionarMesa').addEventListener('click', abrirModalListaMesas);
 document.getElementById('btnNovaMesa').addEventListener('click', novaMesa);
 document.getElementById('tecFuncao').addEventListener('change', atualizarUiMesa);
+_prenderChecksMesa();
+atualizarUiMesa();
 
 // ── Técnico ───────────────────────────────────────────────────
 function _acessoBadgeHtml(vinculado) {
@@ -614,12 +643,13 @@ function salvarTecnico() {
     const url = id ? '/tecnicos/tecnico/' + id + '/editar' : '/tecnicos/tecnico/adicionar';
     fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({ nome, email, whatsapp, funcao, mesa_ids: mesaIds }),
     })
-        .then(r => r.json())
-        .then(d => {
-            if (!d.ok) { erro.textContent = d.error; erro.style.display = ''; return; }
+        .then(function (r) { return r.json().then(function (d) { d._status = r.status; return d; }); })
+        .then(function (d) {
+            if (!d.ok) { erro.textContent = d.error || 'Não foi possível salvar o técnico.'; erro.style.display = ''; return; }
             fecharModalTecnico();
             if (id) {
                 const row = document.getElementById('tec-row-' + id);
@@ -632,6 +662,10 @@ function salvarTecnico() {
                 _preencherLinhaTecnico(tr, d);
                 tbody.appendChild(tr);
             }
+        })
+        .catch(function () {
+            erro.textContent = 'Falha ao salvar. Recarregue a página e tente de novo.';
+            erro.style.display = '';
         });
 }
 function excluirTecnico(tid) {

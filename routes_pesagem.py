@@ -965,7 +965,7 @@ def api_whatsapp_logout():
 @pesagem.route('/api/pesagem/whatsapp/preview', methods=['GET'])
 @login_required
 def api_whatsapp_preview():
-    from whatsapp_pesagem import montar_mensagem, totais_bruto_do_dia
+    from whatsapp_pesagem import montar_mensagem, totais_liquido_do_dia
 
     template = (request.args.get('mensagem') or '').strip()
     if not template:
@@ -983,7 +983,7 @@ def api_whatsapp_preview():
     if not template:
         template = 'Resumo da pesagem de hoje:'
     dia = _parse_date_arg(request.args.get('data')) or date.today()
-    totais = totais_bruto_do_dia(dia)
+    totais = totais_liquido_do_dia(dia)
     corpo = montar_mensagem(template, totais=totais, dia=dia)
     return jsonify({
         'ok': True,

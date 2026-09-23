@@ -45,9 +45,13 @@ def create_app():
 
     with app.app_context():
         try:
+            ensure_chamados_schema()
+        except Exception as extra:
+            print(f"Aviso ao ajustar schema de chamados: {extra}")
+        try:
             ensure_equipamentos_schema()
-        except Exception as exc:
-            print(f"Aviso ao ajustar schema de equipamentos: {exc}")
+        except Exception as extra:
+            print(f"Aviso ao ajustar schema de equipamentos: {extra}")
         try:
             ensure_whatsapp_chamado_schema()
         except Exception as exc:
@@ -336,12 +340,21 @@ def ensure_chamados_schema():
             'contrato_id': 'INT NULL',
             'atendente_id': 'INT NULL',
             'atendendo_em': 'DATETIME NULL',
+            'data_inicio_atendimento': 'DATETIME NULL',
+            'canal_abertura': 'VARCHAR(20) NULL',
+            'contato_abertura': 'VARCHAR(120) NULL',
         }
         for col, ddl in extras.items():
             if col not in cols:
                 db.session.execute(text(f'ALTER TABLE chamados ADD COLUMN {col} {ddl}'))
                 db.session.commit()
                 cols.add(col)
+        try:
+            from models import migrar_mesa_suporte_para_informatica, preencher_inicio_atendimento_legado
+            migrar_mesa_suporte_para_informatica()
+            preencher_inicio_atendimento_legado()
+        except Exception:
+            db.session.rollback()
         try:
             db.session.execute(text('ALTER TABLE chamados MODIFY COLUMN status VARCHAR(40) NULL'))
             db.session.commit()
@@ -384,6 +397,51 @@ def ensure_chamados_schema():
             db.session.commit()
     except Exception:
         db.session.rollback()
+
+
+def _garantir_coluna_equipamento_legado():
+    """A coluna legado `equipamento` é NOT NULL sem default.
+
+    O cadastro grava só nome_equipamento. O trigger copia o nome antes do
+    INSERT/UPDATE para o MySQL não recusar a linha (erro 1364).
+    """
+    from sqlalchemy import text
+    if db.engine.dialect.name != 'mysql':
+        return
+    try:
+        db.session.execute(text(
+            'ALTER TABLE equipamentos MODIFY COLUMN equipamento VARCHAR(100) NULL'
+        ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    for nome in ('equipamentos_bi_legado', 'equipamentos_bu_legado'):
+        try:
+            db.session.execute(text(f'DROP TRIGGER IF EXISTS {nome}'))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+    try:
+        db.session.execute(text(
+            'CREATE TRIGGER equipamentos_bi_legado BEFORE INSERT ON equipamentos '
+            'FOR EACH ROW BEGIN '
+            'IF NEW.equipamento IS NULL OR NEW.equipamento = \'\' THEN '
+            'SET NEW.equipamento = IFNULL(NEW.nome_equipamento, \'\'); '
+            'END IF; '
+            'END'
+        ))
+        db.session.execute(text(
+            'CREATE TRIGGER equipamentos_bu_legado BEFORE UPDATE ON equipamentos '
+            'FOR EACH ROW BEGIN '
+            'IF NEW.nome_equipamento IS NOT NULL AND NEW.nome_equipamento != \'\' THEN '
+            'SET NEW.equipamento = NEW.nome_equipamento; '
+            'END IF; '
+            'END'
+        ))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f'Aviso: trigger de equipamento legado não criado: {exc}')
 
 
 def ensure_equipamentos_schema():
@@ -447,6 +505,7 @@ def ensure_equipamentos_schema():
                 db.session.commit()
             except Exception:
                 db.session.rollback()
+            _garantir_coluna_equipamento_legado()
         try:
             db.session.execute(text(
                 'ALTER TABLE equipamentos ADD CONSTRAINT fk_equipamentos_grupo '
@@ -765,8 +824,9 @@ def ensure_tecnicos_schema():
             if not ChamadoSetor.query.filter_by(nome=nome).first():
                 db.session.add(ChamadoSetor(nome=nome, ativo=True))
         db.session.commit()
-    except Exception:
+    except Exception as exc:
         db.session.rollback()
+        print(f'Aviso ao ajustar schema de técnicos: {exc}')
 
 
 def ensure_cameras_schema():
@@ -839,9 +899,7 @@ def ensure_operacao_chamados_schema():
         SlaPrioridade,
         ChamadoAutomacao,
         ConhecimentoPasta,
-        MESA_PADRAO,
         PASTA_CONHECIMENTO_PADRAO,
-        SLA_PADRAO_HORAS,
         STATUS_ENCAMINHADO,
     )
     try:
@@ -894,18 +952,8 @@ def ensure_operacao_chamados_schema():
                 db.session.commit()
             except Exception:
                 db.session.rollback()
-        if not MesaServico.query.filter_by(nome=MESA_PADRAO).first():
-            db.session.add(MesaServico(nome=MESA_PADRAO, ativa=True))
-            db.session.flush()
-        suporte = MesaServico.query.filter_by(nome=MESA_PADRAO).first()
-        if suporte:
-            try:
-                db.session.execute(
-                    text('UPDATE chamados SET mesa_id = :mid WHERE mesa_id IS NULL'),
-                    {'mid': suporte.id},
-                )
-            except Exception:
-                db.session.rollback()
+        from models import migrar_mesa_suporte_para_informatica
+        migrar_mesa_suporte_para_informatica()
         for pri, horas in (('Alta', (4, 8)), ('Normal', (8, 24)), ('Baixa', (24, 72))):
             row = SlaPrioridade.query.filter_by(prioridade=pri).first()
             if not row:

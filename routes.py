@@ -43,6 +43,7 @@ from models import (
     SetorFuncao,
     WhatsAppChamadoUsuario,
     now_brasilia,
+    fmt_brasilia,
     TIPO_FOTO_CONSERTO,
     TIPO_FOTO_ENCAMINHAMENTO,
     TIPO_HOP_ENCAMINHAR,
@@ -100,6 +101,7 @@ from werkzeug.utils import secure_filename
 import json
 import os
 import random
+import re
 import secrets
 import string
 import uuid
@@ -384,15 +386,35 @@ def _registros_tecnico_usuario(usuario):
         return []
 
 
+def _funcao_campanha(tecnico):
+    return (getattr(tecnico, 'funcao', None) or 'tecnico').strip().lower() in FUNCOES_CAMPANHA_TICKET
+
+
+def _mesas_ids_tecnico(tecnico):
+    try:
+        return {m.id for m in (tecnico.mesas or []) if m is not None and getattr(m, 'id', None)}
+    except Exception:
+        return set()
+
+
 def _recebe_campanha_ticket(usuario):
-    """Técnico, supervisor, gestor (cadastro) ou admin/master recebem o aviso de chamado novo."""
+    """Técnico, supervisor ou gestor com mesa vinculada recebe o toque."""
     if not usuario:
         return False
-    if _eh_gestor(usuario):
-        return True
     for tec in _registros_tecnico_usuario(usuario):
-        funcao = (tec.funcao or 'tecnico').strip().lower()
-        if funcao in FUNCOES_CAMPANHA_TICKET:
+        if _funcao_campanha(tec) and _mesas_ids_tecnico(tec):
+            return True
+    return False
+
+
+def _usuario_toca_mesa(usuario, mesa_id):
+    """Toque só para técnico, supervisor ou gestor vinculado à mesa do ticket."""
+    if not usuario or not mesa_id:
+        return False
+    for tec in _registros_tecnico_usuario(usuario):
+        if not _funcao_campanha(tec):
+            continue
+        if mesa_id in _mesas_ids_tecnico(tec):
             return True
     return False
 
@@ -427,10 +449,23 @@ def _bloqueio_atendimento(chamado, user):
     return 'Este chamado já está com %s. Outro técnico não pode atender.' % nome
 
 
+def _marcar_inicio_atendimento(chamado):
+    """Grava data e hora da primeira vez que alguém atende. Não apaga depois."""
+    if not getattr(chamado, 'data_inicio_atendimento', None):
+        chamado.data_inicio_atendimento = now_brasilia()
+
+
+def _marcar_conclusao(chamado):
+    """Grava data e hora em que o ticket foi finalizado."""
+    if status_fechado(chamado.status) and not chamado.data_conclusao:
+        chamado.data_conclusao = now_brasilia()
+
+
 def _assumir_chamado(chamado, user):
     """Atribui o chamado ao técnico e entra em atendimento (o toque para)."""
     chamado.atendente_id = user.id
-    chamado.atendendo_em = datetime.utcnow()
+    chamado.atendendo_em = now_brasilia()
+    _marcar_inicio_atendimento(chamado)
     if (chamado.status or '') == STATUS_CAMPANHA_AGUARDANDO:
         chamado.status = STATUS_EM_ANDAMENTO
     db.session.commit()
@@ -465,6 +500,15 @@ def _primeiro_nome(usuario):
         return nome_tec.split()[0]
     nome = (getattr(usuario, 'nome', None) or '').strip()
     return nome.split()[0] if nome else 'olá'
+
+
+def _nome_tecnico_aviso(usuario):
+    """Nome completo do técnico para aviso de finalização."""
+    tec = _tecnico_vinculado(usuario)
+    nome = (getattr(tec, 'nome', None) or '').strip() if tec else ''
+    if nome:
+        return nome
+    return (getattr(usuario, 'nome', None) or '').strip() or 'técnico'
 
 
 def _filtro_chamados_usuario(user):
@@ -553,6 +597,134 @@ def _avisar_abertura_whatsapp(chamado):
         notificar_abertura_chamado(chamado)
     except Exception as exc:
         print(f'Falha ao enviar WhatsApp de abertura de ticket: {exc}')
+
+
+def montar_texto_finalizacao(chamado, tecnico_nome, hora, o_que_foi_feito):
+    numero = (getattr(chamado, 'numero_chamado', None) or '').strip() or 'chamado'
+    feito = (o_que_foi_feito or '').strip() or 'Não informado.'
+    return (
+        'Chamado %s foi finalizado.\n\n'
+        'Técnico: %s\n'
+        'Horário: %s\n'
+        'O que foi feito: %s'
+        % (numero, tecnico_nome or 'técnico', hora or '—', feito)
+    )
+
+
+def _canal_abertura_chamado(chamado):
+    canal = (getattr(chamado, 'canal_abertura', None) or '').strip()
+    if canal:
+        return canal
+    obs = (getattr(chamado, 'observacoes', None) or '').lower()
+    if 'whatsapp' in obs:
+        return 'WhatsApp'
+    try:
+        if ChamadoMensagem.query.filter_by(chamado_id=chamado.id, origem='whatsapp').first():
+            return 'WhatsApp'
+    except Exception:
+        pass
+    return 'E-mail'
+
+
+def _contato_abertura_chamado(chamado, canal):
+    contato = (getattr(chamado, 'contato_abertura', None) or '').strip()
+    if contato:
+        return contato
+    if canal == 'WhatsApp':
+        desc = getattr(chamado, 'descricao', None) or ''
+        match = re.search(r'Telefone:\s*([+\d][\d\s\-()]{7,24})', desc)
+        if match:
+            return ''.join(ch for ch in match.group(1) if ch.isdigit())
+        return ''
+    opener = getattr(chamado, 'tecnico', None)
+    return (getattr(opener, 'email', None) or '').strip() if opener else ''
+
+
+def _avisar_finalizacao_ticket(chamado, tecnico, o_que_foi_feito, enviar_wa=None, enviar_mail=None, agora=None):
+    """Avisa quem abriu, no mesmo canal da abertura. Não derruba a finalização."""
+    if not chamado:
+        return {'ok': False, 'skipped': True}
+    canal = _canal_abertura_chamado(chamado)
+    hora = fmt_brasilia(agora or now_brasilia(), '%d/%m/%Y %H:%M')
+    nome = _nome_tecnico_aviso(tecnico)
+    texto = montar_texto_finalizacao(chamado, nome, hora, o_que_foi_feito)
+    enviado = False
+    erro = None
+    contato = _contato_abertura_chamado(chamado, canal)
+    try:
+        if canal == 'WhatsApp':
+            sender = enviar_wa
+            if sender is None:
+                from whatsapp_pesagem import send_whatsapp
+                sender = send_whatsapp
+            if not contato:
+                erro = 'Ticket WhatsApp sem telefone do solicitante.'
+            else:
+                result = sender(contato, texto)
+                enviado = bool(result and result.get('ok'))
+                if not enviado:
+                    erro = (result or {}).get('error') or 'Falha no envio WhatsApp'
+                else:
+                    try:
+                        from models import WhatsAppChamadoLog
+                        wa_user = WhatsAppChamadoUsuario.query.filter_by(telefone=contato).first()
+                        db.session.add(WhatsAppChamadoLog(
+                            usuario_id=wa_user.id if wa_user else None,
+                            telefone=contato,
+                            direcao='out',
+                            texto=texto[:4000],
+                        ))
+                    except Exception:
+                        pass
+        elif canal == 'E-mail':
+            dest = contato if '@' in (contato or '') else ''
+            if not dest:
+                erro = 'Quem abriu o chamado não tem e-mail.'
+            else:
+                sender = enviar_mail
+                if sender is None:
+                    from email_service import smtp_configurado, enviar_email
+                    if not smtp_configurado():
+                        erro = 'SMTP não configurado'
+                    else:
+                        sender = enviar_email
+                if sender and not erro:
+                    html = (
+                        '<p>Chamado <strong>%s</strong> foi finalizado.</p>'
+                        '<p><strong>Técnico:</strong> %s<br>'
+                        '<strong>Horário:</strong> %s</p>'
+                        '<p><strong>O que foi feito:</strong><br>%s</p>'
+                        % (
+                            (chamado.numero_chamado or '').replace('<', ''),
+                            nome.replace('<', ''),
+                            hora.replace('<', ''),
+                            (o_que_foi_feito or 'Não informado.').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>'),
+                        )
+                    )
+                    sender(
+                        dest,
+                        'Ticket %s finalizado' % (chamado.numero_chamado or ''),
+                        texto,
+                        html,
+                    )
+                    enviado = True
+        db.session.add(ChamadoMensagem(
+            chamado_id=chamado.id,
+            usuario_id=getattr(tecnico, 'id', None),
+            texto=texto,
+            canal=canal if canal in CANAIS_MENSAGEM else 'Chat',
+            visivel_cliente=True,
+            enviada=enviado,
+            origem='sistema',
+        ))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        erro = str(exc)
+        print(f'Falha ao avisar finalização do ticket: {exc}')
+    if erro and not enviado:
+        print(f'Aviso de finalização não enviado ({canal}): {erro}')
+    return {'ok': enviado, 'canal': canal, 'erro': erro, 'texto': texto}
 
 
 def _ultima_movimentacao(chamado):
@@ -1007,6 +1179,8 @@ def _chamado_atender_payload(chamado, usuario=None):
         'setores': listar_setores(TIPO_SETOR_CHAMADOS),
         'atendente_id': getattr(chamado, 'atendente_id', None),
         'atendente_nome': _nome_atendente(chamado),
+        'data_inicio_atendimento': fmt_brasilia(getattr(chamado, 'data_inicio_atendimento', None)),
+        'data_conclusao': fmt_brasilia(getattr(chamado, 'data_conclusao', None)),
     }
 
 @main.route('/instalar-certificado')
@@ -1887,6 +2061,126 @@ def excluir_acesso(id):
         return redirect(url_for('main.listar_acessos'))
 
 
+def _parse_data_filtro(raw, padrao):
+    txt = (raw or '').strip()
+    if not txt:
+        return padrao
+    try:
+        return datetime.strptime(txt, '%Y-%m-%d').date()
+    except ValueError:
+        return padrao
+
+
+def _barras(pares):
+    itens = list(pares)
+    topo = max((n for _, n in itens), default=0) or 1
+    return [
+        {
+            'label': label,
+            'count': n,
+            'pct': max(6, round(n * 100 / topo)) if n else 0,
+        }
+        for label, n in itens
+    ]
+
+
+def _grafico_finalizados_dashboard(args, mesa_filtro):
+    """Finalizados no período, agrupados por dia/semana/mês e por técnico."""
+    hoje = now_brasilia().date()
+    inicio = _parse_data_filtro(args.get('de'), hoje - timedelta(days=29))
+    fim = _parse_data_filtro(args.get('ate'), hoje)
+    if inicio > fim:
+        inicio, fim = fim, inicio
+    tecnico_id = args.get('tecnico', type=int)
+    q = (
+        Chamado.query.options(joinedload(Chamado.atendente))
+        .filter(
+            Chamado.status.in_(STATUS_FECHADOS),
+            Chamado.data_conclusao.isnot(None),
+            Chamado.data_conclusao >= datetime.combine(inicio, datetime.min.time()),
+            Chamado.data_conclusao < datetime.combine(fim + timedelta(days=1), datetime.min.time()),
+        )
+    )
+    if mesa_filtro:
+        q = q.filter(Chamado.mesa_id == mesa_filtro)
+    rows = q.all()
+    dias = (fim - inicio).days + 1
+    if dias <= 31:
+        passo = timedelta(days=1)
+        def rotulo(dt):
+            return dt.strftime('%d/%m')
+        def chave(dt):
+            return dt.date()
+        cursor = inicio
+        buckets = []
+        while cursor <= fim:
+            buckets.append(cursor)
+            cursor += passo
+    elif dias <= 120:
+        def rotulo(dt):
+            ini_sem = dt - timedelta(days=dt.weekday())
+            return ini_sem.strftime('%d/%m')
+        def chave(dt):
+            return dt.date() - timedelta(days=dt.weekday())
+        cursor = inicio - timedelta(days=inicio.weekday())
+        buckets = []
+        while cursor <= fim:
+            buckets.append(cursor)
+            cursor += timedelta(days=7)
+    else:
+        def rotulo(dt):
+            return dt.strftime('%m/%Y')
+        def chave(dt):
+            return dt.date().replace(day=1)
+        cursor = inicio.replace(day=1)
+        buckets = []
+        while cursor <= fim:
+            buckets.append(cursor)
+            if cursor.month == 12:
+                cursor = cursor.replace(year=cursor.year + 1, month=1)
+            else:
+                cursor = cursor.replace(month=cursor.month + 1)
+    por_periodo = Counter()
+    por_tecnico = Counter()
+    for chamado in rows:
+        conclusao = chamado.data_conclusao
+        if tecnico_id and chamado.atendente_id != tecnico_id:
+            nome = chamado.atendente.nome if chamado.atendente else 'Sem técnico'
+            por_tecnico[nome] += 1
+            continue
+        por_periodo[chave(conclusao)] += 1
+        nome = chamado.atendente.nome if chamado.atendente else 'Sem técnico'
+        por_tecnico[nome] += 1
+    if tecnico_id:
+        por_tecnico_filtrado = Counter()
+        for chamado in rows:
+            if chamado.atendente_id == tecnico_id:
+                nome = chamado.atendente.nome if chamado.atendente else 'Sem técnico'
+                por_tecnico_filtrado[nome] += 1
+        serie_tecnico = por_tecnico_filtrado
+        total = sum(por_tecnico_filtrado.values())
+    else:
+        serie_tecnico = por_tecnico
+        total = len(rows)
+    periodo = _barras((rotulo(b), por_periodo.get(b, 0)) for b in buckets)
+    tecnicos_serie = _barras(serie_tecnico.most_common(12))
+    opcoes = []
+    vistos = set()
+    for tec in ChamadoTecnico.query.filter_by(ativo=True).order_by(ChamadoTecnico.nome.asc()).all():
+        if not tec.usuario_id or tec.usuario_id in vistos:
+            continue
+        vistos.add(tec.usuario_id)
+        opcoes.append({'id': tec.usuario_id, 'nome': tec.nome})
+    return {
+        'de': inicio.strftime('%Y-%m-%d'),
+        'ate': fim.strftime('%Y-%m-%d'),
+        'tecnico_id': tecnico_id,
+        'total': total,
+        'periodo': periodo,
+        'tecnicos': tecnicos_serie,
+    }, opcoes
+
+
 @main.route('/dashboard')
 @login_required
 def dashboard():
@@ -1962,6 +2256,7 @@ def dashboard():
                 'url': url_for('main.listar_chamados', atender=a.chamado_id),
             })
     tickets_index = [{'id': c.id, 'numero': c.numero_chamado} for c in visiveis]
+    graf, tecnicos_graf = _grafico_finalizados_dashboard(request.args, mesa_filtro)
     dash = {
         'todos': len(visiveis),
         'meus': len(meus),
@@ -1990,6 +2285,8 @@ def dashboard():
         sem_resp=sem_resp[:8],
         mesas=mesas,
         mesa_filtro=mesa_filtro,
+        graf=graf,
+        tecnicos_graf=tecnicos_graf,
     )
 
 
@@ -2160,6 +2457,8 @@ def novo_chamado():
                 tecnico_id=session['user_id'],
                 mesa_id=resolver_mesa_id(request.form.get('mesa_id')),
                 setor_tecnico_id=setor_tecnico_id,
+                canal_abertura='E-mail',
+                contato_abertura=(getattr(user, 'email', None) or '').strip() or None,
             )
             vig = contrato_vigente(cliente_id)
             if vig:
@@ -2225,13 +2524,19 @@ def editar_chamado(id):
             if mesa_id:
                 chamado.mesa_id = mesa_id
 
-            if status_fechado(request.form['status']) and not chamado.data_conclusao:
-                chamado.data_conclusao = datetime.utcnow()
+            if status_fechado(request.form['status']):
+                _marcar_conclusao(chamado)
 
             user = Usuario.query.get(session['user_id'])
             aplicar_automacoes(chamado, 'status', user, status_anterior=status_antes)
 
             db.session.commit()
+            if status_fechado(chamado.status) and not status_fechado(status_antes):
+                _avisar_finalizacao_ticket(
+                    chamado,
+                    user,
+                    chamado.atendimento_notas or chamado.observacoes,
+                )
             flash('Chamado atualizado com sucesso!', 'success')
             return redirect(url_for('main.listar_chamados'))
 
@@ -2424,7 +2729,7 @@ def api_campanha_ticket():
     campanhas = [
         _payload_campanha(chamado)
         for chamado in rows
-        if _chamado_da_equipe(user, chamado)
+        if _usuario_toca_mesa(user, chamado.mesa_id)
     ][:8]
     watch_ids = []
     for part in (request.args.get('ids') or '').split(','):
@@ -2447,7 +2752,7 @@ def api_campanha_ticket():
         pendentes = [
             _payload_campanha(chamado)
             for chamado in watch_rows
-            if _chamado_da_equipe(user, chamado)
+            if _usuario_toca_mesa(user, chamado.mesa_id)
         ]
     retomados_rows = (
         Chamado.query.options(joinedload(Chamado.cliente), joinedload(Chamado.atendente))
@@ -2463,7 +2768,7 @@ def api_campanha_ticket():
     retomados = [
         _payload_campanha(chamado)
         for chamado in retomados_rows
-        if _chamado_da_equipe(user, chamado)
+        if _usuario_toca_mesa(user, chamado.mesa_id)
     ]
     return jsonify({
         'ok': True,
@@ -2481,13 +2786,21 @@ def atualizar_status(id):
     """API para atualizar status do chamado"""
     try:
         chamado = Chamado.query.get_or_404(id)
+        status_antes = chamado.status
         novo_status = request.json.get('status')
 
         chamado.status = novo_status
-        if status_fechado(novo_status) and not chamado.data_conclusao:
-            chamado.data_conclusao = datetime.utcnow()
+        if status_fechado(novo_status):
+            _marcar_conclusao(chamado)
 
         db.session.commit()
+        if status_fechado(chamado.status) and not status_fechado(status_antes):
+            user = Usuario.query.get(session.get('user_id'))
+            _avisar_finalizacao_ticket(
+                chamado,
+                user,
+                chamado.atendimento_notas,
+            )
 
         return jsonify({
             'success': True,
@@ -2535,7 +2848,8 @@ def atender_chamado(id):
         return jsonify({'ok': False, 'message': bloqueio}), 409
     if not chamado.atendente_id:
         chamado.atendente_id = user.id
-        chamado.atendendo_em = datetime.utcnow()
+        chamado.atendendo_em = now_brasilia()
+    _marcar_inicio_atendimento(chamado)
 
     acao = (request.form.get('acao') or 'salvar').strip().lower()
     status_antes = chamado.status
@@ -2632,8 +2946,8 @@ def atender_chamado(id):
     chamado.atendimento_notas = notas or chamado.atendimento_notas
     if chamado.status == STATUS_DEVOLVIDO:
         chamado.data_conclusao = None
-    elif status_fechado(chamado.status) and not chamado.data_conclusao:
-        chamado.data_conclusao = datetime.utcnow()
+    elif status_fechado(chamado.status):
+        _marcar_conclusao(chamado)
     if acao in ('finalizar', 'encaminhar'):
         chamado.atendendo_em = None
         if not chamado.atendente_id:
@@ -2693,6 +3007,8 @@ def atender_chamado(id):
         msg = 'Chamado finalizado.'
     else:
         msg = 'Atendimento gravado.'
+    if status_fechado(chamado.status) and not status_fechado(status_antes):
+        _avisar_finalizacao_ticket(chamado, user, notas)
     return jsonify({
         'ok': True,
         'success': True,
@@ -2817,7 +3133,7 @@ def tecnicos():
     mesas = MesaServico.query.order_by(MesaServico.nome).all()
     tecnicos_list = (
         ChamadoTecnico.query
-        .options(joinedload(ChamadoTecnico.setor))
+        .options(joinedload(ChamadoTecnico.setor), joinedload(ChamadoTecnico.mesas))
         .order_by(ChamadoTecnico.nome)
         .all()
     )
@@ -2975,7 +3291,7 @@ def _tecnico_json(t):
 
 
 def _parse_funcao_tecnico(data):
-    funcao = (data.get('funcao') or '').strip().lower()
+    funcao = str(data.get('funcao') or '').strip().lower()
     if not funcao:
         return None, 'Informe a função do técnico.'
     if funcao not in FUNCOES_TECNICO_KEYS:
@@ -3010,7 +3326,7 @@ def _parse_mesa_ids(data, funcao):
 
 def _parse_whatsapp_tecnico(data):
     from whatsapp_pesagem import normalizar_telefone, telefone_valido
-    raw = (data.get('whatsapp') or '').strip()
+    raw = str(data.get('whatsapp') or data.get('telefone') or '').strip()
     if not raw:
         return '', None
     if not telefone_valido(raw):
@@ -3024,13 +3340,13 @@ def adicionar_chamado_tecnico():
     user = Usuario.query.get(session['user_id'])
     if not user or not user.tem_menu('chamados', 'tecnicos'):
         return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
-    data = request.get_json(silent=True) or request.form
-    nome = (data.get('nome') or '').strip()
+    data = request.get_json(silent=True) or request.form or {}
+    nome = str(data.get('nome') or '').strip()
     email = _normalizar_email(data.get('email'))
     funcao, err_funcao = _parse_funcao_tecnico(data)
     whatsapp, err_whatsapp = _parse_whatsapp_tecnico(data)
     mesas, err_mesas = _parse_mesa_ids(data, funcao)
-    setor_id_raw = (data.get('setor_id') or '').strip()
+    setor_id_raw = str(data.get('setor_id') or '').strip()
     setor_id = int(setor_id_raw) if setor_id_raw.isdigit() else None
     if not nome:
         return jsonify({'ok': False, 'error': 'Informe o nome do técnico.'}), 400
@@ -3063,13 +3379,13 @@ def editar_chamado_tecnico(tid):
     if not user or not user.tem_menu('chamados', 'tecnicos'):
         return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
     t = ChamadoTecnico.query.get_or_404(tid)
-    data = request.get_json(silent=True) or request.form
-    nome = (data.get('nome') or '').strip()
+    data = request.get_json(silent=True) or request.form or {}
+    nome = str(data.get('nome') or '').strip()
     email = _normalizar_email(data.get('email'))
     funcao, err_funcao = _parse_funcao_tecnico(data)
     whatsapp, err_whatsapp = _parse_whatsapp_tecnico(data)
     mesas, err_mesas = _parse_mesa_ids(data, funcao)
-    setor_id_raw = (data.get('setor_id') or '').strip()
+    setor_id_raw = str(data.get('setor_id') or '').strip()
     setor_id = int(setor_id_raw) if setor_id_raw.isdigit() else None
     if not nome:
         return jsonify({'ok': False, 'error': 'Informe o nome do técnico.'}), 400
@@ -5035,7 +5351,8 @@ def api_chamados_whatsapp_inbound():
     payload = request.get_json(silent=True) or {}
     telefone = payload.get('from') or payload.get('telefone') or ''
     texto = payload.get('text') or payload.get('texto') or ''
-    result = process_inbound(telefone, texto, sender=send_whatsapp)
+    jid = payload.get('jid') or ''
+    result = process_inbound(telefone, texto, sender=send_whatsapp, jid=jid)
     code = 200 if result.get('ok') else 400
     return jsonify(result), code
 

@@ -104,12 +104,14 @@
                         <strong>Data de Criação:</strong><br>
                         {{ chamado.data_criacao.strftime('%d/%m/%Y %H:%M') if chamado.data_criacao else '-' }}
                     </div>
-                    {% if chamado.data_conclusao %}
                     <div>
-                        <strong>Data de Conclusão:</strong><br>
-                        {{ chamado.data_conclusao.strftime('%d/%m/%Y %H:%M') }}
+                        <strong>Início do atendimento:</strong><br>
+                        {{ chamado.data_inicio_atendimento.strftime('%d/%m/%Y %H:%M') if chamado.data_inicio_atendimento else '—' }}
                     </div>
-                    {% endif %}
+                    <div>
+                        <strong>Finalizado em:</strong><br>
+                        {{ chamado.data_conclusao.strftime('%d/%m/%Y %H:%M') if chamado.data_conclusao else '—' }}
+                    </div>
                     <div>
                         <strong>Status Atual:</strong><br>
                         <span class="status-badge status-{{ chamado.status.lower().replace(' ', '') }}">

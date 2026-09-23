@@ -132,6 +132,7 @@ class WhatsAppChamadoTest(unittest.TestCase):
         html = r.get_data(as_text=True)
         self.assertIn('Conf. Mensagem WhatsApp', html)
         self.assertIn('Cadastro de usuário WhatsApp', html)
+        self.assertIn('defeito', html.lower())
 
     def test_fluxo_novo_abre_ticket(self):
         phone = '21988880000'
@@ -164,6 +165,8 @@ class WhatsAppChamadoTest(unittest.TestCase):
         self.assertEqual(chamado.mesa_id, self.mesa.id)
         self.assertEqual(chamado.patrimonio, 'PAT-100')
         self.assertEqual(chamado.tipo_servico, 'Manutenção')
+        self.assertEqual(chamado.canal_abertura, 'WhatsApp')
+        self.assertTrue((chamado.contato_abertura or '').endswith('21988880000'))
 
     def test_usuario_cadastrado_confirma_e_edita(self):
         phone = '21977770000'
@@ -238,6 +241,26 @@ class WhatsAppChamadoTest(unittest.TestCase):
         })
         self.assertEqual(r4.status_code, 200, r4.get_data(as_text=True))
         self.assertEqual(r4.get_json()['mesa_ids'], [self.mesa.id])
+        r5 = self.client.post('/tecnicos/tecnico/adicionar', json={
+            'nome': 'Yuri Assistente',
+            'funcao': 'assistente',
+            'whatsapp': '21966661111',
+            'mesa_ids': [self.mesa_eletrica.id],
+        })
+        self.assertEqual(r5.status_code, 200, r5.get_data(as_text=True))
+        self.assertEqual(r5.get_json()['mesa_ids'], [self.mesa_eletrica.id])
+        aid = r5.get_json()['id']
+        r6 = self.client.post('/tecnicos/tecnico/%s/editar' % aid, json={
+            'nome': 'Yuri Assistente',
+            'funcao': 'assistente',
+            'whatsapp': '21966661111',
+            'mesa_ids': [self.mesa.id],
+        })
+        self.assertEqual(r6.status_code, 200, r6.get_data(as_text=True))
+        self.assertEqual(r6.get_json()['mesa_ids'], [self.mesa.id])
+        html = self.client.get('/tecnicos').get_data(as_text=True)
+        self.assertIn('.tec-mesas-multi[hidden]', html)
+        self.assertIn('_aoMudarMesaCheck', html)
         r_get = self.client.get('/tecnicos')
         self.assertEqual(r_get.status_code, 200, r_get.get_data(as_text=True))
         html = r_get.get_data(as_text=True)
@@ -468,6 +491,19 @@ class WhatsAppChamadoTest(unittest.TestCase):
         chamado = Chamado.query.order_by(Chamado.id.desc()).first()
         self.assertEqual(chamado.tipo_servico, 'Reparo de câmera')
         self.assertEqual(chamado.equipamento, 'Câmera do corredor 3')
+
+    def test_inbound_com_token_inicia_cadastro(self):
+        from whatsapp_pesagem import inbound_token
+        token = inbound_token()
+        r = self.client.post(
+            '/api/chamados/whatsapp/inbound',
+            json={'from': '21988880001', 'text': 'Oi', 'jid': '21988880001@c.us'},
+            headers={'X-WA-Token': token},
+        )
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        data = r.get_json()
+        self.assertTrue(data.get('ok'))
+        self.assertTrue(any('não está cadastrado' in m for m in (data.get('replies') or [])))
 
 
 if __name__ == '__main__':

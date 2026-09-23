@@ -22,6 +22,7 @@ docs/acesso/dumps/*.sql.bz2
 # --- Ambiente virtual ---
 venv/
 .venv/
+venv.broken.*/
 
 # --- LLM skeleton (rtt) ---
 .rtt/

@@ -25,7 +25,7 @@ from whatsapp_pesagem import (  # noqa: E402
     montar_mensagem,
     normalizar_telefone,
     process_scheduled_sends,
-    totais_bruto_do_dia,
+    totais_liquido_do_dia,
 )
 
 
@@ -105,24 +105,25 @@ class PesagemWhatsAppTest(unittest.TestCase):
         self.assertEqual(normalizar_telefone('21999991234'), '5521999991234')
         self.assertEqual(normalizar_telefone('5521999991234'), '5521999991234')
 
-    def test_soma_bruto_por_cadastro(self):
+    def test_soma_liquido_por_cadastro(self):
         hoje = date.today()
         base = datetime.combine(hoje, dt_time(8, 0))
         for i in range(10):
-            self._criar_leitura('CCD', 12.5, base.replace(hour=8, minute=i))
-        self._criar_leitura('OUTRO', 3.0, base.replace(hour=10))
-        totais = {t['nome']: t for t in totais_bruto_do_dia(hoje)}
+            self._criar_leitura('CCD', 12.5, base.replace(hour=8, minute=i), peso=10.0)
+        self._criar_leitura('OUTRO', 4.0, base.replace(hour=10), peso=3.0)
+        totais = {t['nome']: t for t in totais_liquido_do_dia(hoje)}
         self.assertEqual(totais['CCD']['quantidade'], 10)
-        self.assertAlmostEqual(totais['CCD']['total'], 125.0, places=3)
+        self.assertAlmostEqual(totais['CCD']['total'], 100.0, places=3)
         self.assertAlmostEqual(totais['OUTRO']['total'], 3.0, places=3)
 
-    def test_mensagem_totais(self):
+    def test_mensagem_totais_usa_liquido(self):
         hoje = date.today()
-        self._criar_leitura('CCD', 10.0, datetime.combine(hoje, dt_time(9, 0)))
-        self._criar_leitura('CCD', 5.5, datetime.combine(hoje, dt_time(10, 0)))
-        corpo = montar_mensagem('Resumo da pesagem de hoje:', totais_bruto_do_dia(hoje), hoje)
+        self._criar_leitura('CCD', 12.0, datetime.combine(hoje, dt_time(9, 0)), peso=10.0)
+        self._criar_leitura('CCD', 7.5, datetime.combine(hoje, dt_time(10, 0)), peso=5.5)
+        corpo = montar_mensagem('Resumo da pesagem de hoje:', totais_liquido_do_dia(hoje), hoje)
         self.assertIn('Resumo da pesagem de hoje:', corpo)
         self.assertIn('CCD --- total 15,500 kg', corpo)
+        self.assertNotIn('19,500 kg', corpo)
 
     def test_formatar_kg(self):
         self.assertEqual(formatar_kg(125.5), '125,500 kg')
@@ -144,6 +145,7 @@ class PesagemWhatsAppTest(unittest.TestCase):
         self.assertIn('d-telefone', html)
         self.assertIn('d-hora', html)
         self.assertIn('d-mensagem', html)
+        self.assertIn('Total líquido', html)
 
     def test_logout_desabilitado_no_ambiente_de_teste(self):
         from whatsapp_pesagem import logout_whatsapp

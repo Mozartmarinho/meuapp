@@ -43,6 +43,7 @@ ETAPA_MESA = 'wait_mesa'
 ETAPA_TIPO = 'wait_tipo'
 ETAPA_ITEM = 'wait_item'
 ETAPA_PATRIMONIO = 'wait_patrimonio'
+ETAPA_DEFEITO = 'wait_defeito'
 ETAPA_IDLE = 'idle'
 FUNCOES_AVISO_ABERTURA = ('supervisor', 'gestor')
 MAX_DEFEITO_WHATSAPP = 400
@@ -297,6 +298,8 @@ def _criar_chamado_whatsapp(
         status='Pendente',
         prioridade='Normal',
         observacoes='Origem: WhatsApp',
+        canal_abertura='WhatsApp',
+        contato_abertura=usuario.telefone,
         tecnico_id=tecnico.id,
         mesa_id=mesa.id if mesa else None,
         setor_tecnico_id=usuario.setor_id,
@@ -708,9 +711,10 @@ def _vincular_mesa(usuario, texto):
     return mesa, None
 
 
-def process_inbound(telefone, texto, sender=None, agora=None):
+def process_inbound(telefone, texto, sender=None, agora=None, jid=None):
     """Processa uma mensagem recebida no número logado. Retorna as respostas enviadas."""
     replies = []
+    destino = (jid or telefone or '').strip() or telefone
 
     def send(msg):
         if not msg:
@@ -718,7 +722,9 @@ def process_inbound(telefone, texto, sender=None, agora=None):
         replies.append(msg)
         _log(usuario, 'out', msg)
         if sender:
-            sender(telefone, msg)
+            result = sender(destino, msg)
+            if isinstance(result, dict) and result.get('ok') is False:
+                logger.warning('Falha ao responder WhatsApp: %s', result.get('error'))
 
     cfg = config_ativa()
     if not cfg.ativo:
