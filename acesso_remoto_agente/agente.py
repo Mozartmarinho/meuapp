@@ -7,12 +7,13 @@ import os
 import socket
 import sys
 import threading
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
 
 APP_NOME = 'Acesso remoto São Geraldo'
-APP_VERSION = '1.0.0'
+APP_VERSION = '1.2.0'
 RUN_NAME = 'AcessoRemotoSaoGeraldo'
 
 _parar = threading.Event()
@@ -21,6 +22,9 @@ _estado = {
     'sessao_id': None,
     'senha_definida': False,
     'erro': '',
+    'monitor': 0,
+    'monitores': [],
+    'virtual': None,
 }
 
 
@@ -132,6 +136,7 @@ def salvar_senha(config, senha):
 def _vk(code, key):
     especiais = {
         'Enter': 0x0D, 'Backspace': 0x08, 'Tab': 0x09, 'Escape': 0x1B, 'Space': 0x20,
+        'MetaLeft': 0x5B, 'MetaRight': 0x5C, 'OSLeft': 0x5B, 'OSRight': 0x5C,
         'ArrowLeft': 0x25, 'ArrowUp': 0x26, 'ArrowRight': 0x27, 'ArrowDown': 0x28,
         'Delete': 0x2E, 'Home': 0x24, 'End': 0x23, 'PageUp': 0x21, 'PageDown': 0x22,
         'Insert': 0x2D,
@@ -153,7 +158,114 @@ def _vk(code, key):
     return None
 
 
+def listar_monitores():
+    if sys.platform != 'win32':
+        return []
+    import ctypes
+    user32 = ctypes.windll.user32
+
+    class RECT(ctypes.Structure):
+        _fields_ = [
+            ('left', ctypes.c_long), ('top', ctypes.c_long),
+            ('right', ctypes.c_long), ('bottom', ctypes.c_long),
+        ]
+
+    achados = []
+
+    def _enum(_hmon, _hdc, rect, _data):
+        r = rect.contents
+        largura = int(r.right - r.left)
+        altura = int(r.bottom - r.top)
+        if largura > 0 and altura > 0:
+            achados.append({
+                'left': int(r.left), 'top': int(r.top),
+                'right': int(r.right), 'bottom': int(r.bottom),
+            })
+        return 1
+
+    tipo = ctypes.WINFUNCTYPE(
+        ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(RECT), ctypes.c_ssize_t
+    )
+    user32.EnumDisplayMonitors(None, None, tipo(_enum), 0)
+    achados.sort(key=lambda item: (item['left'], item['top']))
+    return achados
+
+
+def atualizar_monitores_locais():
+    monitores = listar_monitores()
+    _estado['monitores'] = monitores
+    if sys.platform == 'win32':
+        import ctypes
+        user32 = ctypes.windll.user32
+        _estado['virtual'] = {
+            'left': int(user32.GetSystemMetrics(76)),
+            'top': int(user32.GetSystemMetrics(77)),
+            'width': int(user32.GetSystemMetrics(78)),
+            'height': int(user32.GetSystemMetrics(79)),
+        }
+    indice = int(_estado.get('monitor') or 0)
+    if monitores and (indice < 0 or indice >= len(monitores)):
+        _estado['monitor'] = 0
+    return max(1, len(monitores))
+
+
+def monitor_ativo():
+    monitores = _estado.get('monitores') or []
+    indice = int(_estado.get('monitor') or 0)
+    if indice < 0 or indice >= len(monitores):
+        return None
+    return monitores[indice]
+
+
+def ativar_dpi():
+    if sys.platform != 'win32':
+        return
+    import ctypes
+    try:
+        ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+    except Exception:
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:
+            try:
+                ctypes.windll.user32.SetProcessDPIAware()
+            except Exception:
+                pass
+
+
+def ponto_pixel(frac_x, frac_y, monitor):
+    if not monitor:
+        return None
+    largura = max(1, int(monitor['right']) - int(monitor['left']))
+    altura = max(1, int(monitor['bottom']) - int(monitor['top']))
+    fx = max(0.0, min(1.0, float(frac_x)))
+    fy = max(0.0, min(1.0, float(frac_y)))
+    px = int(round(monitor['left'] + fx * max(0, largura - 1)))
+    py = int(round(monitor['top'] + fy * max(0, altura - 1)))
+    return px, py
+
+
+def ponto_no_monitor(frac_x, frac_y, monitor, virtual):
+    if not monitor or not virtual or not virtual.get('width') or not virtual.get('height'):
+        return int(float(frac_x) * 65535), int(float(frac_y) * 65535)
+    largura = max(1, monitor['right'] - monitor['left'])
+    altura = max(1, monitor['bottom'] - monitor['top'])
+    px = monitor['left'] + float(frac_x) * largura
+    py = monitor['top'] + float(frac_y) * altura
+    ax = int(round((px - virtual['left']) * 65535 / max(1, virtual['width'] - 1)))
+    ay = int(round((py - virtual['top']) * 65535 / max(1, virtual['height'] - 1)))
+    return max(0, min(65535, ax)), max(0, min(65535, ay))
+
+
 def aplicar_comando(comando):
+    if (comando or {}).get('tipo') == 'monitor':
+        try:
+            indice = int(comando.get('indice') or 0)
+        except (TypeError, ValueError):
+            indice = 0
+        _estado['monitor'] = max(0, indice)
+        atualizar_monitores_locais()
+        return
     if sys.platform != 'win32':
         return
     import ctypes
@@ -183,25 +295,46 @@ def aplicar_comando(comando):
 
     tipo = comando.get('tipo')
     if tipo == 'mouse':
-        x = int(float(comando.get('x') or 0) * 65535)
-        y = int(float(comando.get('y') or 0) * 65535)
-        flags = 0x8000 | 0x4000  # ABSOLUTE | VIRTUALDESK
-        botao = comando.get('botao') or 'left'
         acao = comando.get('acao')
-        extra_flag = 0
-        data = 0
-        if acao == 'down':
-            extra_flag = 0x0008 if botao == 'right' else 0x0002
-        elif acao == 'up':
-            extra_flag = 0x0010 if botao == 'right' else 0x0004
-        elif acao == 'wheel':
-            extra_flag = 0x0800
-            data = ctypes.c_ulong(int(-int(comando.get('delta') or 0))).value
+        botao = comando.get('botao') or 'left'
+        pixel = ponto_pixel(
+            float(comando.get('x') or 0),
+            float(comando.get('y') or 0),
+            monitor_ativo(),
+        )
+        if pixel:
+            user32.SetCursorPos(int(pixel[0]), int(pixel[1]))
         else:
-            extra_flag = 0x0001
-        item = INPUT(type=0)
-        item.mi = MOUSEINPUT(x, y, data, flags | extra_flag, 0, 0)
-        enviar(item)
+            x, y = ponto_no_monitor(
+                float(comando.get('x') or 0),
+                float(comando.get('y') or 0),
+                monitor_ativo(),
+                _estado.get('virtual'),
+            )
+            item = INPUT(type=0)
+            item.mi = MOUSEINPUT(x, y, 0, 0x8000 | 0x4000 | 0x0001, 0, 0)
+            enviar(item)
+        if acao == 'move':
+            return
+        if acao == 'wheel':
+            data = ctypes.c_ulong(int(-int(comando.get('delta') or 0)) & 0xFFFFFFFF).value
+            user32.mouse_event(0x0800, 0, 0, data, 0)
+            return
+        if acao == 'dblclick':
+            down = 0x0008 if botao == 'right' else 0x0002
+            up = 0x0010 if botao == 'right' else 0x0004
+            time.sleep(0.05)
+            user32.mouse_event(down, 0, 0, 0, 0)
+            time.sleep(0.03)
+            user32.mouse_event(up, 0, 0, 0, 0)
+            return
+        if acao == 'down':
+            flag = 0x0008 if botao == 'right' else 0x0002
+        elif acao == 'up':
+            flag = 0x0010 if botao == 'right' else 0x0004
+        else:
+            return
+        user32.mouse_event(flag, 0, 0, 0, 0)
         return
     if tipo != 'tecla':
         return
@@ -230,13 +363,22 @@ def aplicar_comando(comando):
 
 def capturar_jpeg():
     from PIL import ImageGrab
+    atualizar_monitores_locais()
+    monitor = monitor_ativo()
+    bbox = None
+    if monitor:
+        bbox = (monitor['left'], monitor['top'], monitor['right'], monitor['bottom'])
     try:
-        img = ImageGrab.grab(all_screens=True)
+        if bbox:
+            img = ImageGrab.grab(bbox=bbox, all_screens=True)
+        else:
+            img = ImageGrab.grab(all_screens=True)
     except TypeError:
-        img = ImageGrab.grab()
-    img.thumbnail((1280, 720))
+        img = ImageGrab.grab(bbox=bbox) if bbox else ImageGrab.grab()
+    if img.width > 1920 or img.height > 1080:
+        img.thumbnail((1920, 1080))
     buf = io.BytesIO()
-    img.convert('RGB').save(buf, format='JPEG', quality=40)
+    img.convert('RGB').save(buf, format='JPEG', quality=85, subsampling=0)
     return buf.getvalue()
 
 
@@ -256,11 +398,20 @@ def _tratar_resposta(data, avisou):
             pass
     if not data.get('sessao_id'):
         avisou[0] = False
+    ultimo = None
     for comando in data.get('comandos') or []:
         try:
+            if (
+                ultimo and ultimo.get('tipo') == 'mouse' and ultimo.get('acao') == 'up'
+                and comando.get('tipo') == 'mouse' and comando.get('acao') == 'down'
+            ):
+                time.sleep(0.07)
             aplicar_comando(comando)
+            if comando.get('tipo') == 'mouse' and comando.get('acao') == 'down':
+                time.sleep(0.03)
         except Exception:
             pass
+        ultimo = comando
     return avisou
 
 
@@ -277,14 +428,23 @@ def loop_remoto(config, atualizar):
                     config,
                     '/api/acesso-remoto/agente/tela',
                     bruto=blob,
-                    params={'sessao_id': sessao},
+                    params={
+                        'sessao_id': sessao,
+                        'monitores': max(1, len(_estado.get('monitores') or [])),
+                        'monitor': int(_estado.get('monitor') or 0),
+                    },
                 )
                 _tratar_resposta(data, avisou)
                 _estado['erro'] = ''
                 atualizar()
                 _parar.wait(0.35)
                 continue
-            data = _pedido(config, '/api/acesso-remoto/agente/pulso', corpo={'nome': nome_pc()})
+            quantidade = atualizar_monitores_locais()
+            data = _pedido(config, '/api/acesso-remoto/agente/pulso', corpo={
+                'nome': nome_pc(),
+                'monitores': quantidade,
+                'monitor': int(_estado.get('monitor') or 0),
+            })
             _tratar_resposta(data, avisou)
             _estado['erro'] = ''
             atualizar()
@@ -335,6 +495,7 @@ def gerar_senha():
 
 
 def main():
+    ativar_dpi()
     config = carregar_config()
     _estado['numero'] = config.get('numero') or ''
     root = tk.Tk()

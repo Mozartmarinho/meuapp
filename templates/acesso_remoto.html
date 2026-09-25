@@ -34,23 +34,39 @@
             <h3>Equipamentos</h3>
             <table class="mdk-table" id="arTabela">
                 <thead>
-                    <tr><th>Número</th><th>Nome</th><th>Situação</th><th>Senha</th><th>Visto</th></tr>
+                    <tr><th>Número</th><th>Nome</th><th>Situação</th><th>Senha</th><th>Visto</th><th></th></tr>
                 </thead>
                 <tbody>
                     {% for eq in equipamentos %}
-                    <tr>
-                        <td>{{ eq.numero_formatado }}</td>
-                        <td>{{ eq.nome }}</td>
-                        <td>{% if eq.em_atendimento %}Em atendimento{% elif eq.online %}Online{% else %}Offline{% endif %}</td>
-                        <td>{{ 'Definida' if eq.senha_definida else 'Pendente' }}</td>
+                    <tr data-id="{{ eq.id }}" data-numero="{{ eq.numero }}" data-senha="{{ eq.senha or '' }}">
+                        <td class="ar-numero" title="Clique duas vezes para conectar">{{ eq.numero_formatado }}</td>
+                        <td class="ar-nome">{{ eq.nome }}</td>
+                        <td>{% if eq.online %}<span class="ar-estado ativo"><i class="fas fa-circle"></i> Ativo</span>{% else %}<span class="ar-estado inativo"><i class="fas fa-circle"></i> Inativo</span>{% endif %}</td>
+                        <td class="ar-senha"{% if eq.senha_definida and not eq.senha %} title="Salve a senha de novo no equipamento para aparecer aqui."{% endif %}>{{ eq.senha or '—' }}</td>
                         <td>{{ eq.ultimo_visto }}</td>
+                        <td class="ar-acoes">
+                            <button type="button" class="mdk-btn ar-mini" data-acao="editar">Editar</button>
+                            <button type="button" class="mdk-btn ar-mini" data-acao="excluir">Excluir</button>
+                        </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="5" class="mdk-empty">Nenhum programa instalado ainda.</td></tr>
+                    <tr><td colspan="6" class="mdk-empty">Nenhum programa instalado ainda.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
+    </div>
+</div>
+<div class="ar-visor" id="arVisor" hidden>
+    <img id="arTela" alt="Tela do equipamento">
+    <div class="ar-ts-bar" id="arTsBar">
+        <div class="ar-ts-painel">
+            <strong id="arVisorNome">Acesso remoto</strong>
+            <div class="ar-telas" id="arTelas" hidden></div>
+            <button type="button" class="mdk-btn ar-mini" id="arCheia">Sair da tela cheia</button>
+            <button type="button" class="mdk-btn ar-mini" id="arSair">Encerrar</button>
+        </div>
+        <button type="button" class="ar-ts-aba" id="arTsAba">Acesso remoto</button>
     </div>
 </div>
 <style>
@@ -64,62 +80,371 @@
 #arNumero { font-size: 1.25rem; letter-spacing: 0.04em; font-weight: 700; }
 .ar-card button { margin-top: 0.7rem; }
 .ar-erro { color: #b42318; font-weight: 700; }
+.ar-estado { display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 700; }
+.ar-estado i { font-size: 0.72rem; }
+.ar-estado.ativo { color: #15803d; }
+.ar-estado.inativo { color: #b42318; }
+.ar-acoes { white-space: nowrap; }
+.ar-mini { padding: 0.28rem 0.5rem; font-size: 0.78rem; margin: 0 0.15rem 0 0; }
+.ar-nome input { width: 100%; min-width: 8rem; }
+.ar-numero { cursor: pointer; font-weight: 700; letter-spacing: 0.03em; }
+.ar-senha { font-family: Consolas, ui-monospace, monospace; font-weight: 700; }
+body.ar-ts .sidebar,
+body.ar-ts .app-topbar,
+body.ar-ts .sidebar-overlay { display: none !important; }
+body.ar-ts .main-content { margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: none !important; }
+body.ar-ts { overflow: hidden; background: #000; }
+.ar-visor { position: fixed; inset: 0; z-index: 5000; background: #000; }
+.ar-visor[hidden] { display: none !important; }
+#arTela { width: 100%; height: 100%; object-fit: contain; cursor: default; background: #000; display: block; }
+.ar-ts-bar { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 5010; display: flex; flex-direction: column; align-items: center; }
+.ar-ts-painel { display: none; align-items: center; gap: 0.45rem; background: #0b3a66; color: #fff; padding: 0.35rem 0.7rem; border-radius: 0 0 0.4rem 0.4rem; }
+.ar-ts-bar:hover .ar-ts-painel,
+.ar-ts-bar.aberta .ar-ts-painel { display: flex; }
+.ar-ts-aba { background: #0b3a66; color: #fff; border: 0; border-radius: 0 0 0.4rem 0.4rem; font-size: 0.72rem; padding: 0.12rem 0.8rem 0.2rem; cursor: pointer; }
+.ar-ts-painel .mdk-btn { color: #0c3a38; background: #fff; }
+.ar-tela-btn.ativa { outline: 2px solid #fff; }
 @media (max-width: 800px) { .ar-grid { grid-template-columns: 1fr; } }
 </style>
 <script>
 (function () {
     var form = document.getElementById('formConectar');
     var erro = document.getElementById('arErro');
-    form.addEventListener('submit', function (ev) {
-        ev.preventDefault();
+    var urlConectar = '{{ url_for("main.acesso_remoto_conectar") }}';
+    var visor = document.getElementById('arVisor');
+    var img = document.getElementById('arTela');
+    var telas = document.getElementById('arTelas');
+    var sessaoUrl = '';
+    var visorAtivo = false;
+    var ultimoMove = 0;
+    var ultimoDown = 0;
+    var pulouUp = false;
+    var monitorAtual = 0;
+    var qtdMonitores = 1;
+    function pedirTelaCheia() {
+        document.body.classList.add('ar-ts');
+        var el = document.documentElement;
+        var fn = el.requestFullscreen || el.webkitRequestFullscreen;
+        if (fn && !document.fullscreenElement && !document.webkitFullscreenElement) {
+            try { fn.call(el); } catch (e) {}
+        }
+    }
+    function sairTelaCheia(voltarLista) {
+        if (voltarLista) document.body.classList.remove('ar-ts');
+        var fn = document.exitFullscreen || document.webkitExitFullscreen;
+        if (fn && (document.fullscreenElement || document.webkitFullscreenElement)) {
+            try { fn.call(document); } catch (e) {}
+        }
+    }
+    function mostrarErro(msg) {
+        erro.textContent = msg;
+        erro.hidden = false;
+        sairTelaCheia(true);
+    }
+    function conectar(numero, senha) {
         erro.hidden = true;
-        fetch('{{ url_for("main.acesso_remoto_conectar") }}', {
+        return fetch(urlConectar, {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                numero: document.getElementById('arNumero').value,
-                senha: document.getElementById('arSenha').value
-            })
+            body: JSON.stringify({ numero: numero, senha: senha })
         }).then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
         .then(function (res) {
             if (res.ok && res.data.ok && res.data.url) {
-                window.location.href = res.data.url;
+                abrirVisor(res.data);
                 return;
             }
-            erro.textContent = (res.data && res.data.message) || 'Não foi possível conectar.';
-            erro.hidden = false;
+            mostrarErro((res.data && res.data.message) || 'Não foi possível conectar.');
         }).catch(function () {
-            erro.textContent = 'Não foi possível conectar.';
-            erro.hidden = false;
+            mostrarErro('Não foi possível conectar.');
         });
+    }
+    form.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        pedirTelaCheia();
+        conectar(document.getElementById('arNumero').value, document.getElementById('arSenha').value);
     });
+    var urlLista = '{{ url_for("main.api_acesso_remoto_equipamentos") }}';
+    var urlNome = '{{ url_for("main.api_acesso_remoto_renomear", equipamento_id=0) }}';
+    var urlExcluir = '{{ url_for("main.api_acesso_remoto_excluir", equipamento_id=0) }}';
     function situacao(eq) {
-        if (eq.em_atendimento) return 'Em atendimento';
-        return eq.online ? 'Online' : 'Offline';
+        if (eq.online) return '<span class="ar-estado ativo"><i class="fas fa-circle"></i> Ativo</span>';
+        return '<span class="ar-estado inativo"><i class="fas fa-circle"></i> Inativo</span>';
     }
     function esc(s) {
         return String(s || '').replace(/[&<>"']/g, function (ch) {
             return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
         });
     }
-    setInterval(function () {
-        fetch('{{ url_for("main.api_acesso_remoto_equipamentos") }}', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+    function linha(eq) {
+        var titulo = (eq.senha_definida && !eq.senha) ? ' title="Salve a senha de novo no equipamento para aparecer aqui."' : '';
+        return '<tr data-id="' + eq.id + '" data-numero="' + esc(eq.numero) + '" data-senha="' + esc(eq.senha) + '"><td class="ar-numero" title="Clique duas vezes para conectar">' + esc(eq.numero_formatado) + '</td><td class="ar-nome">' + esc(eq.nome) +
+            '</td><td>' + situacao(eq) + '</td><td class="ar-senha"' + titulo + '>' + esc(eq.senha || '—') +
+            '</td><td>' + esc(eq.ultimo_visto) + '</td><td class="ar-acoes">' +
+            '<button type="button" class="mdk-btn ar-mini" data-acao="editar">Editar</button>' +
+            '<button type="button" class="mdk-btn ar-mini" data-acao="excluir">Excluir</button></td></tr>';
+    }
+    function atualizarLista() {
+        if (visorAtivo || document.querySelector('#arTabela input')) return;
+        fetch(urlLista, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                if (!data || !data.ok) return;
+                if (!data || !data.ok || document.querySelector('#arTabela input')) return;
                 var body = document.querySelector('#arTabela tbody');
                 var rows = data.equipamentos || [];
                 if (!rows.length) {
-                    body.innerHTML = '<tr><td colspan="5" class="mdk-empty">Nenhum programa instalado ainda.</td></tr>';
+                    body.innerHTML = '<tr><td colspan="6" class="mdk-empty">Nenhum programa instalado ainda.</td></tr>';
                     return;
                 }
-                body.innerHTML = rows.map(function (eq) {
-                    return '<tr><td>' + esc(eq.numero_formatado) + '</td><td>' + esc(eq.nome) + '</td><td>' + esc(situacao(eq)) +
-                        '</td><td>' + (eq.senha_definida ? 'Definida' : 'Pendente') + '</td><td>' + esc(eq.ultimo_visto) + '</td></tr>';
-                }).join('');
+                body.innerHTML = rows.map(linha).join('');
             }).catch(function () {});
-    }, 5000);
+    }
+    function postJson(url, corpo) {
+        return fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+            body: JSON.stringify(corpo || {})
+        }).then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); });
+    }
+    document.querySelector('#arTabela tbody').addEventListener('click', function (ev) {
+        var btn = ev.target.closest('button');
+        if (!btn) return;
+        var tr = btn.closest('tr');
+        var id = tr && tr.getAttribute('data-id');
+        if (!id) return;
+        if (btn.getAttribute('data-acao') === 'excluir') {
+            if (!window.confirm('Excluir este equipamento da lista?')) return;
+            btn.disabled = true;
+            postJson(urlExcluir.replace('/0/', '/' + id + '/'), {}).then(function (res) {
+                if (!res.ok) {
+                    btn.disabled = false;
+                    window.alert((res.data && res.data.message) || 'Não foi possível excluir.');
+                    return;
+                }
+                atualizarLista();
+            }).catch(function () { btn.disabled = false; });
+            return;
+        }
+        if (btn.getAttribute('data-acao') !== 'editar') return;
+        var celula = tr.querySelector('.ar-nome');
+        var atual = celula.textContent;
+        celula.innerHTML = '<input class="ar-nome-input" value="' + esc(atual) + '">';
+        var campo = celula.querySelector('input');
+        campo.focus();
+        function salvar() {
+            if (campo.dataset.salvo) return;
+            var nome = campo.value.trim();
+            if (!nome) {
+                campo.focus();
+                return;
+            }
+            campo.dataset.salvo = '1';
+            postJson(urlNome.replace('/0/', '/' + id + '/'), { nome: nome }).then(function (res) {
+                if (!res.ok) {
+                    window.alert((res.data && res.data.message) || 'Não foi possível salvar o nome.');
+                    return;
+                }
+                atualizarLista();
+            });
+        }
+        campo.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                salvar();
+            }
+            if (e.key === 'Escape') atualizarLista();
+        });
+        campo.addEventListener('blur', salvar);
+    });
+    document.querySelector('#arTabela tbody').addEventListener('dblclick', function (ev) {
+        var celula = ev.target.closest('.ar-numero');
+        if (!celula) return;
+        var tr = celula.closest('tr');
+        var senha = tr.getAttribute('data-senha') || '';
+        var numero = tr.getAttribute('data-numero') || '';
+        if (!senha) {
+            mostrarErro('Este equipamento ainda não tem senha salva para conectar.');
+            return;
+        }
+        pedirTelaCheia();
+        conectar(numero, senha);
+    });
+    function enviar(comando) {
+        if (!visorAtivo || !sessaoUrl) return;
+        fetch(sessaoUrl + '/comando', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify(comando)
+        }).then(function (r) {
+            if (r.status === 404) encerrarVisor(false);
+        }).catch(function () {});
+    }
+    function ponto(ev) {
+        var rect = img.getBoundingClientRect();
+        var nw = img.naturalWidth || 0;
+        var nh = img.naturalHeight || 0;
+        if (!rect.width || !rect.height) return null;
+        var left = rect.left;
+        var top = rect.top;
+        var largura = rect.width;
+        var altura = rect.height;
+        if (nw && nh) {
+            var escala = Math.min(rect.width / nw, rect.height / nh);
+            largura = nw * escala;
+            altura = nh * escala;
+            left = rect.left + (rect.width - largura) / 2;
+            top = rect.top + (rect.height - altura) / 2;
+        }
+        var x = (ev.clientX - left) / largura;
+        var y = (ev.clientY - top) / altura;
+        if (x < 0 || y < 0 || x > 1 || y > 1) return null;
+        return { x: x, y: y };
+    }
+    function atualizarTelas(qtd, indice) {
+        if (!qtd || qtd < 1) qtd = 1;
+        if (qtd === qtdMonitores && indice === monitorAtual && telas.childElementCount === (qtd > 1 ? qtd : 0)) return;
+        qtdMonitores = qtd;
+        monitorAtual = indice;
+        if (qtd < 2) {
+            telas.hidden = true;
+            telas.innerHTML = '';
+            return;
+        }
+        telas.hidden = false;
+        var html = '';
+        for (var i = 0; i < qtd; i++) {
+            html += '<button type="button" class="mdk-btn ar-mini ar-tela-btn' + (i === indice ? ' ativa' : '') +
+                '" data-monitor="' + i + '">Tela ' + (i + 1) + '</button>';
+        }
+        telas.innerHTML = html;
+    }
+    function pintar() {
+        if (!visorAtivo || !sessaoUrl) return;
+        fetch(sessaoUrl + '/tela?t=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' })
+            .then(function (r) {
+                if (r.status === 404) {
+                    encerrarVisor(false);
+                    return null;
+                }
+                atualizarTelas(
+                    parseInt(r.headers.get('X-Ar-Monitores') || '1', 10),
+                    parseInt(r.headers.get('X-Ar-Monitor') || '0', 10)
+                );
+                if (r.status === 204) return null;
+                return r.blob();
+            })
+            .then(function (blob) {
+                if (!blob) return;
+                var url = URL.createObjectURL(blob);
+                var antiga = img.dataset.url;
+                img.onload = function () { if (antiga) URL.revokeObjectURL(antiga); };
+                img.dataset.url = url;
+                img.src = url;
+            })
+            .catch(function () {})
+            .then(function () {
+                if (visorAtivo) setTimeout(pintar, 350);
+            });
+    }
+    function abrirVisor(data) {
+        sessaoUrl = data.url;
+        visorAtivo = true;
+        monitorAtual = 0;
+        qtdMonitores = 1;
+        document.getElementById('arVisorNome').textContent = (data.nome || 'Equipamento') + ' · ' + (data.numero_formatado || '');
+        visor.hidden = false;
+        document.body.classList.add('ar-ts');
+        pintar();
+    }
+    function encerrarVisor(avisar) {
+        var url = sessaoUrl;
+        visorAtivo = false;
+        sessaoUrl = '';
+        visor.hidden = true;
+        img.removeAttribute('src');
+        sairTelaCheia(true);
+        if (avisar && url) {
+            fetch(url + '/encerrar', { method: 'POST', credentials: 'same-origin' }).catch(function () {});
+        }
+        atualizarLista();
+    }
+    img.addEventListener('mousemove', function (ev) {
+        var agora = Date.now();
+        if (agora - ultimoMove < 60) return;
+        ultimoMove = agora;
+        var p = ponto(ev);
+        if (!p) return;
+        enviar({ tipo: 'mouse', acao: 'move', x: p.x, y: p.y });
+    });
+    img.addEventListener('mousedown', function (ev) {
+        var p = ponto(ev);
+        if (!p) return;
+        ev.preventDefault();
+        var agora = Date.now();
+        if (ev.button === 0 && agora - ultimoDown < 500) {
+            pulouUp = true;
+            ultimoDown = 0;
+            enviar({ tipo: 'mouse', acao: 'dblclick', x: p.x, y: p.y, botao: 'left' });
+            return;
+        }
+        ultimoDown = agora;
+        pulouUp = false;
+        enviar({ tipo: 'mouse', acao: 'down', x: p.x, y: p.y, botao: ev.button === 2 ? 'right' : 'left' });
+    });
+    img.addEventListener('mouseup', function (ev) {
+        if (pulouUp) {
+            pulouUp = false;
+            return;
+        }
+        var p = ponto(ev);
+        if (!p) return;
+        enviar({ tipo: 'mouse', acao: 'up', x: p.x, y: p.y, botao: ev.button === 2 ? 'right' : 'left' });
+    });
+    img.addEventListener('dblclick', function (ev) { ev.preventDefault(); });
+    img.addEventListener('contextmenu', function (ev) { ev.preventDefault(); });
+    img.addEventListener('wheel', function (ev) {
+        var p = ponto(ev);
+        if (!p) return;
+        ev.preventDefault();
+        enviar({ tipo: 'mouse', acao: 'wheel', x: p.x, y: p.y, delta: ev.deltaY });
+    }, { passive: false });
+    document.addEventListener('keydown', function (ev) {
+        if (!visorAtivo || ev.repeat) return;
+        if (ev.target && ev.target.closest && ev.target.closest('input, textarea')) return;
+        ev.preventDefault();
+        enviar({
+            tipo: 'tecla',
+            code: ev.code || '',
+            key: ev.key || '',
+            ctrl: ev.ctrlKey,
+            alt: ev.altKey,
+            shift: ev.shiftKey
+        });
+    });
+    telas.addEventListener('click', function (ev) {
+        var btn = ev.target.closest('button');
+        if (!btn) return;
+        var indice = parseInt(btn.getAttribute('data-monitor'), 10);
+        if (isNaN(indice) || indice === monitorAtual) return;
+        monitorAtual = indice;
+        Array.prototype.forEach.call(telas.querySelectorAll('button'), function (el) {
+            el.classList.toggle('ativa', parseInt(el.getAttribute('data-monitor'), 10) === indice);
+        });
+        enviar({ tipo: 'monitor', indice: indice });
+    });
+    document.getElementById('arTsAba').addEventListener('click', function () {
+        document.getElementById('arTsBar').classList.toggle('aberta');
+    });
+    document.getElementById('arCheia').addEventListener('click', function () {
+        if (document.fullscreenElement || document.webkitFullscreenElement) sairTelaCheia(false);
+        else pedirTelaCheia();
+    });
+    document.getElementById('arSair').addEventListener('click', function () {
+        encerrarVisor(true);
+    });
+    setInterval(atualizarLista, 5000);
 })();
 </script>
 {% endblock %}

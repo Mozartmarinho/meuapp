@@ -219,6 +219,19 @@
         <form id="formAtender" method="POST" enctype="multipart/form-data">
             <input type="hidden" name="acao" id="at_acao" value="salvar">
             <div class="modal-body">
+                <div class="at-problema" id="atProblemaBox">
+                    <p class="at-problema-label">Problema relatado</p>
+                    <p class="at-problema-texto" id="atProblema">—</p>
+                    <p class="at-problema-pat" id="atProblemaPat"></p>
+                </div>
+                <div class="form-group" id="atTrocaBox" hidden>
+                    <label for="at_estoque_eq">Transferir patrimônio</label>
+                    <p class="at-hint" id="atTrocaAtual">—</p>
+                    <select id="at_estoque_eq" name="equipamento_estoque_id">
+                        <option value="">Manter o equipamento atual</option>
+                    </select>
+                    <span class="at-hint">O equipamento ruim volta para o estoque e o escolhido assume o setor e o usuário dele.</span>
+                </div>
                 <p class="at-meta" id="atMeta">—</p>
                 <div class="at-origem" id="atOrigemBox" hidden>
                     <p class="at-origem-line" id="atOrigemTexto"></p>
@@ -510,6 +523,23 @@
 }
 .btn-finalizar:hover { background-color: #0f766e; }
 .at-meta { margin: 0 0 0.5rem; color: var(--gray-600); font-size: 0.76rem; }
+.at-problema {
+    border: 1px solid #fcd34d;
+    background: #fffbeb;
+    border-radius: 0.35rem;
+    padding: 0.45rem 0.55rem;
+    margin: 0 0 0.55rem;
+}
+.at-problema-label { margin: 0; font-size: 0.64rem; color: #92400e; font-weight: 700; }
+.at-problema-texto {
+    margin: 0.15rem 0 0;
+    font-size: 0.8rem;
+    color: var(--gray-800);
+    white-space: pre-wrap;
+    max-height: 7.5rem;
+    overflow: auto;
+}
+.at-problema-pat { margin: 0.28rem 0 0; font-size: 0.72rem; font-weight: 700; color: #78350f; }
 .at-origem {
     border: 1px solid #c4b5fd;
     background: #f5f3ff;
@@ -1308,6 +1338,34 @@ body.modal-open { overflow: hidden; }
         instrucoesOrigem = data.encaminhamento_instrucoes || '';
         form.action = '/api/chamados/' + data.id + '/atender';
         document.getElementById('atModalTitle').textContent = 'Atender ' + (data.numero_chamado || '');
+        document.getElementById('atProblema').textContent = data.descricao || 'Sem descrição informada.';
+        const patEl = document.getElementById('atProblemaPat');
+        if (data.patrimonio || data.equipamento) {
+            let linhaPat = 'Patrimônio ' + (data.patrimonio || '—');
+            if (data.equipamento) linhaPat += ' · ' + data.equipamento;
+            if (data.equipamento_setor) linhaPat += ' · ' + data.equipamento_setor;
+            if (data.equipamento_usuario) linhaPat += ' · ' + data.equipamento_usuario;
+            patEl.textContent = linhaPat;
+        } else {
+            patEl.textContent = 'Sem patrimônio vinculado a este chamado.';
+        }
+        const trocaBox = document.getElementById('atTrocaBox');
+        const trocaSel = document.getElementById('at_estoque_eq');
+        const trocaAtual = document.getElementById('atTrocaAtual');
+        trocaSel.innerHTML = '<option value="">Manter o equipamento atual</option>';
+        (data.estoque_opcoes || []).forEach(function (item) {
+            const opt = document.createElement('option');
+            opt.value = String(item.id);
+            let texto = item.patrimonio || ('#' + item.id);
+            if (item.nome) texto += ' — ' + item.nome;
+            if (item.marca || item.modelo) texto += ' (' + [item.marca, item.modelo].filter(Boolean).join(' ') + ')';
+            opt.textContent = texto;
+            trocaSel.appendChild(opt);
+        });
+        trocaBox.hidden = !data.pode_transferir;
+        if (data.pode_transferir) {
+            trocaAtual.textContent = 'No lugar de ' + (data.patrimonio || data.equipamento || 'o equipamento atual') + ', usar um do estoque:';
+        }
         document.getElementById('atMeta').textContent =
             (data.cliente || 'N/A') + ' · Status atual: ' + (data.status || '—')
             + (data.data_inicio_atendimento ? ' · Início: ' + data.data_inicio_atendimento : '')

@@ -110,6 +110,34 @@ class EquipamentoPreventivaTermoTest(unittest.TestCase):
         self.assertEqual(chamado.equipamento_id, self.eq.id)
         self.assertGreater(prev.proxima_data, date.today())
 
+    def test_preventiva_usa_mesa_do_tipo(self):
+        info = MesaServico(nome='Informatica', ativa=True)
+        nutri = MesaServico(nome='Manutenção Nutrição', ativa=True)
+        db.session.add_all([info, nutri])
+        db.session.commit()
+        self.eq.tipo_equipamento = 'ti'
+        _, chamado_ti = salvar_preventiva(self.eq, {
+            'ativa': True,
+            'frequencia': 'mensal',
+            'proxima_data': date.today().isoformat(),
+        }, self.user)
+        self.assertEqual(chamado_ti.mesa_id, info.id)
+        eq_nutri = Equipamento(
+            nome_equipamento='Forno',
+            patrimonio='N-1',
+            cliente_id=self.cli.id,
+            tipo_equipamento='nutricao',
+            ativo=True,
+        )
+        db.session.add(eq_nutri)
+        db.session.commit()
+        _, chamado_nutri = salvar_preventiva(eq_nutri, {
+            'ativa': True,
+            'frequencia': 'mensal',
+            'proxima_data': date.today().isoformat(),
+        }, self.user)
+        self.assertEqual(chamado_nutri.mesa_id, nutri.id)
+
     def test_processar_nao_duplica_ticket_aberto(self):
         salvar_preventiva(self.eq, {
             'ativa': True,

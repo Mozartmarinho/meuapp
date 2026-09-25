@@ -357,6 +357,7 @@ def _tecnico_vinculado(usuario):
 
 
 FUNCOES_CAMPANHA_TICKET = frozenset({'tecnico', 'supervisor', 'gestor'})
+FUNCOES_CAMPANHA_PREVENTIVA = FUNCOES_CAMPANHA_TICKET | {'assistente'}
 CAMPANHA_TICKET_JANELA_MIN = 30
 STATUS_CAMPANHA_AGUARDANDO = 'Pendente'
 STATUS_EM_ANDAMENTO = 'Em Andamento'
@@ -389,8 +390,20 @@ def _registros_tecnico_usuario(usuario):
         return []
 
 
-def _funcao_campanha(tecnico):
-    return (getattr(tecnico, 'funcao', None) or 'tecnico').strip().lower() in FUNCOES_CAMPANHA_TICKET
+def _chamado_e_preventiva(chamado):
+    desc = (getattr(chamado, 'descricao', None) or '').lstrip()
+    return desc.startswith('Preventiva:')
+
+
+def _funcoes_toque(chamado):
+    if _chamado_e_preventiva(chamado):
+        return FUNCOES_CAMPANHA_PREVENTIVA
+    return FUNCOES_CAMPANHA_TICKET
+
+
+def _funcao_campanha(tecnico, chamado=None):
+    funcao = (getattr(tecnico, 'funcao', None) or 'tecnico').strip().lower()
+    return funcao in _funcoes_toque(chamado)
 
 
 def _mesas_ids_tecnico(tecnico):
@@ -401,21 +414,47 @@ def _mesas_ids_tecnico(tecnico):
 
 
 def _recebe_campanha_ticket(usuario):
-    """Técnico, supervisor ou gestor com mesa vinculada recebe o toque."""
+    """Técnico, supervisor, gestor ou assistente com mesa pode ouvir o toque.
+
+    Assistente só entra na campanha de ticket aberto pela preventiva.
+    """
     if not usuario:
         return False
     for tec in _registros_tecnico_usuario(usuario):
-        if _funcao_campanha(tec) and _mesas_ids_tecnico(tec):
+        funcao = (getattr(tec, 'funcao', None) or 'tecnico').strip().lower()
+        if funcao in FUNCOES_CAMPANHA_PREVENTIVA and _mesas_ids_tecnico(tec):
             return True
     return False
 
 
-def _usuario_toca_mesa(usuario, mesa_id):
-    """Toque só para técnico, supervisor ou gestor vinculado à mesa do ticket."""
+def _mesa_id_toque(chamado):
+    """Preventiva toca na mesa do tipo do equipamento, mesmo se o ticket ficou na mesa errada."""
+    if not chamado:
+        return None
+    if _chamado_e_preventiva(chamado):
+        eq = getattr(chamado, 'equipamento_cadastro', None)
+        if eq is None and getattr(chamado, 'equipamento_id', None):
+            eq = Equipamento.query.get(chamado.equipamento_id)
+        if eq is not None:
+            from equipamento_service import mesa_preventiva_equipamento
+            mesa = mesa_preventiva_equipamento(eq)
+            if mesa:
+                return mesa.id
+    return getattr(chamado, 'mesa_id', None)
+
+
+def _usuario_toca_mesa(usuario, mesa_id, chamado=None):
+    """Toque só para quem está na mesa do ticket.
+
+    Ticket comum: técnico, supervisor e gestor.
+    Preventiva: também o assistente da mesa do tipo do equipamento.
+    """
+    if chamado is not None:
+        mesa_id = _mesa_id_toque(chamado)
     if not usuario or not mesa_id:
         return False
     for tec in _registros_tecnico_usuario(usuario):
-        if not _funcao_campanha(tec):
+        if not _funcao_campanha(tec, chamado):
             continue
         if mesa_id in _mesas_ids_tecnico(tec):
             return True
@@ -515,13 +554,24 @@ def _nome_tecnico_aviso(usuario):
 
 
 def _filtro_chamados_usuario(user):
-    """Tickets visíveis: os que o usuário abriu, encaminhados ao setor e, para técnicos, todos os abertos."""
+    """Tickets visíveis: os que o usuário abriu e os abertos das mesas dele.
+
+    Quem tem mesa cadastrada não vê pendências das outras mesas, mesmo sendo admin.
+    """
     conds = [Chamado.tecnico_id == user.id]
     setor = _setor_usuario(user)
     if setor:
         conds.append(and_(Chamado.setor_destino == setor, ~Chamado.status.in_(STATUS_FECHADOS)))
     if _eh_tecnico_do_sistema(user):
-        conds.append(~Chamado.status.in_(STATUS_FECHADOS))
+        abertos = ~Chamado.status.in_(STATUS_FECHADOS)
+        mesas = _mesas_tecnico_usuario(user)
+        if mesas:
+            conds.append(and_(
+                abertos,
+                or_(Chamado.mesa_id.in_(list(mesas)), Chamado.mesa_id.is_(None)),
+            ))
+        else:
+            conds.append(abertos)
     return or_(*conds)
 
 
@@ -1119,11 +1169,9 @@ def _mesas_tecnico_usuario(usuario):
 
 
 def _chamado_da_equipe(usuario, chamado):
-    """True se o chamado cai na mesa (ou equipe) do técnico/gestor."""
+    """True se o chamado cai na mesa do técnico, inclusive quando o login é admin."""
     if not usuario or not chamado:
         return False
-    if _eh_gestor(usuario):
-        return True
     mesas = _mesas_tecnico_usuario(usuario)
     if not mesas:
         return True
@@ -1141,6 +1189,7 @@ def _pendencias_chamados(usuario):
     gestor = _eh_gestor(usuario)
     tecnico_sistema = _eh_tecnico_do_sistema(usuario)
     meus_setores_tecnicos = _setores_tecnico_usuario(usuario)
+    mesas = _mesas_tecnico_usuario(usuario)
     seen = set()
     items = []
     rows = (
@@ -1150,10 +1199,12 @@ def _pendencias_chamados(usuario):
         .all()
     )
     for chamado in rows:
+        if mesas and chamado.mesa_id not in mesas:
+            continue
         dest = normalizar_setor_chamado(chamado.setor_destino)
-        encaminhado_para_mim = bool(dest) and (gestor or dest == setor)
+        encaminhado_para_mim = bool(dest) and (dest == setor or (gestor and not mesas))
         aguardar_peca = chamado.status == STATUS_AGUARDAR_PECA and (
-            gestor or chamado.tecnico_id == usuario.id or dest == setor
+            chamado.tecnico_id == usuario.id or dest == setor or (gestor and not mesas)
         )
         ticket_do_meu_setor = bool(
             meus_setores_tecnicos and chamado.setor_tecnico_id in meus_setores_tecnicos
@@ -1259,11 +1310,88 @@ def _salvar_fotos_chamado(chamado, atendimento, arquivos, tipo=TIPO_FOTO_CONSERT
         ))
 
 
+def _equipamento_do_chamado(chamado):
+    eq = getattr(chamado, 'equipamento_cadastro', None)
+    if eq is not None:
+        return eq
+    if getattr(chamado, 'equipamento_id', None):
+        return Equipamento.query.get(chamado.equipamento_id)
+    codigo = (getattr(chamado, 'patrimonio', None) or '').strip()
+    if not codigo or not getattr(chamado, 'cliente_id', None):
+        return None
+    return Equipamento.query.filter_by(patrimonio=codigo, cliente_id=chamado.cliente_id).first()
+
+
+def _no_estoque(equipamento):
+    return (getattr(equipamento, 'setor', None) or '').strip().lower() == 'estoque'
+
+
+def _opcoes_estoque(cliente_id, exceto_id=None):
+    if not cliente_id:
+        return []
+    q = Equipamento.query.filter(
+        Equipamento.cliente_id == cliente_id,
+        Equipamento.ativo.is_(True),
+        Equipamento.setor == 'Estoque',
+    )
+    if exceto_id:
+        q = q.filter(Equipamento.id != exceto_id)
+    itens = q.order_by(Equipamento.patrimonio.asc(), Equipamento.nome_equipamento.asc()).all()
+    opcoes = []
+    for item in itens:
+        opcoes.append({
+            'id': item.id,
+            'patrimonio': item.patrimonio or '',
+            'nome': item.nome_equipamento or '',
+            'marca': item.marca or '',
+            'modelo': item.modelo or '',
+        })
+    return opcoes
+
+
+def _transferir_patrimonio(chamado, novo_id_raw):
+    """Tira o patrimônio do chamado do lugar e põe no lugar um equipamento do setor Estoque."""
+    raw = (novo_id_raw or '').strip()
+    if not raw:
+        return None
+    try:
+        novo_id = int(raw)
+    except (TypeError, ValueError):
+        raise ValueError('Equipamento do estoque inválido.')
+    ruim = _equipamento_do_chamado(chamado)
+    if ruim is None:
+        raise ValueError('Este chamado não tem patrimônio para substituir.')
+    if _no_estoque(ruim):
+        raise ValueError('O patrimônio deste chamado já está no estoque.')
+    if ruim.id == novo_id:
+        raise ValueError('Escolha outro equipamento do estoque.')
+    novo = Equipamento.query.get(novo_id)
+    if not novo or not novo.ativo:
+        raise ValueError('Equipamento do estoque não encontrado.')
+    if not _no_estoque(novo):
+        raise ValueError('O equipamento escolhido não está no estoque.')
+    if novo.cliente_id != ruim.cliente_id:
+        raise ValueError('O equipamento do estoque é de outro cliente.')
+    novo.setor = ruim.setor
+    novo.localizacao = ruim.localizacao
+    novo.local = ruim.local
+    novo.usuario_equipamento = ruim.usuario_equipamento
+    ruim.setor = 'Estoque'
+    ruim.localizacao = 'Estoque'
+    ruim.usuario_equipamento = None
+    chamado.equipamento_id = novo.id
+    chamado.patrimonio = novo.patrimonio
+    chamado.equipamento = novo.nome_equipamento
+    return ruim, novo
+
+
 def _chamado_atender_payload(chamado, usuario=None):
     todas = _fotos_chamado_payload(chamado)
     origem = _setor_origem_atual(chamado)
     encaminhado_por = chamado.encaminhado_por
     pode_devolver = _pode_devolver(chamado, usuario) if usuario else False
+    eq = _equipamento_do_chamado(chamado)
+    pode_transferir = bool(eq and eq.ativo and not _no_estoque(eq))
     return {
         'id': chamado.id,
         'numero_chamado': chamado.numero_chamado,
@@ -1296,6 +1424,13 @@ def _chamado_atender_payload(chamado, usuario=None):
         'data_reagendamento_iso': (
             chamado.data_reagendamento.isoformat() if getattr(chamado, 'data_reagendamento', None) else ''
         ),
+        'patrimonio': (eq.patrimonio if eq else chamado.patrimonio) or '',
+        'equipamento': (eq.nome_equipamento if eq else chamado.equipamento) or '',
+        'equipamento_id': eq.id if eq else chamado.equipamento_id,
+        'equipamento_setor': (eq.setor or eq.localizacao or '') if eq else '',
+        'equipamento_usuario': (eq.usuario_equipamento or '') if eq else '',
+        'pode_transferir': pode_transferir,
+        'estoque_opcoes': _opcoes_estoque(eq.cliente_id if eq else chamado.cliente_id, eq.id if eq else None) if pode_transferir else [],
     }
 
 @main.route('/instalar-certificado')
@@ -2863,7 +2998,7 @@ def api_campanha_ticket():
     campanhas = [
         _payload_campanha(chamado)
         for chamado in rows
-        if _usuario_toca_mesa(user, chamado.mesa_id)
+        if _usuario_toca_mesa(user, chamado.mesa_id, chamado)
     ][:8]
     watch_ids = []
     for part in (request.args.get('ids') or '').split(','):
@@ -2886,7 +3021,7 @@ def api_campanha_ticket():
         pendentes = [
             _payload_campanha(chamado)
             for chamado in watch_rows
-            if _usuario_toca_mesa(user, chamado.mesa_id)
+            if _usuario_toca_mesa(user, chamado.mesa_id, chamado)
         ]
     retomados_rows = (
         Chamado.query.options(joinedload(Chamado.cliente), joinedload(Chamado.atendente))
@@ -2902,7 +3037,7 @@ def api_campanha_ticket():
     retomados = [
         _payload_campanha(chamado)
         for chamado in retomados_rows
-        if _usuario_toca_mesa(user, chamado.mesa_id)
+        if _usuario_toca_mesa(user, chamado.mesa_id, chamado)
     ]
     return jsonify({
         'ok': True,
@@ -2985,6 +3120,7 @@ def atender_chamado(id):
         chamado.atendendo_em = now_brasilia()
     _marcar_inicio_atendimento(chamado)
 
+    troca = None
     acao = (request.form.get('acao') or 'salvar').strip().lower()
     status_antes = chamado.status
     notas = (request.form.get('atendimento_notas') or '').strip()
@@ -3127,6 +3263,7 @@ def atender_chamado(id):
         ))
 
     try:
+        troca = _transferir_patrimonio(chamado, request.form.get('equipamento_estoque_id'))
         _salvar_fotos_chamado(chamado, atendimento, arquivos_conserto, TIPO_FOTO_CONSERTO)
         _salvar_fotos_chamado(chamado, atendimento, arquivos_enc, TIPO_FOTO_ENCAMINHAMENTO)
         # Debita estoque somente ao Finalizar (não em Gravar/Encaminhar).
@@ -3156,6 +3293,13 @@ def atender_chamado(id):
         msg = 'Chamado reagendado para %s.' % chamado.data_reagendamento.strftime('%d/%m/%Y')
     else:
         msg = 'Atendimento gravado.'
+    if troca:
+        ruim, novo = troca
+        msg = 'Patrimônio %s substituído por %s do estoque. %s' % (
+            ruim.patrimonio or ruim.nome_equipamento,
+            novo.patrimonio or novo.nome_equipamento,
+            msg,
+        )
     if status_fechado(chamado.status) and not status_fechado(status_antes):
         _avisar_finalizacao_ticket(chamado, user, notas)
     if reagendou:

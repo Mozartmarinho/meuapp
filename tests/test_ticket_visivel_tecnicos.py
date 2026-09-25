@@ -9,7 +9,7 @@ sys.path.insert(0, ROOT)
 os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
 
 from app import create_app  # noqa: E402
-from models import Chamado, ChamadoTecnico, Cliente, Usuario, db  # noqa: E402
+from models import Chamado, ChamadoTecnico, ChamadoTecnicoMesa, Cliente, MesaServico, Usuario, db  # noqa: E402
 from password_utils import generate_password_hash  # noqa: E402
 from routes import _pendencias_chamados, _query_chamados_usuario  # noqa: E402
 
@@ -32,7 +32,9 @@ class TicketVisivelTecnicosTest(unittest.TestCase):
 
     def setUp(self):
         Chamado.query.delete()
+        ChamadoTecnicoMesa.query.delete()
         ChamadoTecnico.query.delete()
+        MesaServico.query.delete()
         Usuario.query.delete()
         Cliente.query.delete()
         db.session.commit()
@@ -133,6 +135,35 @@ class TicketVisivelTecnicosTest(unittest.TestCase):
         self.assertIn(chamado.id, ids)
         tipos = {i['tipo'] for i in itens if i['id'] == chamado.id}
         self.assertIn('Ticket aberto', tipos)
+
+    def test_admin_da_informatica_nao_ve_pendente_da_nutricao(self):
+        info = MesaServico(nome='Informatica', ativa=True)
+        nutri = MesaServico(nome='Manutenção Nutrição', ativa=True)
+        db.session.add_all([info, nutri])
+        db.session.commit()
+        opener = self._usuario('Christian', 'christian@example.com')
+        mozart = self._usuario('Informática São Geraldo', 'mozart@example.com', tipo='admin', is_master=True)
+        tec = ChamadoTecnico(nome='Mozart Marinho', email='mozart@example.com', usuario_id=mozart.id, ativo=True, funcao='tecnico')
+        db.session.add(tec)
+        db.session.flush()
+        tec.mesas = [info]
+        nutri_ticket = self._chamado(opener, numero='OSNUTRI')
+        nutri_ticket.mesa_id = nutri.id
+        info_ticket = self._chamado(opener, numero='OSINFO')
+        info_ticket.mesa_id = info.id
+        db.session.commit()
+        ids = {c.id for c in _query_chamados_usuario(mozart).all()}
+        self.assertIn(info_ticket.id, ids)
+        self.assertNotIn(nutri_ticket.id, ids)
+        with self.app.test_request_context('/'):
+            pend = {i['id'] for i in _pendencias_chamados(mozart)}
+        self.assertIn(info_ticket.id, pend)
+        self.assertNotIn(nutri_ticket.id, pend)
+        nutri_ticket.setor_destino = 'Informática'
+        db.session.commit()
+        with self.app.test_request_context('/'):
+            pend2 = {i['id'] for i in _pendencias_chamados(mozart)}
+        self.assertNotIn(nutri_ticket.id, pend2)
 
 
 if __name__ == '__main__':

@@ -1,37 +1,59 @@
 {% extends "base.html" %}
 {% block title %}Sessão {{ numero_formatado }}{% endblock %}
 {% block content %}
-<div class="ar-sessao">
-    <div class="ar-sessao-bar">
-        <div>
-            <strong>Acesso remoto São Geraldo</strong>
-            <span>{{ sessao.equipamento.nome }} · {{ numero_formatado }}</span>
+<div class="ar-visor" id="arPalco" tabindex="0">
+    <img id="arTela" alt="Tela do equipamento" hidden>
+    <div class="ar-ts-bar" id="arTsBar">
+        <div class="ar-ts-painel">
+            <strong>{{ sessao.equipamento.nome }} · {{ numero_formatado }}</strong>
+            <div class="ar-telas" id="arTelas" hidden></div>
+            <button type="button" class="mdk-btn ar-mini" id="arCheia">Tela cheia</button>
+            <button type="button" class="mdk-btn ar-mini" id="arSair">Encerrar</button>
         </div>
-        <button type="button" class="mdk-btn" id="arSair">Encerrar</button>
+        <button type="button" class="ar-ts-aba" id="arTsAba">Acesso remoto</button>
     </div>
-    <p class="ar-dica" id="arDica">Aguardando a tela do equipamento… Clique na imagem para usar o mouse e o teclado.</p>
-    <div class="ar-palco" id="arPalco" tabindex="0">
-        <img id="arTela" alt="Tela do equipamento" hidden>
-    </div>
+    <p class="ar-dica" id="arDica">Aguardando a tela do equipamento…</p>
 </div>
 <style>
-.ar-sessao { display: flex; flex-direction: column; gap: 0.45rem; min-height: calc(100vh - 90px); }
-.ar-sessao-bar { display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; }
-.ar-sessao-bar span { display: block; color: #64748b; font-size: 0.85rem; }
-.ar-dica { margin: 0; color: #475569; }
-.ar-palco { flex: 1; background: #0c3a38; border-radius: 0.45rem; display: flex; align-items: center; justify-content: center; overflow: auto; outline: none; }
-#arTela { max-width: 100%; max-height: calc(100vh - 180px); cursor: crosshair; background: #000; }
+body.ar-ts .sidebar,
+body.ar-ts .app-topbar,
+body.ar-ts .sidebar-overlay { display: none !important; }
+body.ar-ts .main-content { margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: none !important; }
+body.ar-ts { overflow: hidden; background: #000; }
+.ar-visor { position: fixed; inset: 0; z-index: 5000; background: #000; }
+#arTela { width: 100%; height: 100%; object-fit: contain; cursor: default; background: #000; display: block; }
+#arTela[hidden] { display: none !important; }
+.ar-ts-bar { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 5010; display: flex; flex-direction: column; align-items: center; }
+.ar-ts-painel { display: none; align-items: center; gap: 0.45rem; background: #0b3a66; color: #fff; padding: 0.35rem 0.7rem; border-radius: 0 0 0.4rem 0.4rem; }
+.ar-ts-bar:hover .ar-ts-painel,
+.ar-ts-bar.aberta .ar-ts-painel { display: flex; }
+.ar-ts-aba { background: #0b3a66; color: #fff; border: 0; border-radius: 0 0 0.4rem 0.4rem; font-size: 0.72rem; padding: 0.12rem 0.8rem 0.2rem; cursor: pointer; }
+.ar-ts-painel .mdk-btn { color: #0c3a38; background: #fff; }
+.ar-tela-btn.ativa { outline: 2px solid #fff; }
+.ar-dica { position: fixed; left: 0; right: 0; bottom: 0.6rem; margin: 0; text-align: center; color: #cbd5e1; z-index: 5001; }
 </style>
 <script>
 (function () {
     var telaUrl = '{{ url_for("main.acesso_remoto_tela", sessao_id=sessao.id) }}';
     var cmdUrl = '{{ url_for("main.acesso_remoto_comando", sessao_id=sessao.id) }}';
     var fimUrl = '{{ url_for("main.acesso_remoto_encerrar", sessao_id=sessao.id) }}';
+    document.body.classList.add('ar-ts');
+    var raiz = document.documentElement;
+    var pedirCheia = raiz.requestFullscreen || raiz.webkitRequestFullscreen;
+    if (pedirCheia) {
+        try { pedirCheia.call(raiz); } catch (e) {}
+    }
     var img = document.getElementById('arTela');
     var palco = document.getElementById('arPalco');
     var dica = document.getElementById('arDica');
+    var telas = document.getElementById('arTelas');
+    var btnCheia = document.getElementById('arCheia');
     var ultimoMove = 0;
+    var ultimoDown = 0;
+    var pulouUp = false;
     var ativa = true;
+    var monitorAtual = 0;
+    var qtdMonitores = 1;
 
     function encerrarLocal(msg) {
         ativa = false;
@@ -46,6 +68,10 @@
                     encerrarLocal('A sessão foi encerrada.');
                     return null;
                 }
+                atualizarTelas(
+                    parseInt(r.headers.get('X-Ar-Monitores') || '1', 10),
+                    parseInt(r.headers.get('X-Ar-Monitor') || '0', 10)
+                );
                 if (r.status === 204) return null;
                 return r.blob();
             })
@@ -81,9 +107,22 @@
 
     function ponto(ev) {
         var rect = img.getBoundingClientRect();
+        var nw = img.naturalWidth || 0;
+        var nh = img.naturalHeight || 0;
         if (!rect.width || !rect.height) return null;
-        var x = (ev.clientX - rect.left) / rect.width;
-        var y = (ev.clientY - rect.top) / rect.height;
+        var left = rect.left;
+        var top = rect.top;
+        var largura = rect.width;
+        var altura = rect.height;
+        if (nw && nh) {
+            var escala = Math.min(rect.width / nw, rect.height / nh);
+            largura = nw * escala;
+            altura = nh * escala;
+            left = rect.left + (rect.width - largura) / 2;
+            top = rect.top + (rect.height - altura) / 2;
+        }
+        var x = (ev.clientX - left) / largura;
+        var y = (ev.clientY - top) / altura;
         if (x < 0 || y < 0 || x > 1 || y > 1) return null;
         return { x: x, y: y };
     }
@@ -101,13 +140,27 @@
         var p = ponto(ev);
         if (!p) return;
         ev.preventDefault();
+        var agora = Date.now();
+        if (ev.button === 0 && agora - ultimoDown < 500) {
+            pulouUp = true;
+            ultimoDown = 0;
+            enviar({ tipo: 'mouse', acao: 'dblclick', x: p.x, y: p.y, botao: 'left' });
+            return;
+        }
+        ultimoDown = agora;
+        pulouUp = false;
         enviar({ tipo: 'mouse', acao: 'down', x: p.x, y: p.y, botao: ev.button === 2 ? 'right' : 'left' });
     });
     img.addEventListener('mouseup', function (ev) {
+        if (pulouUp) {
+            pulouUp = false;
+            return;
+        }
         var p = ponto(ev);
         if (!p) return;
         enviar({ tipo: 'mouse', acao: 'up', x: p.x, y: p.y, botao: ev.button === 2 ? 'right' : 'left' });
     });
+    img.addEventListener('dblclick', function (ev) { ev.preventDefault(); });
     img.addEventListener('contextmenu', function (ev) { ev.preventDefault(); });
     img.addEventListener('wheel', function (ev) {
         var p = ponto(ev);
@@ -126,6 +179,52 @@
             alt: ev.altKey,
             shift: ev.shiftKey
         });
+    });
+    function atualizarTelas(qtd, indice) {
+        if (!qtd || qtd < 1) qtd = 1;
+        if (qtd === qtdMonitores && indice === monitorAtual && telas.childElementCount === (qtd > 1 ? qtd : 0)) return;
+        qtdMonitores = qtd;
+        monitorAtual = indice;
+        if (qtd < 2) {
+            telas.hidden = true;
+            telas.innerHTML = '';
+            return;
+        }
+        telas.hidden = false;
+        var html = '';
+        for (var i = 0; i < qtd; i++) {
+            html += '<button type="button" class="mdk-btn ar-tela-btn' + (i === indice ? ' ativa' : '') +
+                '" data-monitor="' + i + '">Tela ' + (i + 1) + '</button>';
+        }
+        telas.innerHTML = html;
+    }
+    telas.addEventListener('click', function (ev) {
+        var btn = ev.target.closest('button');
+        if (!btn) return;
+        var indice = parseInt(btn.getAttribute('data-monitor'), 10);
+        if (isNaN(indice) || indice === monitorAtual) return;
+        monitorAtual = indice;
+        Array.prototype.forEach.call(telas.querySelectorAll('button'), function (el) {
+            el.classList.toggle('ativa', parseInt(el.getAttribute('data-monitor'), 10) === indice);
+        });
+        dica.textContent = 'Mostrando a tela ' + (indice + 1) + '.';
+        enviar({ tipo: 'monitor', indice: indice });
+    });
+    function emTelaCheia() {
+        return document.fullscreenElement || document.webkitFullscreenElement;
+    }
+    document.getElementById('arTsAba').addEventListener('click', function () {
+        document.getElementById('arTsBar').classList.toggle('aberta');
+    });
+    btnCheia.addEventListener('click', function () {
+        if (emTelaCheia()) {
+            (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+            return;
+        }
+        if (pedirCheia) pedirCheia.call(raiz);
+    });
+    document.addEventListener('fullscreenchange', function () {
+        btnCheia.textContent = emTelaCheia() ? 'Sair da tela cheia' : 'Tela cheia';
     });
     document.getElementById('arSair').addEventListener('click', function () {
         fetch(fimUrl, { method: 'POST', credentials: 'same-origin' }).finally(function () {

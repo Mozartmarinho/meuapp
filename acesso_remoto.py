@@ -18,6 +18,7 @@ FRAME_MAX = 2_000_000
 _lock = threading.Lock()
 _frames = {}
 _filas = {}
+_monitores = {}
 
 
 class AcessoRemotoEquipamento(db.Model):
@@ -28,6 +29,7 @@ class AcessoRemotoEquipamento(db.Model):
     nome = db.Column(db.String(120), nullable=False, default='Computador')
     token_hash = db.Column(db.String(64), unique=True, nullable=False, index=True)
     senha_hash = db.Column(db.String(255))
+    senha = db.Column(db.String(80))
     ultimo_visto = db.Column(db.DateTime)
     criado_em = db.Column(db.DateTime, default=now_brasilia)
 
@@ -88,7 +90,6 @@ def registrar_equipamento(nome, token=None):
     if token:
         atual = equipamento_por_token(token)
         if atual:
-            atual.nome = nome
             atual.ultimo_visto = now_brasilia()
             db.session.commit()
             return atual, token
@@ -113,6 +114,7 @@ def definir_senha(token, senha):
     if len(senha) < SENHA_MIN:
         raise ValueError('A senha precisa ter pelo menos %s caracteres.' % SENHA_MIN)
     row.senha_hash = generate_password_hash(senha)
+    row.senha = senha
     row.ultimo_visto = now_brasilia()
     db.session.commit()
     return row
@@ -227,16 +229,61 @@ def tocar_viewer(sessao):
         return _frames.get(sessao.id)
 
 
+def anotar_monitores(equipamento_id, quantidade=None, indice=None):
+    with _lock:
+        atual = _monitores.get(equipamento_id) or {'quantidade': 1, 'indice': 0}
+        if quantidade is not None:
+            try:
+                qtd = int(quantidade)
+            except (TypeError, ValueError):
+                qtd = atual['quantidade']
+            atual['quantidade'] = max(1, min(8, qtd))
+            if atual['indice'] >= atual['quantidade']:
+                atual['indice'] = atual['quantidade'] - 1
+        if indice is not None:
+            try:
+                idx = int(indice)
+            except (TypeError, ValueError):
+                idx = atual['indice']
+            idx = max(0, min(7, idx))
+            if quantidade is None and idx >= atual['quantidade']:
+                atual['quantidade'] = idx + 1
+            atual['indice'] = min(idx, max(0, atual['quantidade'] - 1))
+        _monitores[equipamento_id] = atual
+        return dict(atual)
+
+
+def monitores_de(equipamento_id):
+    with _lock:
+        info = _monitores.get(equipamento_id) or {'quantidade': 1, 'indice': 0}
+        return dict(info)
+
+
 def enfileirar_comando(sessao, comando):
     if not sessao or not sessao.ativa:
         raise ValueError('A sessão não está mais ativa.')
     tipo = (comando or {}).get('tipo')
-    if tipo not in ('mouse', 'tecla'):
+    if tipo not in ('mouse', 'tecla', 'monitor'):
         raise ValueError('Comando inválido.')
     limpo = {'tipo': tipo}
+    if tipo == 'monitor':
+        try:
+            indice = int((comando or {}).get('indice') or 0)
+        except (TypeError, ValueError):
+            indice = 0
+        info = anotar_monitores(sessao.equipamento_id, indice=indice)
+        limpo['indice'] = info['indice']
+        sessao.ultimo_viewer = now_brasilia()
+        db.session.commit()
+        with _lock:
+            fila = _filas.setdefault(sessao.equipamento_id, [])
+            fila.append(limpo)
+            if len(fila) > FILA_MAX:
+                del fila[: len(fila) - FILA_MAX]
+        return limpo
     if tipo == 'mouse':
         acao = (comando.get('acao') or '').strip()
-        if acao not in ('move', 'down', 'up', 'wheel'):
+        if acao not in ('move', 'down', 'up', 'wheel', 'dblclick'):
             raise ValueError('Ação do mouse inválida.')
         limpo['acao'] = acao
         limpo['x'] = _frac(comando.get('x'))
@@ -262,9 +309,13 @@ def enfileirar_comando(sessao, comando):
     db.session.commit()
     with _lock:
         fila = _filas.setdefault(sessao.equipamento_id, [])
-        fila.append(limpo)
-        if len(fila) > FILA_MAX:
-            del fila[: len(fila) - FILA_MAX]
+        if limpo.get('acao') == 'move' and fila and fila[-1].get('acao') == 'move':
+            fila[-1] = limpo
+        else:
+            fila.append(limpo)
+        while len(fila) > FILA_MAX:
+            antigo = next((i for i, item in enumerate(fila) if item.get('acao') == 'move'), None)
+            del fila[0 if antigo is None else antigo]
     return limpo
 
 
@@ -276,6 +327,33 @@ def encerrar_sessao(sessao):
     with _lock:
         _frames.pop(sessao.id, None)
         _filas.pop(sessao.equipamento_id, None)
+
+
+def renomear_equipamento(equipamento_id, nome):
+    row = AcessoRemotoEquipamento.query.get(equipamento_id)
+    if not row:
+        raise ValueError('Equipamento não encontrado.')
+    nome = (nome or '').strip()[:120]
+    if not nome:
+        raise ValueError('Informe o nome do equipamento.')
+    row.nome = nome
+    db.session.commit()
+    return row
+
+
+def excluir_equipamento(equipamento_id):
+    row = AcessoRemotoEquipamento.query.get(equipamento_id)
+    if not row:
+        raise ValueError('Equipamento não encontrado.')
+    for sessao in AcessoRemotoSessao.query.filter_by(equipamento_id=row.id).all():
+        with _lock:
+            _frames.pop(sessao.id, None)
+        db.session.delete(sessao)
+    with _lock:
+        _filas.pop(row.id, None)
+        _monitores.pop(row.id, None)
+    db.session.delete(row)
+    db.session.commit()
 
 
 def _frac(valor):
@@ -308,8 +386,23 @@ def listar_equipamentos():
             'numero_formatado': formatar_numero(row.numero),
             'nome': row.nome,
             'online': online(row, agora),
+            'senha': row.senha or '',
             'senha_definida': bool(row.senha_hash),
             'em_atendimento': bool(sessao),
             'ultimo_visto': visto,
         })
     return saida
+
+
+def ensure_acesso_remoto_schema():
+    from sqlalchemy import inspect, text
+    insp = inspect(db.engine)
+    if 'acesso_remoto_equipamentos' not in set(insp.get_table_names()):
+        return
+    cols = {c['name'] for c in insp.get_columns('acesso_remoto_equipamentos')}
+    if 'senha' in cols:
+        return
+    db.session.execute(text(
+        'ALTER TABLE acesso_remoto_equipamentos ADD COLUMN senha VARCHAR(80) NULL'
+    ))
+    db.session.commit()

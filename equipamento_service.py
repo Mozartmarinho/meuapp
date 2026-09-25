@@ -27,7 +27,9 @@ from models import (
     acessorios_sugeridos,
     aplicar_automacoes,
     db,
+    MESA_PADRAO,
     mesa_padrao,
+    mesa_por_nome,
     normalizar_acessorios,
     now_brasilia,
 )
@@ -142,6 +144,16 @@ def _tecnico_preventiva(prev):
     )
 
 
+def mesa_preventiva_equipamento(eq):
+    """Mesa que recebe o toque da preventiva, conforme o tipo do equipamento."""
+    tipo = eq.tipo_equipamento_norm() if eq else 'ti'
+    nome = 'Manutenção Nutrição' if tipo == 'nutricao' else MESA_PADRAO
+    mesa = mesa_por_nome(nome)
+    if mesa and getattr(mesa, 'ativa', True):
+        return mesa
+    return mesa_padrao()
+
+
 def _setor_tecnico_id(eq):
     nome = (eq.setor or eq.localizacao or '').strip()
     if not nome:
@@ -187,7 +199,7 @@ def abrir_chamado_preventiva(eq, prev, hoje=None):
         f'(patrimônio {codigo}). Período: {periodo}. '
         f'Frequência: {prev.frequencia}.'
     )
-    mesa = mesa_padrao()
+    mesa = mesa_preventiva_equipamento(eq)
     chamado = Chamado(
         numero_chamado=_numero_os(),
         cliente_id=eq.cliente_id,
@@ -214,8 +226,31 @@ def abrir_chamado_preventiva(eq, prev, hoje=None):
     return chamado
 
 
+def corrigir_mesas_preventivas_abertas():
+    """Tickets de preventiva já abertos passam para a mesa do tipo do equipamento."""
+    abertos = (
+        Chamado.query.filter(
+            Chamado.descricao.like('Preventiva:%'),
+            db.not_(Chamado.status.in_(STATUS_FECHADOS)),
+            Chamado.equipamento_id.isnot(None),
+        )
+        .all()
+    )
+    alterados = 0
+    for chamado in abertos:
+        eq = chamado.equipamento_cadastro or Equipamento.query.get(chamado.equipamento_id)
+        mesa = mesa_preventiva_equipamento(eq) if eq else None
+        if mesa and chamado.mesa_id != mesa.id:
+            chamado.mesa_id = mesa.id
+            alterados += 1
+    if alterados:
+        db.session.commit()
+    return alterados
+
+
 def processar_preventivas(hoje=None):
     hoje = hoje or date.today()
+    corrigir_mesas_preventivas_abertas()
     criados = 0
     itens = (
         EquipamentoPreventiva.query.filter_by(ativa=True)

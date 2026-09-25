@@ -24,6 +24,11 @@ with app.app_context():
     except Exception as extra:
         print(f"Aviso schema whatsapp/tecnicos: {extra}")
     try:
+        from acesso_remoto import ensure_acesso_remoto_schema
+        ensure_acesso_remoto_schema()
+    except Exception as extra:
+        print(f"Aviso schema acesso remoto: {extra}")
+    try:
         from nutricao_tenant import ensure_nutricao_cliente_schema
         ensure_nutricao_cliente_schema()
     except Exception as extra:

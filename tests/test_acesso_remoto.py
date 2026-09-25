@@ -31,12 +31,13 @@ class AcessoRemotoTest(unittest.TestCase):
         cls.ctx.pop()
 
     def setUp(self):
-        from acesso_remoto import AcessoRemotoEquipamento, AcessoRemotoSessao, _filas, _frames
+        from acesso_remoto import AcessoRemotoEquipamento, AcessoRemotoSessao, _filas, _frames, _monitores
         AcessoRemotoSessao.query.delete()
         AcessoRemotoEquipamento.query.delete()
         db.session.commit()
         _filas.clear()
         _frames.clear()
+        _monitores.clear()
         Usuario.query.delete()
         db.session.commit()
         self.user = Usuario(
@@ -66,6 +67,8 @@ class AcessoRemotoTest(unittest.TestCase):
         self.assertIn('Acesso remoto São Geraldo', html)
         self.assertIn('Programa do equipamento', html)
         self.assertIn('>Acesso remoto<', html)
+        self.assertIn('Ativo', html)
+        self.assertIn('Excluir', html)
 
     def test_fluxo_senha_tela_e_comando(self):
         agente = self.app.test_client()
@@ -117,6 +120,64 @@ class AcessoRemotoTest(unittest.TestCase):
         de_novo = agente.post('/api/acesso-remoto/agente/pulso', headers={'X-Agente-Token': token})
         self.assertEqual(de_novo.get_json()['comandos'], [])
         self.assertEqual(web.post('/acesso-remoto/sessao/%s/encerrar' % sessao_id).status_code, 200)
+
+    def test_renomear_excluir_e_escolher_tela(self):
+        agente = self.app.test_client()
+        reg = agente.post('/api/acesso-remoto/agente/registrar', json={'nome': 'Recepcao-01'})
+        token = reg.get_json()['token']
+        numero = reg.get_json()['numero']
+        agente.post(
+            '/api/acesso-remoto/agente/senha',
+            json={'senha': 'segredo'},
+            headers={'X-Agente-Token': token},
+        )
+        web = self._login()
+        lista = web.get('/api/acesso-remoto/equipamentos').get_json()['equipamentos']
+        eq_id = lista[0]['id']
+        self.assertTrue(lista[0]['online'])
+        html = web.get('/acesso-remoto').get_data(as_text=True)
+        self.assertIn('ar-estado ativo', html)
+        self.assertIn('Ativo', html)
+        self.assertIn('segredo', html)
+        self.assertIn('data-senha="segredo"', html)
+        self.assertIn('Clique duas vezes para conectar', html)
+        vazio = web.post('/api/acesso-remoto/equipamentos/%s/nome' % eq_id, json={'nome': '  '})
+        self.assertEqual(vazio.status_code, 400)
+        novo = web.post('/api/acesso-remoto/equipamentos/%s/nome' % eq_id, json={'nome': 'Recepção'})
+        self.assertEqual(novo.status_code, 200)
+        self.assertEqual(novo.get_json()['nome'], 'Recepção')
+        de_novo = agente.post(
+            '/api/acesso-remoto/agente/registrar',
+            json={'nome': 'OUTRO-PC'},
+            headers={'X-Agente-Token': token},
+        )
+        self.assertEqual(de_novo.get_json()['numero'], numero)
+        nomes = web.get('/api/acesso-remoto/equipamentos').get_json()['equipamentos']
+        self.assertEqual(nomes[0]['nome'], 'Recepção')
+        entrou = web.post('/acesso-remoto/conectar', json={'numero': numero, 'senha': 'segredo'})
+        sessao_id = entrou.get_json()['sessao_id']
+        pagina = web.get('/acesso-remoto/sessao/%s' % sessao_id).get_data(as_text=True)
+        self.assertIn('Tela cheia', pagina)
+        self.assertIn('id="arTelas"', pagina)
+        jpeg = b'\xff\xd8\xff\xd9'
+        agente.post(
+            '/api/acesso-remoto/agente/tela?sessao_id=%s&monitores=2&monitor=0' % sessao_id,
+            data=jpeg,
+            headers={'X-Agente-Token': token, 'Content-Type': 'image/jpeg'},
+        )
+        vista = web.get('/acesso-remoto/sessao/%s/tela' % sessao_id)
+        self.assertEqual(vista.headers.get('X-Ar-Monitores'), '2')
+        self.assertEqual(vista.headers.get('X-Ar-Monitor'), '0')
+        troca = web.post('/acesso-remoto/sessao/%s/comando' % sessao_id, json={'tipo': 'monitor', 'indice': 1})
+        self.assertEqual(troca.status_code, 200)
+        self.assertEqual(web.get('/acesso-remoto/sessao/%s/tela' % sessao_id).headers.get('X-Ar-Monitor'), '1')
+        pulso = agente.post('/api/acesso-remoto/agente/pulso', headers={'X-Agente-Token': token})
+        self.assertEqual(pulso.get_json()['comandos'][0]['indice'], 1)
+        fora = web.post('/api/acesso-remoto/equipamentos/%s/excluir' % eq_id)
+        self.assertEqual(fora.status_code, 200)
+        self.assertEqual(web.get('/api/acesso-remoto/equipamentos').get_json()['equipamentos'], [])
+        sumiu = agente.post('/api/acesso-remoto/agente/pulso', headers={'X-Agente-Token': token})
+        self.assertEqual(sumiu.status_code, 401)
 
     def test_token_invalido(self):
         r = self.app.test_client().post('/api/acesso-remoto/agente/pulso', headers={'X-Agente-Token': 'nao'})

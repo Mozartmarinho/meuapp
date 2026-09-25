@@ -5,16 +5,20 @@ from flask import jsonify, redirect, render_template, request, send_file, sessio
 
 from acesso_remoto import (
     AcessoRemotoSessao,
+    anotar_monitores,
     conectar,
     definir_senha,
     encerrar_sessao,
     enfileirar_comando,
     equipamento_por_token,
+    excluir_equipamento,
     formatar_numero,
     guardar_tela,
     listar_equipamentos,
+    monitores_de,
     pulso,
     registrar_equipamento,
+    renomear_equipamento,
     tocar_viewer,
 )
 
@@ -89,6 +93,29 @@ def registrar_rotas_acesso_remoto(main, menu_map):
             return bloqueio
         return jsonify({'ok': True, 'equipamentos': listar_equipamentos()})
 
+    @main.route('/api/acesso-remoto/equipamentos/<int:equipamento_id>/nome', methods=['POST'])
+    def api_acesso_remoto_renomear(equipamento_id):
+        bloqueio = _exigir_login_json()
+        if bloqueio:
+            return bloqueio
+        data = request.get_json(silent=True) or request.form
+        try:
+            row = renomear_equipamento(equipamento_id, data.get('nome'))
+        except ValueError as exc:
+            return jsonify({'ok': False, 'message': str(exc)}), 400
+        return jsonify({'ok': True, 'id': row.id, 'nome': row.nome})
+
+    @main.route('/api/acesso-remoto/equipamentos/<int:equipamento_id>/excluir', methods=['POST'])
+    def api_acesso_remoto_excluir(equipamento_id):
+        bloqueio = _exigir_login_json()
+        if bloqueio:
+            return bloqueio
+        try:
+            excluir_equipamento(equipamento_id)
+        except ValueError as exc:
+            return jsonify({'ok': False, 'message': str(exc)}), 404
+        return jsonify({'ok': True})
+
     @main.route('/acesso-remoto/conectar', methods=['POST'])
     def acesso_remoto_conectar():
         bloqueio = _exigir_login_json()
@@ -129,9 +156,16 @@ def registrar_rotas_acesso_remoto(main, menu_map):
         if not sessao:
             return jsonify({'ok': False, 'message': 'Sessão encerrada.'}), 404
         frame = tocar_viewer(sessao)
+        info = monitores_de(sessao.equipamento_id)
+        headers = {
+            'Cache-Control': 'no-store',
+            'X-Ar-Monitores': str(info['quantidade']),
+            'X-Ar-Monitor': str(info['indice']),
+        }
         if not frame:
-            return '', 204
-        return frame, 200, {'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store'}
+            return '', 204, headers
+        headers['Content-Type'] = 'image/jpeg'
+        return frame, 200, headers
 
     @main.route('/acesso-remoto/sessao/<int:sessao_id>/comando', methods=['POST'])
     def acesso_remoto_comando(sessao_id):
@@ -186,9 +220,14 @@ def registrar_rotas_acesso_remoto(main, menu_map):
     @main.route('/api/acesso-remoto/agente/pulso', methods=['POST'])
     def api_acesso_remoto_pulso():
         try:
-            return jsonify(pulso(_token_agente()))
+            payload = pulso(_token_agente())
         except PermissionError as exc:
             return jsonify({'ok': False, 'message': str(exc)}), 401
+        data = request.get_json(silent=True) or {}
+        row = equipamento_por_token(_token_agente())
+        if row and data.get('monitores') is not None:
+            anotar_monitores(row.id, data.get('monitores'), data.get('monitor'))
+        return jsonify(payload)
 
     @main.route('/api/acesso-remoto/agente/tela', methods=['POST'])
     def api_acesso_remoto_agente_tela():
@@ -202,6 +241,8 @@ def registrar_rotas_acesso_remoto(main, menu_map):
         if comandos is False:
             return jsonify({'ok': False, 'sessao_id': None, 'comandos': []})
         row = equipamento_por_token(_token_agente())
+        if row and request.args.get('monitores') is not None:
+            anotar_monitores(row.id, request.args.get('monitores'), request.args.get('monitor'))
         return jsonify({
             'ok': True,
             'sessao_id': request.args.get('sessao_id', type=int),
@@ -217,3 +258,5 @@ def registrar_rotas_acesso_remoto(main, menu_map):
     menu_map['main.acesso_remoto_tela'] = 'acesso_remoto'
     menu_map['main.acesso_remoto_comando'] = 'acesso_remoto'
     menu_map['main.acesso_remoto_encerrar'] = 'acesso_remoto'
+    menu_map['main.api_acesso_remoto_renomear'] = 'acesso_remoto'
+    menu_map['main.api_acesso_remoto_excluir'] = 'acesso_remoto'
