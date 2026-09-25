@@ -553,10 +553,22 @@ def _nome_tecnico_aviso(usuario):
     return (getattr(usuario, 'nome', None) or '').strip() or 'técnico'
 
 
+def _ve_todos_tickets(usuario):
+    """Supervisor e gestor enxergam todos os tickets, de qualquer mesa."""
+    if not usuario:
+        return False
+    for tec in _registros_tecnico_usuario(usuario):
+        funcao = (getattr(tec, 'funcao', None) or '').strip().lower()
+        if funcao in ('supervisor', 'gestor'):
+            return True
+    return False
+
+
 def _filtro_chamados_usuario(user):
     """Tickets visíveis: os que o usuário abriu e os abertos das mesas dele.
 
-    Quem tem mesa cadastrada não vê pendências das outras mesas, mesmo sendo admin.
+    Supervisor e gestor veem todos. Quem tem mesa cadastrada não vê
+    pendências das outras mesas, mesmo sendo admin.
     """
     conds = [Chamado.tecnico_id == user.id]
     setor = _setor_usuario(user)
@@ -1032,16 +1044,15 @@ RELATORIOS_LIVE = {
 
 
 def _query_chamados_usuario(user):
-    return (
-        Chamado.query.options(
-            joinedload(Chamado.cliente),
-            joinedload(Chamado.mesa),
-            joinedload(Chamado.contrato),
-            joinedload(Chamado.atendente),
-        )
-        .filter(_filtro_chamados_usuario(user))
-        .order_by(Chamado.data_criacao.desc())
+    q = Chamado.query.options(
+        joinedload(Chamado.cliente),
+        joinedload(Chamado.mesa),
+        joinedload(Chamado.contrato),
+        joinedload(Chamado.atendente),
     )
+    if not _ve_todos_tickets(user):
+        q = q.filter(_filtro_chamados_usuario(user))
+    return q.order_by(Chamado.data_criacao.desc())
 
 
 def _grupos_tickets(chamados):
@@ -1172,6 +1183,8 @@ def _chamado_da_equipe(usuario, chamado):
     """True se o chamado cai na mesa do técnico, inclusive quando o login é admin."""
     if not usuario or not chamado:
         return False
+    if _ve_todos_tickets(usuario):
+        return True
     mesas = _mesas_tecnico_usuario(usuario)
     if not mesas:
         return True
@@ -1198,8 +1211,9 @@ def _pendencias_chamados(usuario):
         .order_by(Chamado.data_criacao.desc())
         .all()
     )
+    ver_todos = _ve_todos_tickets(usuario)
     for chamado in rows:
-        if mesas and chamado.mesa_id not in mesas:
+        if mesas and not ver_todos and chamado.mesa_id not in mesas:
             continue
         dest = normalizar_setor_chamado(chamado.setor_destino)
         encaminhado_para_mim = bool(dest) and (dest == setor or (gestor and not mesas))
@@ -5247,7 +5261,7 @@ def agenda():
     visiveis = _query_chamados_usuario(user).all()
     eventos = []
     for c in visiveis:
-        if not c.data_criacao:
+        if not c.data_criacao or _chamado_e_preventiva(c):
             continue
         eventos.append({
             'id': c.id,
@@ -5259,34 +5273,35 @@ def agenda():
             'tipo': 'chamado',
         })
     try:
-        from equipamento_service import ocorrencias_preventiva
+        from equipamento_service import garantir_chamado_ocorrencia, ocorrencias_preventiva
         ano = date.today().year
+        vistos = set()
         for prev in EquipamentoPreventiva.query.filter_by(ativa=True).all():
             eq = prev.equipamento
             if not eq:
                 continue
-            for dia in ocorrencias_preventiva(prev, ano=ano):
+            dias = list(ocorrencias_preventiva(prev, ano=ano))
+            dias.extend(ocorrencias_preventiva(prev, ano=ano + 1))
+            for dia in dias:
+                chave = (eq.id, dia.isoformat())
+                if chave in vistos:
+                    continue
+                vistos.add(chave)
+                chamado = garantir_chamado_ocorrencia(eq, prev, dia)
+                if not chamado:
+                    continue
                 eventos.append({
-                    'id': f'prev-{eq.id}-{dia.isoformat()}',
-                    'numero': eq.patrimonio or '',
-                    'titulo': f'Preventiva: {eq.nome_equipamento}',
+                    'id': chamado.id,
+                    'numero': chamado.numero_chamado,
+                    'titulo': _titulo_chamado(chamado),
                     'data': dia.strftime('%Y-%m-%d'),
                     'hora': '',
-                    'url': url_for('main.listar_equipamentos'),
-                    'tipo': 'preventiva',
+                    'url': url_for('main.ver_chamado', id=chamado.id),
+                    'tipo': 'chamado',
                 })
-            for dia in ocorrencias_preventiva(prev, ano=ano + 1):
-                eventos.append({
-                    'id': f'prev-{eq.id}-{dia.isoformat()}',
-                    'numero': eq.patrimonio or '',
-                    'titulo': f'Preventiva: {eq.nome_equipamento}',
-                    'data': dia.strftime('%Y-%m-%d'),
-                    'hora': '',
-                    'url': url_for('main.listar_equipamentos'),
-                    'tipo': 'preventiva',
-                })
+        db.session.commit()
     except Exception:
-        pass
+        db.session.rollback()
     return render_template(
         'agenda.html',
         user_name=user.nome,

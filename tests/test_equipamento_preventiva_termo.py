@@ -26,6 +26,8 @@ from password_utils import generate_password_hash  # noqa: E402
 from equipamento_service import (  # noqa: E402
     avancar_data,
     criar_ou_reenviar_termo,
+    garantir_chamado_ocorrencia,
+    ocorrencias_preventiva,
     processar_preventivas,
     salvar_preventiva,
     salvar_termo,
@@ -137,6 +139,27 @@ class EquipamentoPreventivaTermoTest(unittest.TestCase):
             'proxima_data': date.today().isoformat(),
         }, self.user)
         self.assertEqual(chamado_nutri.mesa_id, nutri.id)
+
+    def test_ocorrencia_vira_ticket_com_numero_os(self):
+        prev, _chamado = salvar_preventiva(self.eq, {
+            'ativa': True,
+            'frequencia': 'mensal',
+            'proxima_data': date.today().isoformat(),
+        }, self.user)
+        futuro = date.today() + timedelta(days=40)
+        prev.proxima_data = futuro
+        db.session.commit()
+        dia = ocorrencias_preventiva(prev, ano=futuro.year)[0]
+        ticket = garantir_chamado_ocorrencia(self.eq, prev, dia)
+        db.session.commit()
+        self.assertIsNotNone(ticket)
+        self.assertTrue((ticket.numero_chamado or '').startswith('OS'))
+        self.assertNotEqual(ticket.numero_chamado, self.eq.patrimonio)
+        de_novo = garantir_chamado_ocorrencia(self.eq, prev, dia)
+        self.assertEqual(de_novo.id, ticket.id)
+        html = self.client.get('/agenda').get_data(as_text=True)
+        self.assertIn(ticket.numero_chamado, html)
+        self.assertNotIn(f'"numero": "{self.eq.patrimonio}"', html)
 
     def test_processar_nao_duplica_ticket_aberto(self):
         salvar_preventiva(self.eq, {

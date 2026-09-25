@@ -18,6 +18,7 @@ from pathlib import Path
 from models import (
     FREQUENCIAS_PREVENTIVA_KEYS,
     STATUS_FECHADOS,
+    STATUS_REAGENDADO,
     Chamado,
     ChamadoSetor,
     Equipamento,
@@ -174,6 +175,77 @@ def _preventiva_aberta(eq_id):
     )
 
 
+def _marca_dia_preventiva(dia):
+    return f'Dia preventiva: {dia.isoformat()}'
+
+
+def chamado_preventiva_no_dia(eq_id, dia):
+    """Ticket da preventiva daquele equipamento naquele dia."""
+    if not eq_id or not dia:
+        return None
+    periodo = dia.strftime('%d/%m/%Y')
+    return (
+        Chamado.query.filter(
+            Chamado.equipamento_id == eq_id,
+            Chamado.descricao.like('Preventiva:%'),
+            db.or_(
+                Chamado.descricao.like(f'%{_marca_dia_preventiva(dia)}%'),
+                Chamado.descricao.like(f'%Período: {periodo}%'),
+            ),
+        )
+        .order_by(Chamado.id.desc())
+        .first()
+    )
+
+
+def garantir_chamado_ocorrencia(eq, prev, dia, hoje=None):
+    """Garante um ticket com número de OS para a ocorrência da preventiva.
+
+    Dia futuro fica Reagendado para não entrar no toque antes da data.
+    """
+    hoje = hoje or date.today()
+    if not eq or not prev or not dia:
+        return None
+    existente = chamado_preventiva_no_dia(eq.id, dia)
+    if existente and (existente.status or '') not in STATUS_FECHADOS:
+        return existente
+    tecnico = _tecnico_preventiva(prev)
+    if not tecnico:
+        LOG.warning('Preventiva %s: nenhum usuário para técnico_id', eq.id)
+        return None
+    codigo = eq.patrimonio or '—'
+    nome = eq.nome_equipamento or 'equipamento'
+    futuro = dia > hoje
+    desc = (
+        f'Preventiva: manutenção preventiva do equipamento {nome} '
+        f'(patrimônio {codigo}). Período: {dia.strftime("%d/%m/%Y")}. '
+        f'{_marca_dia_preventiva(dia)}. Frequência: {prev.frequencia}.'
+    )
+    mesa = mesa_preventiva_equipamento(eq)
+    chamado = Chamado(
+        numero_chamado=_numero_os(),
+        cliente_id=eq.cliente_id,
+        tipo_servico='Manutenção',
+        descricao=desc,
+        status=STATUS_REAGENDADO if futuro else 'Pendente',
+        prioridade='Normal',
+        tecnico_id=tecnico.id,
+        mesa_id=mesa.id if mesa else None,
+        setor_tecnico_id=_setor_tecnico_id(eq),
+        equipamento_id=eq.id,
+        patrimonio=eq.patrimonio,
+        equipamento=eq.nome_equipamento,
+        data_reagendamento=dia if futuro else None,
+    )
+    db.session.add(chamado)
+    db.session.flush()
+    if not futuro:
+        aplicar_automacoes(chamado, 'criar', tecnico)
+        prev.ultimo_chamado_id = chamado.id
+        prev.ultimo_em = now_brasilia()
+    return chamado
+
+
 def abrir_chamado_preventiva(eq, prev, hoje=None):
     """Abre OS de preventiva se vencida e não houver ticket aberto do mesmo tipo."""
     hoje = hoje or date.today()
@@ -183,42 +255,9 @@ def abrir_chamado_preventiva(eq, prev, hoje=None):
         return None
     if _preventiva_aberta(eq.id):
         return None
-    tecnico = _tecnico_preventiva(prev)
-    if not tecnico:
-        LOG.warning('Preventiva %s: nenhum usuário para técnico_id', eq.id)
+    chamado = garantir_chamado_ocorrencia(eq, prev, prev.proxima_data, hoje)
+    if not chamado:
         return None
-    codigo = eq.patrimonio or '—'
-    nome = eq.nome_equipamento or 'equipamento'
-    dur = max(1, int(prev.duracao_dias or 1))
-    periodo = prev.proxima_data.strftime('%d/%m/%Y')
-    if dur > 1:
-        fim = prev.proxima_data + timedelta(days=dur - 1)
-        periodo = f'{periodo} a {fim.strftime("%d/%m/%Y")}'
-    desc = (
-        f'Preventiva: manutenção preventiva do equipamento {nome} '
-        f'(patrimônio {codigo}). Período: {periodo}. '
-        f'Frequência: {prev.frequencia}.'
-    )
-    mesa = mesa_preventiva_equipamento(eq)
-    chamado = Chamado(
-        numero_chamado=_numero_os(),
-        cliente_id=eq.cliente_id,
-        tipo_servico='Manutenção',
-        descricao=desc,
-        status='Pendente',
-        prioridade='Normal',
-        tecnico_id=tecnico.id,
-        mesa_id=mesa.id if mesa else None,
-        setor_tecnico_id=_setor_tecnico_id(eq),
-        equipamento_id=eq.id,
-        patrimonio=eq.patrimonio,
-        equipamento=eq.nome_equipamento,
-    )
-    db.session.add(chamado)
-    db.session.flush()
-    aplicar_automacoes(chamado, 'criar', tecnico)
-    prev.ultimo_chamado_id = chamado.id
-    prev.ultimo_em = now_brasilia()
     proxima = avancar_data(prev.proxima_data, prev.frequencia)
     while proxima <= hoje:
         proxima = avancar_data(proxima, prev.frequencia)

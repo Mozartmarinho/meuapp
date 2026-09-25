@@ -165,6 +165,36 @@ class TicketVisivelTecnicosTest(unittest.TestCase):
             pend2 = {i['id'] for i in _pendencias_chamados(mozart)}
         self.assertNotIn(nutri_ticket.id, pend2)
 
+    def test_supervisor_e_gestor_veem_todas_as_mesas(self):
+        info = MesaServico(nome='Informatica', ativa=True)
+        nutri = MesaServico(nome='Manutenção Nutrição', ativa=True)
+        db.session.add_all([info, nutri])
+        db.session.commit()
+        opener = self._usuario('Solicitante', 'abre2@example.com')
+        sup = self._usuario('Supervisora', 'sup@example.com')
+        ges = self._usuario('Gestor', 'ges@example.com')
+        tec_sup = ChamadoTecnico(
+            nome='Supervisora', email='sup@example.com', usuario_id=sup.id,
+            ativo=True, funcao='supervisor',
+        )
+        tec_ges = ChamadoTecnico(
+            nome='Gestor', email='ges@example.com', usuario_id=ges.id,
+            ativo=True, funcao='gestor',
+        )
+        db.session.add_all([tec_sup, tec_ges])
+        db.session.flush()
+        tec_sup.mesas = [info]
+        tec_ges.mesas = [info]
+        outro = self._chamado(opener, numero='OSOUTRA')
+        outro.mesa_id = nutri.id
+        db.session.commit()
+        for user in (sup, ges):
+            ids = {c.id for c in _query_chamados_usuario(user).all()}
+            self.assertIn(outro.id, ids)
+            with self.app.test_request_context('/'):
+                pend = {i['id'] for i in _pendencias_chamados(user)}
+            self.assertIn(outro.id, pend)
+
 
 if __name__ == '__main__':
     unittest.main()
