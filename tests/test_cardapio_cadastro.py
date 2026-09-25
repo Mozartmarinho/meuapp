@@ -161,6 +161,8 @@ class CardapioCadastroTest(unittest.TestCase):
         data = resp.get_json()
         self.assertTrue(data.get('ok'))
         itens = data['cardapio']['itens']
+        self.assertEqual(data['cardapio']['item_1'], 'ARROZ C/ SAL')
+        self.assertEqual(data['cardapio']['item_2'], 'BIFE ACEBOLADO')
         self.assertEqual(itens['acompanhamento_extras'], ['FEIJÃO', 'MACARRÃO'])
         self.assertEqual(itens['prato_base_extras'], ['FRANGO GRELHADO'])
         pratos = pratos_from_itens(itens, 'grandes')
@@ -188,6 +190,8 @@ class CardapioCadastroTest(unittest.TestCase):
         })
         self.assertEqual(resp_p.status_code, 200)
         itens_p = resp_p.get_json()['cardapio']['itens']
+        self.assertEqual(resp_p.get_json()['cardapio']['item_1'], 'CAFÉ')
+        self.assertEqual(resp_p.get_json()['cardapio']['item_2'], 'PÃO FRANCÊS')
         self.assertEqual(itens_p['bebida_extras'], ['CHÁ'])
         self.assertEqual(itens_p['prato1_extras'], ['BROA'])
         pratos_p = pratos_from_itens(itens_p, 'pequenas')

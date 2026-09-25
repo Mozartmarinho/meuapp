@@ -426,6 +426,21 @@ class NutMapaRefeicao(db.Model):
         }
 
 
+CAMPOS_ITEM_CARDAPIO = {
+    'grandes': (
+        'acompanhamento', 'prato_base', 'proteina_opcional', 'guarnicao',
+        'docinho_salada', 'sobremesa', 'fruta', 'suco', 'vitamina_suco', 'outros',
+    ),
+    'pequenas': (
+        'bebida', 'prato1', 'prato2', 'prato3', 'prato4',
+        'prato5', 'prato6', 'prato7', 'sobremesa', 'prato8',
+    ),
+    'liquidas': (
+        'principal', 'bebida', 'sobremesa', 'gelado', 'outros',
+    ),
+}
+
+
 class NutCardapio(db.Model):
     """Cardápio montado por dieta × horários (flags hr_* = tipos de refeição).
 
@@ -453,8 +468,18 @@ class NutCardapio(db.Model):
     hr_jantar = db.Column(db.Boolean, default=False)
     hr_ceia = db.Column(db.Boolean, default=False)
 
-    # campos específicos da aba (JSON/Text)
+    # campos específicos da aba (JSON/Text) e cada item em coluna própria
     itens = db.Column(db.Text)
+    item_1 = db.Column(db.String(255))
+    item_2 = db.Column(db.String(255))
+    item_3 = db.Column(db.String(255))
+    item_4 = db.Column(db.String(255))
+    item_5 = db.Column(db.String(255))
+    item_6 = db.Column(db.String(255))
+    item_7 = db.Column(db.String(255))
+    item_8 = db.Column(db.String(255))
+    item_9 = db.Column(db.String(255))
+    item_10 = db.Column(db.String(255))
 
     # V.N.T. na UI (valor nutricional total) — coluna histórica `vet`
     vet = db.Column(db.Float, default=0)
@@ -467,16 +492,39 @@ class NutCardapio(db.Model):
 
     def get_itens(self):
         import json
-        if not self.itens:
-            return {}
-        try:
-            return json.loads(self.itens)
-        except (TypeError, ValueError):
-            return {}
+        data = {}
+        if self.itens:
+            try:
+                bruto = json.loads(self.itens)
+                if isinstance(bruto, dict):
+                    data = bruto
+            except (TypeError, ValueError):
+                data = {}
+        chaves = CAMPOS_ITEM_CARDAPIO.get(self.tipo or '', ())
+        for i, chave in enumerate(chaves, start=1):
+            valor = getattr(self, f'item_{i}', None)
+            if valor:
+                data[chave] = valor
+        return data
 
     def set_itens(self, data):
         import json
-        self.itens = json.dumps(data or {}, ensure_ascii=False)
+        data = dict(data or {})
+        self.itens = json.dumps(data, ensure_ascii=False)
+        self._gravar_colunas_item(data)
+
+    def _gravar_colunas_item(self, data):
+        chaves = CAMPOS_ITEM_CARDAPIO.get(self.tipo or '', ())
+        for i in range(1, 11):
+            chave = chaves[i - 1] if i <= len(chaves) else None
+            valor = ''
+            if chave:
+                bruto = (data or {}).get(chave)
+                if isinstance(bruto, (list, tuple)):
+                    valor = str(bruto[0]).strip() if bruto else ''
+                else:
+                    valor = str(bruto or '').strip()
+            setattr(self, f'item_{i}', valor or None)
 
     def to_dict(self):
         dieta_nome = self.dieta or ''
@@ -497,6 +545,16 @@ class NutCardapio(db.Model):
             'hr_jantar': bool(self.hr_jantar),
             'hr_ceia': bool(self.hr_ceia),
             'itens': self.get_itens(),
+            'item_1': self.item_1 or '',
+            'item_2': self.item_2 or '',
+            'item_3': self.item_3 or '',
+            'item_4': self.item_4 or '',
+            'item_5': self.item_5 or '',
+            'item_6': self.item_6 or '',
+            'item_7': self.item_7 or '',
+            'item_8': self.item_8 or '',
+            'item_9': self.item_9 or '',
+            'item_10': self.item_10 or '',
             'vet': self.vet or 0,
             'custo': self.custo or 0,
             'organizar_por': self.organizar_por or 'Ord, Dieta, Horário',

@@ -688,6 +688,16 @@ def _ensure_nutricao_columns(force=False):
         ('nut_dietas', 'grupo', "ALTER TABLE nut_dietas ADD COLUMN grupo VARCHAR(80) NULL"),
         ('nut_tipos_refeicao', 'hora_limite', "ALTER TABLE nut_tipos_refeicao ADD COLUMN hora_limite VARCHAR(5) NULL"),
         ('nut_cardapios', 'dieta_id', 'ALTER TABLE nut_cardapios ADD COLUMN dieta_id INTEGER NULL'),
+        ('nut_cardapios', 'item_1', 'ALTER TABLE nut_cardapios ADD COLUMN item_1 VARCHAR(255) NULL'),
+        ('nut_cardapios', 'item_2', 'ALTER TABLE nut_cardapios ADD COLUMN item_2 VARCHAR(255) NULL'),
+        ('nut_cardapios', 'item_3', 'ALTER TABLE nut_cardapios ADD COLUMN item_3 VARCHAR(255) NULL'),
+        ('nut_cardapios', 'item_4', 'ALTER TABLE nut_cardapios ADD COLUMN item_4 VARCHAR(255) NULL'),
+        ('nut_cardapios', 'item_5', 'ALTER TABLE nut_cardapios ADD COLUMN item_5 VARCHAR(255) NULL'),
+        ('nut_cardapios', 'item_6', 'ALTER TABLE nut_cardapios ADD COLUMN item_6 VARCHAR(255) NULL'),
+        ('nut_cardapios', 'item_7', 'ALTER TABLE nut_cardapios ADD COLUMN item_7 VARCHAR(255) NULL'),
+        ('nut_cardapios', 'item_8', 'ALTER TABLE nut_cardapios ADD COLUMN item_8 VARCHAR(255) NULL'),
+        ('nut_cardapios', 'item_9', 'ALTER TABLE nut_cardapios ADD COLUMN item_9 VARCHAR(255) NULL'),
+        ('nut_cardapios', 'item_10', 'ALTER TABLE nut_cardapios ADD COLUMN item_10 VARCHAR(255) NULL'),
         ('nut_alimentos', 'fdc_id', 'ALTER TABLE nut_alimentos ADD COLUMN fdc_id INTEGER NULL'),
         ('nut_refeicao_funcionarios', 'quantidade',
          'ALTER TABLE nut_refeicao_funcionarios ADD COLUMN quantidade INTEGER DEFAULT 1'),
@@ -730,6 +740,7 @@ def _ensure_nutricao_columns(force=False):
         db.session.rollback()
 
     _backfill_cardapio_dieta_id()
+    _backfill_cardapio_itens_colunas()
     _ENSURE_COLUMNS_DONE = True
 
 
@@ -757,6 +768,35 @@ def _backfill_cardapio_dieta_id():
             if did:
                 row.dieta_id = did
                 changed = True
+        if changed:
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _backfill_cardapio_itens_colunas():
+    """Copia o JSON antigo para item_1..item_10 quando as colunas ainda estão vazias."""
+    import json
+    try:
+        from sqlalchemy import inspect
+        insp = inspect(db.engine)
+        if 'nut_cardapios' not in set(insp.get_table_names()):
+            return
+        cols = {c['name'] for c in insp.get_columns('nut_cardapios')}
+        if 'item_1' not in cols:
+            return
+        changed = False
+        for row in NutCardapio.query.all():
+            if any(getattr(row, f'item_{i}', None) for i in range(1, 11)):
+                continue
+            try:
+                data = json.loads(row.itens or '{}')
+            except (TypeError, ValueError):
+                data = {}
+            if not isinstance(data, dict) or not data:
+                continue
+            row._gravar_colunas_item(data)
+            changed = True
         if changed:
             db.session.commit()
     except Exception:
