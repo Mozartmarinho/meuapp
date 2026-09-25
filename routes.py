@@ -2358,26 +2358,49 @@ def _barras(pares):
     ]
 
 
+def _dia_finalizacao(chamado):
+    """Data usada no filtro: conclusão, ou a abertura se o ticket fechou sem ela."""
+    bruto = chamado.data_conclusao or chamado.data_criacao
+    if not bruto:
+        return None
+    if isinstance(bruto, datetime):
+        return bruto
+    return datetime.combine(bruto, datetime.min.time())
+
+
 def _grafico_finalizados_dashboard(args, mesa_filtro):
     """Finalizados no período, agrupados por dia/semana/mês e por técnico."""
     hoje = now_brasilia().date()
+    informou_de = bool((args.get('de') or '').strip())
     inicio = _parse_data_filtro(args.get('de'), hoje - timedelta(days=29))
     fim = _parse_data_filtro(args.get('ate'), hoje)
+    if not informou_de:
+        qmin = db.session.query(func.min(Chamado.data_conclusao)).filter(
+            Chamado.status.in_(STATUS_FECHADOS),
+        )
+        if mesa_filtro:
+            qmin = qmin.filter(Chamado.mesa_id == mesa_filtro)
+        primeira = qmin.scalar()
+        if primeira:
+            dia_primeira = primeira.date() if isinstance(primeira, datetime) else primeira
+            if dia_primeira < inicio:
+                inicio = dia_primeira
     if inicio > fim:
         inicio, fim = fim, inicio
     tecnico_id = args.get('tecnico', type=int)
     q = (
-        Chamado.query.options(joinedload(Chamado.atendente))
-        .filter(
-            Chamado.status.in_(STATUS_FECHADOS),
-            Chamado.data_conclusao.isnot(None),
-            Chamado.data_conclusao >= datetime.combine(inicio, datetime.min.time()),
-            Chamado.data_conclusao < datetime.combine(fim + timedelta(days=1), datetime.min.time()),
-        )
+        Chamado.query.options(joinedload(Chamado.atendente), joinedload(Chamado.mesa))
+        .filter(Chamado.status.in_(STATUS_FECHADOS))
     )
     if mesa_filtro:
         q = q.filter(Chamado.mesa_id == mesa_filtro)
-    rows = q.all()
+    ini_dt = datetime.combine(inicio, datetime.min.time())
+    fim_dt = datetime.combine(fim + timedelta(days=1), datetime.min.time())
+    rows = []
+    for chamado in q.all():
+        conclusao = _dia_finalizacao(chamado)
+        if conclusao and ini_dt <= conclusao < fim_dt:
+            rows.append((chamado, conclusao))
     dias = (fim - inicio).days + 1
     if dias <= 31:
         passo = timedelta(days=1)
@@ -2416,26 +2439,26 @@ def _grafico_finalizados_dashboard(args, mesa_filtro):
                 cursor = cursor.replace(month=cursor.month + 1)
     por_periodo = Counter()
     por_tecnico = Counter()
-    for chamado in rows:
-        conclusao = chamado.data_conclusao
+    lista = []
+    for chamado, conclusao in rows:
         if tecnico_id and chamado.atendente_id != tecnico_id:
-            nome = chamado.atendente.nome if chamado.atendente else 'Sem técnico'
-            por_tecnico[nome] += 1
             continue
         por_periodo[chave(conclusao)] += 1
         nome = chamado.atendente.nome if chamado.atendente else 'Sem técnico'
         por_tecnico[nome] += 1
-    if tecnico_id:
-        por_tecnico_filtrado = Counter()
-        for chamado in rows:
-            if chamado.atendente_id == tecnico_id:
-                nome = chamado.atendente.nome if chamado.atendente else 'Sem técnico'
-                por_tecnico_filtrado[nome] += 1
-        serie_tecnico = por_tecnico_filtrado
-        total = sum(por_tecnico_filtrado.values())
-    else:
-        serie_tecnico = por_tecnico
-        total = len(rows)
+        lista.append({
+            'id': chamado.id,
+            'numero': chamado.numero_chamado,
+            'quando': conclusao.strftime('%d/%m/%Y %H:%M'),
+            'tecnico': nome,
+            'mesa': chamado.mesa.nome if chamado.mesa else 'Sem mesa',
+            'ordem': conclusao,
+        })
+    lista.sort(key=lambda item: item['ordem'], reverse=True)
+    for item in lista:
+        item.pop('ordem', None)
+    serie_tecnico = por_tecnico
+    total = len(lista)
     periodo = _barras((rotulo(b), por_periodo.get(b, 0)) for b in buckets)
     tecnicos_serie = _barras(serie_tecnico.most_common(12))
     opcoes = []
@@ -2452,6 +2475,7 @@ def _grafico_finalizados_dashboard(args, mesa_filtro):
         'total': total,
         'periodo': periodo,
         'tecnicos': tecnicos_serie,
+        'lista': lista[:80],
     }, opcoes
 
 

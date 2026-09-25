@@ -118,12 +118,24 @@ class MesaInformaticaGraficoTest(unittest.TestCase):
                     return type(val)
                 return val
 
-        graf, _opcoes = _grafico_finalizados_dashboard(Args(), None)
+        de = (agora - timedelta(days=29)).date().isoformat()
+        ate = agora.date().isoformat()
+        graf, _opcoes = _grafico_finalizados_dashboard(Args(de=de, ate=ate), None)
         self.assertEqual(graf['total'], 2)
-        graf_ana, _ = _grafico_finalizados_dashboard(Args(tecnico=str(ana.id)), None)
+        graf_ana, _ = _grafico_finalizados_dashboard(Args(de=de, ate=ate, tecnico=str(ana.id)), None)
         self.assertEqual(graf_ana['total'], 1)
         self.assertEqual(graf_ana['tecnicos'][0]['label'], 'Ana Silva')
         self.assertEqual(graf_ana['tecnicos'][0]['count'], 1)
+        todos, _ = _grafico_finalizados_dashboard(Args(), None)
+        self.assertEqual(todos['total'], 3)
+        self.assertIn('OS903', [item['numero'] for item in todos['lista']])
+        nutri = MesaServico(nome='Manutenção Nutrição', ativa=True)
+        db.session.add(nutri)
+        db.session.commit()
+        so_info, _ = _grafico_finalizados_dashboard(Args(de='2020-01-01', ate=ate), info.id)
+        self.assertEqual(so_info['total'], 3)
+        so_nutri, _ = _grafico_finalizados_dashboard(Args(de='2020-01-01', ate=ate), nutri.id)
+        self.assertEqual(so_nutri['total'], 0)
 
 
 if __name__ == '__main__':

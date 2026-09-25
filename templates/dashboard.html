@@ -155,7 +155,14 @@
             <div class="mdk-card mdk-span-12">
                 <h3>Atendimentos finalizados</h3>
                 <form method="get" action="{{ url_for('main.dashboard') }}" class="mdk-graf-filtros">
-                    {% if mesa_filtro %}<input type="hidden" name="mesa" value="{{ mesa_filtro }}">{% endif %}
+                    <label>Mesa
+                        <select class="mdk-select" name="mesa">
+                            <option value="">Todas</option>
+                            {% for m in mesas %}
+                            <option value="{{ m.id }}" {% if mesa_filtro == m.id %}selected{% endif %}>{{ m.nome }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
                     <label>De
                         <input class="mdk-select" type="date" name="de" value="{{ graf.de }}">
                     </label>
@@ -176,7 +183,7 @@
                 <div class="mdk-graf-grid">
                     <div>
                         <h4>Por período</h4>
-                        {% if graf.periodo %}
+                        {% if graf.total and graf.periodo %}
                         <div class="mdk-bars">
                             {% for b in graf.periodo %}
                             <div class="mdk-bar" title="{{ b.label }}: {{ b.count }}">
@@ -207,6 +214,16 @@
                         {% endif %}
                     </div>
                 </div>
+                {% if graf.lista %}
+                <ul class="mdk-note-list">
+                    {% for c in graf.lista %}
+                    <li>
+                        <a href="{{ url_for('main.ver_chamado', id=c.id) }}">{{ c.numero }}</a>
+                        <small>{{ c.quando }} · {{ c.tecnico }} · {{ c.mesa }}</small>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
             </div>
 
             <div class="mdk-card mdk-span-8">
