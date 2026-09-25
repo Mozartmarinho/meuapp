@@ -77,17 +77,17 @@
       <div class="cardapio-box">
         <div class="cardapio-toolbar">
           <button type="button" class="btn btn-primary btn-sm" onclick="salvarCardapio()" title="Salvar"><i class="fas fa-save"></i> Salvar</button>
-          <span class="sep"></span>
-          <button type="button" class="btn btn-primary btn-sm btn-modo" onclick="modoPrato('selecao')">Prato principal/Sobremesa Seleção</button>
-          <button type="button" class="btn btn-primary btn-sm btn-modo" onclick="modoPrato('padrao')">Prato principal/Sobremesa Padrão</button>
-          <button type="button" class="btn btn-primary btn-sm btn-modo" onclick="modoPrato('principal')">Prato principal</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="excluirDietaECardapio()" title="Excluir dieta e cardápio" style="margin-left:auto"><i class="fas fa-trash"></i></button>
         </div>
 
-        <div class="tabs" style="margin-bottom:0.85rem;">
-          <button type="button" class="tab active" data-tipo="grandes" onclick="trocarAba('grandes', this)">Grandes refeições</button>
-          <button type="button" class="tab" data-tipo="pequenas" onclick="trocarAba('pequenas', this)">Pequenas refeições</button>
-          <button type="button" class="tab" data-tipo="liquidas" onclick="trocarAba('liquidas', this)">Dietas líquidas</button>
+        <div class="tabs horarios-tabs" id="abasHorario" role="tablist" aria-label="Horários">
+          <button type="button" class="tab active" role="tab" data-horario="desjejum" onclick="trocarHorario('desjejum')">Desjejum</button>
+          <button type="button" class="tab" role="tab" data-horario="colacao" onclick="trocarHorario('colacao')">Colação</button>
+          <button type="button" class="tab" role="tab" data-horario="almoco" onclick="trocarHorario('almoco')">Almoço</button>
+          <button type="button" class="tab" role="tab" data-horario="merenda" onclick="trocarHorario('merenda')">Merenda</button>
+          <button type="button" class="tab" role="tab" data-horario="jantar" onclick="trocarHorario('jantar')">Jantar</button>
+          <button type="button" class="tab" role="tab" data-horario="ceia" onclick="trocarHorario('ceia')">Ceia</button>
+          <button type="button" class="tab" role="tab" data-horario="liquidas" onclick="trocarHorario('liquidas')">Dietas líquidas</button>
         </div>
 
         <div class="cardapio-top">
@@ -112,15 +112,6 @@
           </div>
         </div>
 
-        <div class="horarios-box">
-          <strong>Horários:</strong>
-          <label><input type="checkbox" id="hr_desjejum"> Desjejum</label>
-          <label><input type="checkbox" id="hr_colacao"> Colação</label>
-          <label><input type="checkbox" id="hr_almoco"> Almoço</label>
-          <label><input type="checkbox" id="hr_merenda"> Merenda</label>
-          <label><input type="checkbox" id="hr_jantar"> Jantar</label>
-          <label><input type="checkbox" id="hr_ceia"> Ceia</label>
-        </div>
 
         <div id="painel-grandes" class="painel-tipo">
           <div class="form-row two-cols campos-prato">
@@ -399,11 +390,6 @@
           </div>
         </div>
 
-        <div class="cardapio-footer">
-          <p class="cardapio-hook-note">
-            Preços das refeições serão vinculados depois (dieta × tipo de refeição).
-          </p>
-        </div>
       </div>
     </div>
   </div>
@@ -550,17 +536,16 @@
 
 .cardapio-box { padding: 0; }
 .cardapio-toolbar { display:flex; align-items:center; gap:0.28rem; margin-bottom:0.68rem; flex-wrap:wrap; }
-.cardapio-toolbar .sep { width:1px; height:18px; background:#cbd5e1; margin:0 0.2rem; }
-.cardapio-toolbar .btn-modo { font-size:0.62rem; padding:0.28rem 0.44rem; white-space:nowrap; }
 .cardapio-top .form-full { margin-bottom:0.52rem; }
 .cardapio-meta { display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end; }
-.horarios-box {
-  display:flex; flex-wrap:wrap; gap:0.6rem 0.88rem; align-items:center;
-  margin:0.28rem 0 0.8rem; padding:0.56rem 0.68rem;
-  background:#f1f5f9; border:1px solid #cbd5e1; border-radius:0.3rem;
+.horarios-tabs {
+  margin: 0.15rem 0 0.85rem;
+  padding: 0.4rem 0.5rem;
+  background: #eef4fb;
+  border: 1px solid #d5e3f5;
+  border-radius: 0.4rem;
 }
-.horarios-box strong { color:#0f2a5c; margin-right:0.2rem; }
-.horarios-box label { margin:0; font-size:0.72rem; display:flex; gap:0.28rem; align-items:center; font-weight:500; }
+.horarios-tabs .tab { font-size: 0.74rem; padding: 0.42rem 0.72rem; }
 .radio-block { display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:0.6rem; }
 .radio-row { display:flex; gap:0.68rem; flex-wrap:wrap; }
 .radio-row label { margin:0; font-weight:500; display:flex; gap:0.24rem; align-items:center; }
@@ -733,8 +718,6 @@
 }
 .conv-box { border:1px solid #e2e8f0; border-radius:0.3rem; padding:0.6rem; margin-bottom:0.6rem; background:#fff; }
 .conv-box h4 { margin:0 0 0.4rem; font-size:0.74rem; color:#1f2d4d; }
-.cardapio-footer { margin-top:0.8rem; border-top:1px solid #e5e7eb; padding-top:0.68rem; }
-.cardapio-hook-note { margin:0.52rem 0 0; font-size:0.6rem; color:#64748b; }
 
 /* Dieta vinculada à linha — evidência em verde São Geraldo (--brand-lime) */
 #f-dieta-nome.dieta-locked,
@@ -749,7 +732,6 @@
 
 @media (max-width: 900px){
   .form-row.two-cols { grid-template-columns:1fr; }
-  .cardapio-toolbar .btn-modo { width:100%; }
 }
 </style>
 {% endblock %}
@@ -759,7 +741,11 @@
 const OPCOES = {{ opcoes|tojson }};
 const DIETAS = {{ dietas|tojson }};
 const DIETA_SEL_INIT = {{ (dieta_sel or none)|tojson }};
-let tipoAtual = 'grandes';
+const HORARIOS_PEQUENAS = ['desjejum', 'colacao', 'merenda', 'ceia'];
+const HORARIOS_GRANDES = ['almoco', 'jantar'];
+const HR_KEYS = ['desjejum', 'colacao', 'almoco', 'merenda', 'jantar', 'ceia'];
+let horarioAtual = 'desjejum';
+let tipoAtual = 'pequenas';
 let lista = [];
 let idx = -1;
 let editId = null;
@@ -1167,9 +1153,6 @@ function limparForm(){
     document.getElementById('f-dieta-id').value = dietaAtual.id;
     document.getElementById('f-dieta-nome').value = dietaAtual.nome || '';
   }
-  ['hr_desjejum','hr_colacao','hr_almoco','hr_merenda','hr_jantar','hr_ceia'].forEach(id => {
-    document.getElementById(id).checked = false;
-  });
   document.querySelectorAll('#painel-grandes input, #painel-pequenas input, #painel-liquidas input').forEach(el => {
     el.value = '';
   });
@@ -1212,13 +1195,6 @@ function preencher(c){
     document.getElementById('f-dieta-id').value = dietaAtual.id;
     document.getElementById('f-dieta-nome').value = dietaAtual.nome || c.dieta || '';
   }
-
-  document.getElementById('hr_desjejum').checked = !!c.hr_desjejum;
-  document.getElementById('hr_colacao').checked = !!c.hr_colacao;
-  document.getElementById('hr_almoco').checked = !!c.hr_almoco;
-  document.getElementById('hr_merenda').checked = !!c.hr_merenda;
-  document.getElementById('hr_jantar').checked = !!c.hr_jantar;
-  document.getElementById('hr_ceia').checked = !!c.hr_ceia;
 
   const it = c.itens || {};
   if (c.tipo === 'grandes'){
@@ -1289,28 +1265,66 @@ function coletarItens(){
   }, coletarExtras('liquidas'));
 }
 
+function tipoDoHorario(horario){
+  if (horario === 'liquidas') return 'liquidas';
+  if (HORARIOS_GRANDES.indexOf(horario) >= 0) return 'grandes';
+  if (HORARIOS_PEQUENAS.indexOf(horario) >= 0) return 'pequenas';
+  return 'pequenas';
+}
+
+function flagsDoHorario(){
+  const flags = {};
+  HR_KEYS.forEach(k => { flags['hr_' + k] = false; });
+  if (horarioAtual !== 'liquidas') flags['hr_' + horarioAtual] = true;
+  return flags;
+}
+
+function horarioExclusivo(c, horario){
+  const ativos = HR_KEYS.filter(k => c['hr_' + k]);
+  return c.tipo === tipoDoHorario(horario) && ativos.length === 1 && ativos[0] === horario;
+}
+
+function cardapioDoHorario(horario){
+  const tipo = tipoDoHorario(horario);
+  if (horario === 'liquidas'){
+    const row = lista.find(c => c.tipo === 'liquidas') || null;
+    return { cardapio: row, proprio: !!row };
+  }
+  const flag = 'hr_' + horario;
+  const rows = lista.filter(c => c.tipo === tipo && c[flag]);
+  const exclusivo = rows.find(c => horarioExclusivo(c, horario));
+  if (exclusivo) return { cardapio: exclusivo, proprio: true };
+  if (rows.length) return { cardapio: rows[0], proprio: false };
+  return { cardapio: null, proprio: false };
+}
+
+function aplicarPainelHorario(){
+  document.querySelectorAll('#abasHorario .tab').forEach(t => {
+    const on = t.dataset.horario === horarioAtual;
+    t.classList.toggle('active', on);
+    t.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  document.getElementById('painel-grandes').hidden = tipoAtual !== 'grandes';
+  document.getElementById('painel-pequenas').hidden = tipoAtual !== 'pequenas';
+  document.getElementById('painel-liquidas').hidden = tipoAtual !== 'liquidas';
+}
+
 function payloadAtual(){
   const d = dietaPayload();
-  return {
+  return Object.assign({
     tipo: tipoAtual,
     grupo_cardapio: document.getElementById('f-grupo').value,
     dia_mes: document.getElementById('f-dia-mes').value,
     dia_semana: document.getElementById('f-dia-semana').value,
     dieta_id: d.dieta_id,
     dieta: d.dieta,
-    hr_desjejum: document.getElementById('hr_desjejum').checked,
-    hr_colacao: document.getElementById('hr_colacao').checked,
-    hr_almoco: document.getElementById('hr_almoco').checked,
-    hr_merenda: document.getElementById('hr_merenda').checked,
-    hr_jantar: document.getElementById('hr_jantar').checked,
-    hr_ceia: document.getElementById('hr_ceia').checked,
     itens: coletarItens(),
     ativo: true
-  };
+  }, flagsDoHorario());
 }
 
 function apiQuery(){
-  const qs = new URLSearchParams({ tipo: tipoAtual });
+  const qs = new URLSearchParams();
   if (dietaAtual.id) qs.set('dieta_id', dietaAtual.id);
   return qs.toString();
 }
@@ -1319,37 +1333,39 @@ async function carregarAba(){
   const r = await fetch('/nutricao/api/cardapios?' + apiQuery());
   lista = await r.json();
   if (!Array.isArray(lista)) lista = [];
-  idx = lista.length ? 0 : -1;
-  if (idx >= 0) preencher(lista[idx]);
-  else {
+  const achado = cardapioDoHorario(horarioAtual);
+  if (achado.cardapio){
+    preencher(achado.cardapio);
+    if (!achado.proprio) editId = null;
+    idx = achado.proprio ? lista.findIndex(x => x.id === achado.cardapio.id) : -1;
+  } else {
     limparForm();
-    if (tipoAtual === 'grandes'){
-      document.getElementById('hr_almoco').checked = true;
-      document.getElementById('hr_jantar').checked = true;
-      document.getElementById('hr_merenda').checked = true;
-      document.getElementById('hr_ceia').checked = true;
-    }
+    idx = -1;
+  }
+  aplicarPainelHorario();
+}
+
+async function soltarHorarioDosOutros(idMantido){
+  if (!idMantido || horarioAtual === 'liquidas') return;
+  const flag = 'hr_' + horarioAtual;
+  const outros = lista.filter(c => c.id !== idMantido && c[flag]);
+  for (const c of outros){
+    const body = Object.assign({}, c);
+    body[flag] = false;
+    await fetch('/nutricao/api/cardapios/' + c.id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
   }
 }
 
-function trocarAba(tipo, btn){
+function trocarHorario(horario){
   fecharSugestoes();
-  tipoAtual = tipo;
-  document.querySelectorAll('#cardapioModalOverlay .tab').forEach(t => t.classList.toggle('active', t.dataset.tipo === tipo));
-  document.getElementById('painel-grandes').hidden = tipo !== 'grandes';
-  document.getElementById('painel-pequenas').hidden = tipo !== 'pequenas';
-  document.getElementById('painel-liquidas').hidden = tipo !== 'liquidas';
+  horarioAtual = horario;
+  tipoAtual = tipoDoHorario(horario);
+  aplicarPainelHorario();
   carregarAba();
-}
-
-function modoPrato(modo){
-  modoAtual = modo;
-  showToast(
-    modo === 'selecao' ? 'Modo: Prato principal/Sobremesa Seleção'
-    : modo === 'padrao' ? 'Modo: Prato principal/Sobremesa Padrão'
-    : 'Modo: Prato principal',
-    'success'
-  );
 }
 
 async function salvarCardapio(){
@@ -1361,6 +1377,7 @@ async function salvarCardapio(){
   const j = await r.json();
   if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao salvar','error'); return; }
   showToast(editId ? 'Cardápio atualizado' : 'Cardápio cadastrado','success');
+  if (j.cardapio && j.cardapio.id) await soltarHorarioDosOutros(j.cardapio.id);
   await carregarAba();
   if (j.cardapio){
     const i = lista.findIndex(x => x.id === j.cardapio.id);
@@ -1389,13 +1406,9 @@ async function excluirCardapiosDieta(dietaId, dietaNome){
 async function abrirCardapioModal(dietaId, dietaNome){
   initCombos();
   setDietaLocked(dietaId, dietaNome);
-  tipoAtual = 'grandes';
-  document.querySelectorAll('#cardapioModalOverlay .tab').forEach(t => {
-    t.classList.toggle('active', t.dataset.tipo === 'grandes');
-  });
-  document.getElementById('painel-grandes').hidden = false;
-  document.getElementById('painel-pequenas').hidden = true;
-  document.getElementById('painel-liquidas').hidden = true;
+  horarioAtual = 'desjejum';
+  tipoAtual = 'pequenas';
+  aplicarPainelHorario();
   document.getElementById('cardapioModalOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
   prepararCamposSugestao();
