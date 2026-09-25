@@ -225,11 +225,10 @@
                     <p class="at-problema-pat" id="atProblemaPat"></p>
                 </div>
                 <div class="form-group" id="atTrocaBox" hidden>
-                    <label for="at_estoque_eq">Transferir patrimônio</label>
+                    <label>Transferir patrimônio</label>
                     <p class="at-hint" id="atTrocaAtual">—</p>
-                    <select id="at_estoque_eq" name="equipamento_estoque_id">
-                        <option value="">Manter o equipamento atual</option>
-                    </select>
+                    <input type="hidden" id="at_estoque_eq" name="equipamento_estoque_id" value="">
+                    <button type="button" class="btn btn-secondary" id="btnAbrirTrocaEq">Manter o equipamento atual</button>
                     <span class="at-hint">O equipamento ruim volta para o estoque e o escolhido assume o setor e o usuário dele.</span>
                 </div>
                 <p class="at-meta" id="atMeta">—</p>
@@ -330,6 +329,23 @@
                 </div>
             </div>
         </form>
+    </div>
+</div>
+
+<div id="modalTrocaEq" class="modal-overlay nc-modal" hidden>
+    <div class="modal-dialog nc-dialog" role="dialog" aria-modal="true" aria-labelledby="trocaEqTitle">
+        <div class="modal-header">
+            <h2 id="trocaEqTitle">Selecionar equipamento do estoque</h2>
+            <button type="button" class="modal-close" id="btnFecharTrocaEqX" aria-label="Fechar">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="trocaEqBusca">Patrimônio</label>
+                <input type="text" id="trocaEqBusca" placeholder="Buscar por patrimônio" autocomplete="off">
+            </div>
+            <ul class="troca-eq-lista" id="trocaEqLista"></ul>
+            <button type="button" class="btn btn-secondary" id="btnManterEqAtual">Manter o equipamento atual</button>
+        </div>
     </div>
 </div>
 
@@ -624,6 +640,12 @@
 }
 .at-estoque-lista li:last-child { border-bottom: 0; }
 .at-estoque-vazio { color: var(--gray-600); justify-content: center !important; }
+.troca-eq-lista { list-style: none; margin: 0 0 0.8rem; padding: 0; max-height: 280px; overflow: auto; border: 1px solid var(--gray-300); border-radius: 0.4rem; }
+.troca-eq-lista li { border-bottom: 1px solid var(--gray-200); }
+.troca-eq-item, .troca-eq-vazio { display: block; width: 100%; text-align: left; background: #fff; border: 0; padding: 0.55rem 0.7rem; }
+.troca-eq-item { cursor: pointer; }
+.troca-eq-item:hover { background: #eef4fb; }
+.troca-eq-vazio { color: var(--gray-600); }
 .at-estoque-item-meta { min-width: 0; }
 .at-estoque-item-meta strong { display: block; }
 .at-estoque-item-meta span { color: var(--gray-600); font-size: 0.68rem; }
@@ -878,6 +900,7 @@ body.modal-open { overflow: hidden; }
     const estBody = document.getElementById('estConsultaBody');
     const abrirId = {{ atender_id|tojson }};
     let chamadoId = null;
+    let estoqueTrocaOpcoes = [];
     let atendimentoAbertoId = null;
     let atendimentoFinalizado = false;
     let fotosEncPendentes = [];
@@ -1352,16 +1375,10 @@ body.modal-open { overflow: hidden; }
         const trocaBox = document.getElementById('atTrocaBox');
         const trocaSel = document.getElementById('at_estoque_eq');
         const trocaAtual = document.getElementById('atTrocaAtual');
-        trocaSel.innerHTML = '<option value="">Manter o equipamento atual</option>';
-        (data.estoque_opcoes || []).forEach(function (item) {
-            const opt = document.createElement('option');
-            opt.value = String(item.id);
-            let texto = item.patrimonio || ('#' + item.id);
-            if (item.nome) texto += ' — ' + item.nome;
-            if (item.marca || item.modelo) texto += ' (' + [item.marca, item.modelo].filter(Boolean).join(' ') + ')';
-            opt.textContent = texto;
-            trocaSel.appendChild(opt);
-        });
+        estoqueTrocaOpcoes = data.estoque_opcoes || [];
+        trocaSel.value = '';
+        const btnTroca = document.getElementById('btnAbrirTrocaEq');
+        if (btnTroca) btnTroca.textContent = 'Manter o equipamento atual';
         trocaBox.hidden = !data.pode_transferir;
         if (data.pode_transferir) {
             trocaAtual.textContent = 'No lugar de ' + (data.patrimonio || data.equipamento || 'o equipamento atual') + ', usar um do estoque:';
@@ -1447,6 +1464,62 @@ body.modal-open { overflow: hidden; }
         }
     });
     document.getElementById('btnFecharAt').addEventListener('click', fecharModal);
+    function textoTrocaEq(item) {
+        let texto = item.patrimonio || ('#' + item.id);
+        if (item.nome) texto += ' — ' + item.nome;
+        const extra = [item.marca, item.modelo, item.setor, item.local].filter(Boolean).join(' · ');
+        if (extra) texto += ' (' + extra + ')';
+        return texto;
+    }
+
+    function renderTrocaEqLista() {
+        const lista = document.getElementById('trocaEqLista');
+        const q = (document.getElementById('trocaEqBusca').value || '').trim().toLowerCase();
+        const itens = estoqueTrocaOpcoes.filter(function (item) {
+            if (!q) return true;
+            return String(item.patrimonio || '').toLowerCase().indexOf(q) >= 0;
+        });
+        lista.innerHTML = '';
+        if (!itens.length) {
+            const vazio = document.createElement('li');
+            vazio.className = 'troca-eq-vazio';
+            vazio.textContent = 'Nenhum equipamento do estoque com esse patrimônio.';
+            lista.appendChild(vazio);
+            return;
+        }
+        itens.forEach(function (item) {
+            const li = document.createElement('li');
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'troca-eq-item';
+            btn.textContent = textoTrocaEq(item);
+            btn.addEventListener('click', function () {
+                document.getElementById('at_estoque_eq').value = String(item.id);
+                document.getElementById('btnAbrirTrocaEq').textContent = textoTrocaEq(item);
+                document.getElementById('modalTrocaEq').hidden = true;
+            });
+            li.appendChild(btn);
+            lista.appendChild(li);
+        });
+    }
+
+    function abrirTrocaEq() {
+        document.getElementById('trocaEqBusca').value = '';
+        renderTrocaEqLista();
+        document.getElementById('modalTrocaEq').hidden = false;
+        document.getElementById('trocaEqBusca').focus();
+    }
+
+    document.getElementById('btnAbrirTrocaEq').addEventListener('click', abrirTrocaEq);
+    document.getElementById('trocaEqBusca').addEventListener('input', renderTrocaEqLista);
+    document.getElementById('btnFecharTrocaEqX').addEventListener('click', function () {
+        document.getElementById('modalTrocaEq').hidden = true;
+    });
+    document.getElementById('btnManterEqAtual').addEventListener('click', function () {
+        document.getElementById('at_estoque_eq').value = '';
+        document.getElementById('btnAbrirTrocaEq').textContent = 'Manter o equipamento atual';
+        document.getElementById('modalTrocaEq').hidden = true;
+    });
     document.getElementById('btnFecharAtX').addEventListener('click', fecharModal);
     overlay.addEventListener('click', function (ev) {
         if (ev.target === overlay) fecharModal();

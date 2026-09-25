@@ -47,7 +47,9 @@ class CardapioCadastroTest(unittest.TestCase):
         self.assertIn('id="g-proteina_opcional"', html)
         self.assertIn('id="g-guarnicao"', html)
         self.assertIn('id="g-docinho_salada"', html)
-        self.assertIn('>Salada</label>', html)
+        self.assertIn('>Item 1</label>', html)
+        self.assertIn('>Item 10</label>', html)
+        self.assertIn('id="p-prato8"', html)
         self.assertNotIn('Docinho / Salada', html)
         self.assertIn('type="text"', html)
         self.assertNotIn('name="entrada_tipo"', html)
@@ -69,7 +71,7 @@ class CardapioCadastroTest(unittest.TestCase):
         self.assertIn('data-campo="p-prato1"', html)
         self.assertIn('data-campo="l-principal"', html)
         self.assertIn('data-campo="l-gelado"', html)
-        self.assertIn('Cadastrar mais acompanhamento', html)
+        self.assertIn('Cadastrar mais item 1', html)
         self.assertIn('Cadastrar mais bebida', html)
         self.assertIn('Cadastrar mais principal', html)
         self.assertIn('/nutricao/api/cardapio-produtos', html)
@@ -77,6 +79,7 @@ class CardapioCadastroTest(unittest.TestCase):
         self.assertIn('filtrarNomesProdutos', html)
         self.assertIn("input: 'p-prato1', tipo: 'pequenas', grupo: 'PRATO'", html)
         self.assertIn("input: 'p-prato7', tipo: 'pequenas', grupo: 'PRATO'", html)
+        self.assertIn("input: 'p-prato8', tipo: 'pequenas', grupo: 'PRATO'", html)
         self.assertIn("input: 'l-gelado', tipo: 'liquidas', grupo: 'GELADO'", html)
 
     def test_excluir_dieta_apaga_cardapio_vinculado(self):

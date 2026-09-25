@@ -372,6 +372,8 @@ class CampanhaTicketTest(unittest.TestCase):
         self.assertEqual(novo.setor, 'DP')
         self.assertEqual(novo.usuario_equipamento, 'Maria')
         self.assertEqual(ruim.setor, 'Estoque')
+        self.assertTrue(ruim.em_estoque)
+        self.assertFalse(novo.em_estoque)
         self.assertIsNone(ruim.usuario_equipamento)
         self.assertIn('PAT-RUIM', salvo.get_json()['message'])
         self.assertIn('PAT-NOVO', salvo.get_json()['message'])

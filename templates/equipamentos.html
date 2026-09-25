@@ -70,6 +70,7 @@
                     data-serie="{{ eq.numero_serie or '' }}"
                     data-local="{{ eq.cliente.nome if eq.cliente else (eq.local or '') }}"
                     data-setor="{{ eq.setor or eq.localizacao or '' }}"
+                    data-estoque="{{ '1' if eq.em_estoque or ((eq.setor or '')|lower == 'estoque') else '0' }}"
                     data-compra="{{ eq.data_compra.strftime('%Y-%m-%d') if eq.data_compra else '' }}"
                     data-cliente="{{ eq.cliente_id or '' }}"
                     data-tipo="{% if eq.tipo_equipamento_norm is defined %}{{ eq.tipo_equipamento_norm() }}{% else %}ti{% endif %}"
@@ -179,6 +180,13 @@
                         {% endif %}
                         {% endfor %}
                     </select>
+                </div>
+                <div class="form-group">
+                    <label class="eq-estoque-flag" for="eq_estoque">
+                        <input type="checkbox" id="eq_estoque" name="em_estoque">
+                        Estoque
+                    </label>
+                    <span class="eq-estoque-hint">Ativo: disponível para troca no atendimento. Desativado: não entra na troca.</span>
                 </div>
                 <div class="form-group">
                     <label for="eq_compra">Data da compra</label>
@@ -431,6 +439,8 @@
 </div>
 
 <style>
+.eq-estoque-flag { display: flex; align-items: center; gap: 0.4rem; font-weight: 600; }
+.eq-estoque-hint { display: block; color: var(--gray-600); font-size: 0.75rem; margin-top: 0.25rem; }
 .chamados-page { padding: 4px 0; }
 .chamados-page .header {
     display: flex;
@@ -718,6 +728,7 @@ body.modal-open { overflow: hidden; }
         const setorNome = (dados.setor || '').trim();
         ensureSetorOption(document.getElementById('eq_setor'), setorNome);
         document.getElementById('eq_setor').value = setorNome;
+        document.getElementById('eq_estoque').checked = !!dados.em_estoque;
         document.getElementById('eq_compra').value = dados.compra || '';
         document.getElementById('eq_tipo').value = dados.tipo || 'ti';
         limparErroCodigo();
@@ -734,6 +745,7 @@ body.modal-open { overflow: hidden; }
             serie: tr.getAttribute('data-serie') || '',
             cliente_id: tr.getAttribute('data-cliente') || '',
             setor: tr.getAttribute('data-setor') || '',
+            em_estoque: tr.getAttribute('data-estoque') === '1',
             compra: tr.getAttribute('data-compra') || '',
             tipo: tr.getAttribute('data-tipo') || 'ti'
         });
@@ -777,6 +789,7 @@ body.modal-open { overflow: hidden; }
                     serie: eq.numero_serie || '',
                     cliente_id: eq.cliente_id || '',
                     setor: eq.setor || eq.localizacao || '',
+                    em_estoque: !!eq.em_estoque,
                     compra: eq.data_compra_iso || '',
                     tipo: eq.tipo_equipamento || 'ti'
                 });
@@ -862,6 +875,7 @@ body.modal-open { overflow: hidden; }
             numero_serie: (document.getElementById('eq_serie').value || '').trim(),
             local: (clienteNome || '').trim(),
             setor: (document.getElementById('eq_setor').value || '').trim(),
+            em_estoque: document.getElementById('eq_estoque').checked,
             data_compra: document.getElementById('eq_compra').value || '',
             cliente_id: localSel.value || '',
             tipo_equipamento: document.getElementById('eq_tipo').value || 'ti'

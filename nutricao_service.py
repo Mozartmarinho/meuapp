@@ -1153,7 +1153,7 @@ _ITENS_ORDEM = {
         'suco', 'vitamina_suco', 'entrada_sopa', 'bebida', 'molhos', 'outros',
     ],
     'pequenas': [
-        'bebida', 'prato1', 'prato2', 'prato3', 'prato4', 'prato5', 'prato6', 'prato7', 'sobremesa',
+        'bebida', 'prato1', 'prato2', 'prato3', 'prato4', 'prato5', 'prato6', 'prato7', 'sobremesa', 'prato8',
     ],
     'liquidas': [
         'principal', 'bebida', 'sobremesa', 'gelado', 'outros',

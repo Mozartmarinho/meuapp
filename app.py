@@ -478,6 +478,7 @@ def ensure_equipamentos_schema():
             'usuario_equipamento': 'VARCHAR(120) NULL',
             'ip': 'VARCHAR(45) NULL',
             'is_agente': 'TINYINT(1) NOT NULL DEFAULT 0',
+            'em_estoque': 'TINYINT(1) NOT NULL DEFAULT 0',
             'atualizado_em': 'DATETIME NULL',
         }
         for col, ddl in extras.items():
@@ -488,6 +489,12 @@ def ensure_equipamentos_schema():
                     ))
                     db.session.commit()
                     cols.add(col)
+                    if col == 'em_estoque':
+                        db.session.execute(text(
+                            "UPDATE equipamentos SET em_estoque = 1 "
+                            "WHERE LOWER(TRIM(IFNULL(setor, ''))) = 'estoque'"
+                        ))
+                        db.session.commit()
                 except Exception as exc:
                     db.session.rollback()
                     print(f'Aviso: não foi possível criar equipamentos.{col}: {exc}')

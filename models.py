@@ -653,6 +653,7 @@ class Equipamento(db.Model):
     setor = db.Column(db.String(100))
     local = db.Column(db.String(200))
     ativo = db.Column(db.Boolean, default=True)
+    em_estoque = db.Column(db.Boolean, default=False, nullable=False)
     data_compra = db.Column(db.Date)
     data_manutencao = db.Column(db.Date)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
@@ -706,6 +707,7 @@ class Equipamento(db.Model):
             'setor': self.setor or self.localizacao,
             'local': self.local or '',
             'ativo': self.ativo,
+            'em_estoque': bool(getattr(self, 'em_estoque', False)) or (self.setor or '').strip().lower() == 'estoque',
             'cliente_id': self.cliente_id,
             'cliente_nome': self.cliente.nome if self.cliente else None,
             'cliente_endereco': (self.cliente.endereco or '') if self.cliente else '',

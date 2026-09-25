@@ -1323,6 +1323,8 @@ def _equipamento_do_chamado(chamado):
 
 
 def _no_estoque(equipamento):
+    if bool(getattr(equipamento, 'em_estoque', False)):
+        return True
     return (getattr(equipamento, 'setor', None) or '').strip().lower() == 'estoque'
 
 
@@ -1332,7 +1334,10 @@ def _opcoes_estoque(cliente_id, exceto_id=None):
     q = Equipamento.query.filter(
         Equipamento.cliente_id == cliente_id,
         Equipamento.ativo.is_(True),
-        Equipamento.setor == 'Estoque',
+        db.or_(
+            Equipamento.em_estoque.is_(True),
+            Equipamento.setor == 'Estoque',
+        ),
     )
     if exceto_id:
         q = q.filter(Equipamento.id != exceto_id)
@@ -1345,6 +1350,8 @@ def _opcoes_estoque(cliente_id, exceto_id=None):
             'nome': item.nome_equipamento or '',
             'marca': item.marca or '',
             'modelo': item.modelo or '',
+            'setor': item.setor or '',
+            'local': item.local or '',
         })
     return opcoes
 
@@ -1376,9 +1383,12 @@ def _transferir_patrimonio(chamado, novo_id_raw):
     novo.localizacao = ruim.localizacao
     novo.local = ruim.local
     novo.usuario_equipamento = ruim.usuario_equipamento
+    novo.em_estoque = False
     ruim.setor = 'Estoque'
     ruim.localizacao = 'Estoque'
+    ruim.local = 'Estoque'
     ruim.usuario_equipamento = None
+    ruim.em_estoque = True
     chamado.equipamento_id = novo.id
     chamado.patrimonio = novo.patrimonio
     chamado.equipamento = novo.nome_equipamento
@@ -4508,6 +4518,7 @@ def _dados_equipamento_form(data):
         'usuario_equipamento': usuario or None,
         'ip': ip or None,
         'is_agente': data.get('is_agente') in (True, 1, '1', 'on', 'true', 'sim'),
+        'em_estoque': data.get('em_estoque') in (True, 1, '1', 'on', 'true', 'sim'),
         'atualizado_em': datetime.utcnow(),
     }
 
