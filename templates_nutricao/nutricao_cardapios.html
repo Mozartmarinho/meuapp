@@ -97,12 +97,12 @@
           </div>
           <div class="form-row cardapio-meta">
             <div class="form-group" style="max-width:100px">
-              <label class="form-label">Dia mês</label>
-              <input class="form-control" type="number" min="1" max="31" id="f-dia-mes" value="1">
+              <label class="form-label">Dia mês <span id="f-mes-atual" class="mes-atual"></span></label>
+              <input class="form-control" type="number" min="1" max="31" id="f-dia-mes" value="1" oninput="aoMudarDiaMes()">
             </div>
-            <div class="form-group" style="max-width:160px">
+            <div class="form-group" style="max-width:180px">
               <label class="form-label">Dia da semana</label>
-              <select class="form-control" id="f-dia-semana"></select>
+              <select class="form-control" id="f-dia-semana" onchange="aoMudarDiaSemana()"></select>
             </div>
             <div class="form-group" style="flex:1">
               <label class="form-label">Dieta</label>
@@ -538,6 +538,7 @@
 .cardapio-toolbar { display:flex; align-items:center; gap:0.28rem; margin-bottom:0.68rem; flex-wrap:wrap; }
 .cardapio-top .form-full { margin-bottom:0.52rem; }
 .cardapio-meta { display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end; }
+.mes-atual { font-weight:500; color:#64748b; text-transform:capitalize; }
 .horarios-tabs {
   margin: 0.15rem 0 0.85rem;
   padding: 0.4rem 0.5rem;
@@ -741,6 +742,7 @@
 const OPCOES = {{ opcoes|tojson }};
 const DIETAS = {{ dietas|tojson }};
 const DIETA_SEL_INIT = {{ (dieta_sel or none)|tojson }};
+const NOMES_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 const HORARIOS_PEQUENAS = ['desjejum', 'colacao', 'merenda', 'ceia'];
 const HORARIOS_GRANDES = ['almoco', 'jantar'];
 const HR_KEYS = ['desjejum', 'colacao', 'almoco', 'merenda', 'jantar', 'ceia'];
@@ -1144,20 +1146,113 @@ function dietaPayload(){
   };
 }
 
-function limparForm(){
-  editId = null;
-  document.getElementById('f-grupo').value = 'PRINCIPAL';
-  document.getElementById('f-dia-mes').value = 1;
-  document.getElementById('f-dia-semana').value = 'Domingo';
-  if (dietaAtual.id){
-    document.getElementById('f-dieta-id').value = dietaAtual.id;
-    document.getElementById('f-dieta-nome').value = dietaAtual.nome || '';
+function diasNoMesAtual(){
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+}
+
+function diaSelecionado(){
+  const max = diasNoMesAtual();
+  let n = parseInt(document.getElementById('f-dia-mes').value, 10);
+  if (!n || n < 1) n = 1;
+  if (n > max) n = max;
+  return n;
+}
+
+function sincronizarSemanaPeloDia(){
+  const now = new Date();
+  const max = diasNoMesAtual();
+  const dia = diaSelecionado();
+  const input = document.getElementById('f-dia-mes');
+  input.max = max;
+  input.value = dia;
+  const idxSemana = new Date(now.getFullYear(), now.getMonth(), dia).getDay();
+  const nome = NOMES_SEMANA[idxSemana];
+  const sel = document.getElementById('f-dia-semana');
+  if (sel){
+    if (![...sel.options].some(o => o.value === nome)){
+      const opt = document.createElement('option');
+      opt.value = nome;
+      opt.textContent = nome;
+      sel.appendChild(opt);
+    }
+    sel.value = nome;
   }
+  const mes = document.getElementById('f-mes-atual');
+  if (mes){
+    const rotulo = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    mes.textContent = rotulo ? '(' + rotulo + ')' : '';
+  }
+}
+
+function diaMesPelaSemana(nome){
+  const alvo = NOMES_SEMANA.indexOf(nome);
+  if (alvo < 0) return diaSelecionado();
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const max = diasNoMesAtual();
+  const atual = diaSelecionado();
+  const delta = (alvo - new Date(y, m, atual).getDay() + 7) % 7;
+  let dia = atual + (delta === 0 ? 0 : delta);
+  if (dia > max) dia = atual - (7 - delta);
+  if (dia >= 1 && dia <= max && new Date(y, m, dia).getDay() === alvo) return dia;
+  for (let d = 1; d <= max; d++){
+    if (new Date(y, m, d).getDay() === alvo) return d;
+  }
+  return atual;
+}
+
+function aplicarDiaHoje(){
+  document.getElementById('f-dia-mes').value = new Date().getDate();
+  sincronizarSemanaPeloDia();
+}
+
+function limparPratos(){
   document.querySelectorAll('#painel-grandes input, #painel-pequenas input, #painel-liquidas input').forEach(el => {
     el.value = '';
   });
   extrasPorCampo = extrasVazios();
   renderTodosExtras();
+}
+
+let aplicandoDia = false;
+
+function mostrarCardapioDoDia(){
+  if (aplicandoDia) return;
+  aplicandoDia = true;
+  sincronizarSemanaPeloDia();
+  const achado = cardapioDoHorario(horarioAtual);
+  if (achado.cardapio && Number(achado.cardapio.dia_mes) === diaSelecionado()){
+    preencher(achado.cardapio);
+    if (!achado.proprio) editId = null;
+  } else {
+    editId = null;
+    limparPratos();
+  }
+  aplicandoDia = false;
+}
+
+function aoMudarDiaMes(){
+  mostrarCardapioDoDia();
+}
+
+function aoMudarDiaSemana(){
+  if (aplicandoDia) return;
+  const nome = document.getElementById('f-dia-semana').value;
+  document.getElementById('f-dia-mes').value = diaMesPelaSemana(nome);
+  mostrarCardapioDoDia();
+}
+
+function limparForm(){
+  editId = null;
+  document.getElementById('f-grupo').value = 'PRINCIPAL';
+  sincronizarSemanaPeloDia();
+  if (dietaAtual.id){
+    document.getElementById('f-dieta-id').value = dietaAtual.id;
+    document.getElementById('f-dieta-nome').value = dietaAtual.nome || '';
+  }
+  limparPratos();
   fecharPopupExtra();
   fecharSugestoes();
 }
@@ -1185,10 +1280,14 @@ function itemGet(it, ...keys){
 
 function preencher(c){
   if (!c){ limparForm(); return; }
+  if (horarioAtual !== 'liquidas' && Number(c.dia_mes) !== diaSelecionado()){
+    limparForm();
+    return;
+  }
   editId = c.id;
   document.getElementById('f-grupo').value = c.grupo_cardapio || 'PRINCIPAL';
-  document.getElementById('f-dia-mes').value = c.dia_mes || 1;
-  document.getElementById('f-dia-semana').value = c.dia_semana || 'Domingo';
+  sincronizarSemanaPeloDia();
+  limparPratos();
 
   // Dieta permanece a da linha (bloqueada)
   if (dietaAtual.id){
@@ -1287,14 +1386,18 @@ function horarioExclusivo(c, horario){
 function cardapioDoHorario(horario){
   const tipo = tipoDoHorario(horario);
   if (horario === 'liquidas'){
-    const row = lista.find(c => c.tipo === 'liquidas') || null;
+    const dia = diaSelecionado();
+    const row = lista.find(c => c.tipo === 'liquidas' && Number(c.dia_mes) === dia) || null;
     return { cardapio: row, proprio: !!row };
   }
   const flag = 'hr_' + horario;
-  const rows = lista.filter(c => c.tipo === tipo && c[flag]);
-  const exclusivo = rows.find(c => horarioExclusivo(c, horario));
+  const dia = diaSelecionado();
+  const doDia = lista.filter(c => c.tipo === tipo && Number(c.dia_mes) === dia);
+  const exclusivo = doDia.find(c => c[flag] && horarioExclusivo(c, horario));
   if (exclusivo) return { cardapio: exclusivo, proprio: true };
-  if (rows.length) return { cardapio: rows[0], proprio: false };
+  const marcado = doDia.find(c => c[flag]);
+  if (marcado) return { cardapio: marcado, proprio: horarioExclusivo(marcado, horario) };
+  if (doDia.length) return { cardapio: doDia[0], proprio: false };
   return { cardapio: null, proprio: false };
 }
 
@@ -1329,8 +1432,12 @@ function apiQuery(){
   return qs.toString();
 }
 
+let cargaSeq = 0;
 async function carregarAba(){
+  const seq = ++cargaSeq;
+  const diaPedido = diaSelecionado();
   const r = await fetch('/nutricao/api/cardapios?' + apiQuery());
+  if (seq !== cargaSeq || diaSelecionado() !== diaPedido) return;
   lista = await r.json();
   if (!Array.isArray(lista)) lista = [];
   const achado = cardapioDoHorario(horarioAtual);
@@ -1348,7 +1455,8 @@ async function carregarAba(){
 async function soltarHorarioDosOutros(idMantido){
   if (!idMantido || horarioAtual === 'liquidas') return;
   const flag = 'hr_' + horarioAtual;
-  const outros = lista.filter(c => c.id !== idMantido && c[flag]);
+  const dia = diaSelecionado();
+  const outros = lista.filter(c => c.id !== idMantido && c[flag] && Number(c.dia_mes) === dia);
   for (const c of outros){
     const body = Object.assign({}, c);
     body[flag] = false;
@@ -1408,6 +1516,7 @@ async function abrirCardapioModal(dietaId, dietaNome){
   setDietaLocked(dietaId, dietaNome);
   horarioAtual = 'desjejum';
   tipoAtual = 'pequenas';
+  aplicarDiaHoje();
   aplicarPainelHorario();
   document.getElementById('cardapioModalOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';

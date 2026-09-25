@@ -33,6 +33,8 @@ class CardapioCadastroTest(unittest.TestCase):
 
     def test_formulario_texto_livre_sem_amarelos(self):
         html = self.client.get('/nutricao/cardapios').get_data(as_text=True)
+        self.assertIn('oninput="aoMudarDiaMes()"', html)
+        self.assertIn('aoMudarDiaSemana()', html)
         self.assertIn('id="abasHorario"', html)
         self.assertIn('trocarHorario(\'desjejum\')', html)
         self.assertIn('trocarHorario(\'almoco\')', html)
