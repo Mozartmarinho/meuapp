@@ -907,6 +907,10 @@ function escolherSugestao(campo, nome){
   const cfg = cfgDoCampo(campo);
   if (cfg && cfg.input && nome) setTexto(cfg.input, nome);
   fecharSugestoes();
+  if (cfg && (cfg.tipo === 'pequenas' || cfg.tipo === 'grandes')){
+    const numero = (IDS_ITEM[cfg.tipo] || []).indexOf(cfg.input) + 1;
+    if (numero > 0) salvarItemHorario(numero);
+  }
 }
 
 function prepararCamposSugestao(){
@@ -928,6 +932,13 @@ function prepararCamposSugestao(){
       box.setAttribute('data-suggest', cfg.key);
       box.setAttribute('role', 'listbox');
       wrap.appendChild(box);
+    }
+    if ((cfg.tipo === 'pequenas' || cfg.tipo === 'grandes') && inp.dataset.itemSave !== '1'){
+      inp.dataset.itemSave = '1';
+      const numero = (IDS_ITEM[cfg.tipo] || []).indexOf(cfg.input) + 1;
+      inp.addEventListener('blur', function(){
+        if (numero > 0) salvarItemHorario(numero);
+      });
     }
     if (inp.dataset.suggestPronto === '1') return;
     inp.dataset.suggestPronto = '1';
@@ -1157,25 +1168,25 @@ function dietaPayload(){
   };
 }
 
+const DIAS_CADASTRO_CARDAPIO = 31;
+
 function diasNoMesAtual(){
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
 }
 
 function diaSelecionado(){
-  const max = diasNoMesAtual();
   let n = parseInt(document.getElementById('f-dia-mes').value, 10);
   if (!n || n < 1) n = 1;
-  if (n > max) n = max;
+  if (n > DIAS_CADASTRO_CARDAPIO) n = DIAS_CADASTRO_CARDAPIO;
   return n;
 }
 
 function sincronizarSemanaPeloDia(){
   const now = new Date();
-  const max = diasNoMesAtual();
   const dia = diaSelecionado();
   const input = document.getElementById('f-dia-mes');
-  input.max = max;
+  input.max = DIAS_CADASTRO_CARDAPIO;
   input.value = dia;
   const idxSemana = new Date(now.getFullYear(), now.getMonth(), dia).getDay();
   const nome = NOMES_SEMANA[idxSemana];
@@ -1398,17 +1409,16 @@ function cardapioDoHorario(horario){
   const tipo = tipoDoHorario(horario);
   if (horario === 'liquidas'){
     const dia = diaSelecionado();
-    const row = lista.find(c => c.tipo === 'liquidas' && Number(c.dia_mes) === dia) || null;
+    const row = lista.filter(c => c.tipo === 'liquidas' && Number(c.dia_mes) === dia)
+      .sort((a, b) => Number(b.id) - Number(a.id))[0] || null;
     return { cardapio: row, proprio: !!row };
   }
-  const flag = 'hr_' + horario;
   const dia = diaSelecionado();
-  const doDia = lista.filter(c => c.tipo === tipo && Number(c.dia_mes) === dia);
-  const exclusivo = doDia.find(c => c[flag] && horarioExclusivo(c, horario));
+  const porId = (a, b) => Number(b.id) - Number(a.id);
+  const exclusivo = lista.filter(c =>
+    c.tipo === tipo && Number(c.dia_mes) === dia && horarioExclusivo(c, horario)
+  ).sort(porId)[0];
   if (exclusivo) return { cardapio: exclusivo, proprio: true };
-  const marcado = doDia.find(c => c[flag]);
-  if (marcado) return { cardapio: marcado, proprio: horarioExclusivo(marcado, horario) };
-  if (doDia.length) return { cardapio: doDia[0], proprio: false };
   return { cardapio: null, proprio: false };
 }
 
@@ -1423,6 +1433,19 @@ function aplicarPainelHorario(){
   document.getElementById('painel-liquidas').hidden = tipoAtual !== 'liquidas';
 }
 
+const IDS_ITEM = {
+  grandes: ['g-acompanhamento','g-prato_base','g-proteina_opcional','g-guarnicao','g-docinho_salada','g-sobremesa','g-fruta','g-suco','g-vitamina_suco','g-outros'],
+  pequenas: ['p-bebida','p-prato1','p-prato2','p-prato3','p-prato4','p-prato5','p-prato6','p-prato7','p-sobremesa','p-prato8'],
+  liquidas: ['l-principal','l-bebida','l-sobremesa','l-gelado','l-outros'],
+};
+
+function camposItemNumerados(){
+  const ids = IDS_ITEM[tipoAtual] || [];
+  const o = {};
+  for (let i = 1; i <= 10; i++) o['item_' + i] = ids[i - 1] ? valCampo(ids[i - 1]) : '';
+  return o;
+}
+
 function payloadAtual(){
   const d = dietaPayload();
   return Object.assign({
@@ -1434,7 +1457,7 @@ function payloadAtual(){
     dieta: d.dieta,
     itens: coletarItens(),
     ativo: true
-  }, flagsDoHorario());
+  }, camposItemNumerados(), flagsDoHorario());
 }
 
 function apiQuery(){
@@ -1463,9 +1486,10 @@ async function carregarAba(){
   aplicarPainelHorario();
 }
 
-async function soltarHorarioDosOutros(idMantido){
-  if (!idMantido || horarioAtual === 'liquidas') return;
-  const flag = 'hr_' + horarioAtual;
+async function soltarHorarioDosOutros(idMantido, horario){
+  horario = horario || horarioAtual;
+  if (!idMantido || horario === 'liquidas') return;
+  const flag = 'hr_' + horario;
   const dia = diaSelecionado();
   const outros = lista.filter(c => c.id !== idMantido && c[flag] && Number(c.dia_mes) === dia);
   for (const c of outros){
@@ -1479,28 +1503,92 @@ async function soltarHorarioDosOutros(idMantido){
   }
 }
 
+let ignorarBlurItem = false;
+let filaItem = Promise.resolve();
+
+function salvarItemHorario(numero){
+  if (ignorarBlurItem) return;
+  if (HORARIOS_PEQUENAS.indexOf(horarioAtual) < 0 && HORARIOS_GRANDES.indexOf(horarioAtual) < 0) return;
+  const horario = horarioAtual;
+  const body = payloadAtual();
+  body.somente_item = numero;
+  const job = filaItem.then(async () => {
+    const mesmoHorario = horarioAtual === horario;
+    const idEdicao = mesmoHorario ? editId : null;
+    const url = idEdicao ? `/nutricao/api/cardapios/${idEdicao}` : '/nutricao/api/cardapios';
+    const method = idEdicao ? 'PUT' : 'POST';
+    const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    let j = {};
+    try { j = await r.json(); } catch (e) { j = {}; }
+    if (!r.ok || j.ok === false){
+      showToast((j && (j.error || j.message)) || 'Falha ao salvar item','error');
+      return;
+    }
+    if (horarioAtual !== horario) return;
+    if (j.cardapio && j.cardapio.id) editId = j.cardapio.id;
+    if (j.cardapio && j.cardapio.dieta_id){
+      setDietaLocked(j.cardapio.dieta_id, j.cardapio.dieta || dietaAtual.nome);
+    }
+  });
+  filaItem = job.catch(() => {});
+}
+
 function trocarHorario(horario){
+  ignorarBlurItem = true;
   fecharSugestoes();
+  editId = null;
+  limparPratos();
   horarioAtual = horario;
   tipoAtual = tipoDoHorario(horario);
   aplicarPainelHorario();
-  carregarAba();
+  Promise.resolve(carregarAba()).finally(() => { ignorarBlurItem = false; });
+}
+
+function apontarDietaNaTabela(idAntigo, idNovo, nome){
+  const novo = Number(idNovo) || 0;
+  const antigo = Number(idAntigo) || 0;
+  if (!novo) return;
+  document.querySelectorAll('#tabelaCardapiosBody tr').forEach(tr => {
+    const mesmoId = antigo && Number(tr.dataset.id) === antigo;
+    const mesmoNome = nome && (tr.dataset.nome || '') === nome;
+    if (!mesmoId && !mesmoNome) return;
+    tr.dataset.id = String(novo);
+    if (nome) tr.dataset.nome = nome;
+    tr.querySelectorAll('[data-dieta-id]').forEach(el => {
+      el.setAttribute('data-dieta-id', String(novo));
+      if (nome) el.setAttribute('data-dieta-nome', nome);
+    });
+  });
 }
 
 async function salvarCardapio(){
+  const horarioSalvo = horarioAtual;
   const body = payloadAtual();
   if (!body.dieta_id && !(body.dieta || '').trim()){ showToast('Informe a dieta','error'); return; }
+  const idDietaAntes = dietaAtual.id;
   const url = editId ? `/nutricao/api/cardapios/${editId}` : '/nutricao/api/cardapios';
   const method = editId ? 'PUT' : 'POST';
   const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-  const j = await r.json();
-  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao salvar','error'); return; }
+  let j = {};
+  try { j = await r.json(); } catch (e) { j = {}; }
+  if (!r.ok || j.ok === false){ showToast((j && (j.error || j.message)) || 'Falha ao salvar','error'); return; }
   showToast(editId ? 'Cardápio atualizado' : 'Cardápio cadastrado','success');
-  if (j.cardapio && j.cardapio.id) await soltarHorarioDosOutros(j.cardapio.id);
+  if (j.cardapio && j.cardapio.dieta_id){
+    setDietaLocked(j.cardapio.dieta_id, j.cardapio.dieta || dietaAtual.nome);
+    apontarDietaNaTabela(idDietaAntes, j.cardapio.dieta_id, j.cardapio.dieta || '');
+  }
+  if (j.cardapio && j.cardapio.id){
+    editId = j.cardapio.id;
+    await soltarHorarioDosOutros(j.cardapio.id, horarioSalvo);
+  }
+  if (horarioAtual !== horarioSalvo) return;
   await carregarAba();
+  if (horarioAtual !== horarioSalvo) return;
   if (j.cardapio){
+    preencher(j.cardapio);
+    editId = j.cardapio.id;
     const i = lista.findIndex(x => x.id === j.cardapio.id);
-    if (i >= 0){ idx = i; preencher(lista[idx]); }
+    idx = i;
   }
 }
 

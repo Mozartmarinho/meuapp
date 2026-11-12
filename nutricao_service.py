@@ -467,6 +467,13 @@ def list_leitos(enfermaria_id=None, somente_ativos=False):
     return [l.to_dict() for l in q.order_by(NutLeito.numero, NutLeito.nome).all()]
 
 
+def _limpar_cache_inspetor(insp):
+    """SQLAlchemy 1.4 antigo não tem Inspector.clear_cache."""
+    limpar = getattr(insp, 'clear_cache', None)
+    if callable(limpar):
+        limpar()
+
+
 def _ensure_nutricao_columns(force=False):
     """Adiciona colunas novas em tabelas já existentes (create_all não altera).
 
@@ -605,25 +612,25 @@ def _ensure_nutricao_columns(force=False):
             if 'grupo' not in cols:
                 db.session.execute(text("ALTER TABLE nut_dietas ADD COLUMN grupo VARCHAR(80) NULL"))
                 db.session.commit()
-                insp.clear_cache()
+                _limpar_cache_inspetor(insp)
         if 'nut_tipos_refeicao' in tables:
             cols = {c['name'] for c in insp.get_columns('nut_tipos_refeicao')}
             if 'hora_limite' not in cols:
                 db.session.execute(text("ALTER TABLE nut_tipos_refeicao ADD COLUMN hora_limite VARCHAR(5) NULL"))
                 db.session.commit()
-                insp.clear_cache()
+                _limpar_cache_inspetor(insp)
         if 'nut_cardapios' in tables:
             cols = {c['name'] for c in insp.get_columns('nut_cardapios')}
             if 'dieta_id' not in cols:
                 db.session.execute(text('ALTER TABLE nut_cardapios ADD COLUMN dieta_id INTEGER NULL'))
                 db.session.commit()
-                insp.clear_cache()
+                _limpar_cache_inspetor(insp)
         if 'nut_alimentos' in tables:
             cols = {c['name'] for c in insp.get_columns('nut_alimentos')}
             if 'fdc_id' not in cols:
                 db.session.execute(text('ALTER TABLE nut_alimentos ADD COLUMN fdc_id INTEGER NULL'))
                 db.session.commit()
-                insp.clear_cache()
+                _limpar_cache_inspetor(insp)
             try:
                 db.session.execute(text(
                     'CREATE UNIQUE INDEX uq_nut_alimento_tabela_fdc '
@@ -647,7 +654,7 @@ def _ensure_nutricao_columns(force=False):
                         db.session.commit()
                     except Exception:
                         db.session.rollback()
-            insp.clear_cache()
+            _limpar_cache_inspetor(insp)
             try:
                 db.session.execute(text(
                     'UPDATE nut_refeicao_funcionarios SET data_refeicao = CURDATE() '
@@ -671,7 +678,7 @@ def _ensure_nutricao_columns(force=False):
                         db.session.commit()
                     except Exception:
                         db.session.rollback()
-            insp.clear_cache()
+            _limpar_cache_inspetor(insp)
             try:
                 db.session.execute(text(
                     'UPDATE nut_refeicao_acompanhantes SET data_refeicao = CURDATE() '
@@ -718,14 +725,14 @@ def _ensure_nutricao_columns(force=False):
     ):
         try:
             insp = inspect(db.engine)
-            insp.clear_cache()
+            _limpar_cache_inspetor(insp)
             if table not in set(insp.get_table_names()):
                 continue
             cols = {c['name'] for c in insp.get_columns(table)}
             if col not in cols:
                 db.session.execute(text(ddl))
                 db.session.commit()
-                insp.clear_cache()
+                _limpar_cache_inspetor(insp)
         except Exception:
             db.session.rollback()
 
@@ -829,12 +836,33 @@ def list_cardapios(tipo=None, dieta_id=None):
     q = _q(NutCardapio).filter_by(ativo=True)
     if tipo:
         q = q.filter_by(tipo=tipo)
+    dieta = None
     if dieta_id:
-        q = q.filter_by(dieta_id=int(dieta_id))
-    return [
-        c.to_dict()
-        for c in q.order_by(NutCardapio.dia_mes, NutCardapio.dieta, NutCardapio.id).all()
-    ]
+        dieta_id = int(dieta_id)
+        dieta = NutDieta.query.get(dieta_id)
+        nome = (dieta.nome or '').strip().upper() if dieta else ''
+        cond = NutCardapio.dieta_id == dieta_id
+        if nome:
+            cond = db.or_(
+                cond,
+                db.and_(
+                    NutCardapio.dieta_id.is_(None),
+                    db.func.upper(NutCardapio.dieta) == nome,
+                ),
+            )
+        q = q.filter(cond)
+    rows = q.order_by(NutCardapio.dia_mes, NutCardapio.dieta, NutCardapio.id).all()
+    if dieta is not None:
+        changed = False
+        for row in rows:
+            if not row.dieta_id:
+                row.dieta_id = dieta.id
+                if not (row.dieta or '').strip():
+                    row.dieta = dieta.nome
+                changed = True
+        if changed:
+            db.session.commit()
+    return [c.to_dict() for c in rows]
 
 
 def _ensure_dietas_excluidas_table():

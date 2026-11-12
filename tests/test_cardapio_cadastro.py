@@ -31,6 +31,31 @@ class CardapioCadastroTest(unittest.TestCase):
         db.drop_all()
         cls.ctx.pop()
 
+    def test_cadastro_aceita_dia_31_independente_do_mes(self):
+        html = self.client.get('/nutricao/cardapios').get_data(as_text=True)
+        self.assertIn('const DIAS_CADASTRO_CARDAPIO = 31', html)
+        self.assertIn('input.max = DIAS_CADASTRO_CARDAPIO', html)
+        self.assertNotIn('if (n > max) n = max', html)
+        resp = self.client.post('/nutricao/api/cardapios', json={
+            'tipo': 'pequenas',
+            'dieta': 'DIA 31 TESTE',
+            'hr_desjejum': True,
+            'dia_mes': 31,
+            'itens': {'bebida': 'CAFÉ'},
+        })
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data.get('ok'))
+        self.assertEqual(data['cardapio']['dia_mes'], 31)
+        resp_alto = self.client.post('/nutricao/api/cardapios', json={
+            'tipo': 'pequenas',
+            'dieta': 'DIA 31 TESTE',
+            'hr_desjejum': True,
+            'dia_mes': 40,
+            'itens': {'bebida': 'LEITE'},
+        })
+        self.assertEqual(resp_alto.get_json()['cardapio']['dia_mes'], 31)
+
     def test_formulario_texto_livre_sem_amarelos(self):
         html = self.client.get('/nutricao/cardapios').get_data(as_text=True)
         self.assertIn('oninput="aoMudarDiaMes()"', html)
@@ -217,6 +242,179 @@ class CardapioCadastroTest(unittest.TestCase):
         self.assertIn('SOPA CREME', pratos_l)
         self.assertIn('CALDO DE CARNE', pratos_l)
         self.assertIn('PICOLÉ', pratos_l)
+
+    def test_itens_do_mesmo_horario_ficam_em_colunas_diferentes(self):
+        dieta = NutDieta(nome='BRANDA COLUNAS', categoria='basica', ativo=True)
+        db.session.add(dieta)
+        db.session.commit()
+        base = {
+            'tipo': 'pequenas',
+            'dieta_id': dieta.id,
+            'dieta': dieta.nome,
+            'hr_desjejum': True,
+            'dia_mes': 25,
+        }
+        r1 = self.client.post('/nutricao/api/cardapios', json=dict(base, itens={
+            'bebida': 'MATE QUENTE',
+        }, item_1='MATE QUENTE', item_2=''))
+        self.assertEqual(r1.status_code, 200)
+        r2 = self.client.post('/nutricao/api/cardapios', json=dict(base, itens={
+            'bebida': 'MATE QUENTE',
+            'prato1': 'AÇÚCAR IND',
+        }, item_1='MATE QUENTE', item_2='AÇÚCAR IND', item_3='PÃO'))
+        self.assertEqual(r2.status_code, 200)
+        self.assertEqual(r1.get_json()['id'], r2.get_json()['id'])
+        card = r2.get_json()['cardapio']
+        self.assertEqual(card['item_1'], 'MATE QUENTE')
+        self.assertEqual(card['item_2'], 'AÇÚCAR IND')
+        self.assertEqual(card['item_3'], 'PÃO')
+        row = NutCardapio.query.get(card['id'])
+        self.assertEqual(row.item_1, 'MATE QUENTE')
+        self.assertEqual(row.item_2, 'AÇÚCAR IND')
+        self.assertEqual(row.item_3, 'PÃO')
+        ativos = NutCardapio.query.filter_by(dieta_id=dieta.id, ativo=True, dia_mes=25).count()
+        self.assertEqual(ativos, 1)
+
+    def test_cada_refeicao_salva_cardapio_proprio(self):
+        dieta = NutDieta(nome='BRANDA HORARIOS', categoria='basica', ativo=True)
+        db.session.add(dieta)
+        db.session.commit()
+        horas = (
+            ('desjejum', 'pequenas', 'CAFÉ'),
+            ('colacao', 'pequenas', 'FRUTA'),
+            ('almoco', 'grandes', 'ARROZ'),
+            ('merenda', 'pequenas', 'BOLO'),
+            ('jantar', 'grandes', 'SOPA'),
+            ('ceia', 'pequenas', 'CHÁ'),
+        )
+        ids = {}
+        for hora, tipo, item in horas:
+            flags = {f'hr_{nome}': nome == hora for nome, _t, _i in horas}
+            resp = self.client.post('/nutricao/api/cardapios', json=dict(flags, tipo=tipo, dieta_id=dieta.id, dieta=dieta.nome, dia_mes=28, item_1=item, itens={'bebida': item, 'acompanhamento': item}))
+            self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
+            ids[hora] = resp.get_json()['id']
+        self.assertEqual(len(set(ids.values())), 6)
+        for hora, _tipo, item in horas:
+            row = NutCardapio.query.get(ids[hora])
+            self.assertEqual(row.item_1, item)
+            self.assertTrue(getattr(row, f'hr_{hora}'))
+            for outra, _t, _i in horas:
+                if outra != hora:
+                    self.assertFalse(getattr(row, f'hr_{outra}'))
+        de_novo = self.client.post('/nutricao/api/cardapios', json={
+            'tipo': 'pequenas',
+            'dieta_id': dieta.id,
+            'dieta': dieta.nome,
+            'dia_mes': 28,
+            'hr_desjejum': True,
+            'item_1': 'LEITE',
+            'itens': {'bebida': 'LEITE'},
+        })
+        self.assertEqual(de_novo.get_json()['id'], ids['desjejum'])
+        self.assertEqual(NutCardapio.query.get(ids['colacao']).item_1, 'FRUTA')
+        self.assertEqual(NutCardapio.query.get(ids['desjejum']).item_1, 'LEITE')
+
+    def test_item_de_refeicao_pequena_nao_apaga_os_outros(self):
+        dieta = NutDieta(nome='BRANDA ITENS', categoria='basica', ativo=True)
+        db.session.add(dieta)
+        db.session.commit()
+        base = {
+            'tipo': 'pequenas',
+            'dieta_id': dieta.id,
+            'dieta': dieta.nome,
+            'dia_mes': 28,
+            'hr_desjejum': True,
+        }
+        r1 = self.client.post('/nutricao/api/cardapios', json=dict(
+            base, somente_item=1, item_1='CAFÉ',
+        ))
+        self.assertEqual(r1.status_code, 200)
+        r2 = self.client.post('/nutricao/api/cardapios', json=dict(
+            base, somente_item=2, item_2='PÃO', item_1='',
+        ))
+        self.assertEqual(r2.status_code, 200)
+        self.assertEqual(r1.get_json()['id'], r2.get_json()['id'])
+        row = NutCardapio.query.get(r2.get_json()['id'])
+        self.assertEqual(row.item_1, 'CAFÉ')
+        self.assertEqual(row.item_2, 'PÃO')
+        colacao = self.client.post('/nutricao/api/cardapios', json={
+            'tipo': 'pequenas',
+            'dieta_id': dieta.id,
+            'dieta': dieta.nome,
+            'dia_mes': 28,
+            'hr_colacao': True,
+            'somente_item': 1,
+            'item_1': 'FRUTA',
+        })
+        self.assertNotEqual(colacao.get_json()['id'], row.id)
+        self.assertEqual(NutCardapio.query.get(row.id).item_1, 'CAFÉ')
+        self.assertEqual(NutCardapio.query.get(colacao.get_json()['id']).item_1, 'FRUTA')
+
+    def test_item_de_almoco_nao_apaga_jantar_nem_os_outros(self):
+        dieta = NutDieta(nome='BRANDA GRANDES', categoria='basica', ativo=True)
+        db.session.add(dieta)
+        db.session.commit()
+        base = {
+            'tipo': 'grandes',
+            'dieta_id': dieta.id,
+            'dieta': dieta.nome,
+            'dia_mes': 28,
+            'hr_almoco': True,
+        }
+        r1 = self.client.post('/nutricao/api/cardapios', json=dict(
+            base, somente_item=1, item_1='ARROZ',
+        ))
+        self.assertEqual(r1.status_code, 200)
+        r2 = self.client.post('/nutricao/api/cardapios', json=dict(
+            base, somente_item=2, item_2='FEIJÃO', item_1='',
+        ))
+        self.assertEqual(r2.status_code, 200)
+        self.assertEqual(r1.get_json()['id'], r2.get_json()['id'])
+        row = NutCardapio.query.get(r2.get_json()['id'])
+        self.assertEqual(row.item_1, 'ARROZ')
+        self.assertEqual(row.item_2, 'FEIJÃO')
+        self.assertTrue(row.hr_almoco)
+        self.assertFalse(row.hr_jantar)
+        jantar = self.client.post('/nutricao/api/cardapios', json={
+            'tipo': 'grandes',
+            'dieta_id': dieta.id,
+            'dieta': dieta.nome,
+            'dia_mes': 28,
+            'hr_jantar': True,
+            'somente_item': 1,
+            'item_1': 'SOPA',
+        })
+        self.assertNotEqual(jantar.get_json()['id'], row.id)
+        self.assertEqual(NutCardapio.query.get(row.id).item_1, 'ARROZ')
+        self.assertEqual(NutCardapio.query.get(row.id).item_2, 'FEIJÃO')
+        outro = NutCardapio.query.get(jantar.get_json()['id'])
+        self.assertEqual(outro.item_1, 'SOPA')
+        self.assertIsNone(outro.item_2)
+        self.assertTrue(outro.hr_jantar)
+        self.assertFalse(outro.hr_almoco)
+
+    def test_salva_cardapio_quando_dieta_id_nao_existe(self):
+        resp = self.client.post('/nutricao/api/cardapios', json={
+            'tipo': 'pequenas',
+            'dieta_id': 99999,
+            'dieta': 'BRANDA SALVA',
+            'hr_desjejum': True,
+            'dia_mes': 25,
+            'itens': {'bebida': 'CAFÉ', 'prato1': 'PÃO'},
+        })
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data.get('ok'))
+        dieta_id = data['cardapio']['dieta_id']
+        self.assertTrue(dieta_id)
+        self.assertEqual(data['cardapio']['item_1'], 'CAFÉ')
+        row = NutCardapio.query.get(data['cardapio']['id'])
+        self.assertEqual(row.dieta_id, dieta_id)
+        self.assertEqual(row.item_1, 'CAFÉ')
+        dieta = NutDieta.query.get(dieta_id)
+        self.assertEqual(dieta.nome, 'BRANDA SALVA')
+        lista = self.client.get(f'/nutricao/api/cardapios?dieta_id={dieta_id}').get_json()
+        self.assertTrue(any(c['id'] == row.id and c['itens']['bebida'] == 'CAFÉ' for c in lista))
 
     def test_mais_do_cardapio_grava_produto_no_grupo_do_tema(self):
         from models_nutricao import NutGrupoProduto, NutProduto  # noqa: E402

@@ -4,7 +4,7 @@
 <div class="page-header" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-start;justify-content:space-between;">
   <div>
     <h1>Controle de Pesagem</h1>
-    <p>Pesos recebidos do sistema externo (agente) e armazenados no servidor</p>
+    <p>Pesos recebidos do agente da balança ou lançados manualmente pela web</p>
   </div>
   <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
     <a class="btn btn-secondary" id="btnImprimir" href="{{ url_for('pesagem.dashboard_imprimir', **{
@@ -91,6 +91,56 @@
   <span style="margin-left:0.5rem;">— exibindo até {{ filtros.limit }} registro(s)</span>
 </div>
 
+<div class="card" id="lancamentoManual" style="margin-bottom:1.25rem;padding:1rem 1.15rem;">
+  <h3 style="margin:0 0 0.35rem;font-family:var(--font-brand);color:var(--brand-navy);">Lançar peso manualmente</h3>
+  <p style="margin:0 0 0.85rem;font-size:0.85rem;color:var(--gray-500);">Registra o peso direto nesta tela, sem o agente da balança. O líquido entra na soma do dia.</p>
+  {% if clientes and balancas %}
+  <form id="formLancamentoManual" data-no-loading style="display:flex;flex-wrap:wrap;gap:0.65rem;align-items:flex-end;">
+    <div class="form-group" style="margin:0;min-width:180px;flex:1.2;">
+      <label class="form-label" for="manualCliente">Cliente</label>
+      <select class="form-control" id="manualCliente" name="cliente_id" required>
+        <option value="">Selecione</option>
+        {% for c in clientes %}
+        <option value="{{ c.id }}">{{ c.nome }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="margin:0;min-width:140px;">
+      <label class="form-label" for="manualBalanca">Balança</label>
+      <select class="form-control" id="manualBalanca" name="balanca_codigo" required>
+        <option value="">Selecione</option>
+        {% for b in balancas %}
+        {% if b.ativo %}
+        <option value="{{ b.codigo }}">{{ b.codigo }}{% if b.nome %} — {{ b.nome }}{% endif %}</option>
+        {% endif %}
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="margin:0;min-width:120px;">
+      <label class="form-label" for="manualPeso">Líquido (kg)</label>
+      <input class="form-control" id="manualPeso" name="peso" inputmode="decimal" placeholder="0,000" required>
+    </div>
+    <div class="form-group" style="margin:0;min-width:110px;">
+      <label class="form-label" for="manualTara">Tara (kg)</label>
+      <input class="form-control" id="manualTara" name="tara" inputmode="decimal" placeholder="0" value="0">
+    </div>
+    <div class="form-group" style="margin:0;min-width:190px;">
+      <label class="form-label" for="manualQuando">Data e hora</label>
+      <input class="form-control" id="manualQuando" name="data_hora" type="datetime-local">
+    </div>
+    <div class="form-group" style="margin:0;min-width:160px;flex:1;">
+      <label class="form-label" for="manualObs">Observação</label>
+      <input class="form-control" id="manualObs" name="observacao" maxlength="255" placeholder="Opcional">
+    </div>
+    <button class="btn btn-primary" id="btnLancarPeso" type="submit">
+      <i class="fas fa-plus"></i> Lançar peso
+    </button>
+  </form>
+  {% else %}
+  <p style="margin:0;font-size:0.9rem;color:#475569;">Cadastre ao menos um cliente e uma balança ativa para lançar o peso pela web.</p>
+  {% endif %}
+</div>
+
 <div class="card" style="margin-bottom:1.25rem;padding:1rem 1.15rem;">
   <h3 style="margin:0 0 0.85rem;font-family:var(--font-brand);color:var(--brand-navy);">Agente local (.exe)</h3>
   <div style="display:flex;flex-wrap:wrap;gap:0.65rem;">
@@ -132,13 +182,13 @@
         {% for l in leituras %}
         <tr data-leitura-id="{{ l.id }}">
           <td style="white-space:nowrap;">{{ l.data_leitura }}</td>
-          <td>{{ l.cliente_nome or '-' }}</td>
+          <td>{{ l.cliente_nome or '-' }}{% if l.observacao %}<div style="font-size:0.78rem;color:#64748b;">{{ l.observacao }}</div>{% endif %}</td>
           <td><strong>{{ '%.3f'|format(l.peso_liquido if l.peso_liquido is not none else l.peso) }}</strong> {{ l.unidade }}</td>
           <td>{{ '%.3f'|format(l.tara if l.tara is not none else 0) }} {{ l.unidade }}</td>
           <td>{{ '%.3f'|format(l.peso_bruto if l.peso_bruto is not none else l.peso) }} {{ l.unidade }}</td>
           <td>{{ l.balanca_codigo }}</td>
           <td>{{ 'Sim' if l.estavel else 'Não' }}</td>
-          <td>{% if l.origem == 'ja_pesado' %}Roupa já pesada{% elif l.origem == 'agente' %}Agente{% else %}{{ l.origem or '-' }}{% endif %}</td>
+          <td>{% if l.origem == 'ja_pesado' %}Roupa já pesada{% elif l.origem == 'agente' %}Agente{% elif l.origem == 'manual' %}Manual{% else %}{{ l.origem or '-' }}{% endif %}</td>
           <td>{{ l.computador or '-' }}{% if l.porta_com %} / {{ l.porta_com }}{% endif %}</td>
           <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;" title="{{ l.bruto_serial }}">{{ l.bruto_serial or '-' }}</td>
           <td class="col-excluir">
@@ -165,6 +215,54 @@
 .btn-excluir-leitura:hover { color: #991b1b; }
 </style>
 <script>
+(function () {
+  var quando = document.getElementById('manualQuando');
+  if (quando && !quando.value) {
+    var n = new Date();
+    n.setMinutes(n.getMinutes() - n.getTimezoneOffset());
+    quando.value = n.toISOString().slice(0, 16);
+  }
+  var form = document.getElementById('formLancamentoManual');
+  if (!form) return;
+  form.addEventListener('submit', async function (ev) {
+    ev.preventDefault();
+    var btn = document.getElementById('btnLancarPeso');
+    var peso = (document.getElementById('manualPeso').value || '').trim();
+    var cliente = document.getElementById('manualCliente').value;
+    var balanca = document.getElementById('manualBalanca').value;
+    if (!cliente || !balanca || !peso) {
+      showToast('Informe cliente, balança e peso líquido.', 'error');
+      return;
+    }
+    if (btn) btn.disabled = true;
+    try {
+      var r = await fetch('/api/pesagem/leituras/manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cliente_id: cliente,
+          balanca_codigo: balanca,
+          peso: peso,
+          tara: (document.getElementById('manualTara').value || '').trim(),
+          data_hora: (document.getElementById('manualQuando').value || '').trim(),
+          observacao: (document.getElementById('manualObs').value || '').trim()
+        })
+      });
+      var j = await r.json().catch(function () { return {}; });
+      if (!r.ok || j.ok === false) {
+        if (btn) btn.disabled = false;
+        showToast((j && j.error) || 'Falha ao lançar o peso', 'error');
+        return;
+      }
+      showToast('Peso lançado', 'success');
+      location.reload();
+    } catch (e) {
+      if (btn) btn.disabled = false;
+      showToast('Erro ao lançar o peso', 'error');
+    }
+  });
+})();
+
 async function excluirLeitura(id, btn){
   if (!id) return;
   if (!confirm('Excluir este lançamento de pesagem?\nEsta ação não pode ser desfeita.')) return;

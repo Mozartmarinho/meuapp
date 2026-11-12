@@ -13,6 +13,7 @@ from models_nutricao import (
     NutEstoqueLocal, NutUnidadeMedida, NutGrupoProduto, NutProduto, NutFornecedor,
     NutEtiqueta, NutEtiquetaCampo, NutPrecoRefeicao, NutTipoRefeicao, NutPrecoDietaTipo,
     NutRefeicaoAcompanhante, NutRefeicaoFuncionario,
+    CAMPOS_ITEM_CARDAPIO,
 )
 from nutricao_tenant import (
     resolve_nutricao_cliente,
@@ -2130,39 +2131,104 @@ def api_tipo_refeicao_ops(tid):
 
 # ---- CARDÁPIOS ----
 def _resolve_cardapio_dieta(d):
-    """Resolve dieta_id + nome. Hook futuro: join NutPrecoDietaTipo via dieta_id × hr_*."""
+    """Resolve dieta_id + nome. Se o id sumiu, recria a dieta pelo nome para o cardápio gravar."""
     dieta_id = d.get('dieta_id')
     dieta_nome = (d.get('dieta') or '').strip() or None
     try:
         dieta_id = int(dieta_id) if dieta_id not in (None, '', 0, '0') else None
     except (TypeError, ValueError):
         dieta_id = None
-    row_dieta = _get_scoped_or_404(NutDieta, dieta_id) if dieta_id else None
+    row_dieta = _get_scoped(NutDieta, dieta_id) if dieta_id else None
     if row_dieta:
         return row_dieta.id, row_dieta.nome
     if dieta_nome:
-        row_dieta = scoped_query(NutDieta).filter_by(nome=dieta_nome).first()
+        row_dieta = scoped_query(NutDieta).filter(
+            db.func.upper(NutDieta.nome) == dieta_nome.upper()
+        ).first()
         if row_dieta:
             return row_dieta.id, row_dieta.nome
-        return None, dieta_nome
+        from nutricao_service import liberar_dieta_excluida
+        cid = write_cliente_id()
+        liberar_dieta_excluida(dieta_nome, cid)
+        row_dieta = NutDieta(
+            cliente_id=cid,
+            nome=dieta_nome.upper(),
+            categoria='basica',
+            grupo='',
+            ativo=True,
+        )
+        db.session.add(row_dieta)
+        db.session.flush()
+        return row_dieta.id, row_dieta.nome
     return None, None
+
+
+def _texto_item(bruto):
+    if isinstance(bruto, (list, tuple)):
+        return str(bruto[0]).strip() if bruto else ''
+    return str(bruto or '').strip()
+
+
+def _aplicar_item_isolado(row, d, numero):
+    """Grava só um item da refeição, sem apagar os outros do mesmo horário."""
+    valor = _texto_item(d.get(f'item_{numero}')) or None
+    setattr(row, f'item_{numero}', valor)
+    data = {}
+    if row.itens:
+        try:
+            bruto = json.loads(row.itens)
+            if isinstance(bruto, dict):
+                data = bruto
+        except (TypeError, ValueError):
+            data = {}
+    chaves = CAMPOS_ITEM_CARDAPIO.get(row.tipo or '', ())
+    if numero <= len(chaves):
+        chave = chaves[numero - 1]
+        if valor:
+            data[chave] = valor
+        else:
+            data.pop(chave, None)
+    row.itens = json.dumps(data, ensure_ascii=False)
+
+
+def _dia_mes_cardapio(valor):
+    """Dia do cardápio de 1 a 31, sem cortar pelo tamanho do mês corrente."""
+    try:
+        dia = int(valor or 1)
+    except (TypeError, ValueError):
+        dia = 1
+    if dia < 1:
+        return 1
+    if dia > 31:
+        return 31
+    return dia
 
 
 def _cardapio_from_payload(d, row=None):
     row = row or NutCardapio()
     row.tipo = (d.get('tipo') or 'grandes').strip()
     row.grupo_cardapio = (d.get('grupo_cardapio') or 'PRINCIPAL').strip()
-    try:
-        row.dia_mes = int(d.get('dia_mes') or 1)
-    except (TypeError, ValueError):
-        row.dia_mes = 1
+    row.dia_mes = _dia_mes_cardapio(d.get('dia_mes'))
     row.dia_semana = (d.get('dia_semana') or '').strip() or None
     dieta_id, dieta_nome = _resolve_cardapio_dieta(d)
     row.dieta_id = dieta_id
     row.dieta = dieta_nome
     for hr in ('hr_desjejum', 'hr_colacao', 'hr_almoco', 'hr_merenda', 'hr_jantar', 'hr_ceia'):
         setattr(row, hr, bool(d.get(hr)))
-    row.set_itens(d.get('itens') or {})
+    somente = d.get('somente_item')
+    try:
+        somente = int(somente) if somente not in (None, '') else None
+    except (TypeError, ValueError):
+        somente = None
+    if somente and 1 <= somente <= 10 and (row.tipo or '') in ('pequenas', 'grandes'):
+        _aplicar_item_isolado(row, d, somente)
+    else:
+        row.set_itens(d.get('itens') or {})
+        for i in range(1, 11):
+            chave = f'item_{i}'
+            if chave not in d:
+                continue
+            setattr(row, chave, _texto_item(d.get(chave)) or None)
     try:
         row.vet = float(d.get('vet') or 0)
     except (TypeError, ValueError):
@@ -2176,6 +2242,77 @@ def _cardapio_from_payload(d, row=None):
     row.data_alteracao = datetime.utcnow()
     row.ativo = bool(d.get('ativo', True))
     return row
+
+
+_HR_CARDAPIO = (
+    'hr_desjejum', 'hr_colacao', 'hr_almoco', 'hr_merenda', 'hr_jantar', 'hr_ceia',
+)
+
+
+def _horario_marcado(d):
+    ativos = [hr for hr in _HR_CARDAPIO if d.get(hr)]
+    return ativos[0] if len(ativos) == 1 else None
+
+
+def _horarios_da_linha(row):
+    return [hr for hr in _HR_CARDAPIO if getattr(row, hr, None)]
+
+
+def _query_cardapio_horario(d, dieta_id, ignorar_id=None):
+    """Cardápio exclusivo deste horário. Outra refeição não entra na mesma linha."""
+    tipo = (d.get('tipo') or 'grandes').strip()
+    dia = _dia_mes_cardapio(d.get('dia_mes'))
+    q = scoped_query(NutCardapio).filter_by(ativo=True, tipo=tipo, dia_mes=dia)
+    if dieta_id:
+        q = q.filter_by(dieta_id=int(dieta_id))
+    hr = _horario_marcado(d)
+    if hr:
+        q = q.filter(getattr(NutCardapio, hr).is_(True))
+        for outro in _HR_CARDAPIO:
+            if outro == hr:
+                continue
+            q = q.filter(getattr(NutCardapio, outro).is_(False))
+    elif tipo != 'liquidas':
+        return None
+    if ignorar_id:
+        q = q.filter(NutCardapio.id != int(ignorar_id))
+    return q
+
+
+def _cardapio_mesmo_horario(d, dieta_id):
+    q = _query_cardapio_horario(d, dieta_id)
+    if q is None:
+        return None
+    return q.order_by(NutCardapio.id.desc()).first()
+
+
+def _arquivar_cardapios_mesmo_horario(row, d, dieta_id):
+    q = _query_cardapio_horario(d, dieta_id, ignorar_id=row.id)
+    if q is None:
+        return
+    for other in q.all():
+        other.ativo = False
+
+
+def _soltar_horario_compartilhado(row, d, dieta_id):
+    """Tira este horário de um cardápio que também serve outra refeição."""
+    hr = _horario_marcado(d)
+    if not hr:
+        return
+    tipo = (d.get('tipo') or 'grandes').strip()
+    dia = _dia_mes_cardapio(d.get('dia_mes'))
+    q = scoped_query(NutCardapio).filter(
+        NutCardapio.ativo.is_(True),
+        NutCardapio.tipo == tipo,
+        NutCardapio.dia_mes == dia,
+        NutCardapio.id != row.id,
+        getattr(NutCardapio, hr).is_(True),
+    )
+    if dieta_id:
+        q = q.filter(NutCardapio.dieta_id == int(dieta_id))
+    for other in q.all():
+        if any(h != hr and getattr(other, h) for h in _HR_CARDAPIO):
+            setattr(other, hr, False)
 
 
 @nutricao.route('/nutricao/cardapios')
@@ -2204,9 +2341,16 @@ def api_cardapios():
             return jsonify({'ok': False, 'error': 'Informe a dieta'}), 400
         d['dieta_id'] = dieta_id
         d['dieta'] = dieta_nome
-        row = _cardapio_from_payload(d)
-        _tag_cliente(row)
-        db.session.add(row)
+        row = _cardapio_mesmo_horario(d, dieta_id)
+        if row is None:
+            row = _cardapio_from_payload(d)
+            _tag_cliente(row)
+            db.session.add(row)
+        else:
+            _cardapio_from_payload(d, row)
+        db.session.flush()
+        _arquivar_cardapios_mesmo_horario(row, d, dieta_id)
+        _soltar_horario_compartilhado(row, d, dieta_id)
         db.session.commit()
         return jsonify({'ok': True, 'id': row.id, 'cardapio': row.to_dict()})
     tipo = (request.args.get('tipo') or '').strip() or None
@@ -2224,9 +2368,27 @@ def api_cardapio_ops(cid):
         db.session.commit()
         return jsonify({'ok': True})
     d = request.get_json(force=True) or {}
+    hr = _horario_marcado(d)
+    dono = _horarios_da_linha(row)
+    if hr and dono and dono != [hr]:
+        dieta_id = d.get('dieta_id') or row.dieta_id
+        outro = _cardapio_mesmo_horario(d, dieta_id)
+        if outro is None or outro.id == row.id:
+            outro = NutCardapio()
+            _tag_cliente(outro)
+            db.session.add(outro)
+        _cardapio_from_payload(d, outro)
+        db.session.flush()
+        _arquivar_cardapios_mesmo_horario(outro, d, dieta_id)
+        _soltar_horario_compartilhado(outro, d, dieta_id)
+        db.session.commit()
+        return jsonify({'ok': True, 'id': outro.id, 'cardapio': outro.to_dict()})
     _cardapio_from_payload(d, row)
+    db.session.flush()
+    _arquivar_cardapios_mesmo_horario(row, d, row.dieta_id)
+    _soltar_horario_compartilhado(row, d, row.dieta_id)
     db.session.commit()
-    return jsonify({'ok': True, 'cardapio': row.to_dict()})
+    return jsonify({'ok': True, 'id': row.id, 'cardapio': row.to_dict()})
 
 
 # ---- CADASTRO NUTRICIONAL ----

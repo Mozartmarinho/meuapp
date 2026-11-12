@@ -58,6 +58,7 @@ _PESAGEM_ENDPOINT_MENUS = {
     'pesagem.auditoria': 'auditoria',
     'pesagem.download_agente_arquivo': 'dashboard',
     'pesagem.api_listar_leituras': 'dashboard',
+    'pesagem.api_lancar_leitura_manual': 'dashboard',
     'pesagem.api_excluir_leitura': 'dashboard',
     'pesagem.api_editar_leitura': 'dashboard',
     'pesagem.api_balancas': 'balancas',
@@ -694,6 +695,72 @@ def api_receber_leitura():
     db.session.add(leitura)
     if d.get('porta_com'):
         balanca.porta_com = str(d.get('porta_com'))[:20]
+    db.session.commit()
+    return jsonify({'ok': True, 'id': leitura.id, 'leitura': leitura.to_dict()})
+
+
+@pesagem.route('/api/pesagem/leituras/manual', methods=['POST'])
+@login_required
+def api_lancar_leitura_manual():
+    """Lançamento de peso pela web, sem o agente da balança."""
+    d = request.get_json(silent=True) if request.is_json else None
+    if d is None:
+        d = request.form
+
+    peso_liquido = _parse_float(d.get('peso_liquido'))
+    if peso_liquido is None:
+        peso_liquido = _parse_float(d.get('peso'))
+    if peso_liquido is None or peso_liquido <= 0:
+        return jsonify({'ok': False, 'error': 'Informe o peso líquido maior que zero.'}), 400
+
+    tara = _parse_float(d.get('tara'))
+    if tara is None:
+        tara = 0.0
+    if tara < 0:
+        return jsonify({'ok': False, 'error': 'A tara não pode ser negativa.'}), 400
+
+    codigo = (d.get('balanca_codigo') or d.get('balanca') or '').strip().upper()
+    if not codigo:
+        return jsonify({'ok': False, 'error': 'Selecione a balança.'}), 400
+    balanca = PesagemBalanca.query.filter_by(codigo=codigo).first()
+    if not balanca or not balanca.ativo:
+        return jsonify({'ok': False, 'error': 'Balança não encontrada ou inativa.'}), 400
+
+    cliente_id, cliente_nome = _resolver_cliente_leitura(d)
+    if not cliente_id:
+        return jsonify({
+            'ok': False,
+            'error': 'Cliente selecionado é obrigatório e deve estar cadastrado.',
+        }), 400
+
+    peso_bruto = _parse_float(d.get('peso_bruto'))
+    if peso_bruto is None:
+        peso_bruto = round(peso_liquido + tara, 4)
+
+    user = Usuario.query.get(session.get('user_id'))
+    quem = ''
+    if user is not None:
+        quem = (getattr(user, 'nome', None) or getattr(user, 'email', None) or '')[:120]
+
+    leitura = PesagemLeitura(
+        balanca_id=balanca.id,
+        balanca_codigo=balanca.codigo,
+        peso=peso_liquido,
+        unidade=(d.get('unidade') or 'kg')[:10],
+        tara=tara,
+        peso_bruto=peso_bruto,
+        peso_liquido=peso_liquido,
+        bruto_serial=None,
+        estavel=True,
+        origem='manual',
+        computador=quem or 'web',
+        porta_com=None,
+        observacao=(d.get('observacao') or '').strip()[:255] or None,
+        cliente_id=cliente_id,
+        cliente_nome=cliente_nome,
+        data_leitura=_resolver_data_leitura(d),
+    )
+    db.session.add(leitura)
     db.session.commit()
     return jsonify({'ok': True, 'id': leitura.id, 'leitura': leitura.to_dict()})
 
