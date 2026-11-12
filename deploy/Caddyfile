@@ -1,0 +1,34 @@
+# Caddy já ocupa a porta 443 neste servidor (Let's Encrypt de
+# arquivos.saogeraldoservice.com). O MeuApp entra no mesmo processo:
+# HTTPS na 443 + HTTP continua no Nginx :80.
+#
+# Instalar:
+#   sudo cp /home/administrador/meuapp/deploy/Caddyfile /opt/caddy/Caddyfile
+#   sudo docker cp /home/administrador/meuapp/certs/fullchain.pem CONTAINER:/etc/caddy/meuapp-cert.pem
+#   sudo docker cp /home/administrador/meuapp/certs/key.pem CONTAINER:/etc/caddy/meuapp-key.pem
+#   sudo docker kill -s USR1 CONTAINER
+# Ou: bash /home/administrador/meuapp/scripts/enable_https.sh
+
+arquivos.saogeraldoservice.com {
+	reverse_proxy minio:9000
+}
+
+192.168.0.253, 187.111.15.85, serverlinux {
+	tls /etc/caddy/meuapp-cert.pem /etc/caddy/meuapp-key.pem
+	reverse_proxy 172.17.0.1:80 {
+		header_up Host {host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+		header_up X-Real-IP {remote_host}
+	}
+}
+
+# Domínio público com Let's Encrypt (sem aviso no navegador, sem instalar CA).
+# Crie o DNS A apontando para 187.111.15.85 e descomente:
+# app.saogeraldoservice.com {
+# 	reverse_proxy 172.17.0.1:80 {
+# 		header_up Host {host}
+# 		header_up X-Forwarded-Proto {scheme}
+# 		header_up X-Real-IP {remote_host}
+# 	}
+# }

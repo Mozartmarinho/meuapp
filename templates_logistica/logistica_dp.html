@@ -1,0 +1,130 @@
+{% extends "base_logistica.html" %}
+{% block title %}Departamento pessoal{% endblock %}
+{% block content %}
+<div class="page-header" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;justify-content:space-between;">
+  <div>
+    <h1>Departamento pessoal</h1>
+    <p>Colaboradores e folha mensal (proventos, descontos e líquido).</p>
+  </div>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+    <form method="get" action="{{ url_for('logistica.dp_page') }}">
+      <input class="form-control" type="month" name="mes" value="{{ mes }}" onchange="this.form.submit()">
+    </form>
+    <button class="btn btn-secondary" type="button" id="btnColab"><i class="fas fa-user-plus"></i> Colaborador</button>
+  </div>
+</div>
+<div class="card" style="padding:0;overflow:auto;">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Colaborador</th>
+        <th>Função</th>
+        {% for campo, label in campos_proventos %}<th>{{ label }}</th>{% endfor %}
+        {% for campo, label in campos_descontos %}<th>{{ label }}</th>{% endfor %}
+        {% for campo, label in campos_empresa %}<th>{{ label }}</th>{% endfor %}
+        <th>Líquido</th>
+        <th>Custo empresa</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="tbodyFolha"></tbody>
+  </table>
+</div>
+<style>
+.data-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.data-table th, .data-table td { padding: 0.45rem 0.55rem; border-bottom: 1px solid #e5e7eb; text-align: left; white-space: nowrap; }
+.data-table th { background: #1f2d4d; color: #fff; }
+.form-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.7rem; }
+.form-grid .full { grid-column: 1 / -1; }
+</style>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var mes = {{ mes | tojson }};
+  var funcoes = {{ funcoes | list | tojson }};
+  var proventos = {{ campos_proventos | list | tojson }};
+  var descontos = {{ campos_descontos | list | tojson }};
+  var empresa = {{ campos_empresa | default([], true) | list | tojson }};
+  var campos = proventos.concat(descontos).concat(empresa);
+
+  function money(n) {
+    return Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  }
+  function escapeHtml(str) {
+    return String(str || '').replace(/[&<>"']/g, function (ch) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+    });
+  }
+
+  async function load() {
+    var res = await fetch('/api/logistica/folhas?mes=' + encodeURIComponent(mes));
+    var data = await res.json();
+    var rows = data.rows || [];
+    var body = document.getElementById('tbodyFolha');
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="16" style="text-align:center;padding:1.2rem;color:#64748b;">Cadastre colaboradores para lançar a folha.</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map(function (row) {
+      return '<tr><td><strong>' + escapeHtml(row.colaborador) + '</strong></td><td>' + escapeHtml(row.funcao) + '</td>' +
+        campos.map(function (c) { return '<td>' + money(row[c[0]]) + '</td>'; }).join('') +
+        '<td><strong>' + money(row.liquido) + '</strong></td>' +
+        '<td>' + money(row.custo_empresa) + '</td>' +
+        '<td><button class="btn btn-ghost btn-sm" type="button" data-edit=\'' + encodeURIComponent(JSON.stringify(row)) + '\'><i class="fas fa-edit"></i></button></td></tr>';
+    }).join('');
+  }
+
+  function openFolha(row) {
+    var html = '<div class="form-grid">' + campos.map(function (c) {
+      return '<div class="form-group"><label class="form-label">' + c[1] + '</label><input class="form-control" id="f-' + c[0] + '" type="number" step="0.01" value="' + (row[c[0]] || 0) + '"></div>';
+    }).join('') + '</div>';
+    abrirModal('Folha — ' + (row.colaborador || ''), html, 'Gravar', async function () {
+      var payload = { colaborador_id: row.colaborador_id, mes: mes };
+      campos.forEach(function (c) {
+        payload[c[0]] = document.getElementById('f-' + c[0]).value;
+      });
+      var url = row.id ? '/api/logistica/folhas/' + row.id : '/api/logistica/folhas';
+      var res = await fetch(url, { method: row.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      var data = await res.json();
+      if (!data.ok) { showToast(data.error || 'Falha ao gravar.', 'error'); return; }
+      fecharModal();
+      showToast('Folha gravada.');
+      load();
+    });
+  }
+
+  function openColab() {
+    var opts = funcoes.map(function (f) { return '<option>' + f + '</option>'; }).join('');
+    var html = '<div class="form-grid">' +
+      '<div class="form-group full"><label class="form-label">Nome</label><input class="form-control" id="c-nome"></div>' +
+      '<div class="form-group"><label class="form-label">Função</label><select class="form-control" id="c-funcao">' + opts + '</select></div>' +
+      '<div class="form-group"><label class="form-label">Setor</label><input class="form-control" id="c-setor"></div>' +
+      '</div>';
+    abrirModal('Novo colaborador', html, 'Gravar', async function () {
+      var res = await fetch('/api/logistica/colaboradores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nome: document.getElementById('c-nome').value,
+          funcao: document.getElementById('c-funcao').value,
+          setor: document.getElementById('c-setor').value
+        })
+      });
+      var data = await res.json();
+      if (!data.ok) { showToast(data.error || 'Falha ao gravar.', 'error'); return; }
+      fecharModal();
+      showToast('Colaborador cadastrado.');
+      load();
+    });
+  }
+
+  document.getElementById('btnColab').addEventListener('click', openColab);
+  document.getElementById('tbodyFolha').addEventListener('click', function (ev) {
+    var edit = ev.target.closest('[data-edit]');
+    if (edit) openFolha(JSON.parse(decodeURIComponent(edit.getAttribute('data-edit'))));
+  });
+  load();
+})();
+</script>
+{% endblock %}

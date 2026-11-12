@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Mapa distribuição — {{ r.tipo_label }} — {{ r.data_de_label }}</title>
+  <style>
+    @page { margin: 10mm; size: A4 portrait; }
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      color: #000;
+      margin: 0;
+      padding: 10px 14px 20px;
+      font-size: 11px;
+    }
+    .head-top {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 2px;
+      font-size: 11px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 16px;
+      margin: 4px 0 6px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .subtitulo-clinica {
+      font-size: 13px;
+      font-weight: 700;
+      margin: 12px 0 6px;
+      padding: 4px 8px;
+      background: #0f2a56;
+      color: #fff;
+    }
+    .subtitulo-data {
+      font-size: 11px;
+      font-weight: 700;
+      margin: 10px 0 0;
+    }
+    .meta {
+      font-size: 11px;
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #000;
+      padding: 4px 6px;
+      vertical-align: middle;
+      font-size: 11px;
+    }
+    th {
+      text-align: left;
+      background: #f3f3f3;
+      font-weight: 700;
+    }
+    td.leito, td.pront { text-align: center; white-space: nowrap; }
+    td.nome { font-weight: 600; }
+    tr.totais td { font-weight: 700; background: #eee; }
+    .total-geral { margin-top: 12px; font-weight: 700; font-size: 12px; }
+    .no-print { margin-bottom: 8px; }
+    @media print {
+      .no-print { display: none !important; }
+      body { padding: 0; }
+      .subtitulo-clinica { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <button onclick="window.print()">Imprimir</button>
+    <button onclick="window.close()" style="margin-left:6px">Fechar</button>
+  </div>
+
+  <div class="head-top">
+    <span>Período: {{ r.data_de_label }}{% if not r.periodo_unico %} a {{ r.data_ate_label }}{% endif %}</span>
+    <span>Data/hora relatório: {{ r.data_hora_relatorio }}</span>
+  </div>
+  <h1>{{ r.titulo }}</h1>
+  <div class="meta">
+    <strong>Tipo de refeição:</strong> {{ r.tipo_label }}
+    &nbsp;&nbsp;|&nbsp;&nbsp;
+    <strong>Clínica{{ 's' if r.clinicas|length != 1 else '' }}:</strong> {{ r.clinica_label }}
+  </div>
+
+  {% set ns = namespace(last_data='') %}
+  {% for g in r.grupos %}
+    {% if not r.periodo_unico and g.data_label != ns.last_data %}
+      {% set ns.last_data = g.data_label %}
+      <div class="subtitulo-data">Data: {{ g.data_label }}</div>
+    {% endif %}
+    <div class="subtitulo-clinica">Clínica: {{ g.clinica }}</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Nome paciente</th>
+          <th>Número prontuário</th>
+          <th>Leito</th>
+          <th>Dieta</th>
+          <th>Obs</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in g.linhas %}
+        <tr>
+          <td class="nome">{{ row.nome }}</td>
+          <td class="pront">{{ row.prontuario }}</td>
+          <td class="leito">{{ row.leito }}</td>
+          <td>{{ row.dieta }}</td>
+          <td>{{ row.obs }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="totais">
+          <td colspan="5">Total da clínica: {{ g.total }}</td>
+        </tr>
+      </tbody>
+    </table>
+  {% else %}
+    <p style="text-align:center;padding:18px;border:1px solid #000;">
+      Nenhum paciente no mapa para os filtros selecionados.
+    </p>
+  {% endfor %}
+
+  {% if r.grupos %}
+  <div class="total-geral">Total geral: {{ r.total }}</div>
+  {% endif %}
+
+  <script>
+    window.addEventListener('load', function(){ setTimeout(function(){ window.print(); }, 350); });
+  </script>
+</body>
+</html>

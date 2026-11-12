@@ -1,0 +1,634 @@
+{% extends "base_logistica.html" %}
+{% block title %}Mapa de entregas{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+{% endblock %}
+{% block content %}
+<div class="page-header" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;justify-content:space-between;">
+  <div>
+    <h1>Mapa de entregas</h1>
+    <p>Pontos do cadastro de clientes e rotas traçadas pelas rodovias mais usadas.</p>
+  </div>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+    <button class="btn btn-secondary" type="button" id="btnSyncClientes"><i class="fas fa-building"></i> Importar clientes</button>
+    <button class="btn btn-secondary" type="button" id="btnNovaRota"><i class="fas fa-route"></i> Nova rota</button>
+    <button class="btn btn-primary" type="button" id="btnNovo"><i class="fas fa-plus"></i> Novo ponto</button>
+  </div>
+</div>
+<div class="mapa-entregas-stage" id="mapaEntregasStage">
+  <div id="mapaProcessando" class="mapa-processando is-visible" role="status" aria-live="polite" aria-busy="true">
+    <div class="mapa-processando-card">
+      <div class="sg-app-loading-spinner" aria-hidden="true"></div>
+      <p class="mapa-processando-text" id="mapaProcessandoText">Processando…</p>
+      <p class="mapa-processando-sub" id="mapaProcessandoSub">Localizando pontos e traçando rotas pelas rodovias.</p>
+    </div>
+  </div>
+  <div id="mapaEntregasReady" hidden>
+<div id="mapaEntregas" style="height:440px;border-radius:12px;margin-bottom:0.7rem;border:1px solid #dbe4f0;"></div>
+<div class="mapa-legenda">
+  <span><i class="leg-dot" style="background:#2563eb;"></i> Ponto</span>
+  <span><i class="leg-line" style="background:#64748b;"></i> Pendente</span>
+  <span><i class="leg-line" style="background:#2563eb;"></i> Em rota</span>
+  <span><i class="leg-line" style="background:#15803d;"></i> Concluída</span>
+  <span><i class="leg-line" style="background:#b91c1c;"></i> Cancelada</span>
+</div>
+<div class="card" style="padding:0;overflow:auto;margin-bottom:1rem;">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Ponto</th>
+        <th>Endereço</th>
+        <th>Lat / Lng</th>
+        <th>Ações</th>
+      </tr>
+    </thead>
+    <tbody id="tbodyEntregas"></tbody>
+  </table>
+</div>
+<div class="card" style="padding:0;overflow:auto;">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Rota</th>
+        <th>Origem</th>
+        <th>Destino</th>
+        <th>Status</th>
+        <th>Km</th>
+        <th>Ações</th>
+      </tr>
+    </thead>
+    <tbody id="tbodyRotas"></tbody>
+  </table>
+</div>
+  </div>
+</div>
+<style>
+.data-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.data-table th, .data-table td { padding: 0.55rem 0.7rem; border-bottom: 1px solid #e5e7eb; text-align: left; }
+.data-table th { background: #1f2d4d; color: #fff; }
+.form-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.7rem; }
+.form-grid .full { grid-column: 1 / -1; }
+.mapa-ponto { height: 180px; border-radius: 10px; border: 1px solid #dbe4f0; }
+.geo-status { margin-top: 0.35rem; font-size: 0.8rem; color: #64748b; min-height: 1.1em; }
+.geo-status.ok { color: #15803d; }
+.geo-status.err { color: #b91c1c; }
+.mapa-legenda {
+  display: flex; flex-wrap: wrap; gap: 0.85rem; align-items: center;
+  margin: 0 0 1rem; color: #475569; font-size: 0.8rem; font-weight: 600;
+}
+.leg-dot, .leg-line {
+  display: inline-block; vertical-align: middle; margin-right: 0.3rem; border-radius: 999px;
+}
+.leg-dot { width: 10px; height: 10px; }
+.leg-line { width: 18px; height: 4px; border-radius: 4px; }
+.leaflet-tooltip.ponto-label {
+  background: #1f2d4d;
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-weight: 700;
+  font-size: 0.75rem;
+  box-shadow: 0 2px 8px rgba(15, 42, 86, 0.28);
+}
+.leaflet-tooltip.ponto-label::before { border-top-color: #1f2d4d; }
+.leaflet-tooltip.rota-label {
+  background: #0f766e;
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-weight: 700;
+  font-size: 0.72rem;
+}
+.leaflet-tooltip.rota-label::before { border-top-color: #0f766e; }
+.mapa-entregas-stage {
+  position: relative;
+  min-height: 28rem;
+}
+.mapa-processando {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(248, 250, 252, 0.96);
+  border-radius: 12px;
+  border: 1px solid #dbe4f0;
+}
+.mapa-processando.is-visible { display: flex; }
+.mapa-processando-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.85rem;
+  max-width: 360px;
+  text-align: center;
+}
+.mapa-processando-text {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0D2B5C;
+}
+.mapa-processando-sub {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: #5a6b85;
+}
+</style>
+{% endblock %}
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+(function () {
+  var statusRota = {{ status_rota | list | tojson }};
+  var map = null;
+  var layer = null;
+  var miniMap = null;
+  var miniMarker = null;
+  var geoTimer = null;
+  var lastGeoQuery = '';
+  var pontos = [];
+  var rotas = [];
+  var clientes = [];
+  var osrmBases = [
+    'https://router.project-osrm.org/route/v1/driving/',
+    'https://routing.openstreetmap.de/routed-car/route/v1/driving/'
+  ];
+  var coresRota = {
+    'Pendente': '#64748b',
+    'Em rota': '#2563eb',
+    'Concluída': '#15803d',
+    'Cancelada': '#b91c1c'
+  };
+
+  function setProcessando(on, msg, sub) {
+    var el = document.getElementById('mapaProcessando');
+    var ready = document.getElementById('mapaEntregasReady');
+    var txt = document.getElementById('mapaProcessandoText');
+    var subEl = document.getElementById('mapaProcessandoSub');
+    if (txt && msg) txt.textContent = msg;
+    if (subEl && sub != null) subEl.textContent = sub;
+    if (el) {
+      el.classList.toggle('is-visible', !!on);
+      el.setAttribute('aria-busy', on ? 'true' : 'false');
+    }
+    if (ready) ready.hidden = !!on;
+    if (on && window.showAppLoading) {
+      window.showAppLoading(msg || 'Processando…', sub || 'Localizando pontos e traçando rotas pelas rodovias.');
+    }
+    if (!on && window.hideAppLoading) window.hideAppLoading();
+  }
+
+  function garantirMapa() {
+    if (map) return map;
+    map = L.map('mapaEntregas').setView([-22.9068, -43.1729], 11);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+    layer = L.layerGroup().addTo(map);
+    return map;
+  }
+
+  function escapeHtml(str) {
+    return String(str || '').replace(/[&<>"']/g, function (ch) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+    });
+  }
+  function optionsClientes(selected) {
+    return '<option value="">— cadastro de clientes —</option>' + clientes.map(function (c) {
+      return '<option value="' + c.id + '"' + (String(c.id) === String(selected) ? ' selected' : '') + '>' +
+        escapeHtml(c.nome) + (c.endereco ? ' — ' + escapeHtml(c.endereco) : '') + '</option>';
+    }).join('');
+  }
+  function optionsPontos(selected) {
+    return '<option value="">Selecione o ponto</option>' + pontos.map(function (p) {
+      return '<option value="' + p.id + '"' + (String(p.id) === String(selected) ? ' selected' : '') + '>' +
+        escapeHtml(p.nome) + (p.endereco ? ' — ' + escapeHtml(p.endereco) : '') + '</option>';
+    }).join('');
+  }
+  function optionsStatusRota(selected) {
+    return statusRota.map(function (s) {
+      return '<option value="' + s + '"' + (s === selected ? ' selected' : '') + '>' + s + '</option>';
+    }).join('');
+  }
+  function nomePonto() {
+    var el = document.getElementById('f-nome');
+    return (el && el.value.trim()) || 'Ponto';
+  }
+  function setGeoStatus(msg, kind) {
+    var el = document.getElementById('geo-status');
+    if (!el) return;
+    el.className = 'geo-status' + (kind ? ' ' + kind : '');
+    el.textContent = msg || '';
+  }
+  function addPontoMarker(target, lat, lng, nome, extra) {
+    var m = L.marker([lat, lng]).bindTooltip(escapeHtml(nome || 'Ponto'), {
+      permanent: true,
+      direction: 'top',
+      offset: [0, -8],
+      className: 'ponto-label',
+      opacity: 0.95
+    });
+    if (extra) m.bindPopup(extra);
+    target.addLayer(m);
+    return m;
+  }
+  function marcarMini(lat, lng) {
+    if (!miniMap || lat == null || lng == null) return;
+    if (miniMarker) miniMap.removeLayer(miniMarker);
+    miniMarker = addPontoMarker(miniMap, lat, lng, nomePonto());
+    miniMap.setView([lat, lng], 16);
+  }
+  function destroyMini() {
+    clearTimeout(geoTimer);
+    if (miniMap) {
+      miniMap.remove();
+      miniMap = null;
+      miniMarker = null;
+    }
+    lastGeoQuery = '';
+  }
+  function initMini(row) {
+    destroyMini();
+    miniMap = L.map('mapaPonto', { scrollWheelZoom: true }).setView(
+      [row.lat != null ? row.lat : -22.9068, row.lng != null ? row.lng : -43.1729],
+      row.lat != null ? 16 : 11
+    );
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(miniMap);
+    if (row.lat != null && row.lng != null) marcarMini(row.lat, row.lng);
+    setTimeout(function () { if (miniMap) miniMap.invalidateSize(); }, 80);
+  }
+
+  async function buscarGeo(force) {
+    var elEnd = document.getElementById('f-endereco');
+    if (!elEnd) return;
+    var q = elEnd.value.trim();
+    if (q.length < 5) {
+      setGeoStatus('Digite o endereço para localizar no mapa.');
+      return;
+    }
+    if (!force && q === lastGeoQuery) return;
+    lastGeoQuery = q;
+    setGeoStatus('Buscando coordenadas…');
+    try {
+      var res = await fetch('/api/logistica/geocode?q=' + encodeURIComponent(q));
+      var data = await res.json();
+      if (!data.ok) {
+        setGeoStatus(data.error || 'Endereço não encontrado.', 'err');
+        return;
+      }
+      document.getElementById('f-lat').value = Number(data.lat).toFixed(6);
+      document.getElementById('f-lng').value = Number(data.lng).toFixed(6);
+      marcarMini(data.lat, data.lng);
+      setGeoStatus('Localizado no mapa.', 'ok');
+    } catch (err) {
+      setGeoStatus('Não foi possível buscar o endereço.', 'err');
+    }
+  }
+  function scheduleGeo() {
+    clearTimeout(geoTimer);
+    geoTimer = setTimeout(function () { buscarGeo(false); }, 700);
+  }
+
+  function renderMapa() {
+    garantirMapa();
+    layer.clearLayers();
+    var bounds = [];
+    pontos.forEach(function (row) {
+      if (row.lat != null && row.lng != null) {
+        addPontoMarker(
+          layer,
+          row.lat,
+          row.lng,
+          row.nome,
+          '<strong>' + escapeHtml(row.nome) + '</strong><br>' + escapeHtml(row.endereco || '')
+        );
+        bounds.push([row.lat, row.lng]);
+      }
+    });
+    rotas.forEach(function (rota) {
+      var coords = rota.polyline || [];
+      if (coords.length < 2) {
+        var o = rota.origem_ponto || {};
+        var d = rota.destino_ponto || {};
+        if (o.lat != null && o.lng != null && d.lat != null && d.lng != null) {
+          coords = [[o.lat, o.lng], [d.lat, d.lng]];
+        }
+      }
+      if (coords.length < 2) return;
+      var cor = coresRota[rota.status] || '#0f766e';
+      var line = L.polyline(coords, { color: cor, weight: 5, opacity: 0.9 });
+      line.bindPopup(
+        '<strong>' + escapeHtml(rota.nome) + '</strong><br>' +
+        escapeHtml(rota.origem || '') + ' → ' + escapeHtml(rota.destino || '') + '<br>' +
+        escapeHtml(rota.status || '') + (rota.km != null ? ' · ' + rota.km + ' km' : '')
+      );
+      line.bindTooltip(escapeHtml(rota.nome || 'Rota'), {
+        sticky: true,
+        className: 'rota-label'
+      });
+      layer.addLayer(line);
+      coords.forEach(function (pair) {
+        if (pair && pair.length >= 2) bounds.push([pair[0], pair[1]]);
+      });
+    });
+    if (bounds.length) map.fitBounds(bounds, { padding: [28, 28] });
+    setTimeout(function () { if (map) map.invalidateSize(); }, 80);
+  }
+
+  function renderTabelas() {
+    var body = document.getElementById('tbodyEntregas');
+    if (!pontos.length) {
+      body.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:1.2rem;color:#64748b;">Nenhum ponto cadastrado.</td></tr>';
+    } else {
+      body.innerHTML = pontos.map(function (row) {
+        return '<tr><td><strong>' + escapeHtml(row.nome) + '</strong></td><td>' + escapeHtml(row.endereco) + '</td><td>' +
+          (row.lat != null ? row.lat + ', ' + row.lng : '—') + '</td><td>' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-edit=\'' + encodeURIComponent(JSON.stringify(row)) + '\'><i class="fas fa-edit"></i></button> ' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-del="' + row.id + '"><i class="fas fa-trash"></i></button></td></tr>';
+      }).join('');
+    }
+    var bodyR = document.getElementById('tbodyRotas');
+    if (!rotas.length) {
+      bodyR.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:1.2rem;color:#64748b;">Nenhuma rota. Selecione dois pontos cadastrados para criar.</td></tr>';
+      return;
+    }
+    bodyR.innerHTML = rotas.map(function (row) {
+      return '<tr><td><strong>' + escapeHtml(row.nome) + '</strong></td><td>' + escapeHtml(row.origem) + '</td><td>' +
+        escapeHtml(row.destino) + '</td><td>' + escapeHtml(row.status) + '</td><td>' +
+        (row.km != null ? row.km : '—') + '</td><td>' +
+        '<button class="btn btn-ghost btn-sm" type="button" data-rota-edit=\'' + encodeURIComponent(JSON.stringify(row)) + '\'><i class="fas fa-edit"></i></button> ' +
+        '<button class="btn btn-ghost btn-sm" type="button" data-rota-del="' + row.id + '"><i class="fas fa-trash"></i></button></td></tr>';
+    }).join('');
+  }
+
+  function aplicarDados(data) {
+    pontos = (data && data.pontos) || [];
+    rotas = (data && data.rotas) || [];
+    clientes = (data && data.clientes) || [];
+  }
+
+  function rotaNasVias(rota) {
+    return Array.isArray(rota.polyline) && rota.polyline.length > 2;
+  }
+
+  async function tracarOsrm(lat1, lng1, lat2, lng2) {
+    for (var i = 0; i < osrmBases.length; i++) {
+      try {
+        var url = osrmBases[i] + lng1 + ',' + lat1 + ';' + lng2 + ',' + lat2 +
+          '?overview=full&geometries=geojson';
+        var res = await fetch(url, { sgSkipLoading: true });
+        var data = await res.json();
+        var route = (data.routes || [])[0] || {};
+        var coords = (route.geometry || {}).coordinates || [];
+        if (!Array.isArray(coords) || coords.length < 3) continue;
+        var polyline = coords.map(function (p) { return [p[1], p[0]]; });
+        var km = route.distance != null ? Math.round(Number(route.distance) / 100) / 10 : null;
+        return { polyline: polyline, km: km };
+      } catch (err) { /* tenta o próximo servidor */ }
+    }
+    return null;
+  }
+
+  async function completarRotasNasVias() {
+    for (var i = 0; i < rotas.length; i++) {
+      var rota = rotas[i];
+      if (rotaNasVias(rota)) continue;
+      var o = rota.origem_ponto || {};
+      var d = rota.destino_ponto || {};
+      if (o.lat == null || o.lng == null || d.lat == null || d.lng == null) continue;
+      setProcessando(true, 'Processando…', 'Traçando ' + (rota.nome || 'rota') + ' pelas rodovias.');
+      var traced = await tracarOsrm(o.lat, o.lng, d.lat, d.lng);
+      if (!traced) continue;
+      rota.polyline = traced.polyline;
+      if (traced.km != null) rota.km = traced.km;
+      try {
+        await fetch('/api/logistica/rotas/' + rota.id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            origem_ponto_id: rota.origem_ponto_id,
+            destino_ponto_id: rota.destino_ponto_id,
+            status: rota.status,
+            nome: rota.nome,
+            polyline: rota.polyline,
+            km: rota.km
+          }),
+          sgSkipLoading: true
+        });
+      } catch (err) { /* mapa já recebe o traçado local */ }
+    }
+  }
+
+  async function mostrarMapaPronto() {
+    setProcessando(false);
+    renderTabelas();
+    renderMapa();
+  }
+
+  async function prepararMapa(opts) {
+    opts = opts || {};
+    setProcessando(true, 'Processando…', 'Localizando pontos e traçando rotas pelas rodovias.');
+    try {
+      var res = await fetch('/api/logistica/mapa/preparar', {
+        method: 'POST',
+        sgSkipLoading: true
+      });
+      var data = await res.json();
+      if (!data.ok) {
+        if (!opts.silent) showToast(data.error || 'Não foi possível montar o mapa.', 'error');
+        aplicarDados(data);
+        await mostrarMapaPronto();
+        return;
+      }
+      aplicarDados(data);
+      var criados = data.criados || 0;
+      if (opts.toastImport && (criados || !opts.silent)) {
+        showToast(criados ? (criados + ' cliente(s) importado(s) como ponto.') : 'Cadastro de clientes já está no mapa.');
+      }
+      await completarRotasNasVias();
+      await mostrarMapaPronto();
+    } catch (err) {
+      if (!opts.silent) showToast('Não foi possível montar o mapa.', 'error');
+      setProcessando(false);
+    }
+  }
+
+  async function load() {
+    await prepararMapa({ silent: true });
+  }
+
+  async function syncClientes(silent) {
+    await prepararMapa({ silent: !!silent, toastImport: !silent });
+  }
+
+  function preencherCliente() {
+    var sel = document.getElementById('f-cliente_id');
+    if (!sel || !sel.value) return;
+    var cli = clientes.filter(function (c) { return String(c.id) === String(sel.value); })[0];
+    if (!cli) return;
+    var elNome = document.getElementById('f-nome');
+    var elEnd = document.getElementById('f-endereco');
+    if (elNome) elNome.value = cli.nome || '';
+    if (elEnd) {
+      elEnd.value = cli.endereco || '';
+      if ((cli.endereco || '').trim().length >= 5) buscarGeo(true);
+    }
+  }
+
+  function openForm(row) {
+    row = row || {};
+    var html = '<div class="form-grid">' +
+      '<div class="form-group full"><label class="form-label">Cliente (cadastro)</label><select class="form-control" id="f-cliente_id">' + optionsClientes(row.cliente_id) + '</select></div>' +
+      '<div class="form-group full"><label class="form-label">Nome do ponto</label><input class="form-control" id="f-nome" value="' + escapeHtml(row.nome || '') + '"></div>' +
+      '<div class="form-group full"><label class="form-label">Endereço</label><input class="form-control" id="f-endereco" value="' + escapeHtml(row.endereco || '') + '" placeholder="Rua, número, bairro, cidade">' +
+      '<div id="geo-status" class="geo-status">Ao preencher o endereço, o ponto é marcado no mapa.</div></div>' +
+      '<div class="form-group full"><div id="mapaPonto" class="mapa-ponto"></div></div>' +
+      '<div class="form-group"><label class="form-label">Latitude</label><input class="form-control" id="f-lat" value="' + (row.lat != null ? row.lat : '') + '"></div>' +
+      '<div class="form-group"><label class="form-label">Longitude</label><input class="form-control" id="f-lng" value="' + (row.lng != null ? row.lng : '') + '"></div>' +
+      '</div>';
+    abrirModal(row.id ? 'Editar ponto' : 'Novo ponto', html, 'Gravar', async function () {
+      var payload = {
+        nome: document.getElementById('f-nome').value,
+        cliente_id: document.getElementById('f-cliente_id').value,
+        endereco: document.getElementById('f-endereco').value,
+        lat: document.getElementById('f-lat').value,
+        lng: document.getElementById('f-lng').value
+      };
+      var url = '/api/logistica/entregas' + (row.id ? '/' + row.id : '');
+      var res = await fetch(url, { method: row.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      var data = await res.json();
+      if (!data.ok) { showToast(data.error || 'Falha ao gravar.', 'error'); return; }
+      destroyMini();
+      fecharModal();
+      showToast('Ponto gravado.');
+      await load();
+    });
+    setTimeout(function () {
+      initMini(row);
+      var elEnd = document.getElementById('f-endereco');
+      var elNome = document.getElementById('f-nome');
+      var elCli = document.getElementById('f-cliente_id');
+      if (elCli) elCli.addEventListener('change', preencherCliente);
+      if (elEnd) {
+        elEnd.addEventListener('input', scheduleGeo);
+        elEnd.addEventListener('blur', function () { buscarGeo(false); });
+        if (elEnd.value.trim().length >= 5 && (row.lat == null || row.lng == null)) buscarGeo(true);
+      }
+      if (elNome) {
+        elNome.addEventListener('input', function () {
+          var lat = parseFloat(document.getElementById('f-lat').value);
+          var lng = parseFloat(document.getElementById('f-lng').value);
+          if (!isNaN(lat) && !isNaN(lng)) marcarMini(lat, lng);
+        });
+      }
+    }, 40);
+  }
+
+  function syncNomeRota() {
+    var elNome = document.getElementById('f-rota-nome');
+    var o = document.getElementById('f-origem_ponto_id');
+    var d = document.getElementById('f-destino_ponto_id');
+    if (!elNome || !o || !d) return;
+    if (elNome.dataset.manual === '1' && elNome.value.trim()) return;
+    if (!o.value || !d.value) return;
+    var oNome = ((o.options[o.selectedIndex] || {}).text || '').split('—')[0].trim();
+    var dNome = ((d.options[d.selectedIndex] || {}).text || '').split('—')[0].trim();
+    elNome.value = oNome + ' -> ' + dNome;
+  }
+
+  function openRota(row) {
+    row = row || {};
+    if (pontos.length < 2) {
+      showToast('Cadastre pelo menos dois pontos antes de criar a rota.', 'error');
+      return;
+    }
+    var html = '<div class="form-grid">' +
+      '<div class="form-group"><label class="form-label">Ponto de origem</label><select class="form-control" id="f-origem_ponto_id">' + optionsPontos(row.origem_ponto_id) + '</select></div>' +
+      '<div class="form-group"><label class="form-label">Ponto de destino</label><select class="form-control" id="f-destino_ponto_id">' + optionsPontos(row.destino_ponto_id) + '</select></div>' +
+      '<div class="form-group"><label class="form-label">Status</label><select class="form-control" id="f-status">' + optionsStatusRota(row.status || 'Pendente') + '</select></div>' +
+      '<div class="form-group full"><label class="form-label">Nome da rota</label><input class="form-control" id="f-rota-nome" value="' + escapeHtml(row.nome || '') + '"></div>' +
+      '</div>' +
+      '<p style="margin:0.35rem 0 0;font-size:0.82rem;color:#64748b;">A linha é desenhada no mapa pelas vias mais usadas entre os dois pontos.</p>';
+    abrirModal(row.id ? 'Editar rota' : 'Nova rota', html, 'Gravar', async function () {
+      var payload = {
+        origem_ponto_id: document.getElementById('f-origem_ponto_id').value,
+        destino_ponto_id: document.getElementById('f-destino_ponto_id').value,
+        status: document.getElementById('f-status').value,
+        nome: document.getElementById('f-rota-nome').value
+      };
+      var url = '/api/logistica/rotas' + (row.id ? '/' + row.id : '');
+      setProcessando(true, 'Processando…', 'Traçando a rota pelas rodovias mais usadas.');
+      var res = await fetch(url, {
+        method: row.id ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        sgSkipLoading: true
+      });
+      var data = await res.json();
+      if (!data.ok) {
+        setProcessando(false);
+        showToast(data.error || 'Falha ao gravar a rota.', 'error');
+        return;
+      }
+      fecharModal();
+      showToast('Rota gravada no mapa.');
+      await load();
+    });
+    setTimeout(function () {
+      var elNome = document.getElementById('f-rota-nome');
+      var o = document.getElementById('f-origem_ponto_id');
+      var d = document.getElementById('f-destino_ponto_id');
+      if (elNome) {
+        elNome.addEventListener('input', function () { elNome.dataset.manual = elNome.value.trim() ? '1' : '0'; });
+        if (row.nome) elNome.dataset.manual = '1';
+      }
+      if (o) o.addEventListener('change', syncNomeRota);
+      if (d) d.addEventListener('change', syncNomeRota);
+      if (!row.nome) syncNomeRota();
+    }, 40);
+  }
+
+  var _fechar = window.fecharModal;
+  window.fecharModal = function () {
+    destroyMini();
+    if (_fechar) _fechar();
+  };
+
+  document.getElementById('btnNovo').addEventListener('click', function () { openForm({}); });
+  document.getElementById('btnNovaRota').addEventListener('click', function () { openRota({}); });
+  document.getElementById('btnSyncClientes').addEventListener('click', function () { syncClientes(false); });
+  document.getElementById('tbodyEntregas').addEventListener('click', async function (ev) {
+    var edit = ev.target.closest('[data-edit]');
+    if (edit) { openForm(JSON.parse(decodeURIComponent(edit.getAttribute('data-edit')))); return; }
+    var del = ev.target.closest('[data-del]');
+    if (!del) return;
+    if (!confirm('Excluir este ponto?')) return;
+    var res = await fetch('/api/logistica/entregas/' + del.getAttribute('data-del'), { method: 'DELETE' });
+    var data = await res.json();
+    if (!data.ok) { showToast(data.error || 'Não foi possível excluir.', 'error'); return; }
+    showToast('Ponto excluído.');
+    await load();
+  });
+  document.getElementById('tbodyRotas').addEventListener('click', async function (ev) {
+    var edit = ev.target.closest('[data-rota-edit]');
+    if (edit) { openRota(JSON.parse(decodeURIComponent(edit.getAttribute('data-rota-edit')))); return; }
+    var del = ev.target.closest('[data-rota-del]');
+    if (!del) return;
+    if (!confirm('Excluir esta rota?')) return;
+    var res = await fetch('/api/logistica/rotas/' + del.getAttribute('data-rota-del'), { method: 'DELETE' });
+    var data = await res.json();
+    if (!data.ok) { showToast(data.error || 'Não foi possível excluir.', 'error'); return; }
+    showToast('Rota excluída.');
+    await load();
+  });
+  prepararMapa({ silent: true });
+})();
+</script>
+{% endblock %}

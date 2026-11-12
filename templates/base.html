@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}São Geraldo Service{% endblock %}</title>
+    <title>{% block title %}Sistemas São Geraldo{% endblock %}</title>
+    {% include '_brand_head.html' %}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
@@ -174,6 +175,22 @@
                 </a>
             </li>
             {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'acesso_remoto') %}
+            <li>
+                <a href="{{ url_for('main.acesso_remoto_pagina') }}" class="{% if request.endpoint in ('main.acesso_remoto_pagina', 'main.acesso_remoto_sessao') %}active{% endif %}" title="Acesso remoto">
+                    <i class="fas fa-desktop menu-icon"></i>
+                    <span class="menu-label">Acesso remoto</span>
+                </a>
+            </li>
+            {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('chamados', 'whatsapp_mensagem') %}
+            <li>
+                <a href="/chamados/whatsapp-mensagem" class="{% if request.path == '/chamados/whatsapp-mensagem' %}active{% endif %}" title="Conf. Mensagem WhatsApp">
+                    <i class="fab fa-whatsapp menu-icon"></i>
+                    <span class="menu-label">Conf. Mensagem WhatsApp</span>
+                </a>
+            </li>
+            {% endif %}
             {% if usuario_atual and usuario_atual.tem_menu('chamados', 'auditoria') %}
             <li>
                 <a href="{{ url_for('main.auditoria') }}" class="{% if request.endpoint == 'main.auditoria' %}active{% endif %}" title="Auditoria">
@@ -205,9 +222,10 @@
         {% block content %}{% endblock %}
     </main>
 
-    <script src="{{ url_for('static', filename='js/loading-overlay.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/loading-overlay.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     <script src="{{ url_for('static', filename='js/chamados-mdk.js') }}?v=mdk1"></script>
+    <script src="{{ url_for('static', filename='js/chamado-campanha.js') }}?v=6"></script>
     {% block scripts %}{% endblock %}
     <script src="{{ url_for('static', filename='js/searchable-select.js') }}?v=2"></script>
 </body>

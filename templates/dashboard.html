@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - São Geraldo Service{% endblock %}
+{% block title %}Dashboard - Sistemas São Geraldo{% endblock %}
 
 {% block content %}
 <div class="mdk-dash">
@@ -77,6 +77,9 @@
                 <h3>Resumo de tickets</h3>
                 {% if mesas %}
                 <form method="get" action="{{ url_for('main.dashboard') }}" class="mdk-mesa-filter">
+                    <input type="hidden" name="de" value="{{ graf.de }}">
+                    <input type="hidden" name="ate" value="{{ graf.ate }}">
+                    {% if graf.tecnico_id %}<input type="hidden" name="tecnico" value="{{ graf.tecnico_id }}">{% endif %}
                     <label>Mesa:
                         <select class="mdk-select" name="mesa" onchange="this.form.submit()">
                             <option value="">Todas</option>
@@ -146,6 +149,80 @@
                 </ul>
                 {% else %}
                 <p class="mdk-empty">Nenhuma notificação.</p>
+                {% endif %}
+            </div>
+
+            <div class="mdk-card mdk-span-12">
+                <h3>Atendimentos finalizados</h3>
+                <form method="get" action="{{ url_for('main.dashboard') }}" class="mdk-graf-filtros">
+                    <label>Mesa
+                        <select class="mdk-select" name="mesa">
+                            <option value="">Todas</option>
+                            {% for m in mesas %}
+                            <option value="{{ m.id }}" {% if mesa_filtro == m.id %}selected{% endif %}>{{ m.nome }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label>De
+                        <input class="mdk-select" type="date" name="de" value="{{ graf.de }}">
+                    </label>
+                    <label>Até
+                        <input class="mdk-select" type="date" name="ate" value="{{ graf.ate }}">
+                    </label>
+                    <label>Técnico
+                        <select class="mdk-select" name="tecnico">
+                            <option value="">Todos</option>
+                            {% for t in tecnicos_graf %}
+                            <option value="{{ t.id }}" {% if graf.tecnico_id == t.id %}selected{% endif %}>{{ t.nome }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <button type="submit" class="mdk-btn mdk-btn-teal">Filtrar</button>
+                    <span class="mdk-graf-total">{{ graf.total }} finalizado{{ 's' if graf.total != 1 else '' }}</span>
+                </form>
+                <div class="mdk-graf-grid">
+                    <div>
+                        <h4>Por período</h4>
+                        {% if graf.total and graf.periodo %}
+                        <div class="mdk-bars">
+                            {% for b in graf.periodo %}
+                            <div class="mdk-bar" title="{{ b.label }}: {{ b.count }}">
+                                <b>{{ b.count }}</b>
+                                <i style="height:{{ b.pct }}%"></i>
+                                <span>{{ b.label }}</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <p class="mdk-empty">Nenhum atendimento finalizado neste período.</p>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <h4>Por técnico</h4>
+                        {% if graf.tecnicos %}
+                        <div class="mdk-hbars">
+                            {% for b in graf.tecnicos %}
+                            <div class="mdk-hbar" title="{{ b.label }}: {{ b.count }}">
+                                <span>{{ b.label }}</span>
+                                <em><i style="width:{{ b.pct }}%"></i></em>
+                                <b>{{ b.count }}</b>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <p class="mdk-empty">Nenhum atendimento finalizado neste período.</p>
+                        {% endif %}
+                    </div>
+                </div>
+                {% if graf.lista %}
+                <ul class="mdk-note-list">
+                    {% for c in graf.lista %}
+                    <li>
+                        <a href="{{ url_for('main.ver_chamado', id=c.id) }}">{{ c.numero }}</a>
+                        <small>{{ c.quando }} · {{ c.tecnico }} · {{ c.mesa }}</small>
+                    </li>
+                    {% endfor %}
+                </ul>
                 {% endif %}
             </div>
 

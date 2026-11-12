@@ -1,0 +1,75 @@
+# Gera AgentePesagem.exe (Windows) e publica o artefato para commit no repositório.
+name: Build Agente Pesagem
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - 'cursor/**'
+    paths:
+      - 'agente_pesagem/**'
+      - '.github/workflows/build-agente-pesagem.yml'
+
+jobs:
+  build:
+    name: PyInstaller Windows
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instalar dependências
+        working-directory: agente_pesagem
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Gerar ícone
+        working-directory: agente_pesagem
+        run: python make_icon.py
+
+      - name: PyInstaller
+        working-directory: agente_pesagem
+        run: >
+          pyinstaller --noconfirm --onefile --windowed
+          --name AgentePesagem
+          --icon sao_geraldo.ico
+          --add-data "sao_geraldo.ico;."
+          --add-data "sao_geraldo.png;."
+          --hidden-import PIL
+          --hidden-import PIL.Image
+          --hidden-import PIL.ImageTk
+          --hidden-import pesagem_calc
+          agente_pesagem.py
+
+      - name: Publicar pasta de download
+        id: pub
+        working-directory: agente_pesagem
+        shell: pwsh
+        run: |
+          $line = Select-String -Path agente_pesagem.py -Pattern "^APP_VERSION" | Select-Object -First 1
+          $ver = ($line.Line -split "'")[1]
+          if (-not $ver) { throw 'APP_VERSION não encontrada' }
+          $pub = Join-Path $pwd '..\static\downloads\agente_pesagem'
+          New-Item -ItemType Directory -Force -Path $pub | Out-Null
+          Copy-Item -Force 'dist\AgentePesagem.exe' (Join-Path $pub 'AgentePesagem.exe')
+          Copy-Item -Force 'dist\AgentePesagem.exe' (Join-Path $pub "AgentePesagem-$ver.exe")
+          Copy-Item -Force 'config.json' (Join-Path $pub 'config.json')
+          $exe = Get-Item (Join-Path $pub "AgentePesagem-$ver.exe")
+          if ($exe.Length -lt 1MB) { throw "exe pequeno demais: $($exe.Length)" }
+          Write-Host "Publicado AgentePesagem-$ver.exe ($([math]::Round($exe.Length/1MB, 1)) MB)"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$ver"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AgentePesagem-${{ steps.pub.outputs.version }}
+          if-no-files-found: error
+          path: |
+            static/downloads/agente_pesagem/AgentePesagem.exe
+            static/downloads/agente_pesagem/AgentePesagem-*.exe
+            static/downloads/agente_pesagem/config.json

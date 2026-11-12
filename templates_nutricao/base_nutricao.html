@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Nutrição Hospitalar - São Geraldo Service{% endblock %}</title>
+    <title>{% block title %}Nutrição Hospitalar - Sistemas São Geraldo{% endblock %}</title>
+    {% include '_brand_head.html' %}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v=menu30" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v=mapa34" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/searchable-select.css') }}?v=1" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/loading-overlay.css') }}?v=1" rel="stylesheet">
 </head>
@@ -22,7 +23,7 @@
         } catch (e) { /* ignore */ }
     })();
     </script>
-    {% set cadastro_pages = active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_dietas','cadastro_grupos_dietas','cadastro_tipos_refeicao','cadastro_cardapios','cadastro_precos_refeicoes','cadastro_nutricional','cadastro_pratos_liquidos','cadastro_produtos','cadastro_fornecedores','cadastro_etiquetas'] %}
+    {% set cadastro_pages = active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_categorias','cadastro_grupos_dietas','cadastro_dietas','cadastro_tipos_refeicao','cadastro_cardapios','cadastro_precos_refeicoes','cadastro_nutricional','cadastro_pratos_liquidos','cadastro_produtos','cadastro_fornecedores','cadastro_etiquetas'] %}
     <header class="app-topbar">
         <button type="button" class="menu-toggle" id="menuToggle" aria-label="Recuar menu" aria-expanded="true" aria-controls="appSidebar">
             <i class="fas fa-bars"></i>
@@ -98,15 +99,21 @@
                         </a>
                     </li>
                     <li>
-                        <a href="{{ url_for('nutricao.dietas') }}" class="{% if active_page == 'cadastro_dietas' %}active{% endif %}" title="Dietas">
-                            <i class="fas fa-utensils menu-icon"></i>
-                            <span class="menu-label">Dietas</span>
+                        <a href="{{ url_for('nutricao.categorias_dietas') }}" class="{% if active_page == 'cadastro_categorias' %}active{% endif %}" title="Categoria">
+                            <i class="fas fa-stream menu-icon"></i>
+                            <span class="menu-label">Categoria</span>
                         </a>
                     </li>
                     <li>
                         <a href="{{ url_for('nutricao.grupos_dietas') }}" class="{% if active_page == 'cadastro_grupos_dietas' %}active{% endif %}" title="Grupos de Dietas">
                             <i class="fas fa-layer-group menu-icon"></i>
                             <span class="menu-label">Grupos de Dietas</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.dietas') }}" class="{% if active_page == 'cadastro_dietas' %}active{% endif %}" title="Dietas">
+                            <i class="fas fa-utensils menu-icon"></i>
+                            <span class="menu-label">Dietas</span>
                         </a>
                     </li>
                     <li>
@@ -184,6 +191,18 @@
                 </a>
             </li>
             <li>
+                <a href="{{ url_for('nutricao.impressao_mapa') }}" class="{% if active_page == 'impressao_mapa' %}active{% endif %}" title="Impressão mapa da nutrição">
+                    <i class="fas fa-file-alt menu-icon"></i>
+                    <span class="menu-label">Impressão mapa da nutrição</span>
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('nutricao.impressao_mapa_distribuicao') }}" class="{% if active_page == 'impressao_mapa_distribuicao' %}active{% endif %}" title="Impressão mapa distribuição">
+                    <i class="fas fa-clipboard-list menu-icon"></i>
+                    <span class="menu-label">Impressão mapa distribuição</span>
+                </a>
+            </li>
+            <li>
                 <a href="/nutricao/totalizacao-dietas" class="{% if active_page == 'totalizacao_dietas' %}active{% endif %}" title="Totalização de Dietas">
                     <i class="fas fa-calculator menu-icon"></i>
                     <span class="menu-label">Totalização de Dietas</span>
@@ -233,6 +252,9 @@
             {% endif %}
         {% endwith %}
 
+        <div class="projeto-versao-bar">
+            São Geraldo Service · {{ usuario_nome_sessao or usuario_sistema or 'meuapp' }}
+        </div>
         {% block content %}{% endblock %}
     </main>
 
@@ -252,7 +274,8 @@
 
     <div class="toast" id="toast"><span id="toastIcon">✓</span><span id="toastMessage"></span></div>
 
-    <script src="{{ url_for('static', filename='js/loading-overlay.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/loading-overlay.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/chamado-campanha.js') }}?v=5"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     <script>
     function showToast(msg, type) {
@@ -311,7 +334,11 @@
         var pac = window._acompPacientePosCadastro;
         var done = window._acompOnDone;
         if (!sim) {
-            fecharModal();
+            if (typeof window._fecharModalBase === 'function') {
+                window._fecharModalBase();
+            } else {
+                fecharModal();
+            }
             window._acompPacientePosCadastro = null;
             window._acompOnDone = null;
             if (done) done(pac);
@@ -410,9 +437,13 @@
                 return;
             }
             showToast('Acompanhante cadastrado', 'success');
-            fecharModal();
             window._acompPacientePosCadastro = null;
             window._acompOnDone = null;
+            if (typeof window._fecharModalBase === 'function') {
+                window._fecharModalBase();
+            } else {
+                fecharModal();
+            }
             if (done) done(pac);
         } catch (e) {
             showToast('Falha ao salvar acompanhante', 'error');

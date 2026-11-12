@@ -26,6 +26,8 @@ SISTEMAS = {
             ('agenda', 'Agenda'),
             ('conhecimentos', 'Conhecimentos'),
             ('automacoes', 'Automações'),
+            ('acesso_remoto', 'Acesso remoto'),
+            ('whatsapp_mensagem', 'Conf. Mensagem WhatsApp'),
             ('auditoria', 'Auditoria'),
         ],
     },
@@ -53,6 +55,29 @@ SISTEMAS = {
             ('dashboard', 'Leituras'),
             ('balancas', 'Balanças'),
             ('clientes', 'Cadastro de Cliente'),
+            ('whatsapp', 'Conf. WhatsApp'),
+            ('auditoria', 'Auditoria'),
+        ],
+    },
+    'logistica': {
+        'nome': 'Sistema de Controle de Logística',
+        'campo': 'perm_logistica',
+        'endpoint': 'logistica.dashboard',
+        'menus': [
+            ('dashboard', 'Visão Geral'),
+            ('lancamentos', 'Combustível e Pedágio'),
+            ('manutencao', 'Notas e Manutenção'),
+            ('frota', 'Frota'),
+            ('dp', 'Departamento pessoal'),
+            ('entregas', 'Expedição'),
+            ('operacao', 'Operação Logística'),
+            ('rotas', 'Operação — Grade de rotas'),
+            ('revisoes', 'Operação — Revisões'),
+            ('folgas', 'Operação — Folgas'),
+            ('ociosidade', 'Operação — Ociosidade'),
+            ('checklist', 'Operação — Check-list'),
+            ('higiene', 'Operação — Higiene'),
+            ('coletas', 'Controle de peso'),
             ('auditoria', 'Auditoria'),
         ],
     },
@@ -133,6 +158,7 @@ def conceder_acesso_total(usuario):
     usuario.perm_chamados = True
     usuario.perm_nutricao = True
     usuario.perm_pesagem = True
+    usuario.perm_logistica = True
     usuario.perm_acesso = True
     usuario.perm_portal = True
     for sistema, meta in SISTEMAS.items():

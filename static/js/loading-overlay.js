@@ -100,6 +100,17 @@
         return ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || ev.button === 1;
     }
 
+    function isFileDownloadHref(href) {
+        if (!href) return false;
+        try {
+            var path = new URL(href, window.location.href).pathname.toLowerCase();
+            if (path.indexOf('/download') !== -1) return true;
+            return /\.(exe|bat|cmd|msi|cer|ps1|zip|rar|7z|csv|xlsx|xls|pdf)$/i.test(path);
+        } catch (e) {
+            return false;
+        }
+    }
+
     function shouldSkipLink(a) {
         if (!a || a.hasAttribute('data-no-loading')) return true;
         if (a.target && a.target !== '' && a.target !== '_self') return true;
@@ -107,6 +118,7 @@
         var href = a.getAttribute('href');
         if (!href || href === '#' || href.indexOf('javascript:') === 0) return true;
         if (href.charAt(0) === '#') return true;
+        if (isFileDownloadHref(href)) return true;
         try {
             var url = new URL(href, window.location.href);
             if (url.origin !== window.location.origin) return true;

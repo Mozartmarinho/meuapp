@@ -48,6 +48,8 @@ def _modulo_de_path(path: str) -> str:
         return 'nutricao'
     if p.startswith('/pesagem') or p.startswith('/api/pesagem'):
         return 'pesagem'
+    if p.startswith('/logistica') or p.startswith('/api/logistica'):
+        return 'logistica'
     if p.startswith('/acesso') or p.startswith('/api/acesso'):
         return 'acesso'
     if p.startswith('/auditoria'):
@@ -82,7 +84,7 @@ def _acao_de_metodo(method: str, path: str) -> str:
 def _entidade_de_path(path: str) -> str:
     parts = [p for p in (path or '').split('/') if p and not p.isdigit()]
     # remove prefixos conhecidos
-    skip = {'api', 'nutricao', 'pesagem', 'acesso', 'auditoria'}
+    skip = {'api', 'nutricao', 'pesagem', 'acesso', 'logistica', 'auditoria'}
     parts = [p for p in parts if p not in skip]
     if not parts:
         return 'sistema'

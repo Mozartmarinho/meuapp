@@ -49,7 +49,7 @@
           <td>{{ p.admissao or '-' }}</td>
           <td>{{ p.prontuario or '-' }}</td>
           <td><strong>{{ p.nome }}</strong></td>
-          <td>{{ p.sexo or '-' }}</td>
+          <td>{{ p.sexo_label or p.sexo or '-' }}</td>
           <td>{{ p.nascimento[:10] if p.nascimento else '-' }}</td>
           <td>{{ p.clinica or '-' }}</td>
           <td>{{ p.leito or '-' }}</td>
@@ -208,8 +208,9 @@ function abrirPopupPaciente(data){
       <div class="form-group"><label class="form-label">Sexo</label>
         <select class="form-control" id="f-sexo">
           <option value="">Sexo</option>
-          <option value="M" ${(data && data.sexo==='M')?'selected':''}>Masculino</option>
-          <option value="F" ${(data && data.sexo==='F')?'selected':''}>Feminino</option>
+          <option value="M" ${(data && (data.sexo==='M' || data.sexo==='masculino'))?'selected':''}>Masculino</option>
+          <option value="F" ${(data && (data.sexo==='F' || data.sexo==='feminino'))?'selected':''}>Feminino</option>
+          <option value="O" ${(data && (data.sexo==='O' || data.sexo==='outros' || data.sexo==='outro'))?'selected':''}>Outros</option>
         </select>
       </div>
     </div>

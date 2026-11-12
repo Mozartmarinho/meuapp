@@ -1,10 +1,22 @@
 {% extends "base.html" %}
 
-{% block title %}Tickets - São Geraldo Service{% endblock %}
+{% block title %}Tickets - Sistemas São Geraldo{% endblock %}
 
 {% block content %}
 {% macro ticket_title(c) -%}
 {{ (c.descricao or c.tipo_servico or c.numero_chamado)|replace('\n', ' ') }}
+{%- endmacro %}
+{% macro btn_atender(c, kanban=false) -%}
+{% set pode = (not c.atendente_id) or (c.atendente_id == (eu_id|default(0))) or (eh_gestor|default(false)) %}
+{% if pode %}
+{% if kanban %}
+<button type="button" class="btn-atender" data-id="{{ c.id }}">Atender</button>
+{% else %}
+<button type="button" class="btn btn-primary btn-sm btn-atender" data-id="{{ c.id }}"><i class="fas fa-toolbox"></i> Atender</button>
+{% endif %}
+{% else %}
+<span class="tk-com-tec" title="Chamado já atribuído">Com {{ c.atendente.nome if c.atendente else 'técnico' }}</span>
+{% endif %}
 {%- endmacro %}
 <div class="mdk-tickets-page chamados-page">
     <div class="mdk-tickets-head">
@@ -36,6 +48,7 @@
                 <option>Em Andamento</option>
                 <option>Aguardar peça</option>
                 <option>Encaminhado</option>
+                <option>Reagendado</option>
                 <option>Devolvido</option>
                 <option>Atendido</option>
                 <option>Concluído</option>
@@ -82,6 +95,8 @@
                             <th>Cliente</th>
                             <th>Setor</th>
                             <th>Prioridade</th>
+                            <th>Início</th>
+                            <th>Finalizado</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
@@ -92,17 +107,19 @@
                             data-cliente="{{ c.cliente.nome if c.cliente else '' }}"
                             data-search="{{ c.numero_chamado }} {{ c.cliente.nome if c.cliente else '' }} {{ c.tipo_servico }} {{ c.prioridade }} {{ ticket_title(c) }}">
                             <td><a class="mdk-num" href="{{ url_for('main.ver_chamado', id=c.id) }}">{{ c.numero_chamado }}</a></td>
-                            <td>{{ ticket_title(c)|truncate(70, True) }}</td>
+                            <td>{{ ticket_title(c)|truncate(70, True) }}{% if c.status == 'Reagendado' and c.data_reagendamento %} <span class="tk-reagenda">{{ c.data_reagendamento.strftime('%d/%m/%Y') }}</span>{% endif %}</td>
                             <td>{{ c.cliente.nome if c.cliente else 'N/A' }}</td>
                             <td>{% if c.setor_destino %}<span class="setor-blink">{{ c.setor_destino }}</span>{% else %}—{% endif %}</td>
                             <td><span class="priority-{{ c.prioridade|lower|replace('é', 'e') }}">{{ c.prioridade }}</span></td>
+                            <td>{{ c.data_inicio_atendimento.strftime('%d/%m/%Y %H:%M') if c.data_inicio_atendimento else '—' }}</td>
+                            <td>{{ c.data_conclusao.strftime('%d/%m/%Y %H:%M') if c.data_conclusao else '—' }}</td>
                             <td class="acoes-cell">
-                                <button type="button" class="btn btn-primary btn-sm btn-atender" data-id="{{ c.id }}"><i class="fas fa-toolbox"></i> Atender</button>
+                                {{ btn_atender(c) }}
                                 <a href="{{ url_for('main.editar_chamado', id=c.id) }}" class="btn btn-sm btn-editar-link"><i class="fas fa-edit"></i> Editar</a>
                             </td>
                         </tr>
                         {% else %}
-                        <tr class="tk-empty"><td colspan="6" class="empty-row">Nenhum ticket neste estágio.</td></tr>
+                        <tr class="tk-empty"><td colspan="8" class="empty-row">Nenhum ticket neste estágio.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -123,6 +140,8 @@
                             <th>Cliente</th>
                             <th>Setor</th>
                             <th>Status</th>
+                            <th>Início</th>
+                            <th>Finalizado</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
@@ -137,13 +156,15 @@
                             <td>{{ c.cliente.nome if c.cliente else 'N/A' }}</td>
                             <td>{% if c.setor_destino %}<span class="setor-blink">{{ c.setor_destino }}</span>{% else %}—{% endif %}</td>
                             <td>{{ c.status }}</td>
+                            <td>{{ c.data_inicio_atendimento.strftime('%d/%m/%Y %H:%M') if c.data_inicio_atendimento else '—' }}</td>
+                            <td>{{ c.data_conclusao.strftime('%d/%m/%Y %H:%M') if c.data_conclusao else '—' }}</td>
                             <td class="acoes-cell">
-                                <button type="button" class="btn btn-primary btn-sm btn-atender" data-id="{{ c.id }}"><i class="fas fa-toolbox"></i> Atender</button>
+                                {{ btn_atender(c) }}
                                 <a href="{{ url_for('main.editar_chamado', id=c.id) }}" class="btn btn-sm btn-editar-link"><i class="fas fa-edit"></i> Editar</a>
                             </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="6" class="empty-row">Nenhum ticket fechado.</td></tr>
+                        <tr><td colspan="8" class="empty-row">Nenhum ticket fechado.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -157,7 +178,7 @@
             <div class="mdk-col" data-kcol="{{ g.key }}">
                 <div class="mdk-col-h">
                     {{ g.label }} <span data-kcount>{{ g.tickets|length }}</span>
-                    <a class="mdk-col-add" href="{{ url_for('main.novo_chamado', status=('Pendente' if g.key=='pendente' else ('Em Andamento' if g.key=='atendimento' else ('Aguardar peça' if g.key=='aguardando' else 'Encaminhado')))) }}" title="Abrir novo ticket">+</a>
+                    <a class="mdk-col-add" href="{{ url_for('main.novo_chamado', status=g.status_novo) }}" title="Abrir novo ticket">+</a>
                 </div>
                 {% for c in g.tickets %}
                 <article class="mdk-kcard tk-card" data-stage="{{ g.key }}" data-status="{{ c.status }}"
@@ -169,14 +190,14 @@
                         <div class="mdk-kmenu mdk-drop" data-mdk-drop>
                             <button type="button" class="mdk-kdots" data-mdk-drop-btn aria-label="Ações">⋮</button>
                             <div class="mdk-drop-menu" data-mdk-drop-menu hidden>
-                                <button type="button" class="btn-atender" data-id="{{ c.id }}">Atender</button>
+                                {{ btn_atender(c, kanban=true) }}
                                 <a href="{{ url_for('main.ver_chamado', id=c.id) }}">Ver</a>
                                 <a href="{{ url_for('main.editar_chamado', id=c.id) }}">Editar</a>
                             </div>
                         </div>
                     </div>
                     <p class="mdk-ktitle">{{ ticket_title(c)|truncate(90, True) }}</p>
-                    <p class="mdk-kmeta">{{ c.cliente.nome if c.cliente else 'N/A' }}</p>
+                    <p class="mdk-kmeta">{{ c.cliente.nome if c.cliente else 'N/A' }}{% if c.status == 'Reagendado' and c.data_reagendamento %} · {{ c.data_reagendamento.strftime('%d/%m/%Y') }}{% endif %}</p>
                     <div class="mdk-kfoot">
                         <span class="mdk-aberto">Aberto</span>
                         <span class="mdk-av">{{ (c.cliente.nome if c.cliente else 'T')[0]|upper }}</span>
@@ -198,6 +219,18 @@
         <form id="formAtender" method="POST" enctype="multipart/form-data">
             <input type="hidden" name="acao" id="at_acao" value="salvar">
             <div class="modal-body">
+                <div class="at-problema" id="atProblemaBox">
+                    <p class="at-problema-label">Problema relatado</p>
+                    <p class="at-problema-texto" id="atProblema">—</p>
+                    <p class="at-problema-pat" id="atProblemaPat"></p>
+                </div>
+                <div class="form-group" id="atTrocaBox" hidden>
+                    <label>Transferir patrimônio</label>
+                    <p class="at-hint" id="atTrocaAtual">—</p>
+                    <input type="hidden" id="at_estoque_eq" name="equipamento_estoque_id" value="">
+                    <button type="button" class="btn btn-secondary" id="btnAbrirTrocaEq">Manter o equipamento atual</button>
+                    <span class="at-hint">O equipamento ruim volta para o estoque e o escolhido assume o setor e o usuário dele.</span>
+                </div>
                 <p class="at-meta" id="atMeta">—</p>
                 <div class="at-origem" id="atOrigemBox" hidden>
                     <p class="at-origem-line" id="atOrigemTexto"></p>
@@ -241,10 +274,16 @@
                         <option value="Em Andamento">Em Andamento</option>
                         <option value="Aguardar peça">Aguardar peça</option>
                         <option value="Encaminhado">Encaminhado</option>
+                        <option value="Reagendado">Reagendado</option>
                         <option value="Devolvido">Devolvido</option>
                         <option value="Atendido">Atendido</option>
                         <option value="Concluído">Concluído</option>
                     </select>
+                </div>
+                <div class="form-group" id="atReagendaBox" hidden>
+                    <label for="at_data_reagendamento">Reagendar para</label>
+                    <input type="date" id="at_data_reagendamento" name="data_reagendamento">
+                    <span class="at-hint">O toque para até esse dia. Quem abriu o chamado recebe o aviso agora.</span>
                 </div>
                 <div class="at-encaminhar">
                     <p class="at-enc-title" id="atEncTitle">Encaminhar para outro setor</p>
@@ -290,6 +329,23 @@
                 </div>
             </div>
         </form>
+    </div>
+</div>
+
+<div id="modalTrocaEq" class="modal-overlay nc-modal" hidden>
+    <div class="modal-dialog nc-dialog" role="dialog" aria-modal="true" aria-labelledby="trocaEqTitle">
+        <div class="modal-header">
+            <h2 id="trocaEqTitle">Selecionar equipamento do estoque</h2>
+            <button type="button" class="modal-close" id="btnFecharTrocaEqX" aria-label="Fechar">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="trocaEqBusca">Patrimônio</label>
+                <input type="text" id="trocaEqBusca" placeholder="Buscar por patrimônio" autocomplete="off">
+            </div>
+            <ul class="troca-eq-lista" id="trocaEqLista"></ul>
+            <button type="button" class="btn btn-secondary" id="btnManterEqAtual">Manter o equipamento atual</button>
+        </div>
     </div>
 </div>
 
@@ -385,6 +441,13 @@
 .empty-row { text-align: center; color: var(--gray-600); padding: 1.4rem !important; }
 .acoes-cell { white-space: nowrap; }
 .acoes-cell .btn { margin-right: 0.25rem; }
+.tk-com-tec {
+    display: inline-block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #475569;
+    padding: 0.2rem 0.4rem;
+}
 .btn-editar-link {
     background-color: var(--gray-300);
     color: var(--gray-800);
@@ -395,7 +458,9 @@
 .status-atendido { color: #0d9488; font-weight: 700; }
 .status-aguardar-peca { color: #c05621; font-weight: 700; }
 .status-encaminhado { color: #6f42c1; font-weight: 700; }
+.status-reagendado { color: #0f766e; font-weight: 700; }
 .status-devolvido { color: #0369a1; font-weight: 700; }
+.tk-reagenda { color: #0f766e; font-weight: 700; font-size: 0.75rem; margin-left: 0.35rem; }
 .priority-alta { color: #dc3545; font-weight: 700; }
 .priority-normal, .priority-media { color: #6c757d; }
 .priority-baixa { color: #28a745; }
@@ -404,16 +469,38 @@
 .nc-modal:not([hidden]) { display: flex; }
 .nc-dialog {
     max-width: 512px;
+    width: 100%;
     max-height: 90vh;
+    max-height: 90dvh;
     overflow: hidden;
     display: flex;
     flex-direction: column;
     font-size: 0.8rem;
 }
-.nc-dialog .modal-header { padding: 0.92rem 1rem 0; gap: 0.6rem; }
+.nc-dialog .modal-header {
+    padding: 0.92rem 1rem 0;
+    gap: 0.6rem;
+    flex-shrink: 0;
+}
 .nc-dialog .modal-header h2 { font-size: 0.96rem; margin: 0; }
 .nc-dialog .modal-close { font-size: 1.2rem; }
-.nc-dialog .modal-body { padding: 0.72rem 1rem 0.4rem; overflow-y: auto; }
+.nc-dialog form {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+.nc-dialog .modal-body {
+    padding: 0.72rem 1rem 0.4rem;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    flex: 1 1 auto;
+    min-height: 0;
+    scrollbar-gutter: stable;
+}
 .nc-dialog .form-group { margin-bottom: 0.56rem; }
 .nc-dialog label { font-size: 0.72rem; margin-bottom: 0.16rem; }
 .nc-dialog input[type="text"],
@@ -435,8 +522,10 @@
     padding: 0.64rem 1rem 0.8rem;
     flex-wrap: wrap;
     border-top: 1px solid var(--gray-200);
+    flex-shrink: 0;
+    background: var(--white);
 }
-.nc-footer-right { display: flex; gap: 0.4rem; }
+.nc-footer-right { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .nc-dialog .btn {
     gap: 0.32rem;
     padding: 0.45rem 0.8rem;
@@ -450,6 +539,23 @@
 }
 .btn-finalizar:hover { background-color: #0f766e; }
 .at-meta { margin: 0 0 0.5rem; color: var(--gray-600); font-size: 0.76rem; }
+.at-problema {
+    border: 1px solid #fcd34d;
+    background: #fffbeb;
+    border-radius: 0.35rem;
+    padding: 0.45rem 0.55rem;
+    margin: 0 0 0.55rem;
+}
+.at-problema-label { margin: 0; font-size: 0.64rem; color: #92400e; font-weight: 700; }
+.at-problema-texto {
+    margin: 0.15rem 0 0;
+    font-size: 0.8rem;
+    color: var(--gray-800);
+    white-space: pre-wrap;
+    max-height: 7.5rem;
+    overflow: auto;
+}
+.at-problema-pat { margin: 0.28rem 0 0; font-size: 0.72rem; font-weight: 700; color: #78350f; }
 .at-origem {
     border: 1px solid #c4b5fd;
     background: #f5f3ff;
@@ -534,6 +640,12 @@
 }
 .at-estoque-lista li:last-child { border-bottom: 0; }
 .at-estoque-vazio { color: var(--gray-600); justify-content: center !important; }
+.troca-eq-lista { list-style: none; margin: 0 0 0.8rem; padding: 0; max-height: 280px; overflow: auto; border: 1px solid var(--gray-300); border-radius: 0.4rem; }
+.troca-eq-lista li { border-bottom: 1px solid var(--gray-200); }
+.troca-eq-item, .troca-eq-vazio { display: block; width: 100%; text-align: left; background: #fff; border: 0; padding: 0.55rem 0.7rem; }
+.troca-eq-item { cursor: pointer; }
+.troca-eq-item:hover { background: #eef4fb; }
+.troca-eq-vazio { color: var(--gray-600); }
 .at-estoque-item-meta { min-width: 0; }
 .at-estoque-item-meta strong { display: block; }
 .at-estoque-item-meta span { color: var(--gray-600); font-size: 0.68rem; }
@@ -617,6 +729,61 @@
     cursor: pointer;
 }
 body.modal-open { overflow: hidden; }
+
+@media (max-width: 768px) {
+    .nc-modal {
+        padding: 0.4rem;
+        padding-bottom: max(0.4rem, env(safe-area-inset-bottom, 0px));
+        align-items: flex-start;
+        justify-content: flex-start;
+    }
+    .nc-dialog {
+        max-width: 100%;
+        max-height: calc(100vh - 0.8rem);
+        max-height: calc(100dvh - 0.8rem);
+        max-height: calc(100svh - 0.8rem);
+        border-radius: 0.7rem;
+    }
+    #modalAtender .nc-dialog {
+        height: calc(100svh - 0.8rem);
+        max-height: calc(100svh - 0.8rem);
+    }
+    #modalAtender .modal-body {
+        scrollbar-width: thin;
+        scrollbar-color: #94a3b8 transparent;
+    }
+    #modalAtender .modal-body::-webkit-scrollbar {
+        width: 8px;
+    }
+    #modalAtender .modal-body::-webkit-scrollbar-thumb {
+        background: #94a3b8;
+        border-radius: 8px;
+    }
+    #modalAtender .nc-footer {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.45rem;
+        padding: 0.55rem 0.75rem max(0.65rem, env(safe-area-inset-bottom, 0px));
+    }
+    #modalAtender .nc-footer > .btn {
+        width: 100%;
+        justify-content: center;
+    }
+    #modalAtender .nc-footer-right {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        width: 100%;
+        gap: 0.4rem;
+    }
+    #modalAtender .nc-footer-right .btn {
+        width: 100%;
+        justify-content: center;
+        white-space: nowrap;
+    }
+    #modalAtender .nc-footer-right .btn-finalizar {
+        grid-column: 1 / -1;
+    }
+}
 </style>
 
 <script>
@@ -733,6 +900,9 @@ body.modal-open { overflow: hidden; }
     const estBody = document.getElementById('estConsultaBody');
     const abrirId = {{ atender_id|tojson }};
     let chamadoId = null;
+    let estoqueTrocaOpcoes = [];
+    let atendimentoAbertoId = null;
+    let atendimentoFinalizado = false;
     let fotosEncPendentes = [];
     let fotosEncSalvas = [];
     let fotosEncUrls = [];
@@ -1018,7 +1188,38 @@ body.modal-open { overflow: hidden; }
         const boxEnc = document.getElementById('atFotosEncaminhar');
         if (boxEnc) boxEnc.innerHTML = '';
     }
+    function pararToqueLocal(id) {
+        if (window.sgCampanhaParar) window.sgCampanhaParar(id);
+    }
+    function retomarToqueLocal(id) {
+        if (window.sgCampanhaRetomar) {
+            window.sgCampanhaRetomar({ id: id, status: 'Pendente' });
+        }
+    }
+    function liberarAtendimento(beacon) {
+        const id = atendimentoAbertoId;
+        if (!id || atendimentoFinalizado) return;
+        const url = '/api/chamados/' + id + '/liberar-atendimento';
+        try {
+            if (beacon && navigator.sendBeacon) {
+                navigator.sendBeacon(url);
+            } else {
+                fetch(url, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    keepalive: !!beacon,
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                });
+            }
+        } catch (e) { /* ignore */ }
+        retomarToqueLocal(id);
+    }
     function fecharModal() {
+        if (atendimentoAbertoId && !atendimentoFinalizado) {
+            liberarAtendimento(false);
+        }
+        atendimentoAbertoId = null;
+        atendimentoFinalizado = false;
         overlay.hidden = true;
         document.body.classList.remove('modal-open');
         chamadoId = null;
@@ -1102,6 +1303,28 @@ body.modal-open { overflow: hidden; }
         return !!(input && input.files && input.files.length);
     }
 
+    const STATUS_SEM_TOQUE = {
+        'Aguardar peça': true,
+        'Encaminhado': true,
+        'Reagendado': true
+    };
+    function isoLocal(d) {
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return d.getFullYear() + '-' + m + '-' + day;
+    }
+    function sincronizarReagendamento() {
+        const box = document.getElementById('atReagendaBox');
+        const input = document.getElementById('at_data_reagendamento');
+        const status = document.getElementById('at_status').value;
+        const mostra = status === 'Reagendado';
+        if (box) box.hidden = !mostra;
+        if (!input) return;
+        const amanha = new Date();
+        amanha.setDate(amanha.getDate() + 1);
+        input.min = isoLocal(amanha);
+        input.required = mostra;
+    }
     function atualizarAcoes() {
         const peca = document.getElementById('at_aguardar_peca').checked;
         const encTitle = document.getElementById('atEncTitle');
@@ -1128,6 +1351,7 @@ body.modal-open { overflow: hidden; }
                 btnFinalizar.innerHTML = '<i class="fas fa-check-circle"></i> Finalizar chamado';
             }
         }
+        sincronizarReagendamento();
     }
 
     function preencher(data) {
@@ -1137,8 +1361,32 @@ body.modal-open { overflow: hidden; }
         instrucoesOrigem = data.encaminhamento_instrucoes || '';
         form.action = '/api/chamados/' + data.id + '/atender';
         document.getElementById('atModalTitle').textContent = 'Atender ' + (data.numero_chamado || '');
+        document.getElementById('atProblema').textContent = data.descricao || 'Sem descrição informada.';
+        const patEl = document.getElementById('atProblemaPat');
+        if (data.patrimonio || data.equipamento) {
+            let linhaPat = 'Patrimônio ' + (data.patrimonio || '—');
+            if (data.equipamento) linhaPat += ' · ' + data.equipamento;
+            if (data.equipamento_setor) linhaPat += ' · ' + data.equipamento_setor;
+            if (data.equipamento_usuario) linhaPat += ' · ' + data.equipamento_usuario;
+            patEl.textContent = linhaPat;
+        } else {
+            patEl.textContent = 'Sem patrimônio vinculado a este chamado.';
+        }
+        const trocaBox = document.getElementById('atTrocaBox');
+        const trocaSel = document.getElementById('at_estoque_eq');
+        const trocaAtual = document.getElementById('atTrocaAtual');
+        estoqueTrocaOpcoes = data.estoque_opcoes || [];
+        trocaSel.value = '';
+        const btnTroca = document.getElementById('btnAbrirTrocaEq');
+        if (btnTroca) btnTroca.textContent = 'Manter o equipamento atual';
+        trocaBox.hidden = !data.pode_transferir;
+        if (data.pode_transferir) {
+            trocaAtual.textContent = 'No lugar de ' + (data.patrimonio || data.equipamento || 'o equipamento atual') + ', usar um do estoque:';
+        }
         document.getElementById('atMeta').textContent =
-            (data.cliente || 'N/A') + ' · Status atual: ' + (data.status || '—');
+            (data.cliente || 'N/A') + ' · Status atual: ' + (data.status || '—')
+            + (data.data_inicio_atendimento ? ' · Início: ' + data.data_inicio_atendimento : '')
+            + (data.data_conclusao ? ' · Finalizado: ' + data.data_conclusao : '');
         const origemBox = document.getElementById('atOrigemBox');
         const origemTxt = document.getElementById('atOrigemTexto');
         const origemInst = document.getElementById('atOrigemInstrucoes');
@@ -1159,6 +1407,8 @@ body.modal-open { overflow: hidden; }
         document.getElementById('at_notas').value = data.atendimento_notas || '';
         document.getElementById('at_status').value = data.status || 'Em Andamento';
         document.getElementById('at_aguardar_peca').checked = data.status === 'Aguardar peça';
+        const dataReag = document.getElementById('at_data_reagendamento');
+        if (dataReag) dataReag.value = data.data_reagendamento_iso || '';
         if (podeDevolver) {
             document.getElementById('at_setor').value = '';
             document.getElementById('at_instrucoes').value = '';
@@ -1182,15 +1432,19 @@ body.modal-open { overflow: hidden; }
     }
 
     function carregar(id) {
+        pararToqueLocal(id);
         fetch('/api/chamados/' + id + '/atender', {
             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
         })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-            if (!data.ok) {
+        .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+        .then(function (res) {
+            const data = res.data || {};
+            if (!res.ok || !data.ok) {
                 alert(data.message || 'Não foi possível abrir o atendimento.');
                 return;
             }
+            atendimentoAbertoId = data.chamado.id;
+            atendimentoFinalizado = false;
             preencher(data.chamado);
             abrirModal();
         })
@@ -1210,6 +1464,62 @@ body.modal-open { overflow: hidden; }
         }
     });
     document.getElementById('btnFecharAt').addEventListener('click', fecharModal);
+    function textoTrocaEq(item) {
+        let texto = item.patrimonio || ('#' + item.id);
+        if (item.nome) texto += ' — ' + item.nome;
+        const extra = [item.marca, item.modelo, item.setor, item.local].filter(Boolean).join(' · ');
+        if (extra) texto += ' (' + extra + ')';
+        return texto;
+    }
+
+    function renderTrocaEqLista() {
+        const lista = document.getElementById('trocaEqLista');
+        const q = (document.getElementById('trocaEqBusca').value || '').trim().toLowerCase();
+        const itens = estoqueTrocaOpcoes.filter(function (item) {
+            if (!q) return true;
+            return String(item.patrimonio || '').toLowerCase().indexOf(q) >= 0;
+        });
+        lista.innerHTML = '';
+        if (!itens.length) {
+            const vazio = document.createElement('li');
+            vazio.className = 'troca-eq-vazio';
+            vazio.textContent = 'Nenhum equipamento do estoque com esse patrimônio.';
+            lista.appendChild(vazio);
+            return;
+        }
+        itens.forEach(function (item) {
+            const li = document.createElement('li');
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'troca-eq-item';
+            btn.textContent = textoTrocaEq(item);
+            btn.addEventListener('click', function () {
+                document.getElementById('at_estoque_eq').value = String(item.id);
+                document.getElementById('btnAbrirTrocaEq').textContent = textoTrocaEq(item);
+                document.getElementById('modalTrocaEq').hidden = true;
+            });
+            li.appendChild(btn);
+            lista.appendChild(li);
+        });
+    }
+
+    function abrirTrocaEq() {
+        document.getElementById('trocaEqBusca').value = '';
+        renderTrocaEqLista();
+        document.getElementById('modalTrocaEq').hidden = false;
+        document.getElementById('trocaEqBusca').focus();
+    }
+
+    document.getElementById('btnAbrirTrocaEq').addEventListener('click', abrirTrocaEq);
+    document.getElementById('trocaEqBusca').addEventListener('input', renderTrocaEqLista);
+    document.getElementById('btnFecharTrocaEqX').addEventListener('click', function () {
+        document.getElementById('modalTrocaEq').hidden = true;
+    });
+    document.getElementById('btnManterEqAtual').addEventListener('click', function () {
+        document.getElementById('at_estoque_eq').value = '';
+        document.getElementById('btnAbrirTrocaEq').textContent = 'Manter o equipamento atual';
+        document.getElementById('modalTrocaEq').hidden = true;
+    });
     document.getElementById('btnFecharAtX').addEventListener('click', fecharModal);
     overlay.addEventListener('click', function (ev) {
         if (ev.target === overlay) fecharModal();
@@ -1309,6 +1619,20 @@ body.modal-open { overflow: hidden; }
                 return;
             }
         }
+        if (acao === 'salvar' && document.getElementById('at_status').value === 'Reagendado') {
+            const dia = (document.getElementById('at_data_reagendamento').value || '').trim();
+            if (!dia) {
+                alert('Informe o dia para reagendar.');
+                return;
+            }
+            const hoje = new Date();
+            hoje.setHours(0, 0, 0, 0);
+            const escolhido = new Date(dia + 'T00:00:00');
+            if (!(escolhido > hoje)) {
+                alert('Escolha um dia futuro para reagendar.');
+                return;
+            }
+        }
         if (acao === 'finalizar' && estoqueUsos.length) {
             for (let i = 0; i < estoqueUsos.length; i++) {
                 const u = estoqueUsos[i];
@@ -1347,6 +1671,11 @@ body.modal-open { overflow: hidden; }
         .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
         .then(function (res) {
             if (res.ok && (res.data.ok || res.data.success)) {
+                const stSalvo = (res.data.chamado && res.data.chamado.status) || '';
+                if (acao === 'finalizar' || acao === 'encaminhar' || STATUS_SEM_TOQUE[stSalvo]) {
+                    atendimentoFinalizado = true;
+                    pararToqueLocal(chamadoId);
+                }
                 fecharModal();
                 location.href = '{{ url_for("main.listar_chamados") }}';
             } else {
@@ -1364,6 +1693,11 @@ body.modal-open { overflow: hidden; }
         });
     });
 
+    window.addEventListener('pagehide', function () {
+        if (atendimentoAbertoId && !atendimentoFinalizado) {
+            liberarAtendimento(true);
+        }
+    });
     limparEstoqueUsos();
     if (abrirId) carregar(abrirId);
 })();

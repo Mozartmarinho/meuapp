@@ -44,6 +44,46 @@ class NutClinica(db.Model):
         return data
 
 
+nut_grupo_clinicas = db.Table(
+    'nut_grupo_clinicas',
+    db.Column('grupo_id', db.Integer, db.ForeignKey('nut_grupos_clinica.id'), primary_key=True),
+    db.Column('clinica_id', db.Integer, db.ForeignKey('nut_clinicas.id'), primary_key=True),
+)
+
+
+class NutGrupoClinica(db.Model):
+    """Agrupa clínicas para impressão e cadastro (ex.: MATERNIDADE, CTI)."""
+    __tablename__ = 'nut_grupos_clinica'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'nome', name='uq_nut_grupos_clinica_cliente_nome'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    nome = db.Column(db.String(160), nullable=False)
+    ativo = db.Column(db.Boolean, default=True)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    clinicas = db.relationship(
+        'NutClinica',
+        secondary=nut_grupo_clinicas,
+        lazy='select',
+        backref=db.backref('grupos_clinica', lazy='select'),
+        order_by='NutClinica.nome',
+    )
+
+    def to_dict(self, include_clinicas=False):
+        data = {
+            'id': self.id,
+            'nome': self.nome or '',
+            'ativo': bool(self.ativo),
+            'num_clinicas': len(self.clinicas or []),
+        }
+        if include_clinicas:
+            data['clinica_ids'] = [c.id for c in self.clinicas]
+            data['clinicas'] = [c.to_dict() for c in self.clinicas]
+        return data
+
+
 class NutEnfermaria(db.Model):
     """Enfermaria/unidade física vinculável a uma ou mais clínicas."""
     __tablename__ = 'nut_enfermarias'
@@ -119,7 +159,7 @@ class NutDieta(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
     nome = db.Column(db.String(200), nullable=False)
-    # basica | enteral | formula | lve | suplemento | outro
+    # Código de NutCategoriaDieta (ex.: basica, enteral, formula, suplemento)
     categoria = db.Column(db.String(40), default='basica')
     # Agrupamento visual (ex.: DIETAS ORAIS, NUTRICAO ENTERAL) — nome de NutGrupoDieta
     grupo = db.Column(db.String(80), default='')
@@ -134,6 +174,19 @@ class NutDieta(db.Model):
             'grupo': self.grupo or '',
             'ativo': self.ativo,
         }
+
+
+class NutDietaExcluida(db.Model):
+    """Nomes removidos do cadastro para o seed não recriar a dieta."""
+    __tablename__ = 'nut_dietas_excluidas'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'nome', name='uq_nut_dietas_excluidas_cliente_nome'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    nome = db.Column(db.String(200), nullable=False)
+    data_exclusao = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class NutGrupoDieta(db.Model):
@@ -153,6 +206,32 @@ class NutGrupoDieta(db.Model):
     def to_dict(self):
         return {
             'id': self.id,
+            'nome': self.nome or '',
+            'ordem': int(self.ordem or 0),
+            'ativo': bool(self.ativo),
+        }
+
+
+class NutCategoriaDieta(db.Model):
+    """Categoria da dieta (ex.: Básica / Oral, Enteral)."""
+    __tablename__ = 'nut_categorias_dieta'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'codigo', name='uq_nut_categorias_dieta_cliente_codigo'),
+        db.UniqueConstraint('cliente_id', 'nome', name='uq_nut_categorias_dieta_cliente_nome'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    codigo = db.Column(db.String(40), nullable=False)
+    nome = db.Column(db.String(80), nullable=False)
+    ordem = db.Column(db.Integer, default=0)
+    ativo = db.Column(db.Boolean, default=True)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'codigo': self.codigo or '',
             'nome': self.nome or '',
             'ordem': int(self.ordem or 0),
             'ativo': bool(self.ativo),
@@ -202,6 +281,9 @@ class NutPaciente(db.Model):
             'id': self.id,
             'nome': self.nome,
             'sexo': self.sexo or '',
+            'sexo_label': {'M': 'Masculino', 'F': 'Feminino', 'O': 'Outros'}.get(
+                (self.sexo or '').strip().upper(), self.sexo or ''
+            ),
             'nascimento': self.nascimento.isoformat() if self.nascimento else '',
             'prontuario': self.prontuario or '',
             'clinica': self.clinica or '',
@@ -239,6 +321,12 @@ class NutMapaRefeicao(db.Model):
     idade = db.Column(db.Integer)
     diagnostico = db.Column(db.Text)
     dieta = db.Column(db.String(200))
+    dieta_id = db.Column(db.Integer, db.ForeignKey('nut_dietas.id'), nullable=True, index=True)
+    dieta_ref = db.relationship('NutDieta', lazy='select', foreign_keys=[dieta_id])
+    # principal | adicional | substituicao — vários lançamentos no mesmo paciente/leito
+    tipo_lancamento = db.Column(db.String(20), default='principal', index=True)
+    # Identidade estável do lançamento entre dias (cópia do mapa)
+    lancamento_grupo_id = db.Column(db.Integer, index=True)
     observacoes = db.Column(db.Text)
     clinica = db.Column(db.String(120))
     enfermaria = db.Column(db.String(120))
@@ -305,6 +393,13 @@ class NutMapaRefeicao(db.Model):
             'idade': self.idade,
             'diagnostico': self.diagnostico or '',
             'dieta': self.dieta or '',
+            'dieta_id': self.dieta_id,
+            'tipo_lancamento': (self.tipo_lancamento or 'principal'),
+            'tipo_lancamento_label': {
+                'adicional': 'Adicional',
+                'substituicao': 'Substituição',
+            }.get((self.tipo_lancamento or 'principal'), 'Principal'),
+            'lancamento_grupo_id': self.lancamento_grupo_id,
             'observacoes': self.observacoes or '',
             'clinica': self.clinica or '',
             'enfermaria': self.enfermaria or '',
@@ -329,6 +424,21 @@ class NutMapaRefeicao(db.Model):
             'hospital_transferencia': self.hospital_transferencia or '',
             'ativo': self.ativo,
         }
+
+
+CAMPOS_ITEM_CARDAPIO = {
+    'grandes': (
+        'acompanhamento', 'prato_base', 'proteina_opcional', 'guarnicao',
+        'docinho_salada', 'sobremesa', 'fruta', 'suco', 'vitamina_suco', 'outros',
+    ),
+    'pequenas': (
+        'bebida', 'prato1', 'prato2', 'prato3', 'prato4',
+        'prato5', 'prato6', 'prato7', 'sobremesa', 'prato8',
+    ),
+    'liquidas': (
+        'principal', 'bebida', 'sobremesa', 'gelado', 'outros',
+    ),
+}
 
 
 class NutCardapio(db.Model):
@@ -358,8 +468,18 @@ class NutCardapio(db.Model):
     hr_jantar = db.Column(db.Boolean, default=False)
     hr_ceia = db.Column(db.Boolean, default=False)
 
-    # campos específicos da aba (JSON/Text)
+    # campos específicos da aba (JSON/Text) e cada item em coluna própria
     itens = db.Column(db.Text)
+    item_1 = db.Column(db.String(255))
+    item_2 = db.Column(db.String(255))
+    item_3 = db.Column(db.String(255))
+    item_4 = db.Column(db.String(255))
+    item_5 = db.Column(db.String(255))
+    item_6 = db.Column(db.String(255))
+    item_7 = db.Column(db.String(255))
+    item_8 = db.Column(db.String(255))
+    item_9 = db.Column(db.String(255))
+    item_10 = db.Column(db.String(255))
 
     # V.N.T. na UI (valor nutricional total) — coluna histórica `vet`
     vet = db.Column(db.Float, default=0)
@@ -372,16 +492,39 @@ class NutCardapio(db.Model):
 
     def get_itens(self):
         import json
-        if not self.itens:
-            return {}
-        try:
-            return json.loads(self.itens)
-        except (TypeError, ValueError):
-            return {}
+        data = {}
+        if self.itens:
+            try:
+                bruto = json.loads(self.itens)
+                if isinstance(bruto, dict):
+                    data = bruto
+            except (TypeError, ValueError):
+                data = {}
+        chaves = CAMPOS_ITEM_CARDAPIO.get(self.tipo or '', ())
+        for i, chave in enumerate(chaves, start=1):
+            valor = getattr(self, f'item_{i}', None)
+            if valor:
+                data[chave] = valor
+        return data
 
     def set_itens(self, data):
         import json
-        self.itens = json.dumps(data or {}, ensure_ascii=False)
+        data = dict(data or {})
+        self.itens = json.dumps(data, ensure_ascii=False)
+        self._gravar_colunas_item(data)
+
+    def _gravar_colunas_item(self, data):
+        chaves = CAMPOS_ITEM_CARDAPIO.get(self.tipo or '', ())
+        for i in range(1, 11):
+            chave = chaves[i - 1] if i <= len(chaves) else None
+            valor = ''
+            if chave:
+                bruto = (data or {}).get(chave)
+                if isinstance(bruto, (list, tuple)):
+                    valor = str(bruto[0]).strip() if bruto else ''
+                else:
+                    valor = str(bruto or '').strip()
+            setattr(self, f'item_{i}', valor or None)
 
     def to_dict(self):
         dieta_nome = self.dieta or ''
@@ -402,6 +545,16 @@ class NutCardapio(db.Model):
             'hr_jantar': bool(self.hr_jantar),
             'hr_ceia': bool(self.hr_ceia),
             'itens': self.get_itens(),
+            'item_1': self.item_1 or '',
+            'item_2': self.item_2 or '',
+            'item_3': self.item_3 or '',
+            'item_4': self.item_4 or '',
+            'item_5': self.item_5 or '',
+            'item_6': self.item_6 or '',
+            'item_7': self.item_7 or '',
+            'item_8': self.item_8 or '',
+            'item_9': self.item_9 or '',
+            'item_10': self.item_10 or '',
             'vet': self.vet or 0,
             'custo': self.custo or 0,
             'organizar_por': self.organizar_por or 'Ord, Dieta, Horário',

@@ -1,14 +1,16 @@
-from flask import Flask
+from flask import Flask, send_from_directory
 from routes import main
 from routes_nutricao import nutricao
 from routes_pesagem import pesagem
 from routes_acesso import acesso
+from routes_logistica import logistica
 from routes_audit import auditoria
 from models import db, Usuario
 from db_config import SQLALCHEMY_DATABASE_URI
 import models_nutricao  # noqa: F401 — registra tabelas de nutrição
 import models_pesagem  # noqa: F401 — registra tabelas de pesagem
 import models_acesso  # noqa: F401 — registra tabelas de controle de acesso
+import models_logistica  # noqa: F401 — registra tabelas de logística
 import models_audit  # noqa: F401 — registra tabelas de auditoria
 import os
 import socket
@@ -24,16 +26,44 @@ def create_app():
     app.config['SESSION_COOKIE_SECURE'] = False
     app.config['REMEMBER_COOKIE_SECURE'] = False
     app.config['TEMPLATES_AUTO_RELOAD'] = True
+    app.jinja_env.auto_reload = True
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     db.init_app(app)
     app.register_blueprint(main)
     app.register_blueprint(nutricao)
     app.register_blueprint(pesagem)
     app.register_blueprint(acesso)
+    app.register_blueprint(logistica)
     app.register_blueprint(auditoria)
 
     from audit_service import register_audit_hooks
     register_audit_hooks(app)
+
+    with app.app_context():
+        try:
+            ensure_chamados_schema()
+        except Exception as extra:
+            print(f"Aviso ao ajustar schema de chamados: {extra}")
+        try:
+            ensure_equipamentos_schema()
+        except Exception as extra:
+            print(f"Aviso ao ajustar schema de equipamentos: {extra}")
+        try:
+            ensure_whatsapp_chamado_schema()
+        except Exception as exc:
+            print(f"Aviso ao ajustar schema WhatsApp chamado: {exc}")
+        try:
+            ensure_tecnicos_schema()
+        except Exception as exc:
+            print(f"Aviso ao ajustar schema de técnicos: {exc}")
+        try:
+            ensure_logistica_schema()
+        except Exception as extra:
+            print(f"Aviso ao ajustar schema de logística: {extra}")
 
     @app.context_processor
     def inject_acesso():
@@ -41,9 +71,85 @@ def create_app():
         user = None
         if session.get('user_id'):
             user = Usuario.query.get(session['user_id'])
-        return {'usuario_atual': user}
+        nome = ''
+        if user is not None:
+            nome = str(
+                getattr(user, 'nome', None)
+                or getattr(user, 'email', None)
+                or getattr(user, 'usuario', None)
+                or ''
+            ).strip()
+        if not nome:
+            nome = str(session.get('user_name') or session.get('user_email') or '').strip()
+        return {
+            'usuario_atual': user,
+            'usuario_nome_sessao': nome,
+            'usuario_sistema': _nome_usuario_sistema(),
+        }
+
+    @app.after_request
+    def _html_no_store(response):
+        ctype = response.headers.get('Content-Type', '')
+        if 'text/html' in ctype:
+            response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+        return response
+
+    @app.route('/nutricao/versao')
+    def nutricao_versao():
+        rev = _app_revision() or 'sem-git'
+        pasta = os.path.dirname(os.path.abspath(__file__))
+        corpo = f'meuapp {rev}\npasta {pasta}\n'
+        return corpo, 200, {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        }
+
+    @app.route('/favicon.ico')
+    def favicon():
+        return send_from_directory(
+            os.path.join(app.root_path, 'static', 'img'),
+            'favicon.ico',
+            mimetype='image/vnd.microsoft.icon',
+        )
 
     return app
+
+
+_APP_REVISION_CACHE = None
+
+
+def _nome_usuario_sistema():
+    """Nome do usuário logado no Windows/sistema operacional."""
+    for key in ('USERNAME', 'USER', 'LOGNAME'):
+        nome = (os.environ.get(key) or '').strip()
+        if nome:
+            return nome
+    try:
+        import getpass
+        return (getpass.getuser() or '').strip()
+    except Exception:
+        return ''
+
+
+def _app_revision():
+    """Short git SHA for /nutricao/versao and console startup."""
+    global _APP_REVISION_CACHE
+    if _APP_REVISION_CACHE is not None:
+        return _APP_REVISION_CACHE
+    try:
+        import subprocess
+        root = os.path.dirname(os.path.abspath(__file__))
+        _APP_REVISION_CACHE = subprocess.check_output(
+            ['git', 'rev-parse', '--short', 'HEAD'],
+            cwd=root,
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+        ).decode('utf-8', 'replace').strip()
+    except Exception:
+        _APP_REVISION_CACHE = ''
+    return _APP_REVISION_CACHE
 
 
 def _port_available(host: str, port: int) -> bool:
@@ -139,7 +245,7 @@ def ensure_usuarios_schema():
         if 'reset_token_expira' not in cols:
             db.session.execute(text('ALTER TABLE usuarios ADD COLUMN reset_token_expira DATETIME NULL'))
             db.session.commit()
-        for col in ('is_master', 'perm_chamados', 'perm_nutricao', 'perm_pesagem', 'perm_acesso', 'perm_portal'):
+        for col in ('is_master', 'perm_chamados', 'perm_nutricao', 'perm_pesagem', 'perm_logistica', 'perm_acesso', 'perm_portal'):
             if col not in cols:
                 db.session.execute(text(f'ALTER TABLE usuarios ADD COLUMN {col} TINYINT(1) NOT NULL DEFAULT 0'))
                 db.session.commit()
@@ -232,12 +338,24 @@ def ensure_chamados_schema():
             'equipamento_id': 'INT NULL',
             'mesa_id': 'INT NULL',
             'contrato_id': 'INT NULL',
+            'atendente_id': 'INT NULL',
+            'atendendo_em': 'DATETIME NULL',
+            'data_inicio_atendimento': 'DATETIME NULL',
+            'data_reagendamento': 'DATE NULL',
+            'canal_abertura': 'VARCHAR(20) NULL',
+            'contato_abertura': 'VARCHAR(120) NULL',
         }
         for col, ddl in extras.items():
             if col not in cols:
                 db.session.execute(text(f'ALTER TABLE chamados ADD COLUMN {col} {ddl}'))
                 db.session.commit()
                 cols.add(col)
+        try:
+            from models import migrar_mesa_suporte_para_informatica, preencher_inicio_atendimento_legado
+            migrar_mesa_suporte_para_informatica()
+            preencher_inicio_atendimento_legado()
+        except Exception:
+            db.session.rollback()
         try:
             db.session.execute(text('ALTER TABLE chamados MODIFY COLUMN status VARCHAR(40) NULL'))
             db.session.commit()
@@ -282,6 +400,51 @@ def ensure_chamados_schema():
         db.session.rollback()
 
 
+def _garantir_coluna_equipamento_legado():
+    """A coluna legado `equipamento` é NOT NULL sem default.
+
+    O cadastro grava só nome_equipamento. O trigger copia o nome antes do
+    INSERT/UPDATE para o MySQL não recusar a linha (erro 1364).
+    """
+    from sqlalchemy import text
+    if db.engine.dialect.name != 'mysql':
+        return
+    try:
+        db.session.execute(text(
+            'ALTER TABLE equipamentos MODIFY COLUMN equipamento VARCHAR(100) NULL'
+        ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    for nome in ('equipamentos_bi_legado', 'equipamentos_bu_legado'):
+        try:
+            db.session.execute(text(f'DROP TRIGGER IF EXISTS {nome}'))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+    try:
+        db.session.execute(text(
+            'CREATE TRIGGER equipamentos_bi_legado BEFORE INSERT ON equipamentos '
+            'FOR EACH ROW BEGIN '
+            'IF NEW.equipamento IS NULL OR NEW.equipamento = \'\' THEN '
+            'SET NEW.equipamento = IFNULL(NEW.nome_equipamento, \'\'); '
+            'END IF; '
+            'END'
+        ))
+        db.session.execute(text(
+            'CREATE TRIGGER equipamentos_bu_legado BEFORE UPDATE ON equipamentos '
+            'FOR EACH ROW BEGIN '
+            'IF NEW.nome_equipamento IS NOT NULL AND NEW.nome_equipamento != \'\' THEN '
+            'SET NEW.equipamento = NEW.nome_equipamento; '
+            'END IF; '
+            'END'
+        ))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print(f'Aviso: trigger de equipamento legado não criado: {exc}')
+
+
 def ensure_equipamentos_schema():
     """Garante tabela/colunas de equipamentos (patrimônio vinculado ao cliente)."""
     from sqlalchemy import inspect, text
@@ -299,33 +462,58 @@ def ensure_equipamentos_schema():
             'cliente_id': 'INT NULL',
             'patrimonio': 'VARCHAR(50) NULL',
             'localizacao': 'VARCHAR(100) NULL',
+            'local': 'VARCHAR(200) NULL',
             'data_compra': 'DATE NULL',
+            'data_manutencao': 'DATE NULL',
+            'data_criacao': 'DATETIME NULL',
             'ativo': 'TINYINT(1) NOT NULL DEFAULT 1',
+            'equipamento': 'VARCHAR(100) NULL',
             'nome_equipamento': 'VARCHAR(100) NULL',
             'marca': 'VARCHAR(100) NULL',
             'modelo': 'VARCHAR(100) NULL',
+            'numero_serie': 'VARCHAR(50) NULL',
             'tipo_recurso': "VARCHAR(40) NULL DEFAULT 'Estação'",
+            'tipo_equipamento': "VARCHAR(20) NOT NULL DEFAULT 'ti'",
             'grupo_id': 'INT NULL',
             'usuario_equipamento': 'VARCHAR(120) NULL',
             'ip': 'VARCHAR(45) NULL',
             'is_agente': 'TINYINT(1) NOT NULL DEFAULT 0',
+            'em_estoque': 'TINYINT(1) NOT NULL DEFAULT 0',
             'atualizado_em': 'DATETIME NULL',
         }
         for col, ddl in extras.items():
             if col not in cols:
-                db.session.execute(text(f'ALTER TABLE equipamentos ADD COLUMN {col} {ddl}'))
-                db.session.commit()
-                cols.add(col)
+                try:
+                    db.session.execute(text(
+                        f'ALTER TABLE equipamentos ADD COLUMN `{col}` {ddl}'
+                    ))
+                    db.session.commit()
+                    cols.add(col)
+                    if col == 'em_estoque':
+                        db.session.execute(text(
+                            "UPDATE equipamentos SET em_estoque = 1 "
+                            "WHERE LOWER(TRIM(IFNULL(setor, ''))) = 'estoque'"
+                        ))
+                        db.session.commit()
+                except Exception as exc:
+                    db.session.rollback()
+                    print(f'Aviso: não foi possível criar equipamentos.{col}: {exc}')
         if 'equipamento' in cols and 'nome_equipamento' in cols:
             try:
                 db.session.execute(text(
                     'UPDATE equipamentos SET nome_equipamento = equipamento '
                     'WHERE (nome_equipamento IS NULL OR nome_equipamento = \'\') '
-                    'AND equipamento IS NOT NULL'
+                    'AND equipamento IS NOT NULL AND equipamento != \'\''
+                ))
+                db.session.execute(text(
+                    'UPDATE equipamentos SET equipamento = nome_equipamento '
+                    'WHERE (equipamento IS NULL OR equipamento = \'\') '
+                    'AND nome_equipamento IS NOT NULL AND nome_equipamento != \'\''
                 ))
                 db.session.commit()
             except Exception:
                 db.session.rollback()
+            _garantir_coluna_equipamento_legado()
         try:
             db.session.execute(text(
                 'ALTER TABLE equipamentos ADD CONSTRAINT fk_equipamentos_grupo '
@@ -351,6 +539,26 @@ def ensure_equipamentos_schema():
                     db.session.commit()
                 except Exception:
                     db.session.rollback()
+        from models import EquipamentoPreventiva, EquipamentoTermo
+        try:
+            EquipamentoPreventiva.__table__.create(db.engine, checkfirst=True)
+        except Exception as exc:
+            print(f'Aviso: não foi possível criar equipamento_preventivas: {exc}')
+        try:
+            EquipamentoTermo.__table__.create(db.engine, checkfirst=True)
+        except Exception as extra:
+            print(f'Aviso: não foi possível criar equipamento_termos: {extra}')
+        try:
+            if 'equipamento_termos' in set(insp.get_table_names()):
+                tcols = {c['name'] for c in insp.get_columns('equipamento_termos')}
+                if 'eq_tipo' not in tcols:
+                    db.session.execute(text(
+                        "ALTER TABLE equipamento_termos ADD COLUMN eq_tipo VARCHAR(20) NULL DEFAULT 'ti'"
+                    ))
+                    db.session.commit()
+        except Exception as extra:
+            db.session.rollback()
+            print(f'Aviso: não foi possível criar equipamento_termos.eq_tipo: {extra}')
         if 'chamados' in tables:
             chamado_cols = {c['name'] for c in insp.get_columns('chamados')}
             if 'equipamento_id' in chamado_cols:
@@ -410,6 +618,12 @@ def ensure_pesagem_schema():
     """Garante tabela pesagem_clientes e colunas de cliente nas leituras."""
     from sqlalchemy import inspect, text
     try:
+        from models_pesagem import PesagemWhatsAppDestino, PesagemWhatsAppEnvio
+        PesagemWhatsAppDestino.__table__.create(db.engine, checkfirst=True)
+        PesagemWhatsAppEnvio.__table__.create(db.engine, checkfirst=True)
+    except Exception:
+        db.session.rollback()
+    try:
         insp = inspect(db.engine)
         tables = set(insp.get_table_names())
         if 'pesagem_leituras' not in tables:
@@ -434,6 +648,99 @@ def ensure_pesagem_schema():
                 cols.add(col)
     except Exception:
         db.session.rollback()
+
+
+def ensure_logistica_schema():
+    """Garante tabelas do Sistema de Controle de Logística e coluna perm_logistica."""
+    from sqlalchemy import Boolean, Date, DateTime, Float, Integer, String, Text, inspect, text
+    from models_logistica import (
+        LogisticaChecklist,
+        LogisticaColeta,
+        LogisticaColaborador,
+        LogisticaEntrega,
+        LogisticaFolga,
+        LogisticaFolha,
+        LogisticaHigiene,
+        LogisticaLancamento,
+        LogisticaManutencao,
+        LogisticaOciosidade,
+        LogisticaRevisao,
+        LogisticaRota,
+        LogisticaVeiculo,
+    )
+    models_cols = (
+        LogisticaVeiculo, LogisticaLancamento, LogisticaManutencao, LogisticaRevisao,
+        LogisticaRota, LogisticaEntrega, LogisticaColaborador, LogisticaFolha,
+        LogisticaFolga, LogisticaOciosidade, LogisticaChecklist, LogisticaHigiene,
+        LogisticaColeta,
+    )
+    try:
+        for model in models_cols:
+            model.__table__.create(db.engine, checkfirst=True)
+    except Exception as exc:
+        db.session.rollback()
+        print(f'Aviso ao criar tabelas de logística: {exc}')
+    try:
+        insp = inspect(db.engine)
+        tables = set(insp.get_table_names())
+        if 'usuarios' in tables:
+            cols = {c['name'] for c in insp.get_columns('usuarios')}
+            if 'perm_logistica' not in cols:
+                db.session.execute(text(
+                    'ALTER TABLE usuarios ADD COLUMN perm_logistica TINYINT(1) NOT NULL DEFAULT 0'
+                ))
+                db.session.commit()
+        extras_por_tabela = {}
+        for model in models_cols:
+            extras = {}
+            for col in model.__table__.columns:
+                if col.primary_key:
+                    continue
+                t = col.type
+                if isinstance(t, Text) and not getattr(t, 'length', None):
+                    ddl = 'MEDIUMTEXT NULL'
+                elif isinstance(t, String):
+                    ddl = f'VARCHAR({t.length or 255}) NULL'
+                elif isinstance(t, Integer):
+                    ddl = 'INT NULL'
+                elif isinstance(t, Float):
+                    ddl = 'FLOAT NULL DEFAULT 0'
+                elif isinstance(t, Boolean):
+                    ddl = 'TINYINT(1) NOT NULL DEFAULT 0'
+                elif isinstance(t, DateTime):
+                    ddl = 'DATETIME NULL'
+                elif isinstance(t, Date):
+                    ddl = 'DATE NULL'
+                else:
+                    ddl = 'TEXT NULL'
+                extras[col.name] = ddl
+            extras_por_tabela[model.__tablename__] = extras
+        for tabela, extras in extras_por_tabela.items():
+            if tabela not in tables:
+                continue
+            cols = {c['name'] for c in insp.get_columns(tabela)}
+            for col, ddl in extras.items():
+                if col in cols:
+                    continue
+                try:
+                    db.session.execute(text(f'ALTER TABLE {tabela} ADD COLUMN `{col}` {ddl}'))
+                    db.session.commit()
+                    cols.add(col)
+                except Exception as exc:
+                    db.session.rollback()
+                    print(f'Aviso: não foi possível criar {tabela}.{col}: {exc}')
+        if 'logistica_rotas' in tables:
+            try:
+                db.session.execute(text(
+                    'ALTER TABLE logistica_rotas MODIFY COLUMN `polyline` MEDIUMTEXT NULL'
+                ))
+                db.session.commit()
+            except Exception as exc:
+                db.session.rollback()
+                print(f'Aviso ao ampliar logistica_rotas.polyline: {exc}')
+    except Exception as exc:
+        db.session.rollback()
+        print(f'Aviso ao ajustar schema de logística: {exc}')
 
 
 def ensure_setores_funcao_schema():
@@ -472,16 +779,22 @@ def ensure_setores_funcao_schema():
 def ensure_tecnicos_schema():
     """Cria tabelas chamado_setores e chamado_tecnicos e semeia setores padrão."""
     from sqlalchemy import inspect, text
-    from models import ChamadoSetor, ChamadoTecnico
+    from models import ChamadoSetor, ChamadoTecnico, ChamadoTecnicoMesa, MesaServico
     SETORES_PADRAO = ['Informática', 'Edificação', 'Elétrica', 'Máquinas', 'Compras']
     try:
         insp = inspect(db.engine)
         tables = set(insp.get_table_names())
+        if 'mesas' not in tables:
+            MesaServico.__table__.create(db.engine, checkfirst=True)
         if 'chamado_setores' not in tables:
             ChamadoSetor.__table__.create(db.engine, checkfirst=True)
         if 'chamado_tecnicos' not in tables:
             ChamadoTecnico.__table__.create(db.engine, checkfirst=True)
-        else:
+        if 'chamado_tecnico_mesas' not in tables:
+            ChamadoTecnicoMesa.__table__.create(db.engine, checkfirst=True)
+        insp = inspect(db.engine)
+        tables = set(insp.get_table_names())
+        if 'chamado_tecnicos' in tables:
             tec_cols = {c['name'] for c in insp.get_columns('chamado_tecnicos')}
             if 'usuario_id' not in tec_cols:
                 db.session.execute(text('ALTER TABLE chamado_tecnicos ADD COLUMN usuario_id INT NULL'))
@@ -496,6 +809,9 @@ def ensure_tecnicos_schema():
                     db.session.rollback()
             if 'funcao' not in tec_cols:
                 db.session.execute(text('ALTER TABLE chamado_tecnicos ADD COLUMN funcao VARCHAR(20) NULL'))
+                db.session.commit()
+            if 'whatsapp' not in tec_cols:
+                db.session.execute(text('ALTER TABLE chamado_tecnicos ADD COLUMN whatsapp VARCHAR(20) NULL'))
                 db.session.commit()
         # Add setor_tecnico_id to chamados if missing
         if 'chamados' in tables:
@@ -516,8 +832,9 @@ def ensure_tecnicos_schema():
             if not ChamadoSetor.query.filter_by(nome=nome).first():
                 db.session.add(ChamadoSetor(nome=nome, ativo=True))
         db.session.commit()
-    except Exception:
+    except Exception as exc:
         db.session.rollback()
+        print(f'Aviso ao ajustar schema de técnicos: {exc}')
 
 
 def ensure_cameras_schema():
@@ -565,6 +882,23 @@ def ensure_estoque_schema():
         db.session.rollback()
 
 
+def ensure_whatsapp_chamado_schema():
+    from models import (
+        WhatsAppChamadoConfig,
+        WhatsAppChamadoUsuario,
+        WhatsAppChamadoLog,
+    )
+    try:
+        WhatsAppChamadoConfig.__table__.create(db.engine, checkfirst=True)
+        WhatsAppChamadoUsuario.__table__.create(db.engine, checkfirst=True)
+        WhatsAppChamadoLog.__table__.create(db.engine, checkfirst=True)
+        if not WhatsAppChamadoConfig.query.first():
+            db.session.add(WhatsAppChamadoConfig(ativo=True))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 def ensure_operacao_chamados_schema():
     """Tabelas e sementes: mesas, SLA, contratos, mensagens, automações, pastas."""
     from sqlalchemy import inspect, text
@@ -573,9 +907,7 @@ def ensure_operacao_chamados_schema():
         SlaPrioridade,
         ChamadoAutomacao,
         ConhecimentoPasta,
-        MESA_PADRAO,
         PASTA_CONHECIMENTO_PADRAO,
-        SLA_PADRAO_HORAS,
         STATUS_ENCAMINHADO,
     )
     try:
@@ -628,18 +960,8 @@ def ensure_operacao_chamados_schema():
                 db.session.commit()
             except Exception:
                 db.session.rollback()
-        if not MesaServico.query.filter_by(nome=MESA_PADRAO).first():
-            db.session.add(MesaServico(nome=MESA_PADRAO, ativa=True))
-            db.session.flush()
-        suporte = MesaServico.query.filter_by(nome=MESA_PADRAO).first()
-        if suporte:
-            try:
-                db.session.execute(
-                    text('UPDATE chamados SET mesa_id = :mid WHERE mesa_id IS NULL'),
-                    {'mid': suporte.id},
-                )
-            except Exception:
-                db.session.rollback()
+        from models import migrar_mesa_suporte_para_informatica
+        migrar_mesa_suporte_para_informatica()
         for pri, horas in (('Alta', (4, 8)), ('Normal', (8, 24)), ('Baixa', (24, 72))):
             row = SlaPrioridade.query.filter_by(prioridade=pri).first()
             if not row:
@@ -676,6 +998,14 @@ if __name__ == '__main__':
     from password_utils import generate_password_hash
 
     app = create_app()
+    pasta = os.path.dirname(os.path.abspath(__file__))
+    print('========================================')
+    print('  São Geraldo Service — projeto meuapp')
+    print(f'  Pasta: {pasta}')
+    print(f'  rev:   {_app_revision() or "sem-git"}')
+    print('  Se a pasta acima não for o clone git,')
+    print('  você está no projeto antigo.')
+    print('========================================')
     with app.app_context():
         db.create_all()
         ensure_usuarios_schema()
@@ -683,20 +1013,24 @@ if __name__ == '__main__':
         ensure_chamados_schema()
         ensure_equipamentos_schema()
         ensure_pesagem_schema()
+        ensure_logistica_schema()
         ensure_setores_funcao_schema()
         ensure_operacao_chamados_schema()
         ensure_tecnicos_schema()
         ensure_cameras_schema()
         ensure_portoes_schema()
         ensure_estoque_schema()
+        ensure_whatsapp_chamado_schema()
         from nutricao_tenant import ensure_nutricao_cliente_schema
         ensure_nutricao_cliente_schema()
         from nutricao_service import seed_nutricao
         from routes_pesagem import seed_pesagem
+        from routes_logistica import seed_logistica
         from routes_acesso import seed_acesso
         from audit_service import ensure_audit_table
         seed_nutricao()
         seed_pesagem()
+        seed_logistica()
         seed_acesso()
         ensure_audit_table()
         try:
@@ -715,8 +1049,16 @@ if __name__ == '__main__':
             db.session.commit()
             print("Default admin user created: email=admin@example.com, password=admin")
 
+    from whatsapp_pesagem import start_background
+    start_background(app)
+    try:
+        from equipamento_service import start_preventiva_background
+        start_preventiva_background(app)
+    except Exception as extra:
+        print(f"Aviso ao iniciar preventiva de equipamentos: {extra}")
+
     host = os.environ.get('HOST', '0.0.0.0')
-    port = 80
+    port = int(os.environ.get('PORT', '80'))
     https_port = int(os.environ.get('HTTPS_PORT', '443'))
     enable_https = os.environ.get('ENABLE_HTTPS', '1').strip().lower() not in ('0', 'false', 'no')
 

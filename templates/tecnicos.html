@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Técnicos — São Geraldo Service{% endblock %}
+{% block title %}Técnicos — Sistemas São Geraldo{% endblock %}
 
 {% block content %}
 <div class="tec-page">
@@ -17,6 +17,9 @@
             <button type="button" class="btn btn-primary tec-btn-sm" id="btnAdicionarSetor">
                 <i class="fas fa-plus"></i> Adicionar setor
             </button>
+            <button type="button" class="btn btn-primary tec-btn-sm" id="btnAdicionarMesa">
+                <i class="fas fa-plus"></i> Adicionar mesa de serviço
+            </button>
             <button class="btn btn-primary tec-btn-sm" onclick="abrirModalTecnico()">
                 <i class="fas fa-plus"></i> Adicionar técnico
             </button>
@@ -27,8 +30,9 @@
             <tr>
                 <th>Nome</th>
                 <th>E-mail</th>
+                <th>WhatsApp</th>
                 <th>Função</th>
-                <th>Setor</th>
+                <th>Mesa de serviço</th>
                 <th>Acesso</th>
                 <th>Situação</th>
                 <th>Ações</th>
@@ -36,11 +40,19 @@
         </thead>
         <tbody id="tbody-tecnicos">
             {% for t in tecnicos %}
-            <tr id="tec-row-{{ t.id }}">
+            <tr id="tec-row-{{ t.id }}" data-tec="{{ {
+                'id': t.id,
+                'nome': t.nome or '',
+                'email': t.email or '',
+                'whatsapp': t.whatsapp or '',
+                'funcao': t.funcao or '',
+                'mesa_ids': t.mesas_ids|default([], true)
+            } | tojson | forceescape }}">
                 <td>{{ t.nome }}</td>
                 <td>{{ t.email or '—' }}</td>
+                <td>{{ t.whatsapp or '—' }}</td>
                 <td>{{ t.funcao_label or '—' }}</td>
-                <td>{{ t.setor.nome if t.setor else '—' }}</td>
+                <td>{{ t.mesas_label or '—' }}</td>
                 <td>
                     {% if t.usuario_id %}
                     <span class="tec-badge tec-badge-ok">Vinculado</span>
@@ -50,18 +62,18 @@
                 </td>
                 <td><span class="tec-badge {% if t.ativo %}tec-badge-ok{% else %}tec-badge-off{% endif %}">{{ 'Ativo' if t.ativo else 'Inativo' }}</span></td>
                 <td>
-                    <button class="btn tec-btn-sm tec-btn-muted"
-                            onclick="abrirEditarTecnico({{ t.id }}, '{{ t.nome|e }}', '{{ (t.email or '')|e }}', '{{ t.funcao or '' }}', '{{ t.setor_id or '' }}')">
+                    <button type="button" class="btn tec-btn-sm tec-btn-muted"
+                            onclick="abrirEditarTecnico({{ t.id }})" title="Editar">
                         <i class="fas fa-edit"></i>
                     </button>
-                    <button class="btn tec-btn-sm tec-btn-danger"
-                            onclick="excluirTecnico({{ t.id }})">
+                    <button type="button" class="btn tec-btn-sm tec-btn-danger"
+                            onclick="excluirTecnico({{ t.id }})" title="Excluir">
                         <i class="fas fa-trash"></i>
                     </button>
                 </td>
             </tr>
             {% else %}
-            <tr id="tec-vazio"><td colspan="7" style="text-align:center;color:var(--gray-500)">Nenhum técnico cadastrado.</td></tr>
+            <tr id="tec-vazio"><td colspan="8" style="text-align:center;color:var(--gray-500)">Nenhum técnico cadastrado.</td></tr>
             {% endfor %}
         </tbody>
     </table>
@@ -99,10 +111,14 @@
                             {{ 'Ativo' if s.ativo else 'Inativo' }}
                         </span>
                     </td>
-                    <td>
+                    <td class="setor-acoes">
                         <button type="button" class="btn tec-btn-sm tec-btn-muted"
-                                onclick="toggleSetor({{ s.id }})">
-                            <i class="fas fa-toggle-on"></i> Alternar
+                                onclick="ChamadoSetorCadastro.editar({{ s.id }})">
+                            <i class="fas fa-edit"></i> Editar
+                        </button>
+                        <button type="button" class="btn tec-btn-sm tec-btn-danger"
+                                onclick="ChamadoSetorCadastro.excluir({{ s.id }})">
+                            <i class="fas fa-trash"></i> Excluir
                         </button>
                     </td>
                 </tr>
@@ -118,13 +134,14 @@
 </div>
 
 <!-- ── MODAL ADICIONAR SETOR ──────────────────────────────────── -->
-<div class="tec-overlay" id="modalSetorOverlay" style="display:none" onclick="fecharModalSetor()"></div>
+<div class="tec-overlay" id="modalSetorOverlay" style="display:none" onclick="ChamadoSetorCadastro.fechar()"></div>
 <div class="tec-modal" id="modalSetor" style="display:none">
     <div class="tec-modal-head">
-        <span>Adicionar Setor</span>
-        <button type="button" class="tec-modal-close" onclick="fecharModalSetor()"><i class="fas fa-times"></i></button>
+        <span id="modalSetorTitulo">Adicionar Setor</span>
+        <button type="button" class="tec-modal-close" onclick="ChamadoSetorCadastro.fechar()"><i class="fas fa-times"></i></button>
     </div>
     <div class="tec-modal-body">
+        <input type="hidden" id="setorId" value="">
         <div class="form-group">
             <label>Nome do Setor *</label>
             <input type="text" id="setorNome" placeholder="Ex: Informática" maxlength="80">
@@ -132,8 +149,80 @@
         <div id="setorErro" class="tec-erro" style="display:none"></div>
     </div>
     <div class="tec-modal-foot">
-        <button type="button" class="btn tec-btn-sm tec-btn-muted" onclick="fecharModalSetor()">Fechar</button>
-        <button type="button" class="btn btn-success tec-btn-sm" onclick="salvarSetor()">Salvar</button>
+        <button type="button" class="btn tec-btn-sm tec-btn-muted" onclick="ChamadoSetorCadastro.fechar()">Fechar</button>
+        <button type="button" class="btn btn-success tec-btn-sm" onclick="ChamadoSetorCadastro.salvar()">Salvar</button>
+    </div>
+</div>
+
+<!-- ── MODAL LISTA MESAS ───────────────────────────────────────── -->
+<div class="tec-overlay" id="modalListaMesasOverlay" style="display:none" onclick="fecharModalListaMesas()"></div>
+<div class="tec-modal eq-setores-modal" id="modalListaMesas" style="display:none">
+    <div class="tec-modal-head">
+        <span>Mesas de serviço</span>
+        <button type="button" class="tec-modal-close" onclick="fecharModalListaMesas()" aria-label="Fechar">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+    <div class="tec-modal-body eq-setores-body">
+        <div class="tec-section-head">
+            <h2 class="eq-setores-title">Mesas de serviço</h2>
+            <button type="button" class="btn btn-primary tec-btn-sm" id="btnNovaMesa">
+                <i class="fas fa-plus"></i> Adicionar mesa
+            </button>
+        </div>
+        <table class="tec-table" id="tabMesas">
+            <thead>
+                <tr><th>Nome</th><th>Situação</th><th>Ações</th></tr>
+            </thead>
+            <tbody id="tbody-mesas">
+                {% for m in mesas %}
+                <tr id="mesa-row-{{ m.id }}" data-nome="{{ m.nome }}">
+                    <td>{{ m.nome }}</td>
+                    <td>
+                        <span class="tec-badge {% if m.ativa %}tec-badge-ok{% else %}tec-badge-off{% endif %}">
+                            {{ 'Ativa' if m.ativa else 'Inativa' }}
+                        </span>
+                    </td>
+                    <td class="setor-acoes">
+                        <button type="button" class="btn tec-btn-sm tec-btn-muted"
+                                onclick="editarMesa({{ m.id }})">
+                            <i class="fas fa-edit"></i> Editar
+                        </button>
+                        <button type="button" class="btn tec-btn-sm tec-btn-danger"
+                                onclick="excluirMesa({{ m.id }})">
+                            <i class="fas fa-trash"></i> Excluir
+                        </button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr id="mesas-vazio"><td colspan="3" style="text-align:center;color:var(--gray-500)">Nenhuma mesa cadastrada.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="tec-modal-foot">
+        <button type="button" class="btn tec-btn-sm tec-btn-muted" onclick="fecharModalListaMesas()">Fechar</button>
+    </div>
+</div>
+
+<!-- ── MODAL FORM MESA ────────────────────────────────────────── -->
+<div class="tec-overlay" id="modalMesaOverlay" style="display:none" onclick="fecharModalMesa()"></div>
+<div class="tec-modal" id="modalMesa" style="display:none">
+    <div class="tec-modal-head">
+        <span id="modalMesaTitulo">Adicionar mesa de serviço</span>
+        <button type="button" class="tec-modal-close" onclick="fecharModalMesa()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="tec-modal-body">
+        <input type="hidden" id="mesaId" value="">
+        <div class="form-group">
+            <label>Nome da mesa *</label>
+            <input type="text" id="mesaNome" placeholder="Ex: Informática" maxlength="80">
+        </div>
+        <div id="mesaErro" class="tec-erro" style="display:none"></div>
+    </div>
+    <div class="tec-modal-foot">
+        <button type="button" class="btn tec-btn-sm tec-btn-muted" onclick="fecharModalMesa()">Fechar</button>
+        <button type="button" class="btn btn-success tec-btn-sm" onclick="salvarMesa()">Salvar</button>
     </div>
 </div>
 
@@ -156,6 +245,11 @@
             <small class="tec-hint">Vincula automaticamente ao Cadastro de Acessos com o mesmo e-mail.</small>
         </div>
         <div class="form-group">
+            <label>WhatsApp</label>
+            <input type="tel" id="tecWhatsapp" placeholder="(21) 98888-0000" maxlength="20">
+            <small class="tec-hint">Número para notificações do sistema (técnico, supervisor ou gestor).</small>
+        </div>
+        <div class="form-group">
             <label>Função *</label>
             <select id="tecFuncao">
                 <option value="">Selecione...</option>
@@ -165,16 +259,35 @@
             </select>
         </div>
         <div class="form-group">
-            <label>Setor</label>
-            <select id="tecSetor">
+            <label id="tecMesaLabel">Mesa de serviço</label>
+            <select id="tecMesa" hidden>
                 <option value="">Selecione...</option>
-                {% for s in setores %}
-                {% if s.ativo %}
-                <option value="{{ s.id }}">{{ s.nome }}</option>
+                {% for m in mesas %}
+                {% if m.ativa %}
+                <option value="{{ m.id }}">{{ m.nome }}</option>
                 {% endif %}
                 {% endfor %}
             </select>
+            <div id="tecMesasMulti" class="tec-mesas-multi">
+                {% for m in mesas %}
+                {% if m.ativa %}
+                <label class="tec-mesa-check">
+                    <input type="checkbox" name="tecMesaCheck" value="{{ m.id }}">
+                    <span>{{ m.nome }}</span>
+                </label>
+                {% endif %}
+                {% endfor %}
+            </div>
+            <small class="tec-hint" id="tecMesaHint">Técnico atende a uma mesa. Supervisor e gestor podem responder por várias.</small>
         </div>
+        <select id="tecSetor" hidden>
+            <option value="">Selecione...</option>
+            {% for s in setores %}
+            {% if s.ativo %}
+            <option value="{{ s.id }}">{{ s.nome }}</option>
+            {% endif %}
+            {% endfor %}
+        </select>
         <div id="tecErro" class="tec-erro" style="display:none"></div>
     </div>
     <div class="tec-modal-foot">
@@ -208,6 +321,13 @@
 .eq-setores-title { font-size: 0.95rem; font-weight: 700; color: var(--gray-700); margin: 0; }
 #modalSetorOverlay, #modalSetor { z-index: 1100; }
 #modalSetor { z-index: 1101; }
+#modalMesaOverlay, #modalMesa { z-index: 1100; }
+#modalMesa { z-index: 1101; }
+.tec-mesas-multi { display: flex; flex-direction: column; gap: 0.35rem; max-height: 180px; overflow-y: auto; border: 1px solid var(--gray-300); border-radius: 0.3rem; padding: 0.45rem 0.55rem; }
+.tec-mesas-multi[hidden] { display: none !important; }
+#tecMesa[hidden] { display: none !important; }
+.tec-mesa-check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; font-weight: 500; color: var(--gray-700); margin: 0; }
+.tec-mesa-check input { width: auto; margin: 0; }
 .tec-modal-head { display: flex; justify-content: space-between; align-items: center; padding: 0.8rem 1rem; border-bottom: 1px solid var(--gray-200); font-weight: 700; font-size: 0.9rem; }
 .tec-modal-close { background: none; border: none; cursor: pointer; color: var(--gray-500); font-size: 1rem; padding: 0; }
 .tec-modal-body { padding: 1rem; }
@@ -216,10 +336,13 @@
 .tec-modal-body input, .tec-modal-body select { width: 100%; box-sizing: border-box; padding: 0.42rem 0.55rem; font-size: 0.8rem; border: 1px solid var(--gray-300); border-radius: 0.3rem; }
 .tec-modal-foot { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid var(--gray-200); }
 .tec-erro { color: #b91c1c; font-size: 0.75rem; margin-top: 0.4rem; }
+.setor-acoes { white-space: nowrap; }
 </style>
 
+<script src="{{ url_for('static', filename='js/chamado-setores.js') }}?v=1"></script>
 <script>
-// ── Setor ─────────────────────────────────────────────────────
+const FUNCOES_MESA_MULTIPLA = {{ funcoes_mesa_multipla|default(['gestor', 'supervisor'], true)|tojson }};
+
 function abrirModalListaSetores() {
     document.getElementById('modalListaSetoresOverlay').style.display = '';
     document.getElementById('modalListaSetores').style.display = '';
@@ -228,130 +351,275 @@ function fecharModalListaSetores() {
     document.getElementById('modalListaSetoresOverlay').style.display = 'none';
     document.getElementById('modalListaSetores').style.display = 'none';
 }
-function abrirModalSetor() {
-    document.getElementById('setorNome').value = '';
-    document.getElementById('setorErro').style.display = 'none';
-    document.getElementById('modalSetorOverlay').style.display = '';
-    document.getElementById('modalSetor').style.display = '';
-    document.getElementById('setorNome').focus();
-}
-function fecharModalSetor() {
-    document.getElementById('modalSetorOverlay').style.display = 'none';
-    document.getElementById('modalSetor').style.display = 'none';
-}
-function _appendSetorOption(selectEl, id, nome) {
-    if (!selectEl) return;
-    const exists = Array.from(selectEl.options).some(function (o) { return o.value === String(id); });
-    if (exists) return;
-    const opt = document.createElement('option');
-    opt.value = id;
-    opt.textContent = nome;
-    selectEl.appendChild(opt);
-}
-function salvarSetor() {
-    const nome = document.getElementById('setorNome').value.trim();
-    const erro = document.getElementById('setorErro');
-    if (!nome) { erro.textContent = 'Informe o nome do setor.'; erro.style.display = ''; return; }
-    const fd = new FormData();
-    fd.append('nome', nome);
-    fetch('/tecnicos/setor/adicionar', { method: 'POST', body: fd })
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-            if (!d.ok) { erro.textContent = d.error || 'Erro ao salvar.'; erro.style.display = ''; return; }
-            fecharModalSetor();
-            const tbody = document.querySelector('#tabSetores tbody');
-            const vazio = document.getElementById('setores-vazio');
-            if (vazio) vazio.remove();
-            const tr = document.createElement('tr');
-            tr.id = 'setor-row-' + d.id;
-            tr.setAttribute('data-nome', d.nome);
-            tr.innerHTML =
-                '<td>' + d.nome + '</td>' +
-                '<td><span class="tec-badge tec-badge-ok" id="setor-status-' + d.id + '">Ativo</span></td>' +
-                '<td><button type="button" class="btn tec-btn-sm tec-btn-muted" onclick="toggleSetor(' + d.id + ')">' +
-                '<i class="fas fa-toggle-on"></i> Alternar</button></td>';
-            tbody.appendChild(tr);
-            _appendSetorOption(document.getElementById('tecSetor'), d.id, d.nome);
-        })
-        .catch(function () {
-            erro.textContent = 'Erro de comunicação.';
-            erro.style.display = '';
-        });
-}
-function toggleSetor(sid) {
-    fetch('/tecnicos/setor/' + sid + '/toggle', { method: 'POST' })
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-            if (!d.ok) return;
-            const span = document.getElementById('setor-status-' + sid);
-            if (span) {
-                span.textContent = d.ativo ? 'Ativo' : 'Inativo';
-                span.className = 'tec-badge ' + (d.ativo ? 'tec-badge-ok' : 'tec-badge-off');
-            }
-            const row = document.getElementById('setor-row-' + sid);
-            const nome = row
-                ? (row.getAttribute('data-nome') || row.cells[0].textContent.trim())
-                : ('Setor ' + sid);
-            const tecSel = document.getElementById('tecSetor');
-            if (tecSel) {
-                const opt = tecSel.querySelector('option[value="' + sid + '"]');
-                if (!d.ativo && opt) {
-                    opt.remove();
-                } else if (d.ativo && !opt) {
-                    _appendSetorOption(tecSel, sid, nome);
-                }
-            }
-        });
-}
 
 document.getElementById('btnAdicionarSetor').addEventListener('click', abrirModalListaSetores);
-document.getElementById('btnNovoSetor').addEventListener('click', abrirModalSetor);
-document.getElementById('setorNome').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); salvarSetor(); }
-});
+document.getElementById('btnNovoSetor').addEventListener('click', function () { ChamadoSetorCadastro.novo(); });
+ChamadoSetorCadastro.init({ addUrl: '/tecnicos/setor/adicionar', idSelects: ['tecSetor'] });
+
+function _ehMultiMesa(funcao) {
+    return FUNCOES_MESA_MULTIPLA.indexOf(funcao) !== -1;
+}
+function _mesasChecks() {
+    return Array.prototype.slice.call(document.querySelectorAll('input[name="tecMesaCheck"]'));
+}
+function _aoMudarMesaCheck(ev) {
+    if (_ehMultiMesa(document.getElementById('tecFuncao').value)) return;
+    const origem = ev && ev.target && ev.target.checked ? ev.target : null;
+    _mesasChecks().forEach(function (el) {
+        if (origem && el !== origem) el.checked = false;
+    });
+    const marcado = _mesasChecks().filter(function (el) { return el.checked; })[0];
+    document.getElementById('tecMesa').value = marcado ? marcado.value : '';
+}
+function _prenderChecksMesa() {
+    _mesasChecks().forEach(function (el) {
+        el.removeEventListener('change', _aoMudarMesaCheck);
+        el.addEventListener('change', _aoMudarMesaCheck);
+    });
+}
+function atualizarUiMesa() {
+    const funcao = document.getElementById('tecFuncao').value;
+    const multi = _ehMultiMesa(funcao);
+    const sel = document.getElementById('tecMesa');
+    const wrap = document.getElementById('tecMesasMulti');
+    sel.hidden = true;
+    wrap.hidden = false;
+    document.getElementById('tecMesaLabel').textContent = multi
+        ? 'Mesas de serviço'
+        : 'Mesa de serviço';
+    document.getElementById('tecMesaHint').textContent = multi
+        ? 'Supervisor e gestor podem responder por mais de uma mesa de serviço.'
+        : 'Marque a mesa de serviço deste técnico.';
+    if (!multi) {
+        const marcados = _mesasChecks().filter(function (el) { return el.checked; });
+        _mesasChecks().forEach(function (el) {
+            if (marcados[0] && el !== marcados[0]) el.checked = false;
+        });
+        sel.value = marcados[0] ? marcados[0].value : '';
+    }
+}
+function mesasSelecionadas() {
+    const checks = _mesasChecks().filter(function (el) { return el.checked; }).map(function (el) { return el.value; });
+    if (_ehMultiMesa(document.getElementById('tecFuncao').value)) return checks;
+    const v = document.getElementById('tecMesa').value;
+    if (v) return [v];
+    return checks.slice(0, 1);
+}
+function marcarMesas(ids) {
+    const set = {};
+    (ids || []).forEach(function (id) { set[String(id)] = true; });
+    const primeira = (ids && ids.length) ? String(ids[0]) : '';
+    document.getElementById('tecMesa').value = primeira;
+    _mesasChecks().forEach(function (el) { el.checked = !!set[el.value]; });
+}
+function _escHtml(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+function incluirOpcaoMesa(id, nome) {
+    const sel = document.getElementById('tecMesa');
+    let opt = sel.querySelector('option[value="' + id + '"]');
+    if (opt) {
+        opt.textContent = nome;
+    } else {
+        opt = document.createElement('option');
+        opt.value = String(id);
+        opt.textContent = nome;
+        sel.appendChild(opt);
+    }
+    const wrap = document.getElementById('tecMesasMulti');
+    let box = wrap.querySelector('input[name="tecMesaCheck"][value="' + id + '"]');
+    if (box) {
+        const span = box.parentNode.querySelector('span');
+        if (span) span.textContent = nome;
+    } else {
+        const label = document.createElement('label');
+        label.className = 'tec-mesa-check';
+        label.innerHTML = '<input type="checkbox" name="tecMesaCheck" value="' + id + '"><span></span>';
+        label.querySelector('span').textContent = nome;
+        wrap.appendChild(label);
+    }
+    _prenderChecksMesa();
+}
+function removerOpcaoMesa(id) {
+    const sel = document.getElementById('tecMesa');
+    const opt = sel.querySelector('option[value="' + id + '"]');
+    if (opt) opt.remove();
+    const wrap = document.getElementById('tecMesasMulti');
+    const box = wrap.querySelector('input[name="tecMesaCheck"][value="' + id + '"]');
+    if (box && box.parentNode) box.parentNode.remove();
+}
+function mesaRowHtml(d) {
+    const ativo = d.ativa !== false;
+    return '<tr id="mesa-row-' + d.id + '" data-nome="' + _escHtml(d.nome) + '">' +
+        '<td>' + _escHtml(d.nome) + '</td>' +
+        '<td><span class="tec-badge ' + (ativo ? 'tec-badge-ok' : 'tec-badge-off') + '">' +
+        (ativo ? 'Ativa' : 'Inativa') + '</span></td>' +
+        '<td class="setor-acoes">' +
+        '<button type="button" class="btn tec-btn-sm tec-btn-muted" onclick="editarMesa(' + d.id + ')">' +
+        '<i class="fas fa-edit"></i> Editar</button> ' +
+        '<button type="button" class="btn tec-btn-sm tec-btn-danger" onclick="excluirMesa(' + d.id + ')">' +
+        '<i class="fas fa-trash"></i> Excluir</button>' +
+        '</td></tr>';
+}
+function abrirModalListaMesas() {
+    document.getElementById('modalListaMesasOverlay').style.display = '';
+    document.getElementById('modalListaMesas').style.display = '';
+}
+function fecharModalListaMesas() {
+    document.getElementById('modalListaMesasOverlay').style.display = 'none';
+    document.getElementById('modalListaMesas').style.display = 'none';
+}
+function nomeMesaLinha(id) {
+    const row = document.getElementById('mesa-row-' + id);
+    if (!row) return '';
+    return (row.getAttribute('data-nome') || (row.cells[0] && row.cells[0].textContent) || '').trim();
+}
+function abrirFormMesa(id, nome) {
+    document.getElementById('mesaId').value = id ? String(id) : '';
+    document.getElementById('mesaNome').value = nome || '';
+    document.getElementById('mesaErro').style.display = 'none';
+    document.getElementById('modalMesaTitulo').textContent = id ? 'Editar mesa de serviço' : 'Adicionar mesa de serviço';
+    document.getElementById('modalMesaOverlay').style.display = '';
+    document.getElementById('modalMesa').style.display = '';
+    document.getElementById('mesaNome').focus();
+}
+function novaMesa() {
+    abrirFormMesa('', '');
+}
+function editarMesa(id) {
+    abrirFormMesa(id, nomeMesaLinha(id));
+}
+function fecharModalMesa() {
+    document.getElementById('modalMesaOverlay').style.display = 'none';
+    document.getElementById('modalMesa').style.display = 'none';
+}
+function salvarMesa() {
+    const nome = document.getElementById('mesaNome').value.trim();
+    const id = document.getElementById('mesaId').value.trim();
+    const erro = document.getElementById('mesaErro');
+    if (!nome) { erro.textContent = 'Informe o nome da mesa de serviço.'; erro.style.display = ''; return; }
+    const url = id ? '/tecnicos/mesa/' + id + '/editar' : '/tecnicos/mesa/adicionar';
+    fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome: nome }),
+    })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (!d.ok) { erro.textContent = d.error; erro.style.display = ''; return; }
+            incluirOpcaoMesa(d.id, d.nome);
+            fecharModalMesa();
+            const tbody = document.getElementById('tbody-mesas');
+            const vazio = document.getElementById('mesas-vazio');
+            if (vazio) vazio.remove();
+            if (id) {
+                const row = document.getElementById('mesa-row-' + id);
+                if (row) {
+                    row.setAttribute('data-nome', d.nome);
+                    if (row.cells[0]) row.cells[0].textContent = d.nome;
+                }
+            } else if (tbody) {
+                tbody.insertAdjacentHTML('beforeend', mesaRowHtml(d));
+            }
+        });
+}
+function excluirMesa(id) {
+    const nome = nomeMesaLinha(id);
+    if (!confirm('Excluir a mesa' + (nome ? ' "' + nome + '"' : '') + '?')) return;
+    fetch('/tecnicos/mesa/' + id + '/excluir', { method: 'POST' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (!d.ok) {
+                alert(d.error || 'Não foi possível excluir.');
+                return;
+            }
+            const row = document.getElementById('mesa-row-' + id);
+            if (row) row.remove();
+            removerOpcaoMesa(id);
+            const tbody = document.getElementById('tbody-mesas');
+            if (tbody && !tbody.querySelector('tr')) {
+                tbody.innerHTML = '<tr id="mesas-vazio"><td colspan="3" style="text-align:center;color:var(--gray-500)">Nenhuma mesa cadastrada.</td></tr>';
+            }
+        });
+}
+document.getElementById('btnAdicionarMesa').addEventListener('click', abrirModalListaMesas);
+document.getElementById('btnNovaMesa').addEventListener('click', novaMesa);
+document.getElementById('tecFuncao').addEventListener('change', atualizarUiMesa);
+_prenderChecksMesa();
+atualizarUiMesa();
 
 // ── Técnico ───────────────────────────────────────────────────
-function _escAttr(s) {
-    return String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-}
 function _acessoBadgeHtml(vinculado) {
     return vinculado
         ? '<span class="tec-badge tec-badge-ok">Vinculado</span>'
         : '<span class="tec-badge tec-badge-off">Sem acesso</span>';
 }
+function _tecData(d) {
+    return {
+        id: d.id,
+        nome: d.nome || '',
+        email: d.email || '',
+        whatsapp: d.whatsapp || '',
+        funcao: d.funcao || '',
+        mesa_ids: d.mesa_ids || []
+    };
+}
+function _preencherLinhaTecnico(tr, d) {
+    tr.id = 'tec-row-' + d.id;
+    tr.setAttribute('data-tec', JSON.stringify(_tecData(d)));
+    tr.innerHTML = _tecRowHtml(d);
+}
 function _tecRowHtml(d) {
-    const nome = _escAttr(d.nome);
-    const email = _escAttr(d.email || '');
-    const funcao = _escAttr(d.funcao || '');
     return '<td>' + (d.nome || '') + '</td>' +
         '<td>' + (d.email || '—') + '</td>' +
+        '<td>' + (d.whatsapp || '—') + '</td>' +
         '<td>' + (d.funcao_label || '—') + '</td>' +
-        '<td>' + (d.setor || '—') + '</td>' +
+        '<td>' + (d.mesas_label || '—') + '</td>' +
         '<td>' + _acessoBadgeHtml(d.vinculado) + '</td>' +
         '<td><span class="tec-badge tec-badge-ok">Ativo</span></td>' +
         '<td>' +
-        '<button class="btn tec-btn-sm tec-btn-muted" onclick="abrirEditarTecnico(' + d.id + ', \'' + nome + '\', \'' + email + '\', \'' + funcao + '\', \'' + (d.setor_id || '') + '\')"><i class="fas fa-edit"></i></button> ' +
-        '<button class="btn tec-btn-sm tec-btn-danger" onclick="excluirTecnico(' + d.id + ')"><i class="fas fa-trash"></i></button>' +
+        '<button type="button" class="btn tec-btn-sm tec-btn-muted" onclick="abrirEditarTecnico(' + d.id + ')" title="Editar"><i class="fas fa-edit"></i></button> ' +
+        '<button type="button" class="btn tec-btn-sm tec-btn-danger" onclick="excluirTecnico(' + d.id + ')" title="Excluir"><i class="fas fa-trash"></i></button>' +
         '</td>';
 }
 function abrirModalTecnico() {
     document.getElementById('tecId').value = '';
     document.getElementById('tecNome').value = '';
     document.getElementById('tecEmail').value = '';
+    document.getElementById('tecWhatsapp').value = '';
     document.getElementById('tecFuncao').value = '';
-    document.getElementById('tecSetor').value = '';
+    marcarMesas([]);
+    atualizarUiMesa();
     document.getElementById('tecErro').style.display = 'none';
     document.getElementById('modalTecnicoTitulo').textContent = 'Adicionar Técnico';
     document.getElementById('modalTecnicoOverlay').style.display = '';
     document.getElementById('modalTecnico').style.display = '';
     document.getElementById('tecNome').focus();
 }
-function abrirEditarTecnico(id, nome, email, funcao, setorId) {
+function _dadosTecnico(id) {
+    const row = document.getElementById('tec-row-' + id);
+    if (!row) return { id: id, nome: '', email: '', whatsapp: '', funcao: '', mesa_ids: [] };
+    try {
+        var d = JSON.parse(row.getAttribute('data-tec') || '{}');
+        if (!Array.isArray(d.mesa_ids)) d.mesa_ids = [];
+        return d;
+    } catch (e) {
+        return { id: id, nome: '', email: '', whatsapp: '', funcao: '', mesa_ids: [] };
+    }
+}
+function abrirEditarTecnico(id) {
+    const d = _dadosTecnico(id);
     document.getElementById('tecId').value = id;
-    document.getElementById('tecNome').value = nome;
-    document.getElementById('tecEmail').value = email;
-    document.getElementById('tecFuncao').value = funcao || '';
-    document.getElementById('tecSetor').value = setorId;
+    document.getElementById('tecNome').value = d.nome || '';
+    document.getElementById('tecEmail').value = d.email || '';
+    document.getElementById('tecWhatsapp').value = d.whatsapp || '';
+    document.getElementById('tecFuncao').value = d.funcao || '';
+    marcarMesas(d.mesa_ids || []);
+    atualizarUiMesa();
     document.getElementById('tecErro').style.display = 'none';
     document.getElementById('modalTecnicoTitulo').textContent = 'Editar Técnico';
     document.getElementById('modalTecnicoOverlay').style.display = '';
@@ -366,33 +634,38 @@ function salvarTecnico() {
     const id = document.getElementById('tecId').value;
     const nome = document.getElementById('tecNome').value.trim();
     const email = document.getElementById('tecEmail').value.trim();
+    const whatsapp = document.getElementById('tecWhatsapp').value.trim();
     const funcao = document.getElementById('tecFuncao').value;
-    const setorId = document.getElementById('tecSetor').value;
+    const mesaIds = mesasSelecionadas();
     const erro = document.getElementById('tecErro');
     if (!nome) { erro.textContent = 'Informe o nome do técnico.'; erro.style.display = ''; return; }
     if (!funcao) { erro.textContent = 'Informe a função do técnico.'; erro.style.display = ''; return; }
     const url = id ? '/tecnicos/tecnico/' + id + '/editar' : '/tecnicos/tecnico/adicionar';
     fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome, email, funcao, setor_id: setorId }),
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ nome, email, whatsapp, funcao, mesa_ids: mesaIds }),
     })
-        .then(r => r.json())
-        .then(d => {
-            if (!d.ok) { erro.textContent = d.error; erro.style.display = ''; return; }
+        .then(function (r) { return r.json().then(function (d) { d._status = r.status; return d; }); })
+        .then(function (d) {
+            if (!d.ok) { erro.textContent = d.error || 'Não foi possível salvar o técnico.'; erro.style.display = ''; return; }
             fecharModalTecnico();
             if (id) {
                 const row = document.getElementById('tec-row-' + id);
-                if (row) row.innerHTML = _tecRowHtml(d);
+                if (row) _preencherLinhaTecnico(row, d);
             } else {
                 const tbody = document.getElementById('tbody-tecnicos');
                 const vazio = document.getElementById('tec-vazio');
                 if (vazio) vazio.remove();
                 const tr = document.createElement('tr');
-                tr.id = 'tec-row-' + d.id;
-                tr.innerHTML = _tecRowHtml(d);
+                _preencherLinhaTecnico(tr, d);
                 tbody.appendChild(tr);
             }
+        })
+        .catch(function () {
+            erro.textContent = 'Falha ao salvar. Recarregue a página e tente de novo.';
+            erro.style.display = '';
         });
 }
 function excluirTecnico(tid) {

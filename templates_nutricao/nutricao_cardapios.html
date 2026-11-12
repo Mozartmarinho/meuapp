@@ -51,7 +51,7 @@
             </button>
             <button class="btn btn-ghost btn-sm" type="button" data-action="excluir-cardapios"
                     data-dieta-id="{{ d.id }}" data-dieta-nome="{{ (d.nome or '')|e }}"
-                    title="Excluir cardápios">
+                    title="Excluir dieta e cardápio">
               <i class="fas fa-trash"></i> Excluir
             </button>
           </td>
@@ -77,17 +77,17 @@
       <div class="cardapio-box">
         <div class="cardapio-toolbar">
           <button type="button" class="btn btn-primary btn-sm" onclick="salvarCardapio()" title="Salvar"><i class="fas fa-save"></i> Salvar</button>
-          <span class="sep"></span>
-          <button type="button" class="btn btn-primary btn-sm btn-modo" onclick="modoPrato('selecao')">Prato principal/Sobremesa Seleção</button>
-          <button type="button" class="btn btn-primary btn-sm btn-modo" onclick="modoPrato('padrao')">Prato principal/Sobremesa Padrão</button>
-          <button type="button" class="btn btn-primary btn-sm btn-modo" onclick="modoPrato('principal')">Prato principal</button>
-          <button type="button" class="btn btn-ghost btn-sm" onclick="excluirCardapioAtual()" title="Excluir" style="margin-left:auto"><i class="fas fa-trash"></i></button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="excluirDietaECardapio()" title="Excluir dieta e cardápio" style="margin-left:auto"><i class="fas fa-trash"></i></button>
         </div>
 
-        <div class="tabs" style="margin-bottom:0.85rem;">
-          <button type="button" class="tab active" data-tipo="grandes" onclick="trocarAba('grandes', this)">Grandes refeições</button>
-          <button type="button" class="tab" data-tipo="pequenas" onclick="trocarAba('pequenas', this)">Pequenas refeições</button>
-          <button type="button" class="tab" data-tipo="liquidas" onclick="trocarAba('liquidas', this)">Dietas líquidas</button>
+        <div class="tabs horarios-tabs" id="abasHorario" role="tablist" aria-label="Horários">
+          <button type="button" class="tab active" role="tab" data-horario="desjejum" onclick="trocarHorario('desjejum')">Desjejum</button>
+          <button type="button" class="tab" role="tab" data-horario="colacao" onclick="trocarHorario('colacao')">Colação</button>
+          <button type="button" class="tab" role="tab" data-horario="almoco" onclick="trocarHorario('almoco')">Almoço</button>
+          <button type="button" class="tab" role="tab" data-horario="merenda" onclick="trocarHorario('merenda')">Merenda</button>
+          <button type="button" class="tab" role="tab" data-horario="jantar" onclick="trocarHorario('jantar')">Jantar</button>
+          <button type="button" class="tab" role="tab" data-horario="ceia" onclick="trocarHorario('ceia')">Ceia</button>
+          <button type="button" class="tab" role="tab" data-horario="liquidas" onclick="trocarHorario('liquidas')">Dietas líquidas</button>
         </div>
 
         <div class="cardapio-top">
@@ -97,12 +97,12 @@
           </div>
           <div class="form-row cardapio-meta">
             <div class="form-group" style="max-width:100px">
-              <label class="form-label">Dia mês</label>
-              <input class="form-control" type="number" min="1" max="31" id="f-dia-mes" value="1">
+              <label class="form-label">Dia mês <span id="f-mes-atual" class="mes-atual"></span></label>
+              <input class="form-control" type="number" min="1" max="31" id="f-dia-mes" value="1" oninput="aoMudarDiaMes()">
             </div>
-            <div class="form-group" style="max-width:160px">
+            <div class="form-group" style="max-width:180px">
               <label class="form-label">Dia da semana</label>
-              <select class="form-control" id="f-dia-semana"></select>
+              <select class="form-control" id="f-dia-semana" onchange="aoMudarDiaSemana()"></select>
             </div>
             <div class="form-group" style="flex:1">
               <label class="form-label">Dieta</label>
@@ -112,82 +112,278 @@
           </div>
         </div>
 
-        <div class="horarios-box">
-          <strong>Horários:</strong>
-          <label><input type="checkbox" id="hr_desjejum"> Desjejum</label>
-          <label><input type="checkbox" id="hr_colacao"> Colação</label>
-          <label><input type="checkbox" id="hr_almoco"> Almoço</label>
-          <label><input type="checkbox" id="hr_merenda"> Merenda</label>
-          <label><input type="checkbox" id="hr_jantar"> Jantar</label>
-          <label><input type="checkbox" id="hr_ceia"> Ceia</label>
-        </div>
 
         <div id="painel-grandes" class="painel-tipo">
-          <div class="form-row radio-block">
-            <div class="form-group">
-              <label class="form-label">Entrada</label>
-              <div class="radio-row">
-                <label><input type="radio" name="entrada_tipo" value="Salada"> Salada</label>
-                <label><input type="radio" name="entrada_tipo" value="Sopa"> Sopa</label>
-              </div>
-            </div>
-            <div class="form-group" style="flex:1.6">
-              <label class="form-label">Proteína</label>
-              <div class="radio-row wrap">
-                <label><input type="radio" name="proteina_tipo" value="Bovino"> Bovino</label>
-                <label><input type="radio" name="proteina_tipo" value="Suíno"> Suíno</label>
-                <label><input type="radio" name="proteina_tipo" value="Aves"> Aves</label>
-                <label><input type="radio" name="proteina_tipo" value="Vísceras"> Vísceras</label>
-                <label><input type="radio" name="proteina_tipo" value="Embutidos"> Embutidos</label>
-                <label><input type="radio" name="proteina_tipo" value="Peixes"> Peixes</label>
-              </div>
-            </div>
-          </div>
-
           <div class="form-row two-cols campos-prato">
             <div class="col-left">
-              <div class="form-group"><label class="form-label">Acompanhamento</label><select class="form-control" id="g-acompanhamento"></select></div>
-              <div class="form-group"><label class="form-label">Prato base</label><select class="form-control" id="g-prato_base"></select></div>
-              <div class="form-group"><label class="form-label">Proteína opcional</label><select class="form-control" id="g-proteina_opcional"></select></div>
-              <div class="form-group"><label class="form-label">Guarnição</label><select class="form-control" id="g-guarnicao"></select></div>
-              <div class="form-group"><label class="form-label">Docinho / Salada</label><select class="form-control" id="g-docinho_salada"></select></div>
+              <div class="form-group">
+                <label class="form-label">Item 1</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="g-acompanhamento" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="acompanhamento" data-titulo="Item 1" title="Cadastrar mais item 1" aria-label="Cadastrar mais item 1"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="acompanhamento"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Item 2</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="g-prato_base" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="prato_base" data-titulo="Item 2" title="Cadastrar mais item 2" aria-label="Cadastrar mais item 2"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="prato_base"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Item 3</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="g-proteina_opcional" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="proteina_opcional" data-titulo="Item 3" title="Cadastrar mais item 3" aria-label="Cadastrar mais item 3"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="proteina_opcional"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Item 4</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="g-guarnicao" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="guarnicao" data-titulo="Item 4" title="Cadastrar mais item 4" aria-label="Cadastrar mais item 4"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="guarnicao"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Item 5</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="g-docinho_salada" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="docinho_salada" data-titulo="Item 5" title="Cadastrar mais item 5" aria-label="Cadastrar mais item 5"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="docinho_salada"></div>
+                </div>
+              </div>
             </div>
             <div class="col-right">
-              <div class="form-group"><label class="form-label">Sobremesa</label><select class="form-control" id="g-sobremesa"></select></div>
-              <div class="form-group"><label class="form-label">Fruta</label><select class="form-control" id="g-fruta"></select></div>
-              <div class="form-group"><label class="form-label">Suco</label><select class="form-control" id="g-suco"></select></div>
-              <div class="form-group"><label class="form-label">Vitamina / Suco</label><select class="form-control" id="g-vitamina_suco"></select></div>
-              <div class="form-group"><label class="form-label">Outros</label><select class="form-control" id="g-outros"></select></div>
+              <div class="form-group">
+                <label class="form-label">Item 6</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="g-sobremesa" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="sobremesa" data-titulo="Item 6" title="Cadastrar mais item 6" aria-label="Cadastrar mais item 6"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="sobremesa"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Item 7</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="g-fruta" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="fruta" data-titulo="Item 7" title="Cadastrar mais item 7" aria-label="Cadastrar mais item 7"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="fruta"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Item 8</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="g-suco" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="suco" data-titulo="Item 8" title="Cadastrar mais item 8" aria-label="Cadastrar mais item 8"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="suco"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Item 9</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="g-vitamina_suco" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="vitamina_suco" data-titulo="Item 9" title="Cadastrar mais item 9" aria-label="Cadastrar mais item 9"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="vitamina_suco"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Item 10</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="g-outros" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="outros" data-titulo="Item 10" title="Cadastrar mais item 10" aria-label="Cadastrar mais item 10"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="outros"></div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
         <div id="painel-pequenas" class="painel-tipo" hidden>
-          <div class="form-row two-cols">
+          <div class="form-row two-cols campos-prato">
             <div>
-              <div class="form-group"><label class="form-label">Bebida</label><select class="form-control" id="p-bebida"></select></div>
-              <div class="form-group"><label class="form-label">Prato 1</label><select class="form-control" id="p-prato1"></select></div>
-              <div class="form-group"><label class="form-label">Prato 2</label><select class="form-control" id="p-prato2"></select></div>
-              <div class="form-group"><label class="form-label">Prato 3</label><select class="form-control" id="p-prato3"></select></div>
-              <div class="form-group"><label class="form-label">Prato 4</label><select class="form-control" id="p-prato4"></select></div>
+              <div class="form-group">
+                <label class="form-label">Item 1</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="p-bebida" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="p-bebida" data-titulo="Item 1" title="Cadastrar mais item 1" aria-label="Cadastrar mais item 1"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="p-bebida"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Item 2</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="p-prato1" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="p-prato1" data-titulo="Item 2" title="Cadastrar mais item 2" aria-label="Cadastrar mais item 2"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="p-prato1"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Item 3</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="p-prato2" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="p-prato2" data-titulo="Item 3" title="Cadastrar mais item 3" aria-label="Cadastrar mais item 3"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="p-prato2"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Item 4</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="p-prato3" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="p-prato3" data-titulo="Item 4" title="Cadastrar mais item 4" aria-label="Cadastrar mais item 4"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="p-prato3"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Item 5</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="p-prato4" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="p-prato4" data-titulo="Item 5" title="Cadastrar mais item 5" aria-label="Cadastrar mais item 5"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="p-prato4"></div>
+                </div>
+              </div>
             </div>
             <div>
-              <div class="form-group"><label class="form-label">Prato 5</label><select class="form-control" id="p-prato5"></select></div>
-              <div class="form-group"><label class="form-label">Prato 6</label><select class="form-control" id="p-prato6"></select></div>
-              <div class="form-group"><label class="form-label">Prato 7</label><select class="form-control" id="p-prato7"></select></div>
-              <div class="form-group"><label class="form-label">Sobremesa</label><select class="form-control" id="p-sobremesa"></select></div>
+              <div class="form-group">
+                <label class="form-label">Item 6</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="p-prato5" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="p-prato5" data-titulo="Item 6" title="Cadastrar mais item 6" aria-label="Cadastrar mais item 6"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="p-prato5"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Item 7</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="p-prato6" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="p-prato6" data-titulo="Item 7" title="Cadastrar mais item 7" aria-label="Cadastrar mais item 7"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="p-prato6"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Item 8</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="p-prato7" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="p-prato7" data-titulo="Item 8" title="Cadastrar mais item 8" aria-label="Cadastrar mais item 8"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="p-prato7"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Item 9</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="p-sobremesa" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="p-sobremesa" data-titulo="Item 9" title="Cadastrar mais item 9" aria-label="Cadastrar mais item 9"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="p-sobremesa"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Item 10</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="p-prato8" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="p-prato8" data-titulo="Item 10" title="Cadastrar mais item 10" aria-label="Cadastrar mais item 10"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="p-prato8"></div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
         <div id="painel-liquidas" class="painel-tipo" hidden>
-          <div class="form-row two-cols">
+          <div class="form-row two-cols campos-prato">
             <div>
-              <div class="form-group"><label class="form-label">Principal</label><select class="form-control" id="l-principal"></select></div>
-              <div class="form-group"><label class="form-label">Bebida</label><select class="form-control" id="l-bebida"></select></div>
-              <div class="form-group"><label class="form-label">Sobremesa</label><select class="form-control" id="l-sobremesa"></select></div>
-              <div class="form-group"><label class="form-label">Gelado</label><select class="form-control" id="l-gelado"></select></div>
-              <div class="form-group"><label class="form-label">Outros</label><select class="form-control" id="l-outros"></select></div>
+              <div class="form-group">
+                <label class="form-label">Principal</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="l-principal" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="l-principal" data-titulo="Principal" title="Cadastrar mais principal" aria-label="Cadastrar mais principal"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="l-principal"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Bebida</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="l-bebida" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="l-bebida" data-titulo="Bebida" title="Cadastrar mais bebida" aria-label="Cadastrar mais bebida"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="l-bebida"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Sobremesa</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="l-sobremesa" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="l-sobremesa" data-titulo="Sobremesa" title="Cadastrar mais sobremesa" aria-label="Cadastrar mais sobremesa"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="l-sobremesa"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Gelado</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="l-gelado" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="l-gelado" data-titulo="Gelado" title="Cadastrar mais gelado" aria-label="Cadastrar mais gelado"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="l-gelado"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Outros</label>
+                <div class="campo-com-mais">
+                  <div class="campo-input-mais">
+                    <input class="form-control" id="l-outros" type="text" autocomplete="off">
+                    <button type="button" class="btn-bolinha-mais" data-campo="l-outros" data-titulo="Outros" title="Cadastrar mais item" aria-label="Cadastrar mais item"><i class="fas fa-plus"></i></button>
+                  </div>
+                  <div class="lista-extras" data-extras="l-outros"></div>
+                </div>
+              </div>
             </div>
             <div>
               <div class="conv-box">
@@ -204,26 +400,26 @@
           </div>
         </div>
 
-        <div class="cardapio-footer">
-          <div class="form-row" style="align-items:flex-end">
-            <div class="form-group" style="max-width:110px">
-              <label class="form-label">V.N.T.</label>
-              <input class="form-control" type="number" step="0.01" id="f-vet" value="0">
-            </div>
-            <div class="form-group" style="max-width:130px">
-              <label class="form-label">Custo (R$)</label>
-              <input class="form-control" type="number" step="0.01" id="f-custo" value="0">
-            </div>
-            <div class="form-group" style="flex:1">
-              <label class="form-label">Organizar por</label>
-              <div class="radio-row wrap" id="organizarRadios"></div>
-            </div>
-          </div>
-          <p class="cardapio-hook-note">
-            Preços das refeições serão vinculados depois (dieta × tipo de refeição).
-          </p>
-        </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<div id="itemExtraOverlay" class="item-extra-overlay" hidden onclick="if(event.target===this)fecharPopupExtra()">
+  <div class="item-extra-dialog" role="dialog" aria-modal="true" aria-labelledby="itemExtraTitle">
+    <div class="item-extra-header">
+      <h3 id="itemExtraTitle">Cadastrar item</h3>
+      <button type="button" class="modal-close" onclick="fecharPopupExtra()" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="item-extra-body">
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label" for="itemExtraNome">Nome</label>
+        <input class="form-control" id="itemExtraNome" type="text" autocomplete="off">
+      </div>
+    </div>
+    <div class="item-extra-footer">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="fecharPopupExtra()">Cancelar</button>
+      <button type="button" class="btn btn-primary btn-sm" onclick="confirmarPopupExtra()"><i class="fas fa-plus"></i> Cadastrar</button>
     </div>
   </div>
 </div>
@@ -350,27 +546,189 @@
 
 .cardapio-box { padding: 0; }
 .cardapio-toolbar { display:flex; align-items:center; gap:0.28rem; margin-bottom:0.68rem; flex-wrap:wrap; }
-.cardapio-toolbar .sep { width:1px; height:18px; background:#cbd5e1; margin:0 0.2rem; }
-.cardapio-toolbar .btn-modo { font-size:0.62rem; padding:0.28rem 0.44rem; white-space:nowrap; }
 .cardapio-top .form-full { margin-bottom:0.52rem; }
 .cardapio-meta { display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end; }
-.horarios-box {
-  display:flex; flex-wrap:wrap; gap:0.6rem 0.88rem; align-items:center;
-  margin:0.28rem 0 0.8rem; padding:0.56rem 0.68rem;
-  background:#f1f5f9; border:1px solid #cbd5e1; border-radius:0.3rem;
+.mes-atual { font-weight:500; color:#64748b; text-transform:capitalize; }
+.horarios-tabs {
+  margin: 0.15rem 0 0.85rem;
+  padding: 0.4rem 0.5rem;
+  background: #eef4fb;
+  border: 1px solid #d5e3f5;
+  border-radius: 0.4rem;
 }
-.horarios-box strong { color:#0f2a5c; margin-right:0.2rem; }
-.horarios-box label { margin:0; font-size:0.72rem; display:flex; gap:0.28rem; align-items:center; font-weight:500; }
+.horarios-tabs .tab { font-size: 0.74rem; padding: 0.42rem 0.72rem; }
 .radio-block { display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:0.6rem; }
 .radio-row { display:flex; gap:0.68rem; flex-wrap:wrap; }
 .radio-row label { margin:0; font-weight:500; display:flex; gap:0.24rem; align-items:center; }
 .radio-row.wrap { gap:0.44rem 0.72rem; }
 .form-row.two-cols { display:grid; grid-template-columns:1fr 1fr; gap:0.8rem 1rem; }
 .campos-prato .form-group { margin-bottom:0.44rem; }
+.campo-com-mais {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.28rem;
+}
+.campo-input-mais {
+  display: flex;
+  align-items: center;
+  gap: 0.32rem;
+  width: 100%;
+  min-width: 0;
+}
+.campo-input-mais .form-control { flex: 1; min-width: 0; }
+.campo-suggest-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  z-index: 1;
+}
+.campo-suggest-wrap.aberto { z-index: 60; }
+.campo-suggest-wrap.aberto .form-control {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-color: #dfe1e5;
+  box-shadow: none;
+}
+.lista-sugestoes {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 70;
+  margin-top: -1px;
+  background: #fff;
+  border: 1px solid #dfe1e5;
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+  box-shadow: 0 4px 14px rgba(32, 33, 36, 0.18);
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px 0 8px;
+}
+.lista-sugestoes[hidden] { display: none !important; }
+.lista-sugestoes button {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.86rem;
+  font-weight: 400;
+  color: #202124;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.3;
+}
+.lista-sugestoes button i {
+  flex-shrink: 0;
+  width: 1rem;
+  text-align: center;
+  color: #70757a;
+  font-size: 0.78rem;
+}
+.lista-sugestoes button b { font-weight: 700; color: #202124; }
+.lista-sugestoes button:hover,
+.lista-sugestoes button.active { background: #f1f3f4; }
+.lista-sugestoes .vazio {
+  padding: 0.7rem 0.9rem;
+  font-size: 0.8rem;
+  color: #70757a;
+}
+.btn-bolinha-mais {
+  flex-shrink: 0;
+  width: 1.52rem;
+  height: 1.52rem;
+  border-radius: 50%;
+  border: 1px solid #1b4f9c;
+  background: #1b4f9c;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  box-shadow: 0 1px 2px rgba(15, 42, 92, 0.18);
+}
+.btn-bolinha-mais:hover { background: #163f7c; border-color: #163f7c; }
+.btn-bolinha-mais i { font-size: 0.62rem; }
+.lista-extras {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  max-height: 4.8rem;
+  overflow-y: auto;
+}
+.lista-extras { display: none !important; }
+.lista-extras:empty { display: none; }
+.extra-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  max-width: 100%;
+  background: #e8eef8;
+  border: 1px solid #c5d4ea;
+  border-radius: 999px;
+  padding: 0.14rem 0.5rem;
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: #0f2a5c;
+  line-height: 1.2;
+  cursor: pointer;
+  font-family: inherit;
+}
+.extra-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.item-extra-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  background: rgba(13, 43, 92, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.item-extra-overlay[hidden] { display: none !important; }
+.item-extra-dialog {
+  background: #fff;
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 12px 36px rgba(13, 43, 92, 0.28);
+}
+.item-extra-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem 0.92rem 0.2rem;
+  gap: 0.5rem;
+}
+.item-extra-header h3 {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #0f2a5c;
+}
+.item-extra-body { padding: 0.5rem 0.92rem 0.72rem; }
+.item-extra-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  padding: 0 0.92rem 0.88rem;
+}
 .conv-box { border:1px solid #e2e8f0; border-radius:0.3rem; padding:0.6rem; margin-bottom:0.6rem; background:#fff; }
 .conv-box h4 { margin:0 0 0.4rem; font-size:0.74rem; color:#1f2d4d; }
-.cardapio-footer { margin-top:0.8rem; border-top:1px solid #e5e7eb; padding-top:0.68rem; }
-.cardapio-hook-note { margin:0.52rem 0 0; font-size:0.6rem; color:#64748b; }
 
 /* Dieta vinculada à linha — evidência em verde São Geraldo (--brand-lime) */
 #f-dieta-nome.dieta-locked,
@@ -385,7 +743,6 @@
 
 @media (max-width: 900px){
   .form-row.two-cols { grid-template-columns:1fr; }
-  .cardapio-toolbar .btn-modo { width:100%; }
 }
 </style>
 {% endblock %}
@@ -395,13 +752,353 @@
 const OPCOES = {{ opcoes|tojson }};
 const DIETAS = {{ dietas|tojson }};
 const DIETA_SEL_INIT = {{ (dieta_sel or none)|tojson }};
-let tipoAtual = 'grandes';
+const NOMES_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+const HORARIOS_PEQUENAS = ['desjejum', 'colacao', 'merenda', 'ceia'];
+const HORARIOS_GRANDES = ['almoco', 'jantar'];
+const HR_KEYS = ['desjejum', 'colacao', 'almoco', 'merenda', 'jantar', 'ceia'];
+let horarioAtual = 'desjejum';
+let tipoAtual = 'pequenas';
 let lista = [];
 let idx = -1;
 let editId = null;
 let modoAtual = 'selecao';
 let dietaAtual = { id: null, nome: '' };
 let combosProntos = false;
+const CAMPOS_COM_MAIS = [
+  { key: 'acompanhamento', campo: 'acompanhamento', input: 'g-acompanhamento', tipo: 'grandes', grupo: 'ACOMPANHAMENTO', aliases: [] },
+  { key: 'prato_base', campo: 'prato_base', input: 'g-prato_base', tipo: 'grandes', grupo: 'PRATO BASE', aliases: [] },
+  { key: 'proteina_opcional', campo: 'proteina_opcional', input: 'g-proteina_opcional', tipo: 'grandes', grupo: 'PROTEÍNA OPCIONAL', aliases: ['proteico_opcional'] },
+  { key: 'guarnicao', campo: 'guarnicao', input: 'g-guarnicao', tipo: 'grandes', grupo: 'GUARNIÇÃO', aliases: [] },
+  { key: 'docinho_salada', campo: 'docinho_salada', input: 'g-docinho_salada', tipo: 'grandes', grupo: 'SALADA', aliases: ['diversos_salada', 'salada'] },
+  { key: 'sobremesa', campo: 'sobremesa', input: 'g-sobremesa', tipo: 'grandes', grupo: 'SOBREMESA', aliases: [] },
+  { key: 'fruta', campo: 'fruta', input: 'g-fruta', tipo: 'grandes', grupo: 'FRUTA', aliases: ['bebida'] },
+  { key: 'suco', campo: 'suco', input: 'g-suco', tipo: 'grandes', grupo: 'SUCO', aliases: [] },
+  { key: 'vitamina_suco', campo: 'vitamina_suco', input: 'g-vitamina_suco', tipo: 'grandes', grupo: 'VITAMINA', aliases: ['entrada_sopa', 'vitamina'] },
+  { key: 'outros', campo: 'outros', input: 'g-outros', tipo: 'grandes', grupo: 'OUTROS', aliases: [] },
+  { key: 'p-bebida', campo: 'bebida', input: 'p-bebida', tipo: 'pequenas', grupo: 'BEBIDA', aliases: [] },
+  { key: 'p-prato1', campo: 'prato1', input: 'p-prato1', tipo: 'pequenas', grupo: 'PRATO', aliases: [] },
+  { key: 'p-prato2', campo: 'prato2', input: 'p-prato2', tipo: 'pequenas', grupo: 'PRATO', aliases: [] },
+  { key: 'p-prato3', campo: 'prato3', input: 'p-prato3', tipo: 'pequenas', grupo: 'PRATO', aliases: [] },
+  { key: 'p-prato4', campo: 'prato4', input: 'p-prato4', tipo: 'pequenas', grupo: 'PRATO', aliases: [] },
+  { key: 'p-prato5', campo: 'prato5', input: 'p-prato5', tipo: 'pequenas', grupo: 'PRATO', aliases: [] },
+  { key: 'p-prato6', campo: 'prato6', input: 'p-prato6', tipo: 'pequenas', grupo: 'PRATO', aliases: [] },
+  { key: 'p-prato7', campo: 'prato7', input: 'p-prato7', tipo: 'pequenas', grupo: 'PRATO', aliases: [] },
+  { key: 'p-sobremesa', campo: 'sobremesa', input: 'p-sobremesa', tipo: 'pequenas', grupo: 'SOBREMESA', aliases: [] },
+  { key: 'p-prato8', campo: 'prato8', input: 'p-prato8', tipo: 'pequenas', grupo: 'PRATO', aliases: [] },
+  { key: 'l-principal', campo: 'principal', input: 'l-principal', tipo: 'liquidas', grupo: 'PRINCIPAL', aliases: [] },
+  { key: 'l-bebida', campo: 'bebida', input: 'l-bebida', tipo: 'liquidas', grupo: 'BEBIDA', aliases: [] },
+  { key: 'l-sobremesa', campo: 'sobremesa', input: 'l-sobremesa', tipo: 'liquidas', grupo: 'SOBREMESA', aliases: [] },
+  { key: 'l-gelado', campo: 'gelado', input: 'l-gelado', tipo: 'liquidas', grupo: 'GELADO', aliases: [] },
+  { key: 'l-outros', campo: 'outros', input: 'l-outros', tipo: 'liquidas', grupo: 'OUTROS', aliases: [] },
+];
+let extrasPorCampo = {};
+let produtosPorGrupo = {};
+let extraCampoAtual = null;
+let suggestCampo = null;
+let suggestIdx = -1;
+
+function extrasVazios(){
+  const o = {};
+  CAMPOS_COM_MAIS.forEach(({ key }) => { o[key] = []; });
+  return o;
+}
+
+function cfgDoCampo(key){
+  return CAMPOS_COM_MAIS.find(c => c.key === key) || null;
+}
+function cfgPorInput(inputId){
+  return CAMPOS_COM_MAIS.find(c => c.input === inputId) || null;
+}
+extrasPorCampo = extrasVazios();
+
+function nomesProdutosGrupo(grupo){
+  return (produtosPorGrupo[grupo] || []).map(p => {
+    if (!p) return '';
+    return typeof p === 'string' ? p : (p.nome || '');
+  }).filter(Boolean);
+}
+
+function filtrarNomesProdutos(nomes, q){
+  const t = String(q || '').trim().toUpperCase();
+  if (!t) return nomes.slice();
+  return nomes.filter(n => String(n).toUpperCase().includes(t));
+}
+
+function boxSugestao(campo){
+  return document.querySelector(`[data-suggest="${campo}"]`);
+}
+
+function fecharSugestoes(){
+  document.querySelectorAll('.lista-sugestoes').forEach(el => {
+    el.hidden = true;
+    el.innerHTML = '';
+  });
+  document.querySelectorAll('.campo-suggest-wrap.aberto').forEach(el => el.classList.remove('aberto'));
+  CAMPOS_COM_MAIS.forEach(cfg => {
+    const inp = document.getElementById(cfg.input);
+    if (inp){
+      inp.setAttribute('aria-expanded', 'false');
+      delete inp.dataset.suggestTyping;
+    }
+  });
+  suggestCampo = null;
+  suggestIdx = -1;
+}
+
+function marcarSugestaoAtiva(box, idx){
+  const itens = [...(box ? box.querySelectorAll('[data-use-produto]') : [])];
+  if (!itens.length){ suggestIdx = -1; return; }
+  if (idx < 0) idx = itens.length - 1;
+  if (idx >= itens.length) idx = 0;
+  suggestIdx = idx;
+  itens.forEach((el, i) => el.classList.toggle('active', i === idx));
+  itens[idx].scrollIntoView({ block: 'nearest' });
+}
+
+function destacarFiltro(nome, filtro){
+  const texto = String(nome || '');
+  const t = String(filtro || '').trim();
+  if (!t) return escapeHtml(texto);
+  const i = texto.toUpperCase().indexOf(t.toUpperCase());
+  if (i < 0) return escapeHtml(texto);
+  return escapeHtml(texto.slice(0, i)) +
+    '<b>' + escapeHtml(texto.slice(i, i + t.length)) + '</b>' +
+    escapeHtml(texto.slice(i + t.length));
+}
+
+function renderSugestoes(cfg, filtro){
+  if (!cfg) return;
+  const box = boxSugestao(cfg.key);
+  const inp = document.getElementById(cfg.input);
+  if (!box || !inp) return;
+  const nomes = filtrarNomesProdutos(nomesProdutosGrupo(cfg.grupo), filtro);
+  if (!nomes.length){
+    const temCadastro = nomesProdutosGrupo(cfg.grupo).length;
+    box.innerHTML = `<div class="vazio">${temCadastro ? 'Nenhum produto com esse texto' : 'Nenhum produto neste grupo. Use + para cadastrar.'}</div>`;
+  } else {
+    box.innerHTML = nomes.map((nome) => (
+      `<button type="button" data-use-produto="${cfg.key}" data-nome="${escapeHtml(nome)}" role="option">` +
+        `<i class="fas fa-search" aria-hidden="true"></i><span>${destacarFiltro(nome, filtro)}</span>` +
+      `</button>`
+    )).join('');
+  }
+  box.hidden = false;
+  inp.setAttribute('aria-expanded', 'true');
+  inp.closest('.campo-suggest-wrap')?.classList.add('aberto');
+  suggestCampo = cfg.key;
+  suggestIdx = -1;
+}
+
+function abrirSugestoes(cfg, filtro){
+  if (!cfg) return;
+  document.querySelectorAll('.lista-sugestoes').forEach(el => {
+    if (el.getAttribute('data-suggest') !== cfg.key){
+      el.hidden = true;
+      el.innerHTML = '';
+    }
+  });
+  document.querySelectorAll('.campo-suggest-wrap.aberto').forEach(el => {
+    if (!el.querySelector(`#${cfg.input}`)) el.classList.remove('aberto');
+  });
+  renderSugestoes(cfg, filtro);
+}
+
+function escolherSugestao(campo, nome){
+  const cfg = cfgDoCampo(campo);
+  if (cfg && cfg.input && nome) setTexto(cfg.input, nome);
+  fecharSugestoes();
+  if (cfg && (cfg.tipo === 'pequenas' || cfg.tipo === 'grandes')){
+    const numero = (IDS_ITEM[cfg.tipo] || []).indexOf(cfg.input) + 1;
+    if (numero > 0) salvarItemHorario(numero);
+  }
+}
+
+function prepararCamposSugestao(){
+  CAMPOS_COM_MAIS.forEach(cfg => {
+    const inp = document.getElementById(cfg.input);
+    if (!inp) return;
+    if (!inp.closest('.campo-suggest-wrap')){
+      inp.setAttribute('role', 'combobox');
+      inp.setAttribute('aria-autocomplete', 'list');
+      inp.setAttribute('aria-expanded', 'false');
+      inp.setAttribute('spellcheck', 'false');
+      const wrap = document.createElement('div');
+      wrap.className = 'campo-suggest-wrap';
+      inp.parentNode.insertBefore(wrap, inp);
+      wrap.appendChild(inp);
+      const box = document.createElement('div');
+      box.className = 'lista-sugestoes';
+      box.hidden = true;
+      box.setAttribute('data-suggest', cfg.key);
+      box.setAttribute('role', 'listbox');
+      wrap.appendChild(box);
+    }
+    if ((cfg.tipo === 'pequenas' || cfg.tipo === 'grandes') && inp.dataset.itemSave !== '1'){
+      inp.dataset.itemSave = '1';
+      const numero = (IDS_ITEM[cfg.tipo] || []).indexOf(cfg.input) + 1;
+      inp.addEventListener('blur', function(){
+        if (numero > 0) salvarItemHorario(numero);
+      });
+    }
+    if (inp.dataset.suggestPronto === '1') return;
+    inp.dataset.suggestPronto = '1';
+    inp.addEventListener('click', function(){
+      this.dataset.suggestTyping = '';
+      abrirSugestoes(cfg, '');
+    });
+    inp.addEventListener('focus', function(){
+      this.dataset.suggestTyping = '';
+      abrirSugestoes(cfg, '');
+    });
+  });
+}
+
+function asListaNomes(v){
+  if (!v) return [];
+  if (Array.isArray(v)) return v.map(s => String(s || '').trim()).filter(Boolean);
+  const s = String(v).trim();
+  return s ? [s] : [];
+}
+
+function escapeHtml(s){
+  return String(s || '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function renderExtras(campo){
+  const box = document.querySelector(`[data-extras="${campo}"]`);
+  if (box) box.innerHTML = '';
+}
+
+function renderGrupoProdutos(grupo){
+  CAMPOS_COM_MAIS.filter(c => c.grupo === grupo).forEach(c => renderExtras(c.key));
+  if (!suggestCampo) return;
+  const cfg = cfgDoCampo(suggestCampo);
+  if (!cfg || cfg.grupo !== grupo) return;
+  const inp = document.getElementById(cfg.input);
+  const filtro = (inp && inp.dataset.suggestTyping === '1') ? inp.value : '';
+  renderSugestoes(cfg, filtro);
+}
+
+function temasCardapio(){
+  return [...new Set(CAMPOS_COM_MAIS.map(c => c.grupo).filter(Boolean))];
+}
+
+async function carregarProdutosCardapio(){
+  const temas = temasCardapio();
+  try {
+    const r = await fetch('/nutricao/api/cardapio-produtos?temas=' + encodeURIComponent(temas.join(',')));
+    const j = await r.json();
+    const mapa = (j && typeof j === 'object' && !Array.isArray(j)) ? j : {};
+    temas.forEach(grupo => {
+      produtosPorGrupo[grupo] = Array.isArray(mapa[grupo]) ? mapa[grupo] : [];
+    });
+  } catch (e) {
+    temas.forEach(grupo => { produtosPorGrupo[grupo] = produtosPorGrupo[grupo] || []; });
+  }
+  renderTodosExtras();
+}
+
+function renderTodosExtras(){
+  CAMPOS_COM_MAIS.forEach(({ key }) => renderExtras(key));
+}
+
+function setExtrasCampo(campo, listaNomes){
+  const seen = new Set();
+  extrasPorCampo[campo] = [];
+  asListaNomes(listaNomes).forEach(nome => {
+    const key = nome.toUpperCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    extrasPorCampo[campo].push(nome);
+  });
+  renderExtras(campo);
+}
+
+function extrasDoItem(it, campo, aliases){
+  const keys = [campo + '_extras'].concat((aliases || []).map(a => a + '_extras'));
+  const out = [];
+  keys.forEach(k => { out.push(...asListaNomes(it[k])); });
+  return out;
+}
+
+function popupExtraAberto(){
+  const el = document.getElementById('itemExtraOverlay');
+  return el && !el.hidden;
+}
+
+function abrirPopupExtra(campo, titulo){
+  fecharSugestoes();
+  extraCampoAtual = campo;
+  const cfg = cfgDoCampo(campo);
+  const tema = (cfg && cfg.grupo) || titulo || 'item';
+  document.getElementById('itemExtraTitle').textContent = 'Cadastrar ' + String(titulo || tema).toLowerCase();
+  document.getElementById('itemExtraNome').value = '';
+  document.getElementById('itemExtraOverlay').hidden = false;
+  setTimeout(() => document.getElementById('itemExtraNome').focus(), 30);
+}
+
+function fecharPopupExtra(){
+  extraCampoAtual = null;
+  const overlay = document.getElementById('itemExtraOverlay');
+  if (overlay) overlay.hidden = true;
+}
+
+async function confirmarPopupExtra(){
+  const nome = (document.getElementById('itemExtraNome').value || '').trim();
+  if (!nome){ showToast('Informe o nome','error'); return; }
+  if (!extraCampoAtual){ fecharPopupExtra(); return; }
+  const cfg = cfgDoCampo(extraCampoAtual);
+  const grupo = cfg ? cfg.grupo : '';
+  if (!grupo){ showToast('Grupo inválido','error'); return; }
+  const jaTem = (produtosPorGrupo[grupo] || []).some(p => String(p.nome || '').toUpperCase() === nome.toUpperCase());
+  if (jaTem){
+    showToast('Esse produto já está cadastrado neste grupo','error');
+    return;
+  }
+  try {
+    const r = await fetch('/nutricao/api/cardapio-produtos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome, grupo }),
+    });
+    const j = await r.json();
+    if (!r.ok || j.ok === false){
+      showToast((j && j.error) || 'Falha ao cadastrar produto','error');
+      return;
+    }
+    produtosPorGrupo[grupo] = Array.isArray(j.itens) ? j.itens : (produtosPorGrupo[grupo] || []);
+    renderGrupoProdutos(grupo);
+    if (cfg && cfg.input){
+      const preenchido = (j.produto && j.produto.nome) || nome;
+      if (!valCampo(cfg.input)) setTexto(cfg.input, preenchido);
+    }
+    fecharPopupExtra();
+    showToast('Produto cadastrado em ' + grupo.toLowerCase(), 'success');
+  } catch (e) {
+    showToast('Falha ao cadastrar produto','error');
+  }
+}
+
+function aplicarExtrasDoItem(it, tipo){
+  CAMPOS_COM_MAIS.forEach(cfg => {
+    if (cfg.tipo === tipo) setExtrasCampo(cfg.key, extrasDoItem(it, cfg.campo, cfg.aliases));
+    else setExtrasCampo(cfg.key, []);
+  });
+}
+
+function coletarExtras(tipo){
+  const o = {};
+  CAMPOS_COM_MAIS.filter(c => c.tipo === tipo).forEach(cfg => {
+    const listaExtra = (extrasPorCampo[cfg.key] || []).slice();
+    if (!listaExtra.length) return;
+    o[cfg.campo + '_extras'] = listaExtra;
+    if (cfg.campo === 'docinho_salada') o.salada_extras = listaExtra.slice();
+    if (cfg.campo === 'vitamina_suco') o.vitamina_extras = listaExtra.slice();
+  });
+  return o;
+}
 
 function dietaIdNomeFromEl(el){
   const id = Number(el.getAttribute('data-dieta-id') || el.closest('tr')?.dataset?.id || 0) || null;
@@ -453,33 +1150,6 @@ function initCombos(){
   if (combosProntos) return;
   fillSelect(document.getElementById('f-grupo'), OPCOES.grupos, false);
   fillSelect(document.getElementById('f-dia-semana'), OPCOES.dias_semana, false);
-
-  fillSelect(document.getElementById('g-acompanhamento'), OPCOES.acompanhamentos);
-  fillSelect(document.getElementById('g-prato_base'), OPCOES.pratos_base);
-  fillSelect(document.getElementById('g-proteina_opcional'), OPCOES.proteinas_opcionais || OPCOES.proteicos_opcionais);
-  fillSelect(document.getElementById('g-guarnicao'), OPCOES.guarnicoes);
-  fillSelect(document.getElementById('g-docinho_salada'), OPCOES.docinhos_saladas || []);
-  fillSelect(document.getElementById('g-sobremesa'), OPCOES.sobremesas);
-  fillSelect(document.getElementById('g-fruta'), OPCOES.frutas || OPCOES.bebidas);
-  fillSelect(document.getElementById('g-suco'), OPCOES.sucos || []);
-  fillSelect(document.getElementById('g-vitamina_suco'), OPCOES.vitaminas_sucos || OPCOES.entradas_sopas);
-  fillSelect(document.getElementById('g-outros'), OPCOES.outros);
-
-  ['p-bebida','p-prato1','p-prato2','p-prato3','p-prato4','p-prato5','p-prato6','p-prato7'].forEach(id => {
-    fillSelect(document.getElementById(id), id==='p-bebida' ? OPCOES.bebidas : OPCOES.pratos_pequenos);
-  });
-  fillSelect(document.getElementById('p-sobremesa'), OPCOES.sobremesas);
-
-  fillSelect(document.getElementById('l-principal'), OPCOES.principais_liquidos);
-  fillSelect(document.getElementById('l-bebida'), OPCOES.bebidas);
-  fillSelect(document.getElementById('l-sobremesa'), OPCOES.sobremesas);
-  fillSelect(document.getElementById('l-gelado'), OPCOES.bebidas);
-  fillSelect(document.getElementById('l-outros'), OPCOES.outros);
-
-  const box = document.getElementById('organizarRadios');
-  box.innerHTML = (OPCOES.organizar_opcoes || []).map((o,i) =>
-    `<label><input type="radio" name="organizar_por" value="${o}" ${i===0?'checked':''}> ${o}</label>`
-  ).join('');
   combosProntos = true;
 }
 
@@ -498,32 +1168,129 @@ function dietaPayload(){
   };
 }
 
+const DIAS_CADASTRO_CARDAPIO = 31;
+
+function diasNoMesAtual(){
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+}
+
+function diaSelecionado(){
+  let n = parseInt(document.getElementById('f-dia-mes').value, 10);
+  if (!n || n < 1) n = 1;
+  if (n > DIAS_CADASTRO_CARDAPIO) n = DIAS_CADASTRO_CARDAPIO;
+  return n;
+}
+
+function sincronizarSemanaPeloDia(){
+  const now = new Date();
+  const dia = diaSelecionado();
+  const input = document.getElementById('f-dia-mes');
+  input.max = DIAS_CADASTRO_CARDAPIO;
+  input.value = dia;
+  const idxSemana = new Date(now.getFullYear(), now.getMonth(), dia).getDay();
+  const nome = NOMES_SEMANA[idxSemana];
+  const sel = document.getElementById('f-dia-semana');
+  if (sel){
+    if (![...sel.options].some(o => o.value === nome)){
+      const opt = document.createElement('option');
+      opt.value = nome;
+      opt.textContent = nome;
+      sel.appendChild(opt);
+    }
+    sel.value = nome;
+  }
+  const mes = document.getElementById('f-mes-atual');
+  if (mes){
+    const rotulo = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    mes.textContent = rotulo ? '(' + rotulo + ')' : '';
+  }
+}
+
+function diaMesPelaSemana(nome){
+  const alvo = NOMES_SEMANA.indexOf(nome);
+  if (alvo < 0) return diaSelecionado();
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const max = diasNoMesAtual();
+  const atual = diaSelecionado();
+  const delta = (alvo - new Date(y, m, atual).getDay() + 7) % 7;
+  let dia = atual + (delta === 0 ? 0 : delta);
+  if (dia > max) dia = atual - (7 - delta);
+  if (dia >= 1 && dia <= max && new Date(y, m, dia).getDay() === alvo) return dia;
+  for (let d = 1; d <= max; d++){
+    if (new Date(y, m, d).getDay() === alvo) return d;
+  }
+  return atual;
+}
+
+function aplicarDiaHoje(){
+  document.getElementById('f-dia-mes').value = new Date().getDate();
+  sincronizarSemanaPeloDia();
+}
+
+function limparPratos(){
+  document.querySelectorAll('#painel-grandes input, #painel-pequenas input, #painel-liquidas input').forEach(el => {
+    el.value = '';
+  });
+  extrasPorCampo = extrasVazios();
+  renderTodosExtras();
+}
+
+let aplicandoDia = false;
+
+function mostrarCardapioDoDia(){
+  if (aplicandoDia) return;
+  aplicandoDia = true;
+  sincronizarSemanaPeloDia();
+  const achado = cardapioDoHorario(horarioAtual);
+  if (achado.cardapio && Number(achado.cardapio.dia_mes) === diaSelecionado()){
+    preencher(achado.cardapio);
+    if (!achado.proprio) editId = null;
+  } else {
+    editId = null;
+    limparPratos();
+  }
+  aplicandoDia = false;
+}
+
+function aoMudarDiaMes(){
+  mostrarCardapioDoDia();
+}
+
+function aoMudarDiaSemana(){
+  if (aplicandoDia) return;
+  const nome = document.getElementById('f-dia-semana').value;
+  document.getElementById('f-dia-mes').value = diaMesPelaSemana(nome);
+  mostrarCardapioDoDia();
+}
+
 function limparForm(){
   editId = null;
   document.getElementById('f-grupo').value = 'PRINCIPAL';
-  document.getElementById('f-dia-mes').value = 1;
-  document.getElementById('f-dia-semana').value = 'Domingo';
+  sincronizarSemanaPeloDia();
   if (dietaAtual.id){
     document.getElementById('f-dieta-id').value = dietaAtual.id;
     document.getElementById('f-dieta-nome').value = dietaAtual.nome || '';
   }
-  ['hr_desjejum','hr_colacao','hr_almoco','hr_merenda','hr_jantar','hr_ceia'].forEach(id => {
-    document.getElementById(id).checked = false;
-  });
-  document.querySelectorAll('input[name="entrada_tipo"]').forEach(r => r.checked = false);
-  document.querySelectorAll('input[name="proteina_tipo"]').forEach(r => r.checked = false);
-  document.querySelectorAll('#painel-grandes select, #painel-pequenas select, #painel-liquidas select, #painel-liquidas input').forEach(el => {
-    if (el.tagName === 'SELECT') el.value = '';
-    else el.value = '';
-  });
-  document.getElementById('f-vet').value = 0;
-  document.getElementById('f-custo').value = 0;
-  const org = document.querySelector('input[name="organizar_por"]');
-  if (org) org.checked = true;
+  limparPratos();
+  fecharPopupExtra();
+  fecharSugestoes();
 }
 
 function setRadio(name, value){
   document.querySelectorAll(`input[name="${name}"]`).forEach(r => { r.checked = r.value === value; });
+}
+
+function setTexto(id, value){
+  const el = document.getElementById(id);
+  if (el) el.value = value || '';
+}
+
+function valCampo(id){
+  const el = document.getElementById(id);
+  return el ? (el.value || '').trim() : '';
 }
 
 function itemGet(it, ...keys){
@@ -535,10 +1302,14 @@ function itemGet(it, ...keys){
 
 function preencher(c){
   if (!c){ limparForm(); return; }
+  if (horarioAtual !== 'liquidas' && Number(c.dia_mes) !== diaSelecionado()){
+    limparForm();
+    return;
+  }
   editId = c.id;
   document.getElementById('f-grupo').value = c.grupo_cardapio || 'PRINCIPAL';
-  document.getElementById('f-dia-mes').value = c.dia_mes || 1;
-  document.getElementById('f-dia-semana').value = c.dia_semana || 'Domingo';
+  sincronizarSemanaPeloDia();
+  limparPratos();
 
   // Dieta permanece a da linha (bloqueada)
   if (dietaAtual.id){
@@ -546,219 +1317,316 @@ function preencher(c){
     document.getElementById('f-dieta-nome').value = dietaAtual.nome || c.dieta || '';
   }
 
-  document.getElementById('hr_desjejum').checked = !!c.hr_desjejum;
-  document.getElementById('hr_colacao').checked = !!c.hr_colacao;
-  document.getElementById('hr_almoco').checked = !!c.hr_almoco;
-  document.getElementById('hr_merenda').checked = !!c.hr_merenda;
-  document.getElementById('hr_jantar').checked = !!c.hr_jantar;
-  document.getElementById('hr_ceia').checked = !!c.hr_ceia;
-  document.getElementById('f-vet').value = c.vet || 0;
-  document.getElementById('f-custo').value = c.custo || 0;
-
-  const orgVal = c.organizar_por || 'Ord, Dieta, Horário';
-  let matched = false;
-  document.querySelectorAll('input[name="organizar_por"]').forEach(r => {
-    const ok = r.value === orgVal || r.value.replace(/,/g,';') === orgVal.replace(/;/g, ',');
-    r.checked = ok;
-    if (ok) matched = true;
-  });
-  if (!matched){
-    const first = document.querySelector('input[name="organizar_por"]');
-    if (first) first.checked = true;
-  }
-
   const it = c.itens || {};
   if (c.tipo === 'grandes'){
-    setRadio('entrada_tipo', it.entrada_tipo || '');
-    setRadio('proteina_tipo', itemGet(it, 'proteina_tipo', 'proteico_tipo'));
-    ensureOption(document.getElementById('g-acompanhamento'), it.acompanhamento || '');
-    ensureOption(document.getElementById('g-prato_base'), it.prato_base || '');
-    ensureOption(document.getElementById('g-proteina_opcional'), itemGet(it, 'proteina_opcional', 'proteico_opcional'));
-    ensureOption(document.getElementById('g-guarnicao'), it.guarnicao || '');
-    ensureOption(document.getElementById('g-docinho_salada'), itemGet(it, 'docinho_salada', 'diversos_salada'));
-    ensureOption(document.getElementById('g-sobremesa'), it.sobremesa || '');
-    ensureOption(document.getElementById('g-fruta'), itemGet(it, 'fruta', 'bebida'));
-    ensureOption(document.getElementById('g-suco'), it.suco || '');
-    ensureOption(document.getElementById('g-vitamina_suco'), itemGet(it, 'vitamina_suco', 'entrada_sopa'));
-    ensureOption(document.getElementById('g-outros'), it.outros || '');
+    setTexto('g-acompanhamento', it.acompanhamento || '');
+    setTexto('g-prato_base', it.prato_base || '');
+    setTexto('g-proteina_opcional', itemGet(it, 'proteina_opcional', 'proteico_opcional'));
+    setTexto('g-guarnicao', it.guarnicao || '');
+    setTexto('g-docinho_salada', itemGet(it, 'docinho_salada', 'diversos_salada', 'salada'));
+    setTexto('g-sobremesa', it.sobremesa || '');
+    setTexto('g-fruta', itemGet(it, 'fruta', 'bebida'));
+    setTexto('g-suco', it.suco || '');
+    setTexto('g-vitamina_suco', itemGet(it, 'vitamina_suco', 'entrada_sopa', 'vitamina'));
+    setTexto('g-outros', it.outros || '');
+    aplicarExtrasDoItem(it, 'grandes');
   } else if (c.tipo === 'pequenas'){
-    ensureOption(document.getElementById('p-bebida'), it.bebida || '');
-    for (let i=1;i<=7;i++) ensureOption(document.getElementById('p-prato'+i), it['prato'+i] || '');
-    ensureOption(document.getElementById('p-sobremesa'), it.sobremesa || '');
+    setTexto('p-bebida', it.bebida || '');
+    for (let i=1;i<=8;i++) setTexto('p-prato'+i, it['prato'+i] || '');
+    setTexto('p-sobremesa', it.sobremesa || '');
+    aplicarExtrasDoItem(it, 'pequenas');
   } else {
-    ensureOption(document.getElementById('l-principal'), it.principal || '');
-    ensureOption(document.getElementById('l-bebida'), it.bebida || '');
-    ensureOption(document.getElementById('l-sobremesa'), it.sobremesa || '');
-    ensureOption(document.getElementById('l-gelado'), it.gelado || '');
-    ensureOption(document.getElementById('l-outros'), it.outros || '');
-    document.getElementById('l-conv_bebida_coluna').value = it.conv_bebida_coluna || '';
-    document.getElementById('l-conv_bebida_quant').value = it.conv_bebida_quant || '';
-    document.getElementById('l-conv_gelado_coluna').value = it.conv_gelado_coluna || '';
-    document.getElementById('l-conv_gelado_quant').value = it.conv_gelado_quant || '';
+    setTexto('l-principal', it.principal || '');
+    setTexto('l-bebida', it.bebida || '');
+    setTexto('l-sobremesa', it.sobremesa || '');
+    setTexto('l-gelado', it.gelado || '');
+    setTexto('l-outros', it.outros || '');
+    setTexto('l-conv_bebida_coluna', it.conv_bebida_coluna || '');
+    setTexto('l-conv_bebida_quant', it.conv_bebida_quant || '');
+    setTexto('l-conv_gelado_coluna', it.conv_gelado_coluna || '');
+    setTexto('l-conv_gelado_quant', it.conv_gelado_quant || '');
+    aplicarExtrasDoItem(it, 'liquidas');
   }
 }
 
 function coletarItens(){
   if (tipoAtual === 'grandes'){
-    return {
-      entrada_tipo: document.querySelector('input[name="entrada_tipo"]:checked')?.value || '',
-      proteina_tipo: document.querySelector('input[name="proteina_tipo"]:checked')?.value || '',
-      acompanhamento: document.getElementById('g-acompanhamento').value,
-      prato_base: document.getElementById('g-prato_base').value,
-      proteina_opcional: document.getElementById('g-proteina_opcional').value,
-      guarnicao: document.getElementById('g-guarnicao').value,
-      docinho_salada: document.getElementById('g-docinho_salada').value,
-      sobremesa: document.getElementById('g-sobremesa').value,
-      fruta: document.getElementById('g-fruta').value,
-      suco: document.getElementById('g-suco').value,
-      vitamina_suco: document.getElementById('g-vitamina_suco').value,
-      outros: document.getElementById('g-outros').value,
+    const o = {
+      acompanhamento: valCampo('g-acompanhamento'),
+      prato_base: valCampo('g-prato_base'),
+      proteina_opcional: valCampo('g-proteina_opcional'),
+      guarnicao: valCampo('g-guarnicao'),
+      docinho_salada: valCampo('g-docinho_salada'),
+      salada: valCampo('g-docinho_salada'),
+      sobremesa: valCampo('g-sobremesa'),
+      fruta: valCampo('g-fruta'),
+      suco: valCampo('g-suco'),
+      vitamina_suco: valCampo('g-vitamina_suco'),
+      vitamina: valCampo('g-vitamina_suco'),
+      outros: valCampo('g-outros'),
       modo_prato: modoAtual,
     };
+    return Object.assign(o, coletarExtras('grandes'));
   }
   if (tipoAtual === 'pequenas'){
-    const o = { bebida: document.getElementById('p-bebida').value, sobremesa: document.getElementById('p-sobremesa').value };
-    for (let i=1;i<=7;i++) o['prato'+i] = document.getElementById('p-prato'+i).value;
-    return o;
+    const o = { bebida: valCampo('p-bebida'), sobremesa: valCampo('p-sobremesa') };
+    for (let i=1;i<=8;i++) o['prato'+i] = valCampo('p-prato'+i);
+    return Object.assign(o, coletarExtras('pequenas'));
   }
-  return {
-    principal: document.getElementById('l-principal').value,
-    bebida: document.getElementById('l-bebida').value,
-    sobremesa: document.getElementById('l-sobremesa').value,
-    gelado: document.getElementById('l-gelado').value,
-    outros: document.getElementById('l-outros').value,
-    conv_bebida_coluna: document.getElementById('l-conv_bebida_coluna').value,
-    conv_bebida_quant: document.getElementById('l-conv_bebida_quant').value,
-    conv_gelado_coluna: document.getElementById('l-conv_gelado_coluna').value,
-    conv_gelado_quant: document.getElementById('l-conv_gelado_quant').value,
-  };
+  return Object.assign({
+    principal: valCampo('l-principal'),
+    bebida: valCampo('l-bebida'),
+    sobremesa: valCampo('l-sobremesa'),
+    gelado: valCampo('l-gelado'),
+    outros: valCampo('l-outros'),
+    conv_bebida_coluna: valCampo('l-conv_bebida_coluna'),
+    conv_bebida_quant: valCampo('l-conv_bebida_quant'),
+    conv_gelado_coluna: valCampo('l-conv_gelado_coluna'),
+    conv_gelado_quant: valCampo('l-conv_gelado_quant'),
+  }, coletarExtras('liquidas'));
+}
+
+function tipoDoHorario(horario){
+  if (horario === 'liquidas') return 'liquidas';
+  if (HORARIOS_GRANDES.indexOf(horario) >= 0) return 'grandes';
+  if (HORARIOS_PEQUENAS.indexOf(horario) >= 0) return 'pequenas';
+  return 'pequenas';
+}
+
+function flagsDoHorario(){
+  const flags = {};
+  HR_KEYS.forEach(k => { flags['hr_' + k] = false; });
+  if (horarioAtual !== 'liquidas') flags['hr_' + horarioAtual] = true;
+  return flags;
+}
+
+function horarioExclusivo(c, horario){
+  const ativos = HR_KEYS.filter(k => c['hr_' + k]);
+  return c.tipo === tipoDoHorario(horario) && ativos.length === 1 && ativos[0] === horario;
+}
+
+function cardapioDoHorario(horario){
+  const tipo = tipoDoHorario(horario);
+  if (horario === 'liquidas'){
+    const dia = diaSelecionado();
+    const row = lista.filter(c => c.tipo === 'liquidas' && Number(c.dia_mes) === dia)
+      .sort((a, b) => Number(b.id) - Number(a.id))[0] || null;
+    return { cardapio: row, proprio: !!row };
+  }
+  const dia = diaSelecionado();
+  const porId = (a, b) => Number(b.id) - Number(a.id);
+  const exclusivo = lista.filter(c =>
+    c.tipo === tipo && Number(c.dia_mes) === dia && horarioExclusivo(c, horario)
+  ).sort(porId)[0];
+  if (exclusivo) return { cardapio: exclusivo, proprio: true };
+  return { cardapio: null, proprio: false };
+}
+
+function aplicarPainelHorario(){
+  document.querySelectorAll('#abasHorario .tab').forEach(t => {
+    const on = t.dataset.horario === horarioAtual;
+    t.classList.toggle('active', on);
+    t.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  document.getElementById('painel-grandes').hidden = tipoAtual !== 'grandes';
+  document.getElementById('painel-pequenas').hidden = tipoAtual !== 'pequenas';
+  document.getElementById('painel-liquidas').hidden = tipoAtual !== 'liquidas';
+}
+
+const IDS_ITEM = {
+  grandes: ['g-acompanhamento','g-prato_base','g-proteina_opcional','g-guarnicao','g-docinho_salada','g-sobremesa','g-fruta','g-suco','g-vitamina_suco','g-outros'],
+  pequenas: ['p-bebida','p-prato1','p-prato2','p-prato3','p-prato4','p-prato5','p-prato6','p-prato7','p-sobremesa','p-prato8'],
+  liquidas: ['l-principal','l-bebida','l-sobremesa','l-gelado','l-outros'],
+};
+
+function camposItemNumerados(){
+  const ids = IDS_ITEM[tipoAtual] || [];
+  const o = {};
+  for (let i = 1; i <= 10; i++) o['item_' + i] = ids[i - 1] ? valCampo(ids[i - 1]) : '';
+  return o;
 }
 
 function payloadAtual(){
   const d = dietaPayload();
-  return {
+  return Object.assign({
     tipo: tipoAtual,
     grupo_cardapio: document.getElementById('f-grupo').value,
     dia_mes: document.getElementById('f-dia-mes').value,
     dia_semana: document.getElementById('f-dia-semana').value,
     dieta_id: d.dieta_id,
     dieta: d.dieta,
-    hr_desjejum: document.getElementById('hr_desjejum').checked,
-    hr_colacao: document.getElementById('hr_colacao').checked,
-    hr_almoco: document.getElementById('hr_almoco').checked,
-    hr_merenda: document.getElementById('hr_merenda').checked,
-    hr_jantar: document.getElementById('hr_jantar').checked,
-    hr_ceia: document.getElementById('hr_ceia').checked,
     itens: coletarItens(),
-    vet: document.getElementById('f-vet').value,
-    custo: document.getElementById('f-custo').value,
-    organizar_por: document.querySelector('input[name="organizar_por"]:checked')?.value || 'Ord, Dieta, Horário',
     ativo: true
-  };
+  }, camposItemNumerados(), flagsDoHorario());
 }
 
 function apiQuery(){
-  const qs = new URLSearchParams({ tipo: tipoAtual });
+  const qs = new URLSearchParams();
   if (dietaAtual.id) qs.set('dieta_id', dietaAtual.id);
   return qs.toString();
 }
 
+let cargaSeq = 0;
 async function carregarAba(){
+  const seq = ++cargaSeq;
+  const diaPedido = diaSelecionado();
   const r = await fetch('/nutricao/api/cardapios?' + apiQuery());
+  if (seq !== cargaSeq || diaSelecionado() !== diaPedido) return;
   lista = await r.json();
   if (!Array.isArray(lista)) lista = [];
-  idx = lista.length ? 0 : -1;
-  if (idx >= 0) preencher(lista[idx]);
-  else {
+  const achado = cardapioDoHorario(horarioAtual);
+  if (achado.cardapio){
+    preencher(achado.cardapio);
+    if (!achado.proprio) editId = null;
+    idx = achado.proprio ? lista.findIndex(x => x.id === achado.cardapio.id) : -1;
+  } else {
     limparForm();
-    if (tipoAtual === 'grandes'){
-      document.getElementById('hr_almoco').checked = true;
-      document.getElementById('hr_jantar').checked = true;
-      document.getElementById('hr_merenda').checked = true;
-      document.getElementById('hr_ceia').checked = true;
-    }
+    idx = -1;
+  }
+  aplicarPainelHorario();
+}
+
+async function soltarHorarioDosOutros(idMantido, horario){
+  horario = horario || horarioAtual;
+  if (!idMantido || horario === 'liquidas') return;
+  const flag = 'hr_' + horario;
+  const dia = diaSelecionado();
+  const outros = lista.filter(c => c.id !== idMantido && c[flag] && Number(c.dia_mes) === dia);
+  for (const c of outros){
+    const body = Object.assign({}, c);
+    body[flag] = false;
+    await fetch('/nutricao/api/cardapios/' + c.id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
   }
 }
 
-function trocarAba(tipo, btn){
-  tipoAtual = tipo;
-  document.querySelectorAll('#cardapioModalOverlay .tab').forEach(t => t.classList.toggle('active', t.dataset.tipo === tipo));
-  document.getElementById('painel-grandes').hidden = tipo !== 'grandes';
-  document.getElementById('painel-pequenas').hidden = tipo !== 'pequenas';
-  document.getElementById('painel-liquidas').hidden = tipo !== 'liquidas';
-  carregarAba();
+let ignorarBlurItem = false;
+let filaItem = Promise.resolve();
+
+function salvarItemHorario(numero){
+  if (ignorarBlurItem) return;
+  if (HORARIOS_PEQUENAS.indexOf(horarioAtual) < 0 && HORARIOS_GRANDES.indexOf(horarioAtual) < 0) return;
+  const horario = horarioAtual;
+  const body = payloadAtual();
+  body.somente_item = numero;
+  const job = filaItem.then(async () => {
+    const mesmoHorario = horarioAtual === horario;
+    const idEdicao = mesmoHorario ? editId : null;
+    const url = idEdicao ? `/nutricao/api/cardapios/${idEdicao}` : '/nutricao/api/cardapios';
+    const method = idEdicao ? 'PUT' : 'POST';
+    const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    let j = {};
+    try { j = await r.json(); } catch (e) { j = {}; }
+    if (!r.ok || j.ok === false){
+      showToast((j && (j.error || j.message)) || 'Falha ao salvar item','error');
+      return;
+    }
+    if (horarioAtual !== horario) return;
+    if (j.cardapio && j.cardapio.id) editId = j.cardapio.id;
+    if (j.cardapio && j.cardapio.dieta_id){
+      setDietaLocked(j.cardapio.dieta_id, j.cardapio.dieta || dietaAtual.nome);
+    }
+  });
+  filaItem = job.catch(() => {});
 }
 
-function modoPrato(modo){
-  modoAtual = modo;
-  showToast(
-    modo === 'selecao' ? 'Modo: Prato principal/Sobremesa Seleção'
-    : modo === 'padrao' ? 'Modo: Prato principal/Sobremesa Padrão'
-    : 'Modo: Prato principal',
-    'success'
-  );
+function trocarHorario(horario){
+  ignorarBlurItem = true;
+  fecharSugestoes();
+  editId = null;
+  limparPratos();
+  horarioAtual = horario;
+  tipoAtual = tipoDoHorario(horario);
+  aplicarPainelHorario();
+  Promise.resolve(carregarAba()).finally(() => { ignorarBlurItem = false; });
+}
+
+function apontarDietaNaTabela(idAntigo, idNovo, nome){
+  const novo = Number(idNovo) || 0;
+  const antigo = Number(idAntigo) || 0;
+  if (!novo) return;
+  document.querySelectorAll('#tabelaCardapiosBody tr').forEach(tr => {
+    const mesmoId = antigo && Number(tr.dataset.id) === antigo;
+    const mesmoNome = nome && (tr.dataset.nome || '') === nome;
+    if (!mesmoId && !mesmoNome) return;
+    tr.dataset.id = String(novo);
+    if (nome) tr.dataset.nome = nome;
+    tr.querySelectorAll('[data-dieta-id]').forEach(el => {
+      el.setAttribute('data-dieta-id', String(novo));
+      if (nome) el.setAttribute('data-dieta-nome', nome);
+    });
+  });
 }
 
 async function salvarCardapio(){
+  const horarioSalvo = horarioAtual;
   const body = payloadAtual();
   if (!body.dieta_id && !(body.dieta || '').trim()){ showToast('Informe a dieta','error'); return; }
+  const idDietaAntes = dietaAtual.id;
   const url = editId ? `/nutricao/api/cardapios/${editId}` : '/nutricao/api/cardapios';
   const method = editId ? 'PUT' : 'POST';
   const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-  const j = await r.json();
-  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao salvar','error'); return; }
+  let j = {};
+  try { j = await r.json(); } catch (e) { j = {}; }
+  if (!r.ok || j.ok === false){ showToast((j && (j.error || j.message)) || 'Falha ao salvar','error'); return; }
   showToast(editId ? 'Cardápio atualizado' : 'Cardápio cadastrado','success');
+  if (j.cardapio && j.cardapio.dieta_id){
+    setDietaLocked(j.cardapio.dieta_id, j.cardapio.dieta || dietaAtual.nome);
+    apontarDietaNaTabela(idDietaAntes, j.cardapio.dieta_id, j.cardapio.dieta || '');
+  }
+  if (j.cardapio && j.cardapio.id){
+    editId = j.cardapio.id;
+    await soltarHorarioDosOutros(j.cardapio.id, horarioSalvo);
+  }
+  if (horarioAtual !== horarioSalvo) return;
   await carregarAba();
+  if (horarioAtual !== horarioSalvo) return;
   if (j.cardapio){
+    preencher(j.cardapio);
+    editId = j.cardapio.id;
     const i = lista.findIndex(x => x.id === j.cardapio.id);
-    if (i >= 0){ idx = i; preencher(lista[idx]); }
+    idx = i;
   }
 }
 
-async function excluirCardapioAtual(){
-  if (!editId){ showToast('Nenhum cardápio selecionado','error'); return; }
-  if (!confirm('Excluir este cardápio?')) return;
-  const r = await fetch(`/nutricao/api/cardapios/${editId}`, { method:'DELETE' });
+async function excluirDietaECardapio(dietaId, dietaNome){
+  const id = Number(dietaId || dietaAtual.id || 0) || null;
+  const nome = dietaNome || dietaAtual.nome || '';
+  if (!id){ showToast('Nenhuma dieta selecionada','error'); return; }
+  if (!confirm(`Excluir a dieta "${nome}" e o cardápio vinculado?`)) return;
+  const r = await fetch(`/nutricao/api/dietas/${id}`, { method:'DELETE' });
   const j = await r.json();
   if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao excluir','error'); return; }
-  showToast('Cardápio excluído','success');
-  await carregarAba();
+  const n = Number(j.cardapios || 0);
+  showToast(n ? `Dieta e ${n} cardápio(s) excluídos` : 'Dieta excluída','success');
+  fecharCardapioModal();
+  setTimeout(() => location.reload(), 450);
 }
 
 async function excluirCardapiosDieta(dietaId, dietaNome){
-  if (!confirm(`Excluir todos os cardápios da dieta "${dietaNome || ''}"?`)) return;
-  const r = await fetch('/nutricao/api/cardapios?dieta_id=' + encodeURIComponent(dietaId));
-  let rows = await r.json();
-  if (!Array.isArray(rows)) rows = [];
-  if (!rows.length){
-    showToast('Nenhum cardápio para esta dieta','error');
-    return;
-  }
-  let ok = 0;
-  for (const c of rows){
-    const del = await fetch(`/nutricao/api/cardapios/${c.id}`, { method:'DELETE' });
-    const j = await del.json();
-    if (del.ok && j.ok !== false) ok++;
-  }
-  showToast(ok ? `${ok} cardápio(s) excluído(s)` : 'Falha ao excluir','success');
+  await excluirDietaECardapio(dietaId, dietaNome);
 }
 
 async function abrirCardapioModal(dietaId, dietaNome){
   initCombos();
   setDietaLocked(dietaId, dietaNome);
-  tipoAtual = 'grandes';
-  document.querySelectorAll('#cardapioModalOverlay .tab').forEach(t => {
-    t.classList.toggle('active', t.dataset.tipo === 'grandes');
-  });
-  document.getElementById('painel-grandes').hidden = false;
-  document.getElementById('painel-pequenas').hidden = true;
-  document.getElementById('painel-liquidas').hidden = true;
+  horarioAtual = 'desjejum';
+  tipoAtual = 'pequenas';
+  aplicarDiaHoje();
+  aplicarPainelHorario();
   document.getElementById('cardapioModalOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
+  prepararCamposSugestao();
+  await carregarProdutosCardapio();
   await carregarAba();
 }
 
 function fecharCardapioModal(){
+  fecharPopupExtra();
+  fecharSugestoes();
   document.getElementById('cardapioModalOverlay').classList.remove('open');
   document.body.style.overflow = '';
   lista = [];
@@ -768,6 +1636,75 @@ function fecharCardapioModal(){
 
 document.addEventListener('DOMContentLoaded', function(){
   initCombos();
+  prepararCamposSugestao();
+  renderTodosExtras();
+
+  const overlay = document.getElementById('cardapioModalOverlay');
+  overlay?.addEventListener('click', function(e){
+    const mais = e.target.closest('.btn-bolinha-mais');
+    if (mais){
+      e.preventDefault();
+      abrirPopupExtra(mais.getAttribute('data-campo'), mais.getAttribute('data-titulo'));
+      return;
+    }
+    const usar = e.target.closest('[data-use-produto]');
+    if (usar){
+      e.preventDefault();
+      escolherSugestao(usar.getAttribute('data-use-produto'), usar.getAttribute('data-nome') || '');
+      return;
+    }
+    if (!e.target.closest('.campo-suggest-wrap')) fecharSugestoes();
+  });
+  overlay?.addEventListener('mousedown', function(e){
+    if (e.target.closest('.lista-sugestoes')) e.preventDefault();
+  });
+  overlay?.addEventListener('focusin', function(e){
+    const cfg = cfgPorInput(e.target.id);
+    if (!cfg) return;
+    e.target.dataset.suggestTyping = '';
+    abrirSugestoes(cfg, '');
+  });
+  overlay?.addEventListener('input', function(e){
+    const cfg = cfgPorInput(e.target.id);
+    if (!cfg) return;
+    e.target.dataset.suggestTyping = '1';
+    abrirSugestoes(cfg, e.target.value);
+  });
+  overlay?.addEventListener('keydown', function(e){
+    const cfg = cfgPorInput(e.target.id);
+    if (!cfg) return;
+    const box = boxSugestao(cfg.key);
+    if (e.key === 'Escape'){
+      if (box && !box.hidden){
+        e.preventDefault();
+        e.stopPropagation();
+        fecharSugestoes();
+      }
+      return;
+    }
+    if (!box || box.hidden) return;
+    if (e.key === 'ArrowDown'){
+      e.preventDefault();
+      marcarSugestaoAtiva(box, suggestIdx + 1);
+    } else if (e.key === 'ArrowUp'){
+      e.preventDefault();
+      marcarSugestaoAtiva(box, suggestIdx < 0 ? -1 : suggestIdx - 1);
+    } else if (e.key === 'Enter'){
+      const itens = [...box.querySelectorAll('[data-use-produto]')];
+      const alvo = itens[suggestIdx] || (itens.length === 1 ? itens[0] : null);
+      if (alvo){
+        e.preventDefault();
+        escolherSugestao(cfg.key, alvo.getAttribute('data-nome') || '');
+      }
+    }
+  });
+
+  document.getElementById('itemExtraNome')?.addEventListener('keydown', function(e){
+    if (e.key === 'Enter'){
+      e.preventDefault();
+      confirmarPopupExtra();
+    }
+  });
 
   const tbody = document.getElementById('tabelaCardapiosBody');
   if (tbody){
@@ -793,7 +1730,18 @@ document.addEventListener('DOMContentLoaded', function(){
 });
 
 document.addEventListener('keydown', function(e){
-  if (e.key === 'Escape' && document.getElementById('cardapioModalOverlay').classList.contains('open')){
+  if (e.key !== 'Escape') return;
+  if (popupExtraAberto()){
+    e.preventDefault();
+    fecharPopupExtra();
+    return;
+  }
+  if (suggestCampo){
+    e.preventDefault();
+    fecharSugestoes();
+    return;
+  }
+  if (document.getElementById('cardapioModalOverlay').classList.contains('open')){
     fecharCardapioModal();
   }
 });

@@ -14,7 +14,13 @@ from sqlalchemy import func
 from werkzeug.utils import secure_filename
 
 from models import db, Usuario
-from models_pesagem import PesagemBalanca, PesagemCliente, PesagemLeitura
+from models_pesagem import (
+    PesagemBalanca,
+    PesagemCliente,
+    PesagemLeitura,
+    PesagemWhatsAppDestino,
+    PesagemWhatsAppEnvio,
+)
 
 pesagem = Blueprint('pesagem', __name__, template_folder='templates_pesagem')
 
@@ -48,26 +54,49 @@ _PESAGEM_ENDPOINT_MENUS = {
     'pesagem.dashboard_imprimir': 'dashboard',
     'pesagem.balancas_page': 'balancas',
     'pesagem.clientes_page': 'clientes',
+    'pesagem.whatsapp_page': 'whatsapp',
     'pesagem.auditoria': 'auditoria',
     'pesagem.download_agente_arquivo': 'dashboard',
     'pesagem.api_listar_leituras': 'dashboard',
+    'pesagem.api_lancar_leitura_manual': 'dashboard',
+    'pesagem.api_excluir_leitura': 'dashboard',
+    'pesagem.api_editar_leitura': 'dashboard',
     'pesagem.api_balancas': 'balancas',
     'pesagem.api_balanca': 'balancas',
     'pesagem.api_listar_clientes': 'clientes',
     'pesagem.api_criar_cliente': 'clientes',
     'pesagem.api_cliente': 'clientes',
+    'pesagem.api_whatsapp_status': 'whatsapp',
+    'pesagem.api_whatsapp_logout': 'whatsapp',
+    'pesagem.api_whatsapp_preview': 'whatsapp',
+    'pesagem.api_whatsapp_destinos': 'whatsapp',
+    'pesagem.api_whatsapp_destino': 'whatsapp',
+    'pesagem.api_whatsapp_enviar': 'whatsapp',
 }
 
 
 @pesagem.before_request
 def _checar_permissao_menu_pesagem():
-    if request.endpoint in ('pesagem.api_health', 'pesagem.api_receber_leitura'):
+    if request.endpoint in (
+        'pesagem.api_health',
+        'pesagem.api_receber_leitura',
+        'pesagem.api_listar_leituras',
+    ):
         return None
     path = (request.path or '').rstrip('/')
-    # AgentePesagem.exe: lista somente leitura do Cadastro de Cliente (pesagem_clientes)
+    # AgentePesagem.exe: cadastro de cliente + pesados do dia (listar/editar/excluir)
+    if _check_api_key() and request.endpoint in (
+        'pesagem.api_listar_clientes',
+        'pesagem.api_listar_leituras',
+        'pesagem.api_excluir_leitura',
+        'pesagem.api_editar_leitura',
+    ):
+        return None
     if request.method == 'GET' and path == '/api/pesagem/clientes' and _check_api_key():
         return None
-    if request.endpoint == 'pesagem.api_listar_clientes' and _check_api_key():
+    if request.method == 'GET' and path == '/api/pesagem/leituras' and _check_api_key():
+        return None
+    if request.method in ('PUT', 'PATCH', 'DELETE') and path.startswith('/api/pesagem/leituras/') and _check_api_key():
         return None
     if 'user_id' not in session:
         return None
@@ -105,6 +134,11 @@ def api_key_required(f):
             return jsonify({'ok': False, 'error': 'API key inválida'}), 401
         return f(*args, **kwargs)
     return decorated
+
+
+def _agente_ou_login():
+    """AgentePesagem.exe (X-API-Key) ou sessão web."""
+    return bool(_check_api_key() or session.get('user_id'))
 
 
 def seed_pesagem():
@@ -328,14 +362,11 @@ def _aplicar_filtros_leituras(query, filtros):
     data_de = filtros.get('data_de')
     data_ate = filtros.get('data_ate')
     if data_de:
-        query = query.filter(
-            PesagemLeitura.data_leitura >= datetime.combine(data_de, datetime.min.time())
-        )
+        inicio = datetime.combine(data_de, datetime.min.time())
+        query = query.filter(PesagemLeitura.data_leitura >= inicio)
     if data_ate:
-        query = query.filter(
-            PesagemLeitura.data_leitura
-            <= datetime.combine(data_ate, datetime.max.time()).replace(microsecond=0)
-        )
+        fim = datetime.combine(data_ate + timedelta(days=1), datetime.min.time())
+        query = query.filter(PesagemLeitura.data_leitura < fim)
     if filtros.get('cliente_id'):
         query = query.filter(PesagemLeitura.cliente_id == filtros['cliente_id'])
     if filtros.get('balanca'):
@@ -514,6 +545,21 @@ def clientes_page():
     )
 
 
+@pesagem.route('/pesagem/whatsapp')
+@login_required
+def whatsapp_page():
+    from whatsapp_pesagem import ultimo_envio_por_destino
+
+    destinos = PesagemWhatsAppDestino.query.order_by(PesagemWhatsAppDestino.nome).all()
+    ids = [d.id for d in destinos]
+    return render_template(
+        'pesagem_whatsapp.html',
+        destinos=[d.to_dict() for d in destinos],
+        ultimos=ultimo_envio_por_destino(ids),
+        **{'active_page': 'whatsapp'},
+    )
+
+
 @pesagem.route('/pesagem/auditoria')
 @login_required
 def auditoria():
@@ -653,9 +699,77 @@ def api_receber_leitura():
     return jsonify({'ok': True, 'id': leitura.id, 'leitura': leitura.to_dict()})
 
 
-@pesagem.route('/api/pesagem/leituras', methods=['GET'])
+@pesagem.route('/api/pesagem/leituras/manual', methods=['POST'])
 @login_required
+def api_lancar_leitura_manual():
+    """Lançamento de peso pela web, sem o agente da balança."""
+    d = request.get_json(silent=True) if request.is_json else None
+    if d is None:
+        d = request.form
+
+    peso_liquido = _parse_float(d.get('peso_liquido'))
+    if peso_liquido is None:
+        peso_liquido = _parse_float(d.get('peso'))
+    if peso_liquido is None or peso_liquido <= 0:
+        return jsonify({'ok': False, 'error': 'Informe o peso líquido maior que zero.'}), 400
+
+    tara = _parse_float(d.get('tara'))
+    if tara is None:
+        tara = 0.0
+    if tara < 0:
+        return jsonify({'ok': False, 'error': 'A tara não pode ser negativa.'}), 400
+
+    codigo = (d.get('balanca_codigo') or d.get('balanca') or '').strip().upper()
+    if not codigo:
+        return jsonify({'ok': False, 'error': 'Selecione a balança.'}), 400
+    balanca = PesagemBalanca.query.filter_by(codigo=codigo).first()
+    if not balanca or not balanca.ativo:
+        return jsonify({'ok': False, 'error': 'Balança não encontrada ou inativa.'}), 400
+
+    cliente_id, cliente_nome = _resolver_cliente_leitura(d)
+    if not cliente_id:
+        return jsonify({
+            'ok': False,
+            'error': 'Cliente selecionado é obrigatório e deve estar cadastrado.',
+        }), 400
+
+    peso_bruto = _parse_float(d.get('peso_bruto'))
+    if peso_bruto is None:
+        peso_bruto = round(peso_liquido + tara, 4)
+
+    user = Usuario.query.get(session.get('user_id'))
+    quem = ''
+    if user is not None:
+        quem = (getattr(user, 'nome', None) or getattr(user, 'email', None) or '')[:120]
+
+    leitura = PesagemLeitura(
+        balanca_id=balanca.id,
+        balanca_codigo=balanca.codigo,
+        peso=peso_liquido,
+        unidade=(d.get('unidade') or 'kg')[:10],
+        tara=tara,
+        peso_bruto=peso_bruto,
+        peso_liquido=peso_liquido,
+        bruto_serial=None,
+        estavel=True,
+        origem='manual',
+        computador=quem or 'web',
+        porta_com=None,
+        observacao=(d.get('observacao') or '').strip()[:255] or None,
+        cliente_id=cliente_id,
+        cliente_nome=cliente_nome,
+        data_leitura=_resolver_data_leitura(d),
+    )
+    db.session.add(leitura)
+    db.session.commit()
+    return jsonify({'ok': True, 'id': leitura.id, 'leitura': leitura.to_dict()})
+
+
+@pesagem.route('/api/pesagem/leituras', methods=['GET'])
 def api_listar_leituras():
+    """Lista lançamentos. A tela web usa a sessão; o agente usa X-API-Key."""
+    if not _agente_ou_login():
+        return jsonify({'ok': False, 'error': 'Não autorizado'}), 401
     filtros = {
         'data_de': _parse_date_arg(request.args.get('data_de')),
         'data_ate': _parse_date_arg(request.args.get('data_ate')),
@@ -677,6 +791,61 @@ def api_listar_leituras():
         .all()
     )
     return jsonify({'ok': True, 'leituras': [r.to_dict() for r in rows]})
+
+
+@pesagem.route('/api/pesagem/leituras/<int:lid>', methods=['DELETE'])
+def api_excluir_leitura(lid):
+    """Remove um lançamento de pesagem da listagem (dashboard ou agente)."""
+    if not _agente_ou_login():
+        return jsonify({'ok': False, 'error': 'Não autorizado'}), 401
+    leitura = PesagemLeitura.query.get(lid)
+    if not leitura:
+        return jsonify({'ok': False, 'error': 'Lançamento não encontrado'}), 404
+    db.session.delete(leitura)
+    db.session.commit()
+    return jsonify({'ok': True, 'id': lid})
+
+
+@pesagem.route('/api/pesagem/leituras/<int:lid>', methods=['PUT', 'PATCH'])
+def api_editar_leitura(lid):
+    """Altera cliente e/ou líquido de um lançamento (dashboard ou agente)."""
+    if not _agente_ou_login():
+        return jsonify({'ok': False, 'error': 'Não autorizado'}), 401
+    leitura = PesagemLeitura.query.get(lid)
+    if not leitura:
+        return jsonify({'ok': False, 'error': 'Lançamento não encontrado'}), 404
+    d = request.get_json(force=True, silent=True) or {}
+
+    if any(k in d for k in ('cliente_id', 'cliente_nome', 'cliente')):
+        cliente_id, cliente_nome = _resolver_cliente_leitura(d)
+        if not cliente_id:
+            return jsonify({
+                'ok': False,
+                'error': 'Cliente selecionado é obrigatório e deve estar cadastrado.',
+            }), 400
+        leitura.cliente_id = cliente_id
+        leitura.cliente_nome = cliente_nome
+
+    tara = _parse_float(d.get('tara'))
+    if tara is None:
+        tara = leitura.tara if leitura.tara is not None else 0.0
+    peso_liquido = _parse_float(d.get('peso_liquido'))
+    if peso_liquido is None:
+        peso_liquido = _parse_float(d.get('peso'))
+    if peso_liquido is None:
+        peso_liquido = leitura.peso_liquido if leitura.peso_liquido is not None else leitura.peso
+    if peso_liquido is None or peso_liquido <= 0:
+        return jsonify({'ok': False, 'error': 'Informe o peso líquido.'}), 400
+    peso_bruto = _parse_float(d.get('peso_bruto'))
+    if peso_bruto is None:
+        peso_bruto = round(float(peso_liquido) + float(tara or 0.0), 4)
+
+    leitura.tara = tara
+    leitura.peso_liquido = peso_liquido
+    leitura.peso = peso_liquido
+    leitura.peso_bruto = peso_bruto
+    db.session.commit()
+    return jsonify({'ok': True, 'id': leitura.id, 'leitura': leitura.to_dict()})
 
 
 @pesagem.route('/api/pesagem/balancas', methods=['GET', 'POST'])
@@ -810,3 +979,135 @@ def api_cliente(cid):
             c.imagem_path = path
     db.session.commit()
     return jsonify({'ok': True, 'cliente': _cliente_to_dict(c)})
+
+
+def _destino_payload():
+    from whatsapp_pesagem import parse_hora, telefone_valido, normalizar_telefone
+
+    d = request.get_json(silent=True) or {}
+    nome = (d.get('nome') or '').strip()[:120]
+    telefone_raw = (d.get('telefone') or '').strip()
+    hora = parse_hora(d.get('hora'))
+    mensagem = (d.get('mensagem') if d.get('mensagem') is not None else '')
+    mensagem = str(mensagem).strip()
+    ativo = d.get('ativo', True)
+    if isinstance(ativo, str):
+        ativo = ativo.lower() in ('1', 'true', 'on', 'sim')
+    else:
+        ativo = bool(ativo)
+    erros = []
+    if not nome:
+        erros.append('Nome é obrigatório')
+    if not telefone_valido(telefone_raw):
+        erros.append('Telefone inválido. Use DDD + número, com ou sem 55.')
+    if not hora:
+        erros.append('Hora inválida')
+    if erros:
+        return None, erros
+    return {
+        'nome': nome,
+        'telefone': normalizar_telefone(telefone_raw),
+        'hora': hora,
+        'mensagem': mensagem,
+        'ativo': ativo,
+    }, None
+
+
+@pesagem.route('/api/pesagem/whatsapp/status', methods=['GET'])
+@login_required
+def api_whatsapp_status():
+    from whatsapp_pesagem import status_whatsapp
+    return jsonify(status_whatsapp())
+
+
+@pesagem.route('/api/pesagem/whatsapp/logout', methods=['POST'])
+@login_required
+def api_whatsapp_logout():
+    from whatsapp_pesagem import logout_whatsapp
+    result = logout_whatsapp()
+    code = 200 if result.get('ok') else 400
+    return jsonify(result), code
+
+
+@pesagem.route('/api/pesagem/whatsapp/preview', methods=['GET'])
+@login_required
+def api_whatsapp_preview():
+    from whatsapp_pesagem import montar_mensagem, totais_liquido_do_dia
+
+    template = (request.args.get('mensagem') or '').strip()
+    if not template:
+        dest_id = request.args.get('destino_id')
+        if dest_id:
+            dest = PesagemWhatsAppDestino.query.get(dest_id)
+            if dest:
+                template = dest.mensagem or ''
+        if not template:
+            primeiro = PesagemWhatsAppDestino.query.filter_by(ativo=True).order_by(
+                PesagemWhatsAppDestino.id
+            ).first()
+            if primeiro:
+                template = primeiro.mensagem or ''
+    if not template:
+        template = 'Resumo da pesagem de hoje:'
+    dia = _parse_date_arg(request.args.get('data')) or date.today()
+    totais = totais_liquido_do_dia(dia)
+    corpo = montar_mensagem(template, totais=totais, dia=dia)
+    return jsonify({
+        'ok': True,
+        'data': dia.isoformat(),
+        'corpo': corpo,
+        'totais': totais,
+    })
+
+
+@pesagem.route('/api/pesagem/whatsapp/destinos', methods=['GET', 'POST'])
+@login_required
+def api_whatsapp_destinos():
+    if request.method == 'POST':
+        payload, erros = _destino_payload()
+        if erros:
+            return jsonify({'ok': False, 'error': '; '.join(erros)}), 400
+        dest = PesagemWhatsAppDestino(**payload)
+        db.session.add(dest)
+        db.session.commit()
+        return jsonify({'ok': True, 'destino': dest.to_dict()})
+    rows = PesagemWhatsAppDestino.query.order_by(PesagemWhatsAppDestino.nome).all()
+    return jsonify({'ok': True, 'destinos': [r.to_dict() for r in rows]})
+
+
+@pesagem.route('/api/pesagem/whatsapp/destinos/<int:did>', methods=['PUT', 'DELETE'])
+@login_required
+def api_whatsapp_destino(did):
+    dest = PesagemWhatsAppDestino.query.get(did)
+    if not dest:
+        return jsonify({'ok': False, 'error': 'Destinatário não encontrado'}), 404
+    if request.method == 'DELETE':
+        PesagemWhatsAppEnvio.query.filter_by(destino_id=dest.id).delete(
+            synchronize_session=False
+        )
+        db.session.delete(dest)
+        db.session.commit()
+        return jsonify({'ok': True})
+    payload, erros = _destino_payload()
+    if erros:
+        return jsonify({'ok': False, 'error': '; '.join(erros)}), 400
+    dest.nome = payload['nome']
+    dest.telefone = payload['telefone']
+    dest.hora = payload['hora']
+    dest.mensagem = payload['mensagem']
+    dest.ativo = payload['ativo']
+    db.session.commit()
+    return jsonify({'ok': True, 'destino': dest.to_dict()})
+
+
+@pesagem.route('/api/pesagem/whatsapp/enviar/<int:did>', methods=['POST'])
+@login_required
+def api_whatsapp_enviar(did):
+    from whatsapp_pesagem import enviar_para_destino
+
+    dest = PesagemWhatsAppDestino.query.get(did)
+    if not dest:
+        return jsonify({'ok': False, 'error': 'Destinatário não encontrado'}), 404
+    result = enviar_para_destino(dest, tipo='manual')
+    code = 200 if result.get('ok') else 400
+    return jsonify(result), code

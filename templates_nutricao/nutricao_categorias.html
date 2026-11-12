@@ -1,0 +1,181 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="categoria-cadastro">
+<div class="page-header">
+  <h1>Cadastro de Categoria</h1>
+  <p>Categorias usadas no cadastro de dietas (ex.: Básica / Oral, Enteral)</p>
+</div>
+
+<div class="toolbar">
+  <div class="toolbar-search">
+    <i class="fas fa-search"></i>
+    <input type="text" id="buscaCategoria" placeholder="Buscar categoria..." oninput="filtrarCategorias()">
+  </div>
+  <button class="btn btn-primary btn-sm" type="button" onclick="abrirCategoria()">
+    <i class="fas fa-plus"></i> Nova Categoria
+  </button>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden">
+  <div class="table-container" style="box-shadow:none;border-radius:0;">
+    <table class="data-table" id="tabelaCategorias">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th style="width:72px;text-align:center">Ordem</th>
+          <th style="width:72px;text-align:center">Ativo</th>
+          <th style="width:88px">Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tabelaCategoriasBody">
+        {% for c in categorias %}
+        <tr data-id="{{ c.id }}" data-nome="{{ c.nome }}" data-ordem="{{ c.ordem }}" data-ativo="{{ '1' if c.ativo else '0' }}">
+          <td>{{ c.nome }}</td>
+          <td style="text-align:center">{{ c.ordem or '—' }}</td>
+          <td style="text-align:center">
+            <input type="checkbox" {% if c.ativo %}checked{% endif %} onchange="toggleCategoriaAtivo({{ c.id }}, this.checked)">
+          </td>
+          <td>
+            <button class="btn btn-ghost btn-sm" type="button"
+              onclick='abrirCategoria({{ {"id": c.id, "nome": c.nome, "ordem": c.ordem, "ativo": c.ativo}|tojson }})'
+              title="Editar">
+              <i class="fas fa-edit"></i>
+            </button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="excluirCategoria({{ c.id }})" title="Desativar">
+              <i class="fas fa-trash"></i>
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr id="linhaVazia">
+          <td colspan="4" style="text-align:center;color:#6B7280;">Nenhuma categoria cadastrada.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+</div>
+
+<style>
+.categoria-cadastro .page-header { margin-bottom: 1rem; }
+.categoria-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.categoria-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.categoria-cadastro .toolbar { gap: 0.6rem; margin-bottom: 0.8rem; }
+.categoria-cadastro .toolbar-search {
+  gap: 0.4rem;
+  padding: 0.44rem 0.68rem;
+  max-width: 336px;
+  flex-basis: 176px;
+}
+.categoria-cadastro .toolbar-search i { font-size: 0.72rem; }
+.categoria-cadastro .toolbar-search input {
+  font-size: 0.72rem;
+  padding: 0;
+  width: auto;
+  border: none;
+  box-shadow: none;
+}
+.categoria-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.categoria-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
+.categoria-cadastro .btn-ghost { padding: 0.28rem 0.4rem; }
+.categoria-cadastro .card { padding: 1rem; margin-bottom: 0.8rem; }
+.categoria-cadastro .data-table { font-size: 0.8rem; }
+.categoria-cadastro .data-table th,
+.categoria-cadastro .data-table td { padding: 0.68rem 0.8rem; font-size: 0.76rem; }
+.categoria-cadastro .data-table th { font-size: 0.76rem; }
+#modalOverlay .modal-dialog { max-width: 512px; }
+#modalOverlay .modal-header { padding: 0.92rem 1rem 0; gap: 0.6rem; }
+#modalOverlay .modal-header h2 { font-size: 0.96rem; }
+#modalOverlay .modal-close { font-size: 1.2rem; }
+#modalOverlay .modal-body { padding: 0.8rem 1rem 0.92rem; }
+#modalOverlay .modal-footer { gap: 0.4rem; padding: 0.8rem 1rem; }
+#modalOverlay .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+#modalOverlay .form-control {
+  padding: 0.48rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+#modalOverlay .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
+#modalOverlay .form-group { margin-bottom: 1rem; }
+#modalOverlay .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+</style>
+
+<script>
+function filtrarCategorias(){
+  const q = (document.getElementById('buscaCategoria').value || '').toLowerCase().trim();
+  document.querySelectorAll('#tabelaCategoriasBody tr').forEach(tr => {
+    if (tr.id === 'linhaVazia') return;
+    const nome = (tr.dataset.nome || '').toLowerCase();
+    tr.style.display = (!q || nome.includes(q)) ? '' : 'none';
+  });
+}
+
+function abrirCategoria(data){
+  const isEdit = !!(data && data.id);
+  const ordem = (data && data.ordem != null) ? String(data.ordem) : '';
+  const html = `
+    <div class="form-group">
+      <label class="form-label">Nome *</label>
+      <input class="form-control" id="f-cat-nome" value="${(data && data.nome) ? String(data.nome).replace(/"/g,'&quot;') : ''}" placeholder="Ex: Básica / Oral">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Ordem</label>
+      <input class="form-control" id="f-cat-ordem" type="number" min="0" step="1"
+        value="${ordem.replace(/"/g,'&quot;')}" placeholder="Ex: 10">
+    </div>
+    <div class="form-group" style="display:flex;align-items:center;gap:6px;margin-top:10px;">
+      <input type="checkbox" id="f-cat-ativo" ${(data ? data.ativo !== false : true) ? 'checked' : ''}>
+      <label class="form-label" for="f-cat-ativo" style="margin:0">Ativo</label>
+    </div>
+  `;
+  window._editCategoriaId = isEdit ? data.id : null;
+  abrirModal(isEdit ? 'Editar Categoria' : 'Nova Categoria', html, isEdit ? 'Atualizar' : 'Salvar', salvarCategoria);
+}
+
+async function salvarCategoria(){
+  const nome = (document.getElementById('f-cat-nome')?.value || '').trim();
+  if (!nome){ showToast('Informe o nome da categoria','error'); return; }
+  const ordemRaw = (document.getElementById('f-cat-ordem')?.value || '').trim();
+  const body = {
+    nome,
+    ativo: !!document.getElementById('f-cat-ativo')?.checked,
+  };
+  if (ordemRaw !== ''){
+    const n = parseInt(ordemRaw, 10);
+    if (!isFinite(n) || n < 0){ showToast('Ordem inválida','error'); return; }
+    body.ordem = n;
+  }
+  const id = window._editCategoriaId;
+  const url = id ? `/nutricao/api/categorias/${id}` : '/nutricao/api/categorias';
+  const method = id ? 'PUT' : 'POST';
+  const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao salvar','error'); return; }
+  fecharModal();
+  showToast(id ? 'Categoria atualizada' : 'Categoria cadastrada','success');
+  setTimeout(() => location.reload(), 450);
+}
+
+async function toggleCategoriaAtivo(id, ativo){
+  const r = await fetch(`/nutricao/api/categorias/${id}`, {
+    method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ativo: !!ativo })
+  });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao atualizar','error'); return; }
+  showToast(ativo ? 'Categoria ativada' : 'Categoria desativada','success');
+}
+
+async function excluirCategoria(id){
+  if (!confirm('Desativar esta categoria?')) return;
+  const r = await fetch(`/nutricao/api/categorias/${id}`, { method: 'DELETE' });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao desativar','error'); return; }
+  showToast('Categoria desativada','success');
+  setTimeout(() => location.reload(), 450);
+}
+</script>
+{% endblock %}

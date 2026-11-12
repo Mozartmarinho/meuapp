@@ -19,6 +19,7 @@
   "envio_automatico": false,
   "intervalo_envio_seg": 2.0,
   "peso_minimo": 0.001,
-  "consultar_balanca": true,
-  "intervalo_consulta_seg": 0.3
+        "consultar_balanca": true,
+        "intervalo_consulta_seg": 0.3,
+        "tara_fixa": 0.0
 }

@@ -8,9 +8,12 @@ HFB_NOME = 'HOSPITAL FEDERAL DE BONSUCESSO'
 # Root nutrição tables that carry cliente_id directly
 NUTRICAO_CLIENTE_TABLES = (
     'nut_clinicas',
+    'nut_grupos_clinica',
     'nut_enfermarias',
     'nut_dietas',
+    'nut_dietas_excluidas',
     'nut_grupos_dieta',
+    'nut_categorias_dieta',
     'nut_pacientes',
     'nut_mapa_refeicoes',
     'nut_cardapios',
@@ -124,8 +127,12 @@ def ensure_nutricao_cliente_schema():
                 uniq_specs.append(('sigla', f'uq_{table}_cliente_sigla'))
             elif table == 'nut_precos_refeicoes':
                 uniq_specs.append(('refeicao', f'uq_{table}_cliente_refeicao'))
+            elif table == 'nut_categorias_dieta':
+                uniq_specs.append(('codigo', f'uq_{table}_cliente_codigo'))
+                uniq_specs.append(('nome', f'uq_{table}_cliente_nome'))
             elif table in (
-                'nut_clinicas', 'nut_enfermarias', 'nut_dietas', 'nut_grupos_dieta',
+                'nut_clinicas', 'nut_grupos_clinica', 'nut_enfermarias', 'nut_dietas', 'nut_dietas_excluidas',
+                'nut_grupos_dieta',
                 'nut_tabelas_nutrientes', 'nut_pratos_liquidos', 'nut_estoques',
                 'nut_grupos_produto', 'nut_fornecedores', 'nut_etiquetas',
             ):

@@ -17,6 +17,8 @@ from models import (
     Usuario,
     Cliente,
     Equipamento,
+    EquipamentoPreventiva,
+    EquipamentoTermo,
     RecursoGrupo,
     ChamadoSetor,
     ChamadoTecnico,
@@ -26,6 +28,7 @@ from models import (
     ChamadoFoto,
     ChamadoConhecimento,
     MesaServico,
+    ChamadoTecnicoMesa,
     SlaPrioridade,
     Contrato,
     ChamadoMensagem,
@@ -35,9 +38,12 @@ from models import (
     ChamadoPortao,
     ChamadoEstoque,
     ChamadoEstoqueUso,
+    PermissaoMenu,
     ConhecimentoPasta,
     SetorFuncao,
+    WhatsAppChamadoUsuario,
     now_brasilia,
+    fmt_brasilia,
     TIPO_FOTO_CONSERTO,
     TIPO_FOTO_ENCAMINHAMENTO,
     TIPO_HOP_ENCAMINHAR,
@@ -46,7 +52,9 @@ from models import (
     SETOR_COMPRAS,
     STATUS_AGUARDAR_PECA,
     STATUS_ENCAMINHADO,
+    STATUS_REAGENDADO,
     STATUS_DEVOLVIDO,
+    STATUS_SILENCIA_TOQUE,
     STATUS_ATENDIDO,
     STATUS_FECHADOS,
     TIPO_SETOR_CHAMADOS,
@@ -54,6 +62,7 @@ from models import (
     TIPOS_CONTRATO,
     FUNCOES_TECNICO,
     FUNCOES_TECNICO_KEYS,
+    FUNCOES_MESA_MULTIPLA,
     CANAIS_MENSAGEM,
     CANAIS_ENVIO_LIVE,
     PASTA_CONHECIMENTO_PADRAO,
@@ -77,10 +86,14 @@ from models import (
     sla_horas_tipo_contrato,
     TICKET_PARADO_HORAS,
     TIPOS_RECURSO,
+    FREQUENCIAS_PREVENTIVA,
     grupo_recurso_padrao,
+    TIPOS_EQUIPAMENTO,
+    acessorios_sugeridos,
+    normalizar_tipo_eq,
 )
 from permissions_sistemas import SISTEMAS, aplicar_permissoes_formulario, conceder_acesso_total
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy import func, or_, and_
 from sqlalchemy.exc import IntegrityError
 from datetime import date, datetime, timedelta
@@ -90,6 +103,7 @@ from werkzeug.utils import secure_filename
 import json
 import os
 import random
+import re
 import secrets
 import string
 import uuid
@@ -176,6 +190,11 @@ _CHAMADOS_ENDPOINT_MENUS = {
     'main.editar_equipamento': 'equipamentos',
     'main.api_equipamentos': 'equipamentos',
     'main.api_equipamento': 'equipamentos',
+    'main.api_equipamento_preventiva': 'equipamentos',
+    'main.api_equipamento_termo': 'equipamentos',
+    'main.api_equipamento_termo_enviar': 'equipamentos',
+    'main.imprimir_termo_equipamento': 'equipamentos',
+    'main.api_equipamentos_cronograma': 'equipamentos',
     'main.adicionar_setor_equipamento': 'equipamentos',
     'main.toggle_setor_equipamento': 'equipamentos',
     'main.cameras': 'cameras',
@@ -211,6 +230,10 @@ _CHAMADOS_ENDPOINT_MENUS = {
     'main.ver_conhecimento': 'conhecimentos',
     'main.nova_pasta_conhecimento': 'conhecimentos',
     'main.automacoes': 'automacoes',
+    'main.whatsapp_mensagem': 'whatsapp_mensagem',
+    'main.api_chamados_whatsapp_status': 'whatsapp_mensagem',
+    'main.api_chamados_whatsapp_config': 'whatsapp_mensagem',
+    'main.api_chamados_whatsapp_usuario': 'whatsapp_mensagem',
     'main.auditoria': 'auditoria',
     'main.mensagem_chamado': 'chamados',
     'main.atualizar_mesa_chamado': 'chamados',
@@ -219,6 +242,7 @@ _CHAMADOS_ENDPOINT_MENUS = {
 ESTAGIOS_TICKET = (
     ('pendente', 'Pendente', ('Pendente',)),
     ('aguardando', 'Aguardando Cliente', (STATUS_AGUARDAR_PECA,)),
+    ('reagendado', 'Reagendado', (STATUS_REAGENDADO,)),
     ('atendimento', 'Em Atendimento', ('Em Andamento',)),
     ('desenvolvimento', 'Em Desenvolvimento', (STATUS_ENCAMINHADO, STATUS_DEVOLVIDO)),
 )
@@ -310,16 +334,256 @@ def _setor_usuario(usuario):
     return normalizar_setor_chamado(getattr(usuario, 'setor', None) if usuario else '')
 
 
+def _tecnico_vinculado(usuario):
+    """Técnico ativo ligado ao acesso (usuario_id ou e-mail)."""
+    if not usuario or not getattr(usuario, 'id', None):
+        return None
+    try:
+        email = _normalizar_email(getattr(usuario, 'email', None))
+        conds = [ChamadoTecnico.usuario_id == usuario.id]
+        if email:
+            conds.append(func.lower(ChamadoTecnico.email) == email)
+        return (
+            ChamadoTecnico.query
+            .filter(
+                ChamadoTecnico.ativo == True,  # noqa: E712
+                or_(*conds),
+            )
+            .order_by(ChamadoTecnico.id.asc())
+            .first()
+        )
+    except Exception:
+        return None
+
+
+FUNCOES_CAMPANHA_TICKET = frozenset({'tecnico', 'supervisor', 'gestor'})
+FUNCOES_CAMPANHA_PREVENTIVA = FUNCOES_CAMPANHA_TICKET | {'assistente'}
+CAMPANHA_TICKET_JANELA_MIN = 30
+STATUS_CAMPANHA_AGUARDANDO = 'Pendente'
+STATUS_EM_ANDAMENTO = 'Em Andamento'
+CAMPANHA_SESSAO_ATEND_MIN = 15
+
+
+def _eh_tecnico_do_sistema(usuario):
+    """Usuário cadastrado em Técnicos (ou gestor) — vê a fila de tickets abertos."""
+    return bool(_tecnico_vinculado(usuario) or _eh_gestor(usuario))
+
+
+def _registros_tecnico_usuario(usuario):
+    """Cadastros ativos em Técnicos ligados ao acesso (usuario_id ou e-mail)."""
+    if not usuario or not getattr(usuario, 'id', None):
+        return []
+    try:
+        email = _normalizar_email(getattr(usuario, 'email', None))
+        conds = [ChamadoTecnico.usuario_id == usuario.id]
+        if email:
+            conds.append(func.lower(ChamadoTecnico.email) == email)
+        return (
+            ChamadoTecnico.query
+            .filter(
+                ChamadoTecnico.ativo == True,  # noqa: E712
+                or_(*conds),
+            )
+            .all()
+        )
+    except Exception:
+        return []
+
+
+def _chamado_e_preventiva(chamado):
+    desc = (getattr(chamado, 'descricao', None) or '').lstrip()
+    return desc.startswith('Preventiva:')
+
+
+def _funcoes_toque(chamado):
+    if _chamado_e_preventiva(chamado):
+        return FUNCOES_CAMPANHA_PREVENTIVA
+    return FUNCOES_CAMPANHA_TICKET
+
+
+def _funcao_campanha(tecnico, chamado=None):
+    funcao = (getattr(tecnico, 'funcao', None) or 'tecnico').strip().lower()
+    return funcao in _funcoes_toque(chamado)
+
+
+def _mesas_ids_tecnico(tecnico):
+    try:
+        return {m.id for m in (tecnico.mesas or []) if m is not None and getattr(m, 'id', None)}
+    except Exception:
+        return set()
+
+
+def _recebe_campanha_ticket(usuario):
+    """Técnico, supervisor, gestor ou assistente com mesa pode ouvir o toque.
+
+    Assistente só entra na campanha de ticket aberto pela preventiva.
+    """
+    if not usuario:
+        return False
+    for tec in _registros_tecnico_usuario(usuario):
+        funcao = (getattr(tec, 'funcao', None) or 'tecnico').strip().lower()
+        if funcao in FUNCOES_CAMPANHA_PREVENTIVA and _mesas_ids_tecnico(tec):
+            return True
+    return False
+
+
+def _mesa_id_toque(chamado):
+    """Preventiva toca na mesa do tipo do equipamento, mesmo se o ticket ficou na mesa errada."""
+    if not chamado:
+        return None
+    if _chamado_e_preventiva(chamado):
+        eq = getattr(chamado, 'equipamento_cadastro', None)
+        if eq is None and getattr(chamado, 'equipamento_id', None):
+            eq = Equipamento.query.get(chamado.equipamento_id)
+        if eq is not None:
+            from equipamento_service import mesa_preventiva_equipamento
+            mesa = mesa_preventiva_equipamento(eq)
+            if mesa:
+                return mesa.id
+    return getattr(chamado, 'mesa_id', None)
+
+
+def _usuario_toca_mesa(usuario, mesa_id, chamado=None):
+    """Toque só para quem está na mesa do ticket.
+
+    Ticket comum: técnico, supervisor e gestor.
+    Preventiva: também o assistente da mesa do tipo do equipamento.
+    """
+    if chamado is not None:
+        mesa_id = _mesa_id_toque(chamado)
+    if not usuario or not mesa_id:
+        return False
+    for tec in _registros_tecnico_usuario(usuario):
+        if not _funcao_campanha(tec, chamado):
+            continue
+        if mesa_id in _mesas_ids_tecnico(tec):
+            return True
+    return False
+
+
+def _nome_atendente(chamado):
+    att = getattr(chamado, 'atendente', None)
+    if att and att.nome:
+        return att.nome
+    atendente_id = getattr(chamado, 'atendente_id', None)
+    if not atendente_id:
+        return ''
+    user = Usuario.query.get(atendente_id)
+    return (user.nome if user else '') or 'outro técnico'
+
+
+def _pode_tomar_chamado(chamado, user):
+    """Só o técnico que já atendeu (ou admin) assume o ticket."""
+    if not user:
+        return False
+    atendente_id = getattr(chamado, 'atendente_id', None)
+    if not atendente_id:
+        return True
+    if atendente_id == user.id:
+        return True
+    return _eh_gestor(user)
+
+
+def _bloqueio_atendimento(chamado, user):
+    if _pode_tomar_chamado(chamado, user):
+        return None
+    nome = _nome_atendente(chamado) or 'outro técnico'
+    return 'Este chamado já está com %s. Outro técnico não pode atender.' % nome
+
+
+def _marcar_inicio_atendimento(chamado):
+    """Grava data e hora da primeira vez que alguém atende. Não apaga depois."""
+    if not getattr(chamado, 'data_inicio_atendimento', None):
+        chamado.data_inicio_atendimento = now_brasilia()
+
+
+def _marcar_conclusao(chamado):
+    """Grava data e hora em que o ticket foi finalizado."""
+    if status_fechado(chamado.status) and not chamado.data_conclusao:
+        chamado.data_conclusao = now_brasilia()
+
+
+def _assumir_chamado(chamado, user):
+    """Atribui o chamado ao técnico e entra em atendimento (o toque para)."""
+    chamado.atendente_id = user.id
+    chamado.atendendo_em = now_brasilia()
+    _marcar_inicio_atendimento(chamado)
+    if (chamado.status or '') == STATUS_CAMPANHA_AGUARDANDO:
+        chamado.status = STATUS_EM_ANDAMENTO
+    db.session.commit()
+
+
+def _liberar_sessao_atendimento(chamado, user):
+    """Sai sem finalizar: permanece atribuído e o toque volta."""
+    if not user or not getattr(chamado, 'atendente_id', None):
+        return True
+    if chamado.atendente_id != user.id:
+        return False
+    chamado.atendendo_em = None
+    if not status_fechado(chamado.status) and (chamado.status or '') == STATUS_EM_ANDAMENTO:
+        chamado.status = STATUS_CAMPANHA_AGUARDANDO
+    db.session.commit()
+    return True
+
+
+def _tecnico_com_email_vinculado(usuario):
+    """Técnico só vale para o cumprimento se o cadastro tiver e-mail."""
+    tecnico = _tecnico_vinculado(usuario)
+    if not tecnico or not _normalizar_email(getattr(tecnico, 'email', None)):
+        return None
+    return tecnico
+
+
 def _primeiro_nome(usuario):
+    """Nome do técnico (se houver e-mail) ou o nome cadastrado em Acessos."""
+    tecnico = _tecnico_com_email_vinculado(usuario)
+    nome_tec = (getattr(tecnico, 'nome', None) or '').strip() if tecnico else ''
+    if nome_tec:
+        return nome_tec.split()[0]
     nome = (getattr(usuario, 'nome', None) or '').strip()
     return nome.split()[0] if nome else 'olá'
 
 
+def _nome_tecnico_aviso(usuario):
+    """Nome completo do técnico para aviso de finalização."""
+    tec = _tecnico_vinculado(usuario)
+    nome = (getattr(tec, 'nome', None) or '').strip() if tec else ''
+    if nome:
+        return nome
+    return (getattr(usuario, 'nome', None) or '').strip() or 'técnico'
+
+
+def _ve_todos_tickets(usuario):
+    """Supervisor e gestor enxergam todos os tickets, de qualquer mesa."""
+    if not usuario:
+        return False
+    for tec in _registros_tecnico_usuario(usuario):
+        funcao = (getattr(tec, 'funcao', None) or '').strip().lower()
+        if funcao in ('supervisor', 'gestor'):
+            return True
+    return False
+
+
 def _filtro_chamados_usuario(user):
+    """Tickets visíveis: os que o usuário abriu e os abertos das mesas dele.
+
+    Supervisor e gestor veem todos. Quem tem mesa cadastrada não vê
+    pendências das outras mesas, mesmo sendo admin.
+    """
     conds = [Chamado.tecnico_id == user.id]
     setor = _setor_usuario(user)
     if setor:
         conds.append(and_(Chamado.setor_destino == setor, ~Chamado.status.in_(STATUS_FECHADOS)))
+    if _eh_tecnico_do_sistema(user):
+        abertos = ~Chamado.status.in_(STATUS_FECHADOS)
+        mesas = _mesas_tecnico_usuario(user)
+        if mesas:
+            conds.append(and_(
+                abertos,
+                or_(Chamado.mesa_id.in_(list(mesas)), Chamado.mesa_id.is_(None)),
+            ))
+        else:
+            conds.append(abertos)
     return or_(*conds)
 
 
@@ -391,6 +655,248 @@ def _avisar_abertura_ticket(chamado, opener):
         print(f'Falha ao enviar visualização de ticket: {exc}')
 
 
+def _avisar_abertura_whatsapp(chamado):
+    """WhatsApp para supervisores e gestores cadastrados. Não derruba a criação."""
+    try:
+        from whatsapp_chamados import notificar_abertura_chamado
+        notificar_abertura_chamado(chamado)
+    except Exception as exc:
+        print(f'Falha ao enviar WhatsApp de abertura de ticket: {exc}')
+
+
+def montar_texto_finalizacao(chamado, tecnico_nome, hora, o_que_foi_feito):
+    numero = (getattr(chamado, 'numero_chamado', None) or '').strip() or 'chamado'
+    feito = (o_que_foi_feito or '').strip() or 'Não informado.'
+    return (
+        'Chamado %s foi finalizado.\n\n'
+        'Técnico: %s\n'
+        'Horário: %s\n'
+        'O que foi feito: %s'
+        % (numero, tecnico_nome or 'técnico', hora or '—', feito)
+    )
+
+
+def montar_texto_reagendamento(chamado, tecnico_nome, hora, data_nova, observacao):
+    numero = (getattr(chamado, 'numero_chamado', None) or '').strip() or 'chamado'
+    dia = data_nova.strftime('%d/%m/%Y') if data_nova else '—'
+    linhas = [
+        'Chamado %s foi reagendado.' % numero,
+        '',
+        'Nova data: %s' % dia,
+        'Técnico: %s' % (tecnico_nome or 'técnico'),
+        'Horário do aviso: %s' % (hora or '—'),
+    ]
+    obs = (observacao or '').strip()
+    if obs:
+        linhas.append('Observação: %s' % obs)
+    return '\n'.join(linhas)
+
+
+def _html_texto(valor):
+    return (
+        (valor or '')
+        .replace('&', '&amp;')
+        .replace('<', '&lt;')
+        .replace('>', '&gt;')
+        .replace('\n', '<br>')
+    )
+
+
+def _canal_abertura_chamado(chamado):
+    canal = (getattr(chamado, 'canal_abertura', None) or '').strip()
+    if canal:
+        return canal
+    obs = (getattr(chamado, 'observacoes', None) or '').lower()
+    if 'whatsapp' in obs:
+        return 'WhatsApp'
+    try:
+        if ChamadoMensagem.query.filter_by(chamado_id=chamado.id, origem='whatsapp').first():
+            return 'WhatsApp'
+    except Exception:
+        pass
+    return 'E-mail'
+
+
+def _contato_abertura_chamado(chamado, canal):
+    contato = (getattr(chamado, 'contato_abertura', None) or '').strip()
+    if contato:
+        return contato
+    if canal == 'WhatsApp':
+        desc = getattr(chamado, 'descricao', None) or ''
+        match = re.search(r'Telefone:\s*([+\d][\d\s\-()]{7,24})', desc)
+        if match:
+            return ''.join(ch for ch in match.group(1) if ch.isdigit())
+        return ''
+    opener = getattr(chamado, 'tecnico', None)
+    return (getattr(opener, 'email', None) or '').strip() if opener else ''
+
+
+def _enviar_aviso_solicitante(chamado, tecnico, texto, assunto, html, enviar_wa=None, enviar_mail=None):
+    """Avisa quem abriu, no mesmo canal da abertura. Não derruba a ação."""
+    if not chamado:
+        return {'ok': False, 'skipped': True}
+    canal = _canal_abertura_chamado(chamado)
+    enviado = False
+    erro = None
+    contato = _contato_abertura_chamado(chamado, canal)
+    try:
+        if canal == 'WhatsApp':
+            sender = enviar_wa
+            if sender is None:
+                from whatsapp_pesagem import send_whatsapp
+                sender = send_whatsapp
+            if not contato:
+                erro = 'Ticket WhatsApp sem telefone do solicitante.'
+            else:
+                result = sender(contato, texto)
+                enviado = bool(result and result.get('ok'))
+                if not enviado:
+                    erro = (result or {}).get('error') or 'Falha no envio WhatsApp'
+                else:
+                    try:
+                        from models import WhatsAppChamadoLog
+                        wa_user = WhatsAppChamadoUsuario.query.filter_by(telefone=contato).first()
+                        db.session.add(WhatsAppChamadoLog(
+                            usuario_id=wa_user.id if wa_user else None,
+                            telefone=contato,
+                            direcao='out',
+                            texto=texto[:4000],
+                        ))
+                    except Exception:
+                        pass
+        elif canal == 'E-mail':
+            dest = contato if '@' in (contato or '') else ''
+            if not dest:
+                erro = 'Quem abriu o chamado não tem e-mail.'
+            else:
+                sender = enviar_mail
+                if sender is None:
+                    from email_service import smtp_configurado, enviar_email
+                    if not smtp_configurado():
+                        erro = 'SMTP não configurado'
+                    else:
+                        sender = enviar_email
+                if sender and not erro:
+                    sender(dest, assunto, texto, html)
+                    enviado = True
+        db.session.add(ChamadoMensagem(
+            chamado_id=chamado.id,
+            usuario_id=getattr(tecnico, 'id', None),
+            texto=texto,
+            canal=canal if canal in CANAIS_MENSAGEM else 'Chat',
+            visivel_cliente=True,
+            enviada=enviado,
+            origem='sistema',
+        ))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        erro = str(exc)
+        print(f'Falha ao avisar solicitante do ticket: {exc}')
+    if erro and not enviado:
+        print(f'Aviso ao solicitante não enviado ({canal}): {erro}')
+    return {'ok': enviado, 'canal': canal, 'erro': erro, 'texto': texto}
+
+
+def _avisar_finalizacao_ticket(chamado, tecnico, o_que_foi_feito, enviar_wa=None, enviar_mail=None, agora=None):
+    """Avisa quem abriu, no mesmo canal da abertura. Não derruba a finalização."""
+    if not chamado:
+        return {'ok': False, 'skipped': True}
+    hora = fmt_brasilia(agora or now_brasilia(), '%d/%m/%Y %H:%M')
+    nome = _nome_tecnico_aviso(tecnico)
+    texto = montar_texto_finalizacao(chamado, nome, hora, o_que_foi_feito)
+    html = (
+        '<p>Chamado <strong>%s</strong> foi finalizado.</p>'
+        '<p><strong>Técnico:</strong> %s<br>'
+        '<strong>Horário:</strong> %s</p>'
+        '<p><strong>O que foi feito:</strong><br>%s</p>'
+        % (
+            _html_texto(chamado.numero_chamado or ''),
+            _html_texto(nome),
+            _html_texto(hora),
+            _html_texto(o_que_foi_feito or 'Não informado.'),
+        )
+    )
+    return _enviar_aviso_solicitante(
+        chamado,
+        tecnico,
+        texto,
+        'Ticket %s finalizado' % (chamado.numero_chamado or ''),
+        html,
+        enviar_wa=enviar_wa,
+        enviar_mail=enviar_mail,
+    )
+
+
+def _avisar_reagendamento_ticket(chamado, tecnico, observacao=None, enviar_wa=None, enviar_mail=None, agora=None):
+    """Avisa quem abriu que o chamado foi reagendado."""
+    if not chamado:
+        return {'ok': False, 'skipped': True}
+    hora = fmt_brasilia(agora or now_brasilia(), '%d/%m/%Y %H:%M')
+    nome = _nome_tecnico_aviso(tecnico)
+    dia = chamado.data_reagendamento
+    texto = montar_texto_reagendamento(chamado, nome, hora, dia, observacao)
+    dia_txt = dia.strftime('%d/%m/%Y') if dia else '—'
+    html = (
+        '<p>Chamado <strong>%s</strong> foi reagendado.</p>'
+        '<p><strong>Nova data:</strong> %s<br>'
+        '<strong>Técnico:</strong> %s<br>'
+        '<strong>Horário do aviso:</strong> %s</p>'
+        % (
+            _html_texto(chamado.numero_chamado or ''),
+            _html_texto(dia_txt),
+            _html_texto(nome),
+            _html_texto(hora),
+        )
+    )
+    obs = (observacao or '').strip()
+    if obs:
+        html += '<p><strong>Observação:</strong><br>%s</p>' % _html_texto(obs)
+    return _enviar_aviso_solicitante(
+        chamado,
+        tecnico,
+        texto,
+        'Ticket %s reagendado' % (chamado.numero_chamado or ''),
+        html,
+        enviar_wa=enviar_wa,
+        enviar_mail=enviar_mail,
+    )
+
+
+def _exigir_data_reagendamento(raw):
+    """Dia futuro (Brasília) para o status Reagendado."""
+    texto = (raw or '').strip()
+    if not texto:
+        raise ValueError('Informe o dia para reagendar o chamado.')
+    try:
+        dia = datetime.strptime(texto[:10], '%Y-%m-%d').date()
+    except ValueError:
+        raise ValueError('Data de reagendamento inválida.')
+    if dia <= now_brasilia().date():
+        raise ValueError('Escolha um dia futuro para reagendar.')
+    return dia
+
+
+def _reabrir_reagendados_do_dia():
+    """No dia marcado, o chamado volta a Pendente e o toque recomeça."""
+    hoje = now_brasilia().date()
+    rows = (
+        Chamado.query.filter(
+            Chamado.status == STATUS_REAGENDADO,
+            Chamado.data_reagendamento.isnot(None),
+            Chamado.data_reagendamento <= hoje,
+        )
+        .all()
+    )
+    if not rows:
+        return 0
+    for chamado in rows:
+        chamado.status = STATUS_CAMPANHA_AGUARDANDO
+        chamado.atendendo_em = None
+    db.session.commit()
+    return len(rows)
+
+
 def _ultima_movimentacao(chamado):
     stamps = [chamado.data_criacao, chamado.encaminhado_em]
     try:
@@ -454,7 +960,7 @@ def _alertas_sla_e_parada(chamados_abertos):
 
 
 def _status_inicial_novo():
-    allowed = {'Pendente', 'Em Andamento', STATUS_AGUARDAR_PECA, STATUS_ENCAMINHADO, STATUS_DEVOLVIDO}
+    allowed = {'Pendente', 'Em Andamento', STATUS_AGUARDAR_PECA, STATUS_ENCAMINHADO, STATUS_REAGENDADO, STATUS_DEVOLVIDO}
     status = (request.args.get('status') or 'Pendente').strip()
     return status if status in allowed else 'Pendente'
 
@@ -538,11 +1044,15 @@ RELATORIOS_LIVE = {
 
 
 def _query_chamados_usuario(user):
-    return (
-        Chamado.query.options(joinedload(Chamado.cliente), joinedload(Chamado.mesa), joinedload(Chamado.contrato))
-        .filter(_filtro_chamados_usuario(user))
-        .order_by(Chamado.data_criacao.desc())
+    q = Chamado.query.options(
+        joinedload(Chamado.cliente),
+        joinedload(Chamado.mesa),
+        joinedload(Chamado.contrato),
+        joinedload(Chamado.atendente),
     )
+    if not _ve_todos_tickets(user):
+        q = q.filter(_filtro_chamados_usuario(user))
+    return q.order_by(Chamado.data_criacao.desc())
 
 
 def _grupos_tickets(chamados):
@@ -551,6 +1061,7 @@ def _grupos_tickets(chamados):
         grupos.append({
             'key': key,
             'label': label,
+            'status_novo': statuses[0],
             'tickets': [c for c in chamados if c.status in statuses],
         })
     fechados = [c for c in chamados if status_fechado(c.status)]
@@ -652,26 +1163,46 @@ def _vincular_tecnicos_ao_usuario(usuario):
 def _setores_tecnico_usuario(usuario):
     """IDs de chamado_setores onde o usuário está cadastrado como técnico."""
     try:
-        email = _normalizar_email(getattr(usuario, 'email', None))
-        conds = [ChamadoTecnico.usuario_id == usuario.id]
-        if email:
-            conds.append(func.lower(ChamadoTecnico.email) == email)
-        tec = ChamadoTecnico.query.filter(
-            ChamadoTecnico.ativo == True,  # noqa: E712
-            or_(*conds),
-        ).all()
-        return {t.setor_id for t in tec if t.setor_id}
+        return {t.setor_id for t in _registros_tecnico_usuario(usuario) if t.setor_id}
     except Exception:
         return set()
 
 
+def _mesas_tecnico_usuario(usuario):
+    """IDs das mesas de serviço do cadastro de técnico do login."""
+    ids = set()
+    try:
+        for tec in _registros_tecnico_usuario(usuario):
+            ids.update(m.id for m in (tec.mesas or []))
+    except Exception:
+        return set()
+    return ids
+
+
+def _chamado_da_equipe(usuario, chamado):
+    """True se o chamado cai na mesa do técnico, inclusive quando o login é admin."""
+    if not usuario or not chamado:
+        return False
+    if _ve_todos_tickets(usuario):
+        return True
+    mesas = _mesas_tecnico_usuario(usuario)
+    if not mesas:
+        return True
+    mesa_id = getattr(chamado, 'mesa_id', None)
+    if not mesa_id:
+        return True
+    return mesa_id in mesas
+
+
 def _pendencias_chamados(usuario):
-    """Pendências do login: encaminhamentos ao setor do usuário e chamados aguardando peça."""
+    """Pendências do login: tickets abertos (técnicos), encaminhamentos e aguardando peça."""
     if not usuario:
         return []
     setor = _setor_usuario(usuario)
     gestor = _eh_gestor(usuario)
+    tecnico_sistema = _eh_tecnico_do_sistema(usuario)
     meus_setores_tecnicos = _setores_tecnico_usuario(usuario)
+    mesas = _mesas_tecnico_usuario(usuario)
     seen = set()
     items = []
     rows = (
@@ -680,16 +1211,24 @@ def _pendencias_chamados(usuario):
         .order_by(Chamado.data_criacao.desc())
         .all()
     )
+    ver_todos = _ve_todos_tickets(usuario)
     for chamado in rows:
+        if mesas and not ver_todos and chamado.mesa_id not in mesas:
+            continue
         dest = normalizar_setor_chamado(chamado.setor_destino)
-        encaminhado_para_mim = bool(dest) and (gestor or dest == setor)
+        encaminhado_para_mim = bool(dest) and (dest == setor or (gestor and not mesas))
         aguardar_peca = chamado.status == STATUS_AGUARDAR_PECA and (
-            gestor or chamado.tecnico_id == usuario.id or dest == setor
+            chamado.tecnico_id == usuario.id or dest == setor or (gestor and not mesas)
         )
         ticket_do_meu_setor = bool(
             meus_setores_tecnicos and chamado.setor_tecnico_id in meus_setores_tecnicos
         )
-        if not encaminhado_para_mim and not aguardar_peca and not ticket_do_meu_setor:
+        ticket_aberto = (
+            tecnico_sistema
+            and chamado.status == 'Pendente'
+            and _chamado_da_equipe(usuario, chamado)
+        )
+        if not encaminhado_para_mim and not aguardar_peca and not ticket_do_meu_setor and not ticket_aberto:
             continue
         if chamado.id in seen:
             continue
@@ -701,6 +1240,8 @@ def _pendencias_chamados(usuario):
             tipo = 'Aguardar peça / Encaminhado'
         elif encaminhado_para_mim:
             tipo = 'Encaminhado'
+        elif ticket_aberto:
+            tipo = 'Ticket aberto'
         elif ticket_do_meu_setor:
             nome_setor = chamado.setor_tecnico.nome if chamado.setor_tecnico else 'Setor'
             tipo = f'Ticket aberto para {nome_setor}'
@@ -783,11 +1324,98 @@ def _salvar_fotos_chamado(chamado, atendimento, arquivos, tipo=TIPO_FOTO_CONSERT
         ))
 
 
+def _equipamento_do_chamado(chamado):
+    eq = getattr(chamado, 'equipamento_cadastro', None)
+    if eq is not None:
+        return eq
+    if getattr(chamado, 'equipamento_id', None):
+        return Equipamento.query.get(chamado.equipamento_id)
+    codigo = (getattr(chamado, 'patrimonio', None) or '').strip()
+    if not codigo or not getattr(chamado, 'cliente_id', None):
+        return None
+    return Equipamento.query.filter_by(patrimonio=codigo, cliente_id=chamado.cliente_id).first()
+
+
+def _no_estoque(equipamento):
+    if bool(getattr(equipamento, 'em_estoque', False)):
+        return True
+    return (getattr(equipamento, 'setor', None) or '').strip().lower() == 'estoque'
+
+
+def _opcoes_estoque(cliente_id, exceto_id=None):
+    if not cliente_id:
+        return []
+    q = Equipamento.query.filter(
+        Equipamento.cliente_id == cliente_id,
+        Equipamento.ativo.is_(True),
+        db.or_(
+            Equipamento.em_estoque.is_(True),
+            Equipamento.setor == 'Estoque',
+        ),
+    )
+    if exceto_id:
+        q = q.filter(Equipamento.id != exceto_id)
+    itens = q.order_by(Equipamento.patrimonio.asc(), Equipamento.nome_equipamento.asc()).all()
+    opcoes = []
+    for item in itens:
+        opcoes.append({
+            'id': item.id,
+            'patrimonio': item.patrimonio or '',
+            'nome': item.nome_equipamento or '',
+            'marca': item.marca or '',
+            'modelo': item.modelo or '',
+            'setor': item.setor or '',
+            'local': item.local or '',
+        })
+    return opcoes
+
+
+def _transferir_patrimonio(chamado, novo_id_raw):
+    """Tira o patrimônio do chamado do lugar e põe no lugar um equipamento do setor Estoque."""
+    raw = (novo_id_raw or '').strip()
+    if not raw:
+        return None
+    try:
+        novo_id = int(raw)
+    except (TypeError, ValueError):
+        raise ValueError('Equipamento do estoque inválido.')
+    ruim = _equipamento_do_chamado(chamado)
+    if ruim is None:
+        raise ValueError('Este chamado não tem patrimônio para substituir.')
+    if _no_estoque(ruim):
+        raise ValueError('O patrimônio deste chamado já está no estoque.')
+    if ruim.id == novo_id:
+        raise ValueError('Escolha outro equipamento do estoque.')
+    novo = Equipamento.query.get(novo_id)
+    if not novo or not novo.ativo:
+        raise ValueError('Equipamento do estoque não encontrado.')
+    if not _no_estoque(novo):
+        raise ValueError('O equipamento escolhido não está no estoque.')
+    if novo.cliente_id != ruim.cliente_id:
+        raise ValueError('O equipamento do estoque é de outro cliente.')
+    novo.setor = ruim.setor
+    novo.localizacao = ruim.localizacao
+    novo.local = ruim.local
+    novo.usuario_equipamento = ruim.usuario_equipamento
+    novo.em_estoque = False
+    ruim.setor = 'Estoque'
+    ruim.localizacao = 'Estoque'
+    ruim.local = 'Estoque'
+    ruim.usuario_equipamento = None
+    ruim.em_estoque = True
+    chamado.equipamento_id = novo.id
+    chamado.patrimonio = novo.patrimonio
+    chamado.equipamento = novo.nome_equipamento
+    return ruim, novo
+
+
 def _chamado_atender_payload(chamado, usuario=None):
     todas = _fotos_chamado_payload(chamado)
     origem = _setor_origem_atual(chamado)
     encaminhado_por = chamado.encaminhado_por
     pode_devolver = _pode_devolver(chamado, usuario) if usuario else False
+    eq = _equipamento_do_chamado(chamado)
+    pode_transferir = bool(eq and eq.ativo and not _no_estoque(eq))
     return {
         'id': chamado.id,
         'numero_chamado': chamado.numero_chamado,
@@ -810,6 +1438,23 @@ def _chamado_atender_payload(chamado, usuario=None):
         'fotos': [f for f in todas if f['tipo'] != TIPO_FOTO_ENCAMINHAMENTO],
         'fotos_encaminhamento': [f for f in todas if f['tipo'] == TIPO_FOTO_ENCAMINHAMENTO],
         'setores': listar_setores(TIPO_SETOR_CHAMADOS),
+        'atendente_id': getattr(chamado, 'atendente_id', None),
+        'atendente_nome': _nome_atendente(chamado),
+        'data_inicio_atendimento': fmt_brasilia(getattr(chamado, 'data_inicio_atendimento', None)),
+        'data_conclusao': fmt_brasilia(getattr(chamado, 'data_conclusao', None)),
+        'data_reagendamento': (
+            chamado.data_reagendamento.strftime('%d/%m/%Y') if getattr(chamado, 'data_reagendamento', None) else ''
+        ),
+        'data_reagendamento_iso': (
+            chamado.data_reagendamento.isoformat() if getattr(chamado, 'data_reagendamento', None) else ''
+        ),
+        'patrimonio': (eq.patrimonio if eq else chamado.patrimonio) or '',
+        'equipamento': (eq.nome_equipamento if eq else chamado.equipamento) or '',
+        'equipamento_id': eq.id if eq else chamado.equipamento_id,
+        'equipamento_setor': (eq.setor or eq.localizacao or '') if eq else '',
+        'equipamento_usuario': (eq.usuario_equipamento or '') if eq else '',
+        'pode_transferir': pode_transferir,
+        'estoque_opcoes': _opcoes_estoque(eq.cliente_id if eq else chamado.cliente_id, eq.id if eq else None) if pode_transferir else [],
     }
 
 @main.route('/instalar-certificado')
@@ -1194,6 +1839,58 @@ def _pode_gerenciar_clientes(user):
     )
 
 
+def _rotulo_vinculo_cliente(table_name):
+    if str(table_name).startswith('nut_'):
+        return 'nutrição'
+    return {
+        'chamados': 'chamados',
+        'equipamentos': 'equipamentos',
+        'contratos': 'contratos',
+    }.get(table_name, str(table_name).replace('_', ' '))
+
+
+def _excluir_cliente(cliente):
+    """Remove o cliente após desvincular FKs opcionais; bloqueia se houver dados obrigatórios."""
+    cid = int(cliente.id)
+    ignorar = {'usuarios', 'whatsapp_chamado_usuarios', 'recurso_grupos'}
+    vinculos = []
+    for table in db.metadata.tables.values():
+        if table.name == 'clientes' or table.name in ignorar:
+            continue
+        for col in table.columns:
+            if not any(
+                fk.column.table.name == 'clientes' and fk.column.name == 'id'
+                for fk in col.foreign_keys
+            ):
+                continue
+            if db.session.execute(table.select().where(col == cid).limit(1)).first():
+                vinculos.append(_rotulo_vinculo_cliente(table.name))
+    if vinculos:
+        nomes = sorted(set(vinculos))
+        raise ValueError(
+            'Não é possível excluir: há ' + ', '.join(nomes)
+            + ' vinculados a este cliente.'
+        )
+
+    Usuario.query.filter_by(cliente_id=cid).update(
+        {Usuario.cliente_id: None}, synchronize_session=False
+    )
+    WhatsAppChamadoUsuario.query.filter_by(cliente_id=cid).update(
+        {WhatsAppChamadoUsuario.cliente_id: None}, synchronize_session=False
+    )
+    RecursoGrupo.query.filter_by(cliente_id=cid).delete(synchronize_session=False)
+    try:
+        from models_logistica import LogisticaEntrega
+        LogisticaEntrega.query.filter_by(cliente_id=cid).update(
+            {LogisticaEntrega.cliente_id: None}, synchronize_session=False
+        )
+    except Exception:
+        pass
+
+    db.session.delete(cliente)
+    db.session.commit()
+
+
 @main.route('/')
 @login_required
 def inicio():
@@ -1389,6 +2086,49 @@ def _salvar_acesso_geral(usuario, form, novo=False):
     db.session.commit()
 
 
+def _excluir_acesso_geral(acesso, ator):
+    """Remove um acesso do sistema, desvinculando FKs opcionais."""
+    if acesso.is_master:
+        raise ValueError('Não é possível excluir um acesso Master.')
+    if ator and ator.id == acesso.id:
+        raise ValueError('Você não pode excluir o próprio acesso.')
+
+    vinculos = []
+    if Chamado.query.filter_by(tecnico_id=acesso.id).first():
+        vinculos.append('chamados')
+    if ChamadoAtendimento.query.filter_by(usuario_id=acesso.id).first():
+        vinculos.append('atendimentos')
+    if ChamadoEncaminhamento.query.filter_by(usuario_id=acesso.id).first():
+        vinculos.append('encaminhamentos')
+    if ChamadoConhecimento.query.filter_by(usuario_id=acesso.id).first():
+        vinculos.append('conhecimentos')
+    if vinculos:
+        raise ValueError(
+            'Não é possível excluir: há ' + ', '.join(vinculos)
+            + ' vinculados a este usuário. Desative o acesso em Editar.'
+        )
+
+    Chamado.query.filter_by(encaminhado_por_id=acesso.id).update(
+        {Chamado.encaminhado_por_id: None}, synchronize_session=False
+    )
+    ChamadoMensagem.query.filter_by(usuario_id=acesso.id).update(
+        {ChamadoMensagem.usuario_id: None}, synchronize_session=False
+    )
+    ChamadoEstoqueUso.query.filter_by(usuario_id=acesso.id).update(
+        {ChamadoEstoqueUso.usuario_id: None}, synchronize_session=False
+    )
+    ChamadoTecnico.query.filter_by(usuario_id=acesso.id).update(
+        {ChamadoTecnico.usuario_id: None}, synchronize_session=False
+    )
+    PermissaoMenu.query.filter_by(usuario_id=acesso.id).delete(synchronize_session=False)
+    from models_acesso import AcessoUsuarioPermissao
+    AcessoUsuarioPermissao.query.filter_by(usuario_id=acesso.id).delete(
+        synchronize_session=False
+    )
+    db.session.delete(acesso)
+    db.session.commit()
+
+
 @main.route('/acessos/setores', methods=['GET', 'POST'])
 @login_required
 def criar_setor_funcao():
@@ -1557,10 +2297,193 @@ def editar_acesso(id):
         clientes=Cliente.query.order_by(Cliente.nome.asc()).all(),
     )
 
+
+@main.route('/acessos/<int:id>/excluir', methods=['POST', 'DELETE'])
+@login_required
+def excluir_acesso(id):
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.pode_gerenciar_acessos():
+        if _wants_json():
+            return jsonify({'ok': False, 'message': 'Sem permissão para gerenciar acessos.'}), 403
+        flash('Você não tem permissão para gerenciar acessos.', 'error')
+        return redirect(url_for('main.inicio'))
+    acesso = Usuario.query.get_or_404(id)
+    try:
+        _excluir_acesso_geral(acesso, user)
+        if _wants_json():
+            return jsonify({'ok': True, 'message': 'Acesso excluído com sucesso.', 'id': id})
+        flash('Acesso excluído com sucesso.', 'success')
+        return redirect(url_for('main.listar_acessos'))
+    except ValueError as e:
+        db.session.rollback()
+        if _wants_json():
+            return jsonify({'ok': False, 'message': str(e)}), 400
+        flash(str(e), 'error')
+        return redirect(url_for('main.listar_acessos'))
+    except IntegrityError:
+        db.session.rollback()
+        msg = 'Não é possível excluir este usuário porque há registros vinculados. Desative o acesso em Editar.'
+        if _wants_json():
+            return jsonify({'ok': False, 'message': msg}), 400
+        flash(msg, 'error')
+        return redirect(url_for('main.listar_acessos'))
+    except Exception as e:
+        db.session.rollback()
+        if _wants_json():
+            return jsonify({'ok': False, 'message': str(e)}), 400
+        flash(str(e), 'error')
+        return redirect(url_for('main.listar_acessos'))
+
+
+def _parse_data_filtro(raw, padrao):
+    txt = (raw or '').strip()
+    if not txt:
+        return padrao
+    try:
+        return datetime.strptime(txt, '%Y-%m-%d').date()
+    except ValueError:
+        return padrao
+
+
+def _barras(pares):
+    itens = list(pares)
+    topo = max((n for _, n in itens), default=0) or 1
+    return [
+        {
+            'label': label,
+            'count': n,
+            'pct': max(6, round(n * 100 / topo)) if n else 0,
+        }
+        for label, n in itens
+    ]
+
+
+def _dia_finalizacao(chamado):
+    """Data usada no filtro: conclusão, ou a abertura se o ticket fechou sem ela."""
+    bruto = chamado.data_conclusao or chamado.data_criacao
+    if not bruto:
+        return None
+    if isinstance(bruto, datetime):
+        return bruto
+    return datetime.combine(bruto, datetime.min.time())
+
+
+def _grafico_finalizados_dashboard(args, mesa_filtro):
+    """Finalizados no período, agrupados por dia/semana/mês e por técnico."""
+    hoje = now_brasilia().date()
+    informou_de = bool((args.get('de') or '').strip())
+    inicio = _parse_data_filtro(args.get('de'), hoje - timedelta(days=29))
+    fim = _parse_data_filtro(args.get('ate'), hoje)
+    if not informou_de:
+        qmin = db.session.query(func.min(Chamado.data_conclusao)).filter(
+            Chamado.status.in_(STATUS_FECHADOS),
+        )
+        if mesa_filtro:
+            qmin = qmin.filter(Chamado.mesa_id == mesa_filtro)
+        primeira = qmin.scalar()
+        if primeira:
+            dia_primeira = primeira.date() if isinstance(primeira, datetime) else primeira
+            if dia_primeira < inicio:
+                inicio = dia_primeira
+    if inicio > fim:
+        inicio, fim = fim, inicio
+    tecnico_id = args.get('tecnico', type=int)
+    q = (
+        Chamado.query.options(joinedload(Chamado.atendente), joinedload(Chamado.mesa))
+        .filter(Chamado.status.in_(STATUS_FECHADOS))
+    )
+    if mesa_filtro:
+        q = q.filter(Chamado.mesa_id == mesa_filtro)
+    ini_dt = datetime.combine(inicio, datetime.min.time())
+    fim_dt = datetime.combine(fim + timedelta(days=1), datetime.min.time())
+    rows = []
+    for chamado in q.all():
+        conclusao = _dia_finalizacao(chamado)
+        if conclusao and ini_dt <= conclusao < fim_dt:
+            rows.append((chamado, conclusao))
+    dias = (fim - inicio).days + 1
+    if dias <= 31:
+        passo = timedelta(days=1)
+        def rotulo(dt):
+            return dt.strftime('%d/%m')
+        def chave(dt):
+            return dt.date()
+        cursor = inicio
+        buckets = []
+        while cursor <= fim:
+            buckets.append(cursor)
+            cursor += passo
+    elif dias <= 120:
+        def rotulo(dt):
+            ini_sem = dt - timedelta(days=dt.weekday())
+            return ini_sem.strftime('%d/%m')
+        def chave(dt):
+            return dt.date() - timedelta(days=dt.weekday())
+        cursor = inicio - timedelta(days=inicio.weekday())
+        buckets = []
+        while cursor <= fim:
+            buckets.append(cursor)
+            cursor += timedelta(days=7)
+    else:
+        def rotulo(dt):
+            return dt.strftime('%m/%Y')
+        def chave(dt):
+            return dt.date().replace(day=1)
+        cursor = inicio.replace(day=1)
+        buckets = []
+        while cursor <= fim:
+            buckets.append(cursor)
+            if cursor.month == 12:
+                cursor = cursor.replace(year=cursor.year + 1, month=1)
+            else:
+                cursor = cursor.replace(month=cursor.month + 1)
+    por_periodo = Counter()
+    por_tecnico = Counter()
+    lista = []
+    for chamado, conclusao in rows:
+        if tecnico_id and chamado.atendente_id != tecnico_id:
+            continue
+        por_periodo[chave(conclusao)] += 1
+        nome = chamado.atendente.nome if chamado.atendente else 'Sem técnico'
+        por_tecnico[nome] += 1
+        lista.append({
+            'id': chamado.id,
+            'numero': chamado.numero_chamado,
+            'quando': conclusao.strftime('%d/%m/%Y %H:%M'),
+            'tecnico': nome,
+            'mesa': chamado.mesa.nome if chamado.mesa else 'Sem mesa',
+            'ordem': conclusao,
+        })
+    lista.sort(key=lambda item: item['ordem'], reverse=True)
+    for item in lista:
+        item.pop('ordem', None)
+    serie_tecnico = por_tecnico
+    total = len(lista)
+    periodo = _barras((rotulo(b), por_periodo.get(b, 0)) for b in buckets)
+    tecnicos_serie = _barras(serie_tecnico.most_common(12))
+    opcoes = []
+    vistos = set()
+    for tec in ChamadoTecnico.query.filter_by(ativo=True).order_by(ChamadoTecnico.nome.asc()).all():
+        if not tec.usuario_id or tec.usuario_id in vistos:
+            continue
+        vistos.add(tec.usuario_id)
+        opcoes.append({'id': tec.usuario_id, 'nome': tec.nome})
+    return {
+        'de': inicio.strftime('%Y-%m-%d'),
+        'ate': fim.strftime('%Y-%m-%d'),
+        'tecnico_id': tecnico_id,
+        'total': total,
+        'periodo': periodo,
+        'tecnicos': tecnicos_serie,
+        'lista': lista[:80],
+    }, opcoes
+
+
 @main.route('/dashboard')
 @login_required
 def dashboard():
     """Dashboard do sistema de gestão de chamados (widgets com dados reais)."""
+    _reabrir_reagendados_do_dia()
     user = Usuario.query.get(session['user_id'])
     visiveis = _query_chamados_usuario(user).all()
     mesas = mesas_ativas()
@@ -1571,7 +2494,7 @@ def dashboard():
     abertos = [c for c in visiveis if not status_fechado(c.status)]
     st_nao = [c for c in visiveis if c.status == 'Pendente']
     st_and = [c for c in visiveis if c.status in ('Em Andamento', STATUS_ENCAMINHADO, STATUS_DEVOLVIDO, STATUS_AGUARDAR_PECA)]
-    st_pause = [c for c in visiveis if c.status == STATUS_AGUARDAR_PECA]
+    st_pause = [c for c in visiveis if c.status in (STATUS_AGUARDAR_PECA, STATUS_REAGENDADO)]
     venc_at, venc_sol, vencidos = _contar_sla_widgets(abertos)
     ids = [c.id for c in visiveis]
     have_at = set()
@@ -1632,6 +2555,7 @@ def dashboard():
                 'url': url_for('main.listar_chamados', atender=a.chamado_id),
             })
     tickets_index = [{'id': c.id, 'numero': c.numero_chamado} for c in visiveis]
+    graf, tecnicos_graf = _grafico_finalizados_dashboard(request.args, mesa_filtro)
     dash = {
         'todos': len(visiveis),
         'meus': len(meus),
@@ -1660,20 +2584,25 @@ def dashboard():
         sem_resp=sem_resp[:8],
         mesas=mesas,
         mesa_filtro=mesa_filtro,
+        graf=graf,
+        tecnicos_graf=tecnicos_graf,
     )
 
 
 @main.route('/chamados')
 @login_required
 def listar_chamados():
-    """Lista chamados abertos pelo usuário e encaminhamentos ao seu setor."""
+    """Lista chamados visíveis ao usuário (técnicos veem todos os abertos)."""
+    _reabrir_reagendados_do_dia()
     user = Usuario.query.get(session['user_id'])
     user_id = session['user_id']
     setor = _setor_usuario(user)
     chamados = _query_chamados_usuario(user).all()
     clientes = _clientes_para_chamados()
     grupos, fechados = _grupos_tickets(chamados)
-    if setor:
+    if _eh_tecnico_do_sistema(user):
+        subtitulo = 'Tickets abertos do sistema e os que você abriu'
+    elif setor:
         subtitulo = f'Chamados que você abriu e encaminhamentos para {setor}'
     else:
         subtitulo = 'Chamados que você abriu — todos os status'
@@ -1691,6 +2620,8 @@ def listar_chamados():
         subtitulo=subtitulo,
         atender_id=request.args.get('atender', type=int),
         user_setor=setor,
+        eu_id=user.id if user else 0,
+        eh_gestor=_eh_gestor(user),
         primeiro_nome=_primeiro_nome(user),
         tickets_index=[{'id': c.id, 'numero': c.numero_chamado} for c in chamados],
         mesas=mesas_ativas(),
@@ -1826,6 +2757,8 @@ def novo_chamado():
                 tecnico_id=session['user_id'],
                 mesa_id=resolver_mesa_id(request.form.get('mesa_id')),
                 setor_tecnico_id=setor_tecnico_id,
+                canal_abertura='E-mail',
+                contato_abertura=(getattr(user, 'email', None) or '').strip() or None,
             )
             vig = contrato_vigente(cliente_id)
             if vig:
@@ -1837,6 +2770,7 @@ def novo_chamado():
             aplicar_automacoes(chamado, 'criar', user)
             db.session.commit()
             _avisar_abertura_ticket(chamado, user)
+            _avisar_abertura_whatsapp(chamado)
 
             if _wants_json():
                 return jsonify({
@@ -1879,6 +2813,7 @@ def editar_chamado(id):
     if request.method == 'POST':
         try:
             status_antes = chamado.status
+            data_antes = chamado.data_reagendamento
             chamado.cliente_id = int(request.form['cliente_id'])
             _vincular_equipamento_chamado(chamado, request.form, chamado.cliente_id)
             chamado.tipo_servico = request.form['tipo_servico']
@@ -1890,13 +2825,34 @@ def editar_chamado(id):
             if mesa_id:
                 chamado.mesa_id = mesa_id
 
-            if status_fechado(request.form['status']) and not chamado.data_conclusao:
-                chamado.data_conclusao = datetime.utcnow()
+            reagendou = False
+            if chamado.status == STATUS_REAGENDADO:
+                dia_reag = _exigir_data_reagendamento(request.form.get('data_reagendamento'))
+                reagendou = status_antes != STATUS_REAGENDADO or data_antes != dia_reag
+                chamado.data_reagendamento = dia_reag
+                chamado.atendendo_em = None
+            elif chamado.status in STATUS_SILENCIA_TOQUE:
+                chamado.atendendo_em = None
+
+            if status_fechado(request.form['status']):
+                _marcar_conclusao(chamado)
 
             user = Usuario.query.get(session['user_id'])
             aplicar_automacoes(chamado, 'status', user, status_anterior=status_antes)
 
             db.session.commit()
+            if status_fechado(chamado.status) and not status_fechado(status_antes):
+                _avisar_finalizacao_ticket(
+                    chamado,
+                    user,
+                    chamado.atendimento_notas or chamado.observacoes,
+                )
+            if reagendou:
+                _avisar_reagendamento_ticket(
+                    chamado,
+                    user,
+                    chamado.observacoes or chamado.atendimento_notas,
+                )
             flash('Chamado atualizado com sucesso!', 'success')
             return redirect(url_for('main.listar_chamados'))
 
@@ -2008,19 +2964,160 @@ def editar_cliente(id):
 
     return render_template('editar_cliente.html', cliente=cliente)
 
+
+@main.route('/clientes/<int:id>/excluir', methods=['POST', 'DELETE'])
+@login_required
+def excluir_cliente(id):
+    """Exclui cliente do cadastro unificado (portal / chamados / nutrição)."""
+    user = Usuario.query.get(session['user_id'])
+    if not _pode_gerenciar_clientes(user):
+        if _wants_json():
+            return jsonify({'ok': False, 'message': 'Sem permissão para gerenciar clientes.'}), 403
+        flash('Você não tem permissão para gerenciar clientes.', 'error')
+        return redirect(url_for('main.inicio'))
+    cliente = Cliente.query.get_or_404(id)
+    try:
+        _excluir_cliente(cliente)
+        if _wants_json():
+            return jsonify({'ok': True, 'message': 'Cliente excluído com sucesso.', 'id': id})
+        flash('Cliente excluído com sucesso.', 'success')
+        return redirect(url_for('main.listar_clientes'))
+    except ValueError as e:
+        db.session.rollback()
+        if _wants_json():
+            return jsonify({'ok': False, 'message': str(e)}), 400
+        flash(str(e), 'error')
+        return redirect(url_for('main.listar_clientes'))
+    except IntegrityError:
+        db.session.rollback()
+        msg = 'Não é possível excluir este cliente porque há registros vinculados.'
+        if _wants_json():
+            return jsonify({'ok': False, 'message': msg}), 400
+        flash(msg, 'error')
+        return redirect(url_for('main.listar_clientes'))
+    except Exception as e:
+        db.session.rollback()
+        if _wants_json():
+            return jsonify({'ok': False, 'message': str(e)}), 400
+        flash(str(e), 'error')
+        return redirect(url_for('main.listar_clientes'))
+
+
+def _payload_campanha(chamado):
+    return {
+        'id': chamado.id,
+        'numero_chamado': chamado.numero_chamado,
+        'cliente': chamado.cliente.nome if chamado.cliente else '—',
+        'titulo': _titulo_chamado(chamado),
+        'status': chamado.status,
+        'url': url_for('main.listar_chamados', atender=chamado.id),
+        'atendente_id': getattr(chamado, 'atendente_id', None),
+        'atendente_nome': _nome_atendente(chamado),
+    }
+
+
+@main.route('/api/chamados/campanha')
+def api_campanha_ticket():
+    """Tickets novos e ainda sem atendimento para campainha enquanto técnico/supervisor/gestor está logado."""
+    vazio = {'ok': False, 'enabled': False, 'campanhas': [], 'pendentes': [], 'retomados': [], 'latest_id': 0}
+    if 'user_id' not in session:
+        vazio['ok'] = False
+        return jsonify(vazio), 401
+    _reabrir_reagendados_do_dia()
+    user = Usuario.query.get(session['user_id'])
+    if not _recebe_campanha_ticket(user):
+        vazio['ok'] = True
+        return jsonify(vazio)
+    after_id = request.args.get('after_id', type=int) or 0
+    latest = db.session.query(func.max(Chamado.id)).scalar() or 0
+    filtros = [~Chamado.status.in_(STATUS_FECHADOS)]
+    if after_id > 0:
+        filtros.append(Chamado.id > after_id)
+    else:
+        corte = datetime.utcnow() - timedelta(minutes=CAMPANHA_TICKET_JANELA_MIN)
+        filtros.append(Chamado.data_criacao >= corte)
+    rows = (
+        Chamado.query.options(joinedload(Chamado.cliente))
+        .filter(*filtros)
+        .order_by(Chamado.id.desc())
+        .limit(24)
+        .all()
+    )
+    campanhas = [
+        _payload_campanha(chamado)
+        for chamado in rows
+        if _usuario_toca_mesa(user, chamado.mesa_id, chamado)
+    ][:8]
+    watch_ids = []
+    for part in (request.args.get('ids') or '').split(','):
+        part = part.strip()
+        if part.isdigit():
+            watch_ids.append(int(part))
+        if len(watch_ids) >= 30:
+            break
+    pendentes = []
+    if watch_ids:
+        watch_rows = (
+            Chamado.query.options(joinedload(Chamado.cliente))
+            .filter(
+                Chamado.id.in_(watch_ids),
+                Chamado.status == STATUS_CAMPANHA_AGUARDANDO,
+            )
+            .order_by(Chamado.id.desc())
+            .all()
+        )
+        pendentes = [
+            _payload_campanha(chamado)
+            for chamado in watch_rows
+            if _usuario_toca_mesa(user, chamado.mesa_id, chamado)
+        ]
+    retomados_rows = (
+        Chamado.query.options(joinedload(Chamado.cliente), joinedload(Chamado.atendente))
+        .filter(
+            Chamado.status == STATUS_CAMPANHA_AGUARDANDO,
+            Chamado.atendente_id.isnot(None),
+            Chamado.atendendo_em.is_(None),
+        )
+        .order_by(Chamado.id.desc())
+        .limit(24)
+        .all()
+    )
+    retomados = [
+        _payload_campanha(chamado)
+        for chamado in retomados_rows
+        if _usuario_toca_mesa(user, chamado.mesa_id, chamado)
+    ]
+    return jsonify({
+        'ok': True,
+        'enabled': True,
+        'latest_id': latest,
+        'campanhas': campanhas,
+        'pendentes': pendentes,
+        'retomados': retomados,
+    })
+
+
 @main.route('/api/chamados/<int:id>/status', methods=['POST'])
 @login_required
 def atualizar_status(id):
     """API para atualizar status do chamado"""
     try:
         chamado = Chamado.query.get_or_404(id)
+        status_antes = chamado.status
         novo_status = request.json.get('status')
 
         chamado.status = novo_status
-        if status_fechado(novo_status) and not chamado.data_conclusao:
-            chamado.data_conclusao = datetime.utcnow()
+        if status_fechado(novo_status):
+            _marcar_conclusao(chamado)
 
         db.session.commit()
+        if status_fechado(chamado.status) and not status_fechado(status_antes):
+            user = Usuario.query.get(session.get('user_id'))
+            _avisar_finalizacao_ticket(
+                chamado,
+                user,
+                chamado.atendimento_notas,
+            )
 
         return jsonify({
             'success': True,
@@ -2042,14 +3139,36 @@ def atender_chamado(id):
     chamado = Chamado.query.options(
         joinedload(Chamado.cliente),
         joinedload(Chamado.encaminhado_por),
+        joinedload(Chamado.atendente),
     ).get_or_404(id)
     user = Usuario.query.get(session['user_id'])
     if request.method == 'GET':
+        if not user:
+            return jsonify({'ok': False, 'message': 'Sessão inválida.'}), 401
+        if not status_fechado(chamado.status):
+            bloqueio = _bloqueio_atendimento(chamado, user)
+            if bloqueio:
+                return jsonify({
+                    'ok': False,
+                    'message': bloqueio,
+                    'atendente_id': chamado.atendente_id,
+                    'atendente_nome': _nome_atendente(chamado),
+                }), 409
+            _assumir_chamado(chamado, user)
+            db.session.refresh(chamado)
         return jsonify({'ok': True, 'chamado': _chamado_atender_payload(chamado, user)})
 
     if not user:
         return jsonify({'ok': False, 'message': 'Sessão inválida.'}), 401
+    bloqueio = _bloqueio_atendimento(chamado, user)
+    if bloqueio:
+        return jsonify({'ok': False, 'message': bloqueio}), 409
+    if not chamado.atendente_id:
+        chamado.atendente_id = user.id
+        chamado.atendendo_em = now_brasilia()
+    _marcar_inicio_atendimento(chamado)
 
+    troca = None
     acao = (request.form.get('acao') or 'salvar').strip().lower()
     status_antes = chamado.status
     notas = (request.form.get('atendimento_notas') or '').strip()
@@ -2142,11 +3261,28 @@ def atender_chamado(id):
                 chamado.encaminhado_por_id = user.id
                 chamado.encaminhado_em = datetime.utcnow()
 
+    reagendou = False
+    if chamado.status == STATUS_REAGENDADO:
+        try:
+            dia_reag = _exigir_data_reagendamento(request.form.get('data_reagendamento'))
+        except ValueError as exc:
+            db.session.rollback()
+            return jsonify({'ok': False, 'message': str(exc)}), 400
+        if status_antes != STATUS_REAGENDADO or chamado.data_reagendamento != dia_reag:
+            reagendou = True
+        chamado.data_reagendamento = dia_reag
+    if chamado.status in STATUS_SILENCIA_TOQUE:
+        chamado.atendendo_em = None
+
     chamado.atendimento_notas = notas or chamado.atendimento_notas
     if chamado.status == STATUS_DEVOLVIDO:
         chamado.data_conclusao = None
-    elif status_fechado(chamado.status) and not chamado.data_conclusao:
-        chamado.data_conclusao = datetime.utcnow()
+    elif status_fechado(chamado.status):
+        _marcar_conclusao(chamado)
+    if acao in ('finalizar', 'encaminhar'):
+        chamado.atendendo_em = None
+        if not chamado.atendente_id:
+            chamado.atendente_id = user.id
 
     pendencia_aberta = not status_fechado(chamado.status)
     atendimento = ChamadoAtendimento(
@@ -2175,6 +3311,7 @@ def atender_chamado(id):
         ))
 
     try:
+        troca = _transferir_patrimonio(chamado, request.form.get('equipamento_estoque_id'))
         _salvar_fotos_chamado(chamado, atendimento, arquivos_conserto, TIPO_FOTO_CONSERTO)
         _salvar_fotos_chamado(chamado, atendimento, arquivos_enc, TIPO_FOTO_ENCAMINHAMENTO)
         # Debita estoque somente ao Finalizar (não em Gravar/Encaminhar).
@@ -2200,12 +3337,48 @@ def atender_chamado(id):
         msg = f'Atendido e devolvido para {chamado.setor_destino}.'
     elif acao == 'finalizar':
         msg = 'Chamado finalizado.'
+    elif chamado.status == STATUS_REAGENDADO and getattr(chamado, 'data_reagendamento', None):
+        msg = 'Chamado reagendado para %s.' % chamado.data_reagendamento.strftime('%d/%m/%Y')
     else:
         msg = 'Atendimento gravado.'
+    if troca:
+        ruim, novo = troca
+        msg = 'Patrimônio %s substituído por %s do estoque. %s' % (
+            ruim.patrimonio or ruim.nome_equipamento,
+            novo.patrimonio or novo.nome_equipamento,
+            msg,
+        )
+    if status_fechado(chamado.status) and not status_fechado(status_antes):
+        _avisar_finalizacao_ticket(chamado, user, notas)
+    if reagendou:
+        aviso = _avisar_reagendamento_ticket(chamado, user, notas)
+        if aviso.get('ok'):
+            msg += ' O solicitante foi avisado.'
+        elif chamado.status == STATUS_REAGENDADO:
+            msg += ' O aviso ao solicitante não foi enviado.'
     return jsonify({
         'ok': True,
         'success': True,
         'message': msg,
+        'chamado': _chamado_atender_payload(chamado, user),
+    })
+
+
+@main.route('/api/chamados/<int:id>/liberar-atendimento', methods=['POST'])
+@login_required
+def liberar_atendimento_chamado(id):
+    """Fecha o modal sem finalizar: o chamado continua do técnico e o toque volta."""
+    chamado = Chamado.query.get_or_404(id)
+    user = Usuario.query.get(session['user_id'])
+    if not user:
+        return jsonify({'ok': False, 'message': 'Sessão inválida.'}), 401
+    if not _liberar_sessao_atendimento(chamado, user):
+        return jsonify({
+            'ok': False,
+            'message': 'Só quem está atendendo pode liberar a sessão.',
+        }), 409
+    return jsonify({
+        'ok': True,
         'chamado': _chamado_atender_payload(chamado, user),
     })
 
@@ -2304,18 +3477,112 @@ def tecnicos():
         flash('Você não tem permissão para acessar Técnicos.', 'error')
         return redirect(url_for('main.inicio'))
     setores = ChamadoSetor.query.order_by(ChamadoSetor.nome).all()
+    mesas = MesaServico.query.order_by(MesaServico.nome).all()
     tecnicos_list = (
         ChamadoTecnico.query
-        .options(joinedload(ChamadoTecnico.setor))
+        .options(joinedload(ChamadoTecnico.setor), joinedload(ChamadoTecnico.mesas))
         .order_by(ChamadoTecnico.nome)
         .all()
     )
     return render_template(
         'tecnicos.html',
         setores=setores,
+        mesas=mesas,
         tecnicos=tecnicos_list,
         funcoes=FUNCOES_TECNICO,
+        funcoes_mesa_multipla=sorted(FUNCOES_MESA_MULTIPLA),
     )
+
+
+def _pode_gerenciar_chamado_setor(user):
+    if not user:
+        return False
+    return any(
+        user.tem_menu('chamados', chave)
+        for chave in (
+            'tecnicos',
+            'equipamentos',
+            'recursos',
+            'cameras',
+            'portoes',
+            'telefones_ramais',
+        )
+    )
+
+
+def _renomear_chamado_setor(sid, nome):
+    nome = (nome or '').strip()
+    if not nome:
+        raise ValueError('Informe o nome do setor.')
+    if len(nome) > 80:
+        raise ValueError('Nome muito longo (máximo 80 caracteres).')
+    s = ChamadoSetor.query.get(sid)
+    if not s:
+        raise ValueError('Setor não encontrado.')
+    outro = ChamadoSetor.query.filter(ChamadoSetor.nome == nome, ChamadoSetor.id != sid).first()
+    if outro:
+        raise ValueError('Setor já cadastrado.')
+    antigo = s.nome
+    s.nome = nome
+    if antigo != nome:
+        Equipamento.query.filter_by(setor=antigo).update({Equipamento.setor: nome}, synchronize_session=False)
+    db.session.commit()
+    return s
+
+
+def _excluir_chamado_setor(sid):
+    s = ChamadoSetor.query.get(sid)
+    if not s:
+        raise ValueError('Setor não encontrado.')
+    usos = []
+    if ChamadoTecnico.query.filter_by(setor_id=sid).first():
+        usos.append('técnicos')
+    if ChamadoCamera.query.filter_by(setor_id=sid).first():
+        usos.append('câmeras')
+    if ChamadoRamal.query.filter_by(setor_id=sid).first():
+        usos.append('ramais')
+    if ChamadoPortao.query.filter_by(setor_id=sid).first():
+        usos.append('portões')
+    if Chamado.query.filter_by(setor_tecnico_id=sid).first():
+        usos.append('chamados')
+    if Equipamento.query.filter_by(setor=s.nome).first():
+        usos.append('equipamentos')
+    if usos:
+        raise ValueError(
+            'Não é possível excluir: há ' + ', '.join(usos) + ' vinculados a este setor.'
+        )
+    db.session.delete(s)
+    db.session.commit()
+
+
+@main.route('/chamados/setores/<int:sid>/editar', methods=['POST'])
+@login_required
+def editar_chamado_setor(sid):
+    user = Usuario.query.get(session['user_id'])
+    if not _pode_gerenciar_chamado_setor(user):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    data = request.get_json(silent=True) or request.form
+    try:
+        s = _renomear_chamado_setor(sid, data.get('nome'))
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': 'Setor já cadastrado.'}), 400
+    return jsonify({'ok': True, 'id': s.id, 'nome': s.nome, 'ativo': s.ativo})
+
+
+@main.route('/chamados/setores/<int:sid>/excluir', methods=['POST'])
+@login_required
+def excluir_chamado_setor(sid):
+    user = Usuario.query.get(session['user_id'])
+    if not _pode_gerenciar_chamado_setor(user):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    try:
+        _excluir_chamado_setor(sid)
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+    return jsonify({'ok': True})
 
 
 @main.route('/tecnicos/setor/adicionar', methods=['POST'])
@@ -2350,15 +3617,20 @@ def toggle_chamado_setor(sid):
 
 def _tecnico_json(t):
     setor_nome = t.setor.nome if t.setor else ''
+    mesas = list(t.mesas or [])
     return {
         'ok': True,
         'id': t.id,
         'nome': t.nome,
         'email': t.email or '',
+        'whatsapp': t.whatsapp or '',
         'funcao': t.funcao or '',
         'funcao_label': t.funcao_label or '',
         'setor': setor_nome,
         'setor_id': t.setor_id or '',
+        'mesas': [{'id': m.id, 'nome': m.nome} for m in mesas],
+        'mesa_ids': [m.id for m in mesas],
+        'mesas_label': t.mesas_label or '',
         'ativo': t.ativo,
         'usuario_id': t.usuario_id,
         'vinculado': bool(t.usuario_id),
@@ -2366,12 +3638,47 @@ def _tecnico_json(t):
 
 
 def _parse_funcao_tecnico(data):
-    funcao = (data.get('funcao') or '').strip().lower()
+    funcao = str(data.get('funcao') or '').strip().lower()
     if not funcao:
         return None, 'Informe a função do técnico.'
     if funcao not in FUNCOES_TECNICO_KEYS:
         return None, 'Função inválida.'
     return funcao, None
+
+
+def _parse_mesa_ids(data, funcao):
+    raw = data.get('mesa_ids', data.get('mesa_id'))
+    if isinstance(raw, list):
+        parts = raw
+    else:
+        parts = str(raw or '').replace(';', ',').split(',')
+    ids = []
+    for part in parts:
+        s = str(part).strip()
+        if s.isdigit():
+            mid = int(s)
+            if mid not in ids:
+                ids.append(mid)
+    if (funcao or '') not in FUNCOES_MESA_MULTIPLA:
+        ids = ids[:1]
+    if not ids:
+        return [], None
+    rows = MesaServico.query.filter(MesaServico.id.in_(ids)).all()
+    by_id = {m.id: m for m in rows}
+    mesas = [by_id[i] for i in ids if i in by_id]
+    if len(mesas) != len(ids):
+        return None, 'Mesa de serviço inválida.'
+    return mesas, None
+
+
+def _parse_whatsapp_tecnico(data):
+    from whatsapp_pesagem import normalizar_telefone, telefone_valido
+    raw = str(data.get('whatsapp') or data.get('telefone') or '').strip()
+    if not raw:
+        return '', None
+    if not telefone_valido(raw):
+        return None, 'Informe um WhatsApp válido com DDD (ex.: 21988880000).'
+    return normalizar_telefone(raw), None
 
 
 @main.route('/tecnicos/tecnico/adicionar', methods=['POST'])
@@ -2380,25 +3687,33 @@ def adicionar_chamado_tecnico():
     user = Usuario.query.get(session['user_id'])
     if not user or not user.tem_menu('chamados', 'tecnicos'):
         return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
-    data = request.get_json(silent=True) or request.form
-    nome = (data.get('nome') or '').strip()
+    data = request.get_json(silent=True) or request.form or {}
+    nome = str(data.get('nome') or '').strip()
     email = _normalizar_email(data.get('email'))
     funcao, err_funcao = _parse_funcao_tecnico(data)
-    setor_id_raw = (data.get('setor_id') or '').strip()
+    whatsapp, err_whatsapp = _parse_whatsapp_tecnico(data)
+    mesas, err_mesas = _parse_mesa_ids(data, funcao)
+    setor_id_raw = str(data.get('setor_id') or '').strip()
     setor_id = int(setor_id_raw) if setor_id_raw.isdigit() else None
     if not nome:
         return jsonify({'ok': False, 'error': 'Informe o nome do técnico.'}), 400
     if err_funcao:
         return jsonify({'ok': False, 'error': err_funcao}), 400
+    if err_whatsapp:
+        return jsonify({'ok': False, 'error': err_whatsapp}), 400
+    if err_mesas:
+        return jsonify({'ok': False, 'error': err_mesas}), 400
     usuario_vinculado = _usuario_por_email(email)
     t = ChamadoTecnico(
         nome=nome,
         email=email,
+        whatsapp=whatsapp or None,
         funcao=funcao,
         setor_id=setor_id,
         usuario_id=usuario_vinculado.id if usuario_vinculado else None,
         ativo=True,
     )
+    t.mesas = mesas or []
     db.session.add(t)
     db.session.commit()
     return jsonify(_tecnico_json(t))
@@ -2411,24 +3726,98 @@ def editar_chamado_tecnico(tid):
     if not user or not user.tem_menu('chamados', 'tecnicos'):
         return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
     t = ChamadoTecnico.query.get_or_404(tid)
-    data = request.get_json(silent=True) or request.form
-    nome = (data.get('nome') or '').strip()
+    data = request.get_json(silent=True) or request.form or {}
+    nome = str(data.get('nome') or '').strip()
     email = _normalizar_email(data.get('email'))
     funcao, err_funcao = _parse_funcao_tecnico(data)
-    setor_id_raw = (data.get('setor_id') or '').strip()
+    whatsapp, err_whatsapp = _parse_whatsapp_tecnico(data)
+    mesas, err_mesas = _parse_mesa_ids(data, funcao)
+    setor_id_raw = str(data.get('setor_id') or '').strip()
     setor_id = int(setor_id_raw) if setor_id_raw.isdigit() else None
     if not nome:
         return jsonify({'ok': False, 'error': 'Informe o nome do técnico.'}), 400
     if err_funcao:
         return jsonify({'ok': False, 'error': err_funcao}), 400
+    if err_whatsapp:
+        return jsonify({'ok': False, 'error': err_whatsapp}), 400
+    if err_mesas:
+        return jsonify({'ok': False, 'error': err_mesas}), 400
     t.nome = nome
     t.email = email
+    t.whatsapp = whatsapp or None
     t.funcao = funcao
     t.setor_id = setor_id
+    t.mesas = mesas or []
     u = _usuario_por_email(email)
     t.usuario_id = u.id if u else None
     db.session.commit()
     return jsonify(_tecnico_json(t))
+
+
+@main.route('/tecnicos/mesa/adicionar', methods=['POST'])
+@login_required
+def adicionar_mesa_tecnico():
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'tecnicos'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    data = request.get_json(silent=True) or request.form
+    nome = (data.get('nome') or '').strip()[:80]
+    if not nome:
+        return jsonify({'ok': False, 'error': 'Informe o nome da mesa de serviço.'}), 400
+    existente = MesaServico.query.filter_by(nome=nome).first()
+    if existente:
+        return jsonify({'ok': False, 'error': 'Mesa de serviço já cadastrada.'}), 400
+    mesa = MesaServico(nome=nome, ativa=True)
+    db.session.add(mesa)
+    db.session.commit()
+    return jsonify({'ok': True, 'id': mesa.id, 'nome': mesa.nome, 'ativa': mesa.ativa})
+
+
+def _pode_mesa_tecnico(user):
+    return bool(user and user.tem_menu('chamados', 'tecnicos'))
+
+
+@main.route('/tecnicos/mesa/<int:mid>/editar', methods=['POST'])
+@login_required
+def editar_mesa_tecnico(mid):
+    user = Usuario.query.get(session['user_id'])
+    if not _pode_mesa_tecnico(user):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    data = request.get_json(silent=True) or request.form
+    nome = (data.get('nome') or '').strip()[:80]
+    if not nome:
+        return jsonify({'ok': False, 'error': 'Informe o nome da mesa de serviço.'}), 400
+    mesa = MesaServico.query.get_or_404(mid)
+    outro = MesaServico.query.filter(MesaServico.nome == nome, MesaServico.id != mid).first()
+    if outro:
+        return jsonify({'ok': False, 'error': 'Mesa de serviço já cadastrada.'}), 400
+    mesa.nome = nome
+    db.session.commit()
+    return jsonify({'ok': True, 'id': mesa.id, 'nome': mesa.nome, 'ativa': mesa.ativa})
+
+
+@main.route('/tecnicos/mesa/<int:mid>/excluir', methods=['POST'])
+@login_required
+def excluir_mesa_tecnico(mid):
+    user = Usuario.query.get(session['user_id'])
+    if not _pode_mesa_tecnico(user):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    mesa = MesaServico.query.get_or_404(mid)
+    usos = []
+    if Chamado.query.filter_by(mesa_id=mid).first():
+        usos.append('chamados')
+    if ChamadoTecnicoMesa.query.filter_by(mesa_id=mid).first():
+        usos.append('técnicos')
+    if ChamadoAutomacao.query.filter_by(mesa_id=mid).first():
+        usos.append('automações')
+    if usos:
+        return jsonify({
+            'ok': False,
+            'error': 'Não é possível excluir: há ' + ', '.join(usos) + ' vinculados a esta mesa.',
+        }), 400
+    db.session.delete(mesa)
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 @main.route('/tecnicos/tecnico/<int:tid>/excluir', methods=['POST'])
@@ -2438,6 +3827,7 @@ def excluir_chamado_tecnico(tid):
     if not user or not user.tem_menu('chamados', 'tecnicos'):
         return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
     t = ChamadoTecnico.query.get_or_404(tid)
+    t.mesas = []
     db.session.delete(t)
     db.session.commit()
     return jsonify({'ok': True})
@@ -3055,17 +4445,34 @@ def excluir_estoque(eid):
 def listar_equipamentos():
     """Cadastro de equipamentos (patrimônios) vinculados ao cliente."""
     equipamentos = (
-        Equipamento.query.options(joinedload(Equipamento.cliente))
+        Equipamento.query.options(
+            joinedload(Equipamento.cliente),
+            joinedload(Equipamento.preventiva),
+            selectinload(Equipamento.termos),
+        )
         .order_by(Equipamento.patrimonio.asc(), Equipamento.nome_equipamento.asc())
         .all()
     )
     clientes = _clientes_para_chamados()
     setores = ChamadoSetor.query.order_by(ChamadoSetor.nome).all()
+    usuarios = [
+        {
+            'id': u.id,
+            'nome': u.nome or '',
+            'email': u.email or '',
+            'telefone': getattr(u, 'telefone', None) or '',
+            'setor': u.setor or '',
+        }
+        for u in Usuario.query.filter_by(ativo=True).order_by(Usuario.nome.asc()).all()
+    ]
     return render_template(
         'equipamentos.html',
         equipamentos=equipamentos,
         clientes=clientes,
         setores=setores,
+        usuarios=usuarios,
+        frequencias_preventiva=FREQUENCIAS_PREVENTIVA,
+        tipos_equipamento=TIPOS_EQUIPAMENTO,
     )
 
 
@@ -3112,6 +4519,7 @@ def _dados_equipamento_form(data):
     local = (data.get('local') or '').strip()
     marca = (data.get('marca') or '').strip()
     modelo = (data.get('modelo') or '').strip()
+    numero_serie = (data.get('numero_serie') or data.get('serie') or '').strip()
     cliente_raw = data.get('cliente_id')
     cliente_id = int(cliente_raw) if str(cliente_raw or '').isdigit() else None
     if not codigo:
@@ -3129,12 +4537,13 @@ def _dados_equipamento_form(data):
     usuario = (data.get('usuario_equipamento') or data.get('usuario') or '').strip()
     ip = (data.get('ip') or '').strip()
     grupo = grupo_recurso_padrao(cliente_id)
+    tipo_eq = normalizar_tipo_eq(data.get('tipo_equipamento') or data.get('tipo'))
     return {
         'patrimonio': codigo,
-        'equipamento': nome,  # coluna legada NOT NULL
         'nome_equipamento': nome,
         'marca': marca or None,
         'modelo': modelo or None,
+        'numero_serie': numero_serie or None,
         'setor': setor or None,
         'localizacao': setor or None,
         'local': local,
@@ -3142,10 +4551,12 @@ def _dados_equipamento_form(data):
         'cliente_id': cliente_id,
         'ativo': True,
         'tipo_recurso': tipo,
+        'tipo_equipamento': tipo_eq,
         'grupo_id': grupo.id if grupo else None,
         'usuario_equipamento': usuario or None,
         'ip': ip or None,
         'is_agente': data.get('is_agente') in (True, 1, '1', 'on', 'true', 'sim'),
+        'em_estoque': data.get('em_estoque') in (True, 1, '1', 'on', 'true', 'sim'),
         'atualizado_em': datetime.utcnow(),
     }
 
@@ -3205,6 +4616,12 @@ def api_equipamento(id):
             Chamado.query.filter_by(equipamento_id=equipamento.id).update(
                 {Chamado.equipamento_id: None}, synchronize_session=False
             )
+            EquipamentoPreventiva.query.filter_by(equipamento_id=equipamento.id).delete(
+                synchronize_session=False
+            )
+            EquipamentoTermo.query.filter_by(equipamento_id=equipamento.id).delete(
+                synchronize_session=False
+            )
             db.session.delete(equipamento)
             db.session.commit()
             return jsonify({'ok': True, 'success': True, 'message': 'Equipamento excluído.'})
@@ -3215,15 +4632,16 @@ def api_equipamento(id):
     try:
         campos = _dados_equipamento_form(data)
         equipamento.patrimonio = campos['patrimonio']
-        equipamento.equipamento = campos['equipamento']
         equipamento.nome_equipamento = campos['nome_equipamento']
         equipamento.marca = campos['marca']
         equipamento.modelo = campos['modelo']
+        equipamento.numero_serie = campos.get('numero_serie')
         equipamento.setor = campos['setor']
         equipamento.localizacao = campos['localizacao']
         equipamento.local = campos['local']
         equipamento.data_compra = campos['data_compra']
         equipamento.cliente_id = campos['cliente_id']
+        equipamento.tipo_equipamento = campos['tipo_equipamento']
         db.session.commit()
         return jsonify({
             'ok': True,
@@ -3243,6 +4661,195 @@ def api_equipamento(id):
     except Exception as exc:
         db.session.rollback()
         return jsonify({'ok': False, 'error': str(exc), 'message': str(exc)}), 400
+
+
+
+def _eq_user():
+    return Usuario.query.get(session['user_id'])
+
+
+def _link_termo(token):
+    return url_for('main.assinar_termo_publico', token=token, _external=True)
+
+
+@main.route('/api/equipamentos/cronograma')
+@login_required
+def api_equipamentos_cronograma():
+    from equipamento_service import ocorrencias_preventiva
+    ano = request.args.get('ano', type=int) or date.today().year
+    itens = (
+        EquipamentoPreventiva.query.options(
+            joinedload(EquipamentoPreventiva.equipamento).joinedload(Equipamento.cliente)
+        )
+        .filter_by(ativa=True)
+        .all()
+    )
+    cores = [
+        '#7c3aed', '#dc2626', '#eab308', '#16a34a', '#0f766e', '#2563eb',
+        '#db2777', '#ea580c', '#4f46e5', '#0891b2',
+    ]
+    out = []
+    for i, prev in enumerate(itens):
+        eq = prev.equipamento
+        if not eq:
+            continue
+        dias = [d.isoformat() for d in ocorrencias_preventiva(prev, ano=ano)]
+        out.append({
+            'id': eq.id,
+            'nome': eq.nome_equipamento,
+            'codigo': eq.patrimonio or '',
+            'cor': cores[i % len(cores)],
+            'frequencia': prev.frequencia,
+            'dias': dias,
+        })
+    return jsonify({'ok': True, 'ano': ano, 'itens': out})
+
+
+@main.route('/api/equipamentos/<int:id>/preventiva', methods=['GET', 'POST'])
+@login_required
+def api_equipamento_preventiva(id):
+    from equipamento_service import salvar_preventiva
+    eq = Equipamento.query.get_or_404(id)
+    if request.method == 'GET':
+        return jsonify({'ok': True, 'equipamento': eq.to_dict()})
+    data = request.get_json(silent=True) or request.form
+    try:
+        _prev, chamado = salvar_preventiva(eq, data, _eq_user())
+        payload = {
+            'ok': True,
+            'equipamento': eq.to_dict(),
+            'chamado_id': chamado.id if chamado else None,
+            'chamado_numero': chamado.numero_chamado if chamado else None,
+        }
+        if chamado:
+            payload['message'] = (
+                f'Preventiva gravada. Chamado {chamado.numero_chamado} aberto automaticamente.'
+            )
+        else:
+            payload['message'] = 'Preventiva gravada.'
+        return jsonify(payload)
+    except ValueError as extra:
+        return jsonify({'ok': False, 'error': str(extra)}), 400
+    except Exception as extra:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': str(extra)}), 400
+
+
+@main.route('/api/equipamentos/<int:id>/termo', methods=['GET'])
+@login_required
+def api_equipamento_termo(id):
+    from equipamento_service import termo_para_api
+    eq = Equipamento.query.get_or_404(id)
+    termo = eq.termo_atual()
+    link = _link_termo(termo.token) if termo and termo.token else None
+    return jsonify({
+        'ok': True,
+        'equipamento': eq.to_dict(),
+        'termo': termo_para_api(termo, link=link),
+        'sugeridos': acessorios_sugeridos(eq.tipo_equipamento_norm()),
+    })
+
+
+@main.route('/api/equipamentos/<int:id>/termo/salvar', methods=['POST'])
+@login_required
+def api_equipamento_termo_salvar(id):
+    from equipamento_service import salvar_termo, termo_para_api
+    eq = Equipamento.query.get_or_404(id)
+    data = request.get_json(silent=True) or request.form
+    try:
+        termo = salvar_termo(eq, data, _eq_user())
+        link = _link_termo(termo.token) if termo and termo.token else None
+        return jsonify({
+            'ok': True,
+            'message': 'Termo salvo.',
+            'link': link,
+            'termo': termo_para_api(termo, link=link),
+            'equipamento': eq.to_dict(),
+        })
+    except ValueError as extra:
+        return jsonify({'ok': False, 'error': str(extra)}), 400
+    except Exception as extra:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': str(extra)}), 400
+
+
+@main.route('/api/equipamentos/<int:id>/termo/enviar', methods=['POST'])
+@login_required
+def api_equipamento_termo_enviar(id):
+    from equipamento_service import criar_ou_reenviar_termo, termo_para_api
+    eq = Equipamento.query.get_or_404(id)
+    data = request.get_json(silent=True) or request.form
+    try:
+        termo, link, canais, erros = criar_ou_reenviar_termo(
+            eq, data, _eq_user(), _link_termo
+        )
+        msg = 'Link gerado.'
+        if 'email' in canais:
+            msg = 'Link enviado por e-mail.'
+        elif 'whatsapp' in canais:
+            msg = 'Link enviado por WhatsApp.'
+        if erros:
+            msg = (msg + ' ' + ' '.join(erros)).strip()
+        return jsonify({
+            'ok': True,
+            'message': msg,
+            'link': link,
+            'canais': canais,
+            'erros': erros,
+            'termo': termo_para_api(termo, link=link),
+            'equipamento': eq.to_dict(),
+        })
+    except ValueError as extra:
+        return jsonify({'ok': False, 'error': str(extra)}), 400
+    except Exception as extra:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': str(extra)}), 400
+
+
+@main.route('/equipamentos/<int:id>/termo/imprimir')
+@login_required
+def imprimir_termo_equipamento(id):
+    eq = Equipamento.query.get_or_404(id)
+    termo = eq.termo_atual()
+    if not termo or termo.status != 'assinado':
+        flash('Este equipamento ainda não tem termo assinado.', 'error')
+        return redirect(url_for('main.listar_equipamentos'))
+    return render_template(
+        'termo_responsabilidade.html',
+        termo=termo,
+        equipamento=eq,
+        modo='imprimir',
+        publico=False,
+    )
+
+
+@main.route('/termo/<token>', methods=['GET', 'POST'])
+def assinar_termo_publico(token):
+    from equipamento_service import assinar_termo
+    termo = EquipamentoTermo.query.filter_by(token=token).first()
+    if not termo:
+        return render_template(
+            'termo_responsabilidade.html', termo=None, modo='invalido', publico=True
+        ), 404
+    eq = termo.equipamento
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or request.form
+        try:
+            assinar_termo(termo, data)
+            if _wants_json() or request.is_json:
+                return jsonify({'ok': True, 'message': 'Termo assinado com sucesso.'})
+            return redirect(url_for('main.assinar_termo_publico', token=token))
+        except ValueError as extra:
+            if _wants_json() or request.is_json:
+                return jsonify({'ok': False, 'error': str(extra)}), 400
+            flash(str(extra), 'error')
+    return render_template(
+        'termo_responsabilidade.html',
+        termo=termo,
+        equipamento=eq,
+        modo='ver' if termo.status == 'assinado' else 'assinar',
+        publico=True,
+    )
 
 
 @main.route('/novo_equipamento', methods=['GET', 'POST'])
@@ -3281,15 +4888,16 @@ def editar_equipamento(id):
     try:
         campos = _dados_equipamento_form(request.form)
         equipamento.patrimonio = campos['patrimonio']
-        equipamento.equipamento = campos['equipamento']
         equipamento.nome_equipamento = campos['nome_equipamento']
         equipamento.marca = campos['marca']
         equipamento.modelo = campos['modelo']
+        equipamento.numero_serie = campos.get('numero_serie')
         equipamento.setor = campos['setor']
         equipamento.localizacao = campos['localizacao']
         equipamento.local = campos['local']
         equipamento.data_compra = campos['data_compra']
         equipamento.cliente_id = campos['cliente_id']
+        equipamento.tipo_equipamento = campos['tipo_equipamento']
         db.session.commit()
         flash('Equipamento atualizado com sucesso!', 'success')
         return redirect(url_for('main.listar_equipamentos'))
@@ -3677,7 +5285,7 @@ def agenda():
     visiveis = _query_chamados_usuario(user).all()
     eventos = []
     for c in visiveis:
-        if not c.data_criacao:
+        if not c.data_criacao or _chamado_e_preventiva(c):
             continue
         eventos.append({
             'id': c.id,
@@ -3686,7 +5294,38 @@ def agenda():
             'data': c.data_criacao.strftime('%Y-%m-%d'),
             'hora': c.data_criacao.strftime('%H:%M'),
             'url': url_for('main.ver_chamado', id=c.id),
+            'tipo': 'chamado',
         })
+    try:
+        from equipamento_service import garantir_chamado_ocorrencia, ocorrencias_preventiva
+        ano = date.today().year
+        vistos = set()
+        for prev in EquipamentoPreventiva.query.filter_by(ativa=True).all():
+            eq = prev.equipamento
+            if not eq:
+                continue
+            dias = list(ocorrencias_preventiva(prev, ano=ano))
+            dias.extend(ocorrencias_preventiva(prev, ano=ano + 1))
+            for dia in dias:
+                chave = (eq.id, dia.isoformat())
+                if chave in vistos:
+                    continue
+                vistos.add(chave)
+                chamado = garantir_chamado_ocorrencia(eq, prev, dia)
+                if not chamado:
+                    continue
+                eventos.append({
+                    'id': chamado.id,
+                    'numero': chamado.numero_chamado,
+                    'titulo': _titulo_chamado(chamado),
+                    'data': dia.strftime('%Y-%m-%d'),
+                    'hora': '',
+                    'url': url_for('main.ver_chamado', id=chamado.id),
+                    'tipo': 'chamado',
+                })
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
     return render_template(
         'agenda.html',
         user_name=user.nome,
@@ -3996,3 +5635,77 @@ def equipamentos_por_cliente(cliente_ref):
         }
         for e in equipamentos
     ])
+
+
+@main.route('/chamados/whatsapp-mensagem')
+@login_required
+def whatsapp_mensagem():
+    from whatsapp_chamados import config_ativa
+    cfg = config_ativa()
+    usuarios = WhatsAppChamadoUsuario.query.order_by(
+        WhatsAppChamadoUsuario.atualizado_em.desc()
+    ).all()
+    return render_template(
+        'whatsapp_mensagem.html',
+        config=cfg,
+        usuarios=[u.to_dict() for u in usuarios],
+        clientes=[{'id': c.id, 'nome': c.nome} for c in _clientes_para_chamados()],
+        setores=[{'id': s.id, 'nome': s.nome} for s in ChamadoSetor.query.filter_by(ativo=True).order_by(ChamadoSetor.nome).all()],
+    )
+
+
+@main.route('/api/chamados/whatsapp/status')
+@login_required
+def api_chamados_whatsapp_status():
+    from whatsapp_pesagem import status_whatsapp
+    from whatsapp_chamados import config_ativa
+    data = status_whatsapp()
+    if isinstance(data, dict):
+        data.pop('qr', None)
+        data['atendimento_ativo'] = bool(config_ativa().ativo)
+    return jsonify(data)
+
+
+@main.route('/api/chamados/whatsapp/config', methods=['POST'])
+@login_required
+def api_chamados_whatsapp_config():
+    from whatsapp_chamados import config_ativa
+    cfg = config_ativa()
+    data = request.get_json(silent=True) or {}
+    if 'ativo' in data:
+        cfg.ativo = bool(data.get('ativo'))
+        db.session.commit()
+    return jsonify({'ok': True, 'ativo': bool(cfg.ativo)})
+
+
+@main.route('/api/chamados/whatsapp/usuarios/<int:uid>', methods=['DELETE'])
+@login_required
+def api_chamados_whatsapp_usuario(uid):
+    from models import WhatsAppChamadoLog
+    row = WhatsAppChamadoUsuario.query.get_or_404(uid)
+    WhatsAppChamadoLog.query.filter_by(usuario_id=row.id).delete(synchronize_session=False)
+    db.session.delete(row)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@main.route('/api/chamados/whatsapp/inbound', methods=['POST'])
+def api_chamados_whatsapp_inbound():
+    from whatsapp_pesagem import inbound_token, send_whatsapp
+    from whatsapp_chamados import process_inbound
+    expected = inbound_token()
+    got = (request.headers.get('X-WA-Token') or '').strip()
+    if not expected or got != expected:
+        return jsonify({'ok': False, 'error': 'token inválido'}), 403
+    payload = request.get_json(silent=True) or {}
+    telefone = payload.get('from') or payload.get('telefone') or ''
+    texto = payload.get('text') or payload.get('texto') or ''
+    jid = payload.get('jid') or ''
+    result = process_inbound(telefone, texto, sender=send_whatsapp, jid=jid)
+    code = 200 if result.get('ok') else 400
+    return jsonify(result), code
+
+
+from acesso_remoto_routes import registrar_rotas_acesso_remoto
+registrar_rotas_acesso_remoto(main, _CHAMADOS_ENDPOINT_MENUS)
+

@@ -1,6 +1,12 @@
 # Agente de Pesagem (Windows)
 
-Lê o peso da balança pela porta serial (ex.: **FT232R USB UART** → COMx) e envia para o servidor.
+Lê o peso da balança pela porta serial (ex.: **FT232R USB UART** → COMx) e envia o **líquido** para o servidor.
+
+Na tela:
+- **Tara**: o operador digita no campo amarelo (líquido = bruto − tara atualiza na hora)
+- **Bruto**: peso ao vivo da plataforma
+- **Líquido**: bruto − tara (visor vermelho e valor enviado)
+- **Roupa já pesada**: informa o líquido sem usar a balança (tara opcional no diálogo)
 
 ## Uso rápido
 

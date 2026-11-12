@@ -1,0 +1,535 @@
+{% extends "base_pesagem.html" %}
+{% block title %}Conf. WhatsApp{% endblock %}
+{% block content %}
+<div class="wa-page">
+  <div class="page-header wa-header">
+    <div>
+      <h1>Conf. WhatsApp</h1>
+      <p>Conecte o WhatsApp pelo QR Code e cadastre para quem o relatório diário de pesagem será enviado</p>
+    </div>
+  </div>
+
+  <div class="wa-grid">
+    <section class="card wa-card" id="cardConexao">
+      <h2><i class="fab fa-whatsapp"></i> WhatsApp Web interno</h2>
+      <p class="wa-help">O sistema abre o site do WhatsApp Web no Chrome deste servidor, como um navegador comum, para reduzir bloqueio. Leia o QR no celular (WhatsApp → Aparelhos conectados). A sessão fica salva aqui.</p>
+      <div class="wa-status-row">
+        <span class="wa-pill" id="waPill">Verificando…</span>
+        <span class="wa-status-text" id="waStatusText"></span>
+      </div>
+      <div class="wa-qr-wrap" id="waQrWrap">
+        <div class="wa-qr-placeholder" id="waQrPlaceholder">Abrindo o WhatsApp Web internamente…</div>
+        <img id="waQrImg" alt="QR Code WhatsApp" hidden>
+        <div class="wa-connected" id="waConnected" hidden>
+          <i class="fab fa-whatsapp"></i>
+          <strong>WhatsApp carregado</strong>
+          <span id="waConnectedDetail"></span>
+        </div>
+      </div>
+      <div class="wa-conn-actions">
+        <button class="btn btn-secondary" type="button" id="btnWaRefresh">
+          <i class="fas fa-rotate"></i> Atualizar
+        </button>
+        <button class="btn btn-wa-logout" type="button" id="btnWaLogout">
+          <i class="fas fa-link-slash"></i> Desconectar
+        </button>
+      </div>
+    </section>
+
+    <section class="card wa-card">
+      <h2><i class="fas fa-scale-balanced"></i> Prévia do dia</h2>
+      <p class="wa-help">Total líquido de cada cadastro hoje. Se o mesmo cliente for pesado várias vezes, os pesos são somados.</p>
+      <pre class="wa-preview" id="waPreview">Carregando…</pre>
+      <p class="wa-help" style="margin-top:0.6rem;">Exemplo: 10 pesagens de CCD → <code>CCD --- total xxx</code></p>
+    </section>
+  </div>
+
+  <section class="card wa-card" style="padding:0;overflow:visible;">
+    <div class="wa-dest-head">
+      <div>
+        <h2>Enviar para</h2>
+        <p class="wa-help" style="margin:0;">Cadastre nome, telefone, hora e a mensagem. O envio ocorre uma vez ao dia, no horário informado.</p>
+      </div>
+      <button class="btn btn-primary" type="button" onclick="abrirDestino()">
+        <i class="fas fa-plus"></i> Adicionar destinatário
+      </button>
+    </div>
+    <table class="data-table" id="tabelaDestinos">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Telefone</th>
+          <th>Hora</th>
+          <th>Mensagem</th>
+          <th>Ativo</th>
+          <th>Último envio</th>
+          <th class="cli-col-acoes">Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tabelaDestinosBody">
+        {% for d in destinos %}
+        <tr data-id="{{ d.id }}">
+          <td>{{ d.nome }}</td>
+          <td>{{ d.telefone }}</td>
+          <td>{{ d.hora }}</td>
+          <td class="wa-msg-cell" title="{{ d.mensagem }}">{{ d.mensagem }}</td>
+          <td>{{ 'Sim' if d.ativo else 'Não' }}</td>
+          <td>
+            {% set u = ultimos.get(d.id) %}
+            {% if u %}
+              {{ u.enviado_em }} · {{ u.status }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="cli-col-acoes">
+            <div class="balanca-acoes">
+              <button class="btn btn-ghost btn-sm" type="button" title="Enviar agora" onclick="enviarAgora({{ d.id }})">
+                <i class="fas fa-paper-plane"></i>
+              </button>
+              <button class="btn btn-ghost btn-sm" type="button" title="Editar" onclick="abrirDestino(this.closest('tr'))">
+                <i class="fas fa-edit"></i>
+              </button>
+              <button class="btn btn-ghost btn-sm" type="button" title="Excluir" onclick="excluirDestino({{ d.id }})">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr id="linhaVazia">
+          <td colspan="7" style="text-align:center;padding:1rem;">Nenhum destinatário cadastrado.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<div id="destModalOverlay" class="bal-modal-overlay" onclick="if(event.target===this)fecharDestino()" hidden>
+  <div class="bal-modal-dialog dest-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="destModalTitle">
+    <div class="bal-modal-header">
+      <h2 id="destModalTitle">Novo destinatário</h2>
+      <button type="button" class="bal-modal-close" onclick="fecharDestino()" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="bal-modal-body">
+      <div class="form-group">
+        <label class="form-label" for="d-nome">Nome</label>
+        <input class="form-control" id="d-nome" placeholder="Nome de quem vai receber">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="d-telefone">Telefone</label>
+        <input class="form-control" id="d-telefone" placeholder="(21) 99999-9999" inputmode="tel">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="d-hora">Hora do envio (uma vez ao dia)</label>
+        <input class="form-control" id="d-hora" type="time" value="18:00">
+        <p class="wa-help" style="margin:0.35rem 0 0;">Horário 24 horas: 07:30 de manhã ou 20:00 à noite.</p>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="d-mensagem">Mensagem</label>
+        <textarea class="form-control" id="d-mensagem" rows="4" placeholder="Texto enviado no início. Em seguida vão os totais: CCD --- total xxx"></textarea>
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:0.45rem;">
+        <input type="checkbox" id="d-ativo" checked>
+        <label for="d-ativo" class="form-label" style="margin:0;">Ativo</label>
+      </div>
+    </div>
+    <div class="bal-modal-footer">
+      <button class="btn btn-primary" type="button" onclick="salvarDestino()">
+        <i class="fas fa-save"></i> Salvar
+      </button>
+      <button class="btn btn-secondary" type="button" onclick="fecharDestino()">
+        <i class="fas fa-door-open"></i> Fechar
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+.wa-page .page-header { margin-bottom: 1rem; }
+.wa-page .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.wa-page .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.wa-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+@media (max-width: 860px) {
+  .wa-grid { grid-template-columns: 1fr; }
+}
+.wa-card { padding: 1rem 1.15rem; margin-bottom: 1rem; }
+.wa-card h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1.05rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.wa-help { font-size: 0.76rem; color: #64748b; margin: 0 0 0.75rem; }
+.wa-status-row { display: flex; align-items: center; gap: 0.55rem; flex-wrap: wrap; margin-bottom: 0.7rem; }
+.wa-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: #e2e8f0;
+  color: #334155;
+}
+.wa-pill.is-open { background: #dcfce7; color: #166534; }
+.wa-pill.is-qr { background: #fef9c3; color: #854d0e; }
+.wa-pill.is-wait { background: #e0f2fe; color: #075985; }
+.wa-pill.is-off { background: #fee2e2; color: #991b1b; }
+.wa-status-text { font-size: 0.76rem; color: #475569; }
+.wa-qr-wrap {
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 0.4rem;
+  padding: 0.6rem;
+}
+.wa-qr-wrap img { width: 220px; height: 220px; object-fit: contain; background: #fff; }
+.wa-qr-placeholder { font-size: 0.78rem; color: #94a3b8; text-align: center; padding: 1.2rem; }
+.wa-qr-wrap.is-connected {
+  border-style: solid;
+  border-color: #86efac;
+  background: #f0fdf4;
+  min-height: 140px;
+}
+.wa-connected {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  text-align: center;
+  color: #166534;
+  padding: 0.9rem 0.6rem;
+}
+.wa-connected[hidden] { display: none !important; }
+.wa-connected i { font-size: 1.8rem; color: #22c55e; }
+.wa-connected strong { font-size: 0.92rem; }
+.wa-connected span { font-size: 0.78rem; color: #15803d; }
+.wa-conn-actions { display: flex; gap: 0.5rem; margin-top: 0.7rem; flex-wrap: wrap; }
+.wa-page .btn-wa-logout {
+  background: #fff;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+.wa-page .btn-wa-logout:hover { background: #fef2f2; color: #991b1b; }
+.wa-page .btn-wa-logout:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.wa-preview {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.35rem;
+  padding: 0.75rem 0.85rem;
+  font-size: 0.8rem;
+  color: #0f2a5c;
+  min-height: 8.5rem;
+  font-family: inherit;
+}
+.wa-dest-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  padding: 1rem 1.15rem 0.7rem;
+}
+.wa-dest-head h2 { margin: 0 0 0.25rem; font-size: 1.05rem; }
+.wa-page .data-table { font-size: 0.8rem; }
+.wa-page .data-table th,
+.wa-page .data-table td {
+  padding: 0.35rem 0.64rem;
+  font-size: 0.76rem;
+  vertical-align: middle;
+}
+.wa-msg-cell {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wa-page .cli-col-acoes { text-align: right; }
+.wa-page .balanca-acoes {
+  display: inline-flex;
+  gap: 0.08rem;
+  justify-content: flex-end;
+}
+.wa-page .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.wa-page .btn[hidden] { display: none !important; }
+.wa-page .btn-sm { padding: 0.16rem 0.32rem; }
+.dest-modal-dialog { max-width: 460px; }
+.bal-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(13, 43, 92, 0.55);
+}
+.bal-modal-overlay[hidden] { display: none !important; }
+.bal-modal-dialog {
+  background: #fff;
+  border-radius: 0.4rem;
+  width: 100%;
+  max-width: 512px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 12px 36px rgba(13, 43, 92, 0.25);
+}
+.bal-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.92rem 1rem 0;
+  gap: 0.6rem;
+}
+.bal-modal-header h2 { margin: 0; font-size: 0.96rem; font-weight: 700; color: #0f2a5c; }
+.bal-modal-close {
+  background: none; border: none; color: #64748b; font-size: 1.2rem; cursor: pointer; line-height: 1;
+}
+.bal-modal-body { padding: 0.8rem 1rem 0.92rem; }
+.bal-modal-footer {
+  display: flex; justify-content: center; gap: 0.6rem;
+  padding: 0.72rem 1rem 0.92rem; border-top: 1px solid #e2e8f0;
+}
+.bal-modal-body textarea.form-control { min-height: 5.2rem; resize: vertical; }
+.bal-modal-body .form-group { margin-bottom: 0.8rem; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const DESTINOS = {{ destinos | tojson }};
+
+function setPill(state, text) {
+  const pill = document.getElementById('waPill');
+  const label = document.getElementById('waStatusText');
+  pill.className = 'wa-pill';
+  let cls = 'is-wait';
+  let title = 'Verificando';
+  if (state === 'open') { cls = 'is-open'; title = 'Conectado'; }
+  else if (state === 'qr') { cls = 'is-qr'; title = 'Leia o QR Code'; }
+  else if (state === 'connecting') { cls = 'is-wait'; title = 'Conectando'; }
+  else if (state === 'unavailable' || state === 'close') { cls = 'is-off'; title = state === 'unavailable' ? 'Indisponível' : 'Desconectado'; }
+  pill.classList.add(cls);
+  pill.textContent = title;
+  label.textContent = text || '';
+}
+
+function mostrarQr(src) {
+  const img = document.getElementById('waQrImg');
+  const ph = document.getElementById('waQrPlaceholder');
+  if (src) {
+    img.src = src;
+    img.hidden = false;
+    ph.hidden = true;
+  } else {
+    img.removeAttribute('src');
+    img.hidden = true;
+    ph.hidden = false;
+  }
+}
+
+function mostrarConectado(on, detail) {
+  const box = document.getElementById('waConnected');
+  const wrap = document.getElementById('waQrWrap');
+  const ph = document.getElementById('waQrPlaceholder');
+  box.hidden = !on;
+  wrap.classList.toggle('is-connected', !!on);
+  if (on) {
+    ph.hidden = true;
+    document.getElementById('waConnectedDetail').textContent = detail || '';
+  }
+}
+
+async function atualizarStatus() {
+  try {
+    const r = await fetch('/api/pesagem/whatsapp/status');
+    const j = await r.json();
+    const st = j.state || 'unavailable';
+    const btnLogout = document.getElementById('btnWaLogout');
+    btnLogout.hidden = false;
+    if (!btnLogout.dataset.busy) btnLogout.disabled = false;
+    if (st === 'open') {
+      const u = j.user || {};
+      const detalhe = [u.name, u.number ? ('Número ' + u.number) : '']
+        .filter(Boolean)
+        .join(' · ') || 'Sessão ativa neste servidor';
+      setPill(st, detalhe);
+      mostrarQr('');
+      mostrarConectado(true, detalhe);
+    } else if (st === 'qr' && j.qr_image) {
+      mostrarConectado(false);
+      setPill(st, 'Abra o WhatsApp no celular e aponte a câmera.');
+      mostrarQr(j.qr_image);
+    } else if (st === 'connecting') {
+      mostrarConectado(false);
+      setPill(st, 'Abrindo o WhatsApp Web internamente…');
+      mostrarQr('');
+      document.getElementById('waQrPlaceholder').textContent = 'Carregando a página do WhatsApp Web no Chrome do servidor…';
+    } else {
+      mostrarConectado(false);
+      setPill(st, j.error || 'Aguardando conexão…');
+      mostrarQr('');
+      document.getElementById('waQrPlaceholder').textContent = j.error || 'Aguardando QR Code…';
+    }
+    return st;
+  } catch (e) {
+    mostrarConectado(false);
+    setPill('unavailable', 'Falha ao consultar o status.');
+    return 'unavailable';
+  }
+}
+
+async function atualizarPreview() {
+  try {
+    const r = await fetch('/api/pesagem/whatsapp/preview');
+    const j = await r.json();
+    document.getElementById('waPreview').textContent = (j.corpo || j.error || '—');
+  } catch (e) {
+    document.getElementById('waPreview').textContent = 'Falha ao montar a prévia.';
+  }
+}
+
+function abrirDestino(tr) {
+  const id = tr && tr.dataset ? tr.dataset.id : null;
+  const d = id ? (DESTINOS.find(function (x) { return String(x.id) === String(id); }) || {}) : {};
+  window._editDestinoId = id || null;
+  document.getElementById('destModalTitle').textContent = id ? 'Editar destinatário' : 'Novo destinatário';
+  document.getElementById('d-nome').value = d.nome || '';
+  document.getElementById('d-telefone').value = d.telefone || '';
+  document.getElementById('d-hora').value = d.hora || '18:00';
+  document.getElementById('d-mensagem').value = d.mensagem || '';
+  document.getElementById('d-ativo').checked = id ? d.ativo !== false : true;
+  document.getElementById('destModalOverlay').hidden = false;
+  setTimeout(function () { document.getElementById('d-nome').focus(); }, 30);
+}
+
+function fecharDestino() {
+  document.getElementById('destModalOverlay').hidden = true;
+  window._editDestinoId = null;
+}
+
+async function salvarDestino() {
+  const payload = {
+    nome: (document.getElementById('d-nome').value || '').trim(),
+    telefone: (document.getElementById('d-telefone').value || '').trim(),
+    hora: document.getElementById('d-hora').value,
+    mensagem: document.getElementById('d-mensagem').value,
+    ativo: document.getElementById('d-ativo').checked,
+  };
+  if (!payload.nome) { showToast('Nome é obrigatório', 'error'); return; }
+  if (!payload.telefone) { showToast('Telefone é obrigatório', 'error'); return; }
+  if (!payload.hora) { showToast('Hora é obrigatória', 'error'); return; }
+  const id = window._editDestinoId;
+  const url = id ? '/api/pesagem/whatsapp/destinos/' + id : '/api/pesagem/whatsapp/destinos';
+  const method = id ? 'PUT' : 'POST';
+  try {
+    const r = await fetch(url, {
+      method: method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const j = await r.json();
+    if (!r.ok || j.ok === false) {
+      showToast(j.error || 'Falha ao gravar', 'error');
+      return;
+    }
+    fecharDestino();
+    location.reload();
+  } catch (e) {
+    showToast('Erro ao gravar', 'error');
+  }
+}
+
+async function excluirDestino(id) {
+  if (!confirm('Excluir este destinatário?')) return;
+  try {
+    const r = await fetch('/api/pesagem/whatsapp/destinos/' + id, { method: 'DELETE' });
+    const j = await r.json();
+    if (!r.ok || j.ok === false) {
+      showToast(j.error || 'Falha ao excluir', 'error');
+      return;
+    }
+    location.reload();
+  } catch (e) {
+    showToast('Erro ao excluir', 'error');
+  }
+}
+
+async function enviarAgora(id) {
+  if (!confirm('Enviar o relatório de hoje agora para este destinatário?')) return;
+  try {
+    const r = await fetch('/api/pesagem/whatsapp/enviar/' + id, { method: 'POST' });
+    const j = await r.json();
+    if (!r.ok || j.ok === false) {
+      showToast(j.error || 'Falha no envio', 'error');
+      return;
+    }
+    showToast('Mensagem enviada', 'success');
+    location.reload();
+  } catch (e) {
+    showToast('Erro ao enviar', 'error');
+  }
+}
+
+document.getElementById('btnWaRefresh').addEventListener('click', function () {
+  atualizarStatus();
+  atualizarPreview();
+});
+function sleep(ms) {
+  return new Promise(function (resolve) { setTimeout(resolve, ms); });
+}
+
+document.getElementById('btnWaLogout').addEventListener('click', async function () {
+  if (!confirm('Desconectar o WhatsApp deste servidor? Será preciso ler o QR de novo.')) return;
+  const btn = document.getElementById('btnWaLogout');
+  btn.dataset.busy = '1';
+  btn.disabled = true;
+  setPill('connecting', 'Desconectando e gerando um novo QR…');
+  mostrarQr('');
+  document.getElementById('waQrPlaceholder').textContent = 'Encerrando a sessão e reabrindo o WhatsApp Web…';
+  try {
+    const r = await fetch('/api/pesagem/whatsapp/logout', { method: 'POST' });
+    const j = await r.json();
+    if (!r.ok || j.ok === false) {
+      showToast(j.error || 'Falha ao desconectar', 'error');
+      return;
+    }
+    showToast('Desconectado. Um novo QR será gerado.', 'success');
+    for (let i = 0; i < 20; i++) {
+      const st = await atualizarStatus();
+      if (st === 'qr' || st === 'open') break;
+      await sleep(1000);
+    }
+  } catch (e) {
+    showToast('Erro ao desconectar', 'error');
+  } finally {
+    delete btn.dataset.busy;
+    await atualizarStatus();
+  }
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && !document.getElementById('destModalOverlay').hidden) fecharDestino();
+});
+
+atualizarStatus();
+atualizarPreview();
+setInterval(atualizarStatus, 3000);
+</script>
+{% endblock %}

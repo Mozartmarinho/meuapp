@@ -22,12 +22,34 @@ docs/acesso/dumps/*.sql.bz2
 # --- Ambiente virtual ---
 venv/
 .venv/
+venv.broken.*/
+
+# --- LLM skeleton (rtt) ---
+.rtt/
+.rtt-cache/
+
+# --- WhatsApp pesagem (sessão QR / node) ---
+whatsapp_bridge/node_modules/
+whatsapp_bridge/auth/
+whatsapp_bridge/.wwebjs_auth/
+whatsapp_bridge/.wwebjs_cache/
+whatsapp_bridge/.token
+whatsapp_bridge/*.pid
+whatsapp_bridge/npm-debug.log*
+whatsapp_bridge/bridge.log
+whatsapp_bridge/runtime/
 
 # --- Agente pesagem (build local) ---
 agente_pesagem/.venv/
 agente_pesagem/build/
 agente_pesagem/dist/
 agente_pesagem/*.spec
+
+# --- Acesso remoto (build local) ---
+acesso_remoto_agente/.venv/
+acesso_remoto_agente/build/
+acesso_remoto_agente/dist/
+acesso_remoto_agente/*.spec
 
 # --- OCR / scans locais ---
 .scan_extract/
@@ -76,6 +98,7 @@ certs/
 # --- IDEs ---
 .vscode/
 .idea/
+.codex/
 
 # --- SO ---
 .DS_Store

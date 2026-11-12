@@ -1,0 +1,27 @@
+{
+  "name": "Sistemas São Geraldo",
+  "short_name": "Sistemas SG",
+  "description": "Sistemas São Geraldo Service",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#f7fafc",
+  "theme_color": "#1B4F9C",
+  "icons": [
+    {
+      "src": "/static/img/favicon-32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/img/favicon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/img/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

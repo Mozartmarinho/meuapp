@@ -81,7 +81,8 @@
             html += '<div class="mdk-cal-cell' + (out ? ' is-out' : '') + (isToday(d) ? ' is-today' : '') + '">';
             html += '<span class="mdk-cal-n">' + d.getDate() + '</span>';
             ev.slice(0, 3).forEach(function (e) {
-                html += '<a class="mdk-cal-dot" href="' + e.url + '" title="' + e.numero + '">' + e.numero + '</a>';
+                const cls = 'mdk-cal-dot' + (e.tipo === 'preventiva' ? ' is-prev' : '');
+                html += '<a class="' + cls + '" href="' + e.url + '" title="' + (e.titulo || e.numero) + '">' + (e.tipo === 'preventiva' ? 'Prev' : e.numero) + '</a>';
             });
             html += '</div>';
         }

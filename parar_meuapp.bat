@@ -2,35 +2,12 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 
-echo Encerrando processos python que executam app.py...
+echo Encerrando processos python que executam app.py (e python na porta 80)...
 
-setlocal EnableDelayedExpansion
-set "FOUND=0"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$ErrorActionPreference='SilentlyContinue'; $killed=$false;" ^
+  "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'python' -and $_.CommandLine -match 'app.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force; $killed=$true; Write-Host ('       Encerrando PID ' + $_.ProcessId) };" ^
+  "Get-NetTCPConnection -LocalPort 80 -State Listen | ForEach-Object { $p=Get-Process -Id $_.OwningProcess; if ($p -and $p.ProcessName -match 'python') { Stop-Process -Id $p.Id -Force; $killed=$true; Write-Host ('       Encerrando python porta 80 PID ' + $p.Id) } };" ^
+  "if (-not $killed) { Write-Host 'Nenhum processo app.py encontrado.' } else { Write-Host 'Concluido.' }"
 
-for /f "tokens=2 delims=," %%P in ('tasklist /FI "IMAGENAME eq python.exe" /FO CSV /NH 2^>nul') do (
-    set "PID=%%~P"
-    wmic process where "ProcessId=!PID!" get CommandLine 2>nul | findstr /i /c:"app.py" >nul 2>&1
-    if not errorlevel 1 (
-        echo       Encerrando PID !PID! ...
-        taskkill /PID !PID! /F >nul 2>&1
-        set "FOUND=1"
-    )
-)
-
-for /f "tokens=2 delims=," %%P in ('tasklist /FI "IMAGENAME eq pythonw.exe" /FO CSV /NH 2^>nul') do (
-    set "PID=%%~P"
-    wmic process where "ProcessId=!PID!" get CommandLine 2>nul | findstr /i /c:"app.py" >nul 2>&1
-    if not errorlevel 1 (
-        echo       Encerrando PID !PID! ...
-        taskkill /PID !PID! /F >nul 2>&1
-        set "FOUND=1"
-    )
-)
-
-if "!FOUND!"=="0" (
-    echo Nenhum processo app.py encontrado.
-) else (
-    echo Concluido.
-)
-endlocal
 pause

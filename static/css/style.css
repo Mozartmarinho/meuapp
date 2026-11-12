@@ -150,6 +150,17 @@ h1, h2, h3, h4, .brand-title {
     opacity: 0.8;
 }
 
+.projeto-versao-bar {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #115e59;
+    background: #ccfbf1;
+    border: 1px solid #5eead4;
+    padding: 0.4rem 0.75rem;
+    margin: 0 0 0.85rem;
+    border-radius: 0.4rem;
+}
+
 .sidebar-logo .module-cliente {
     margin-top: 0.35rem;
     padding: 0.35rem 0.45rem;
@@ -529,6 +540,7 @@ textarea:focus {
 
     body[data-sidebar-collapse].sidebar-collapsed .brand-tagline,
     body[data-sidebar-collapse].sidebar-collapsed .module-label,
+    body[data-sidebar-collapse].sidebar-collapsed .module-cliente,
     body[data-sidebar-collapse].sidebar-collapsed .menu-label,
     body[data-sidebar-collapse].sidebar-collapsed .chevron,
     body[data-sidebar-collapse].sidebar-collapsed .chev,

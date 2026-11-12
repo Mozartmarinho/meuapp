@@ -1,0 +1,5 @@
+# Scripts e unidades systemd precisam de LF no Linux (checkout no Windows não pode virar CRLF).
+*.sh text eol=lf
+*.service text eol=lf
+*.desktop text eol=lf
+scripts/run_migrations.py text eol=lf

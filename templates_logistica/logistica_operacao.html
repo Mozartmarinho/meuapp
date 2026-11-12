@@ -1,0 +1,52 @@
+{% extends "base_logistica.html" %}
+{% block title %}Operação Logística{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Operação Logística</h1>
+  <p>Grade de rotas, revisões, folgas, ociosidade, check-list e higiene da frota.</p>
+</div>
+<div class="logistica-hub">
+  {% if usuario_atual and usuario_atual.tem_menu('logistica', 'rotas') %}
+  <a href="{{ url_for('logistica.rotas_page') }}">
+    <i class="fas fa-route" style="color:#5b21b6;"></i>
+    <h2>Grade de rotas</h2>
+    <p>Rotas, quilometragem, motorista e ajudante.</p>
+  </a>
+  {% endif %}
+  {% if usuario_atual and usuario_atual.tem_menu('logistica', 'revisoes') %}
+  <a href="{{ url_for('logistica.revisoes_page') }}">
+    <i class="fas fa-screwdriver-wrench" style="color:#5b21b6;"></i>
+    <h2>Revisões</h2>
+    <p>Agenda de revisões por km ou data.</p>
+  </a>
+  {% endif %}
+  {% if usuario_atual and usuario_atual.tem_menu('logistica', 'folgas') %}
+  <a href="{{ url_for('logistica.folgas_page') }}">
+    <i class="fas fa-calendar-day" style="color:#5b21b6;"></i>
+    <h2>Folgas</h2>
+    <p>Grade de folgas do mês por colaborador e rota.</p>
+  </a>
+  {% endif %}
+  {% if usuario_atual and usuario_atual.tem_menu('logistica', 'ociosidade') %}
+  <a href="{{ url_for('logistica.ociosidade_page') }}">
+    <i class="fas fa-hourglass-half" style="color:#5b21b6;"></i>
+    <h2>Ociosidade</h2>
+    <p>Horas paradas da frota e custo associado.</p>
+  </a>
+  {% endif %}
+  {% if usuario_atual and usuario_atual.tem_menu('logistica', 'checklist') %}
+  <a href="{{ url_for('logistica.checklist_page') }}">
+    <i class="fas fa-list-check" style="color:#5b21b6;"></i>
+    <h2>Check-list</h2>
+    <p>Conferência de saída e retorno da frota.</p>
+  </a>
+  {% endif %}
+  {% if usuario_atual and usuario_atual.tem_menu('logistica', 'higiene') %}
+  <a href="{{ url_for('logistica.higiene_page') }}">
+    <i class="fas fa-soap" style="color:#5b21b6;"></i>
+    <h2>Higiene</h2>
+    <p>Registros de higienização da frota.</p>
+  </a>
+  {% endif %}
+</div>
+{% endblock %}

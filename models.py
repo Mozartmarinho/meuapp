@@ -1,7 +1,11 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
-from zoneinfo import ZoneInfo
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # Python 3.8 no Linux de produção
+    from backports.zoneinfo import ZoneInfo
 
 db = SQLAlchemy()
 
@@ -45,14 +49,16 @@ TIPO_SETOR_NUTRICAO = 'nutricao'
 SETOR_COMPRAS = 'Compras'
 STATUS_AGUARDAR_PECA = 'Aguardar peça'
 STATUS_ENCAMINHADO = 'Encaminhado'
+STATUS_REAGENDADO = 'Reagendado'
 STATUS_DEVOLVIDO = 'Devolvido'
+STATUS_SILENCIA_TOQUE = (STATUS_AGUARDAR_PECA, STATUS_ENCAMINHADO, STATUS_REAGENDADO)
 STATUS_ATENDIDO = 'Atendido'
 STATUS_CONCLUIDO = 'Concluído'
 STATUS_FECHADOS = (STATUS_ATENDIDO, STATUS_CONCLUIDO)
 TIPO_HOP_ENCAMINHAR = 'encaminhar'
 TIPO_HOP_DEVOLVER = 'devolver'
 TIPO_HOP_PECA = 'peca'
-MESA_PADRAO = 'Suporte'
+MESA_PADRAO = 'Informática'
 PASTA_CONHECIMENTO_PADRAO = 'Conhecimentos'
 TIPOS_CONTRATO = (
     'Suporte',
@@ -277,6 +283,8 @@ class Chamado(db.Model):
     contrato = db.relationship('Contrato', foreign_keys=[contrato_id])
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     data_conclusao = db.Column(db.DateTime)
+    data_inicio_atendimento = db.Column(db.DateTime, nullable=True)
+    data_reagendamento = db.Column(db.Date, nullable=True)
     observacoes = db.Column(db.Text)
     equipamento = db.Column(db.String(100), nullable=True)
     patrimonio = db.Column(db.String(50), nullable=True)
@@ -285,6 +293,9 @@ class Chamado(db.Model):
     # Obrigatório no MySQL deste servidor
     tecnico_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
     tecnico = db.relationship('Usuario', foreign_keys=[tecnico_id], backref='chamados_tecnico')
+    atendente_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
+    atendente = db.relationship('Usuario', foreign_keys=[atendente_id], backref='chamados_atendente')
+    atendendo_em = db.Column(db.DateTime, nullable=True)
     atendimento_notas = db.Column(db.Text)
     setor_destino = db.Column(db.String(80))
     setor_origem = db.Column(db.String(80))
@@ -294,6 +305,8 @@ class Chamado(db.Model):
     encaminhado_por_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
     encaminhado_em = db.Column(db.DateTime)
     encaminhado_por = db.relationship('Usuario', foreign_keys=[encaminhado_por_id])
+    canal_abertura = db.Column(db.String(20))
+    contato_abertura = db.Column(db.String(120))
     atendimentos = db.relationship(
         'ChamadoAtendimento', backref='chamado', cascade='all, delete-orphan', lazy='dynamic'
     )
@@ -322,15 +335,21 @@ class Chamado(db.Model):
             'mesa_id': self.mesa_id,
             'mesa': self.mesa.nome if self.mesa else None,
             'data_criacao': self.data_criacao.strftime('%d/%m/%Y %H:%M') if self.data_criacao else None,
+            'data_inicio_atendimento': fmt_brasilia(self.data_inicio_atendimento),
             'data_conclusao': self.data_conclusao.strftime('%d/%m/%Y %H:%M') if self.data_conclusao else None,
+            'data_reagendamento': self.data_reagendamento.strftime('%d/%m/%Y') if self.data_reagendamento else None,
             'observacoes': self.observacoes,
             'equipamento': self.equipamento,
             'patrimonio': self.patrimonio,
             'equipamento_id': self.equipamento_id,
             'atendimento_notas': self.atendimento_notas,
+            'atendente_id': self.atendente_id,
+            'atendente': self.atendente.nome if self.atendente else None,
             'setor_destino': self.setor_destino,
             'setor_origem': self.setor_origem,
             'encaminhamento_instrucoes': self.encaminhamento_instrucoes,
+            'canal_abertura': self.canal_abertura,
+            'contato_abertura': self.contato_abertura,
         }
 
 
@@ -353,6 +372,7 @@ class Usuario(db.Model):
     perm_chamados = db.Column(db.Boolean, default=False)
     perm_nutricao = db.Column(db.Boolean, default=False)
     perm_pesagem = db.Column(db.Boolean, default=False)
+    perm_logistica = db.Column(db.Boolean, default=False)
     perm_acesso = db.Column(db.Boolean, default=False)
     perm_portal = db.Column(db.Boolean, default=False)
     setor = db.Column(db.String(80))
@@ -443,15 +463,17 @@ FUNCOES_TECNICO = (
 )
 FUNCOES_TECNICO_KEYS = {k for k, _ in FUNCOES_TECNICO}
 FUNCOES_TECNICO_LABEL = dict(FUNCOES_TECNICO)
+FUNCOES_MESA_MULTIPLA = frozenset({'supervisor', 'gestor'})
 
 
 class ChamadoTecnico(db.Model):
-    """Técnicos vinculados a setores."""
+    """Técnicos vinculados a setores e mesas de serviço."""
     __tablename__ = 'chamado_tecnicos'
 
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(120))
+    whatsapp = db.Column(db.String(20))
     funcao = db.Column(db.String(20), nullable=True)
     setor_id = db.Column(db.Integer, db.ForeignKey('chamado_setores.id'), nullable=True)
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
@@ -459,10 +481,41 @@ class ChamadoTecnico(db.Model):
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
 
     usuario = db.relationship('Usuario', foreign_keys=[usuario_id])
+    mesas = db.relationship(
+        'MesaServico',
+        secondary='chamado_tecnico_mesas',
+        lazy='selectin',
+        order_by='MesaServico.nome',
+    )
 
     @property
     def funcao_label(self):
         return FUNCOES_TECNICO_LABEL.get(self.funcao or '', self.funcao or '')
+
+    @property
+    def mesas_ids(self):
+        try:
+            return [int(m.id) for m in (self.mesas or []) if m is not None and getattr(m, 'id', None) is not None]
+        except Exception:
+            return []
+
+    @property
+    def mesas_label(self):
+        try:
+            return ', '.join(m.nome for m in (self.mesas or []) if m and m.nome)
+        except Exception:
+            return ''
+
+    def dados_edicao(self):
+        """Dict só com tipos JSON-serializáveis (evita Undefined no |tojson do template)."""
+        return {
+            'id': int(self.id) if self.id is not None else 0,
+            'nome': self.nome or '',
+            'email': self.email or '',
+            'whatsapp': getattr(self, 'whatsapp', None) or '',
+            'funcao': self.funcao or '',
+            'mesa_ids': list(self.mesas_ids or []),
+        }
 
     def __repr__(self):
         return f'<ChamadoTecnico {self.nome}>'
@@ -522,12 +575,75 @@ def grupo_recurso_padrao(cliente_id):
     return row
 
 
+TIPOS_EQUIPAMENTO = (
+    ('ti', 'Equipamento de TI'),
+    ('nutricao', 'Equipamento da manutenção de nutrição'),
+)
+TIPOS_EQUIPAMENTO_KEYS = {k for k, _ in TIPOS_EQUIPAMENTO}
+ACESORIOS_SUGERIDOS_TI = (
+    'Equipamento',
+    'Fonte/Carregador',
+    'Cabo de alimentação',
+    'Teclado',
+    'Mouse',
+    'Monitor',
+    'Headset',
+    'Dock station',
+    'Bolsa/Mochila',
+)
+ACESORIOS_SUGERIDOS_NUTRICAO = (
+    'Equipamento',
+    'Cabo de alimentação',
+    'Manual do equipamento',
+    'Kit de acessórios',
+    'Peças de reposição',
+    'Ferramentas',
+)
+
+
+def normalizar_tipo_eq(value):
+    raw = (value or '').strip().lower()
+    if raw in ('nutricao', 'nutrição', 'manutencao', 'manutenção', 'manutencao_nutricao'):
+        return 'nutricao'
+    return 'ti'
+
+
+def label_tipo_eq(tipo):
+    tipo = normalizar_tipo_eq(tipo)
+    for chave, label in TIPOS_EQUIPAMENTO:
+        if chave == tipo:
+            return label
+    return 'Equipamento de TI'
+
+
+def textos_termo_eq(tipo):
+    if normalizar_tipo_eq(tipo) == 'nutricao':
+        return {
+            'titulo': 'TERMO DE RESPONSABILIDADE PELO USO E GUARDA DE EQUIPAMENTO DE MANUTENÇÃO DE NUTRIÇÃO',
+            'setor': 'Manutenção de Nutrição',
+            'equipe': 'equipe de Manutenção de Nutrição',
+            'label': 'Equipamento da manutenção de nutrição',
+            'entrega': 'Responsável pela entrega – Nutrição',
+        }
+    return {
+        'titulo': 'TERMO DE RESPONSABILIDADE PELO USO E GUARDA DE EQUIPAMENTO DE TI',
+        'setor': 'Tecnologia da Informação',
+        'equipe': 'equipe de Tecnologia da Informação',
+        'label': 'Equipamento de TI',
+        'entrega': 'Responsável pela entrega – TI',
+    }
+
+
+def acessorios_sugeridos(tipo):
+    if normalizar_tipo_eq(tipo) == 'nutricao':
+        return list(ACESORIOS_SUGERIDOS_NUTRICAO)
+    return list(ACESORIOS_SUGERIDOS_TI)
+
+
 class Equipamento(db.Model):
     __tablename__ = 'equipamentos'
 
     id = db.Column(db.Integer, primary_key=True)
-    # Coluna legada NOT NULL no MySQL; espelha o nome do equipamento
-    equipamento = db.Column(db.String(100), nullable=False)
     nome_equipamento = db.Column(db.String(100), nullable=False)
     marca = db.Column(db.String(100))
     modelo = db.Column(db.String(100))
@@ -537,6 +653,7 @@ class Equipamento(db.Model):
     setor = db.Column(db.String(100))
     local = db.Column(db.String(200))
     ativo = db.Column(db.Boolean, default=True)
+    em_estoque = db.Column(db.Boolean, default=False, nullable=False)
     data_compra = db.Column(db.Date)
     data_manutencao = db.Column(db.Date)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
@@ -544,14 +661,37 @@ class Equipamento(db.Model):
     cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False)
     cliente = db.relationship('Cliente', backref='equipamentos')
     tipo_recurso = db.Column(db.String(40), default='Estação')
+    tipo_equipamento = db.Column(db.String(20), default='ti', nullable=False)
     grupo_id = db.Column(db.Integer, db.ForeignKey('recurso_grupos.id'), index=True)
     grupo = db.relationship('RecursoGrupo', foreign_keys=[grupo_id])
     usuario_equipamento = db.Column(db.String(120))
     ip = db.Column(db.String(45))
     is_agente = db.Column(db.Boolean, default=False, nullable=False)
 
+    preventiva = db.relationship(
+        'EquipamentoPreventiva',
+        back_populates='equipamento',
+        uselist=False,
+        cascade='all, delete-orphan',
+    )
+    termos = db.relationship(
+        'EquipamentoTermo',
+        back_populates='equipamento',
+        cascade='all, delete-orphan',
+        lazy='select',
+    )
+
     def __repr__(self):
         return f'<Equipamento {self.nome_equipamento}>'
+
+    @property
+    def equipamento(self):
+        """Compat: o banco usa nome_equipamento; alguns DBs não têm a coluna legado."""
+        return self.nome_equipamento
+
+    @equipamento.setter
+    def equipamento(self, value):
+        self.nome_equipamento = value
 
     def to_dict(self):
         return {
@@ -561,25 +701,195 @@ class Equipamento(db.Model):
             'nome': self.nome_equipamento,
             'marca': self.marca or '',
             'modelo': self.modelo or '',
-            'numero_serie': self.numero_serie,
+            'numero_serie': self.numero_serie or '',
             'patrimonio': self.patrimonio,
             'localizacao': self.localizacao,
             'setor': self.setor or self.localizacao,
             'local': self.local or '',
             'ativo': self.ativo,
+            'em_estoque': bool(getattr(self, 'em_estoque', False)) or (self.setor or '').strip().lower() == 'estoque',
             'cliente_id': self.cliente_id,
             'cliente_nome': self.cliente.nome if self.cliente else None,
+            'cliente_endereco': (self.cliente.endereco or '') if self.cliente else '',
             'data_compra': self.data_compra.strftime('%d/%m/%Y') if self.data_compra else None,
             'data_compra_iso': self.data_compra.strftime('%Y-%m-%d') if self.data_compra else None,
             'data_manutencao': self.data_manutencao.strftime('%d/%m/%Y') if self.data_manutencao else None,
             'tipo_recurso': self.tipo_recurso or 'Estação',
+            'tipo_equipamento': self.tipo_equipamento_norm(),
+            'tipo_equipamento_label': self.tipo_equipamento_label(),
             'grupo_id': self.grupo_id,
             'grupo_nome': self.grupo.nome if self.grupo else None,
             'usuario_equipamento': self.usuario_equipamento or '',
             'ip': self.ip or '',
             'is_agente': bool(self.is_agente),
             'atualizado_em': self.atualizado_em.strftime('%d/%m/%Y %H:%M') if self.atualizado_em else None,
+            **self._dict_preventiva_termo(),
         }
+
+    def tipo_equipamento_norm(self):
+        return normalizar_tipo_eq(getattr(self, 'tipo_equipamento', None))
+
+    def tipo_equipamento_label(self):
+        return label_tipo_eq(self.tipo_equipamento_norm())
+
+    def termo_atual(self):
+        itens = list(self.termos or [])
+        if not itens:
+            return None
+        return max(itens, key=lambda t: t.id)
+
+    def _dict_preventiva_termo(self):
+        prev = self.preventiva
+        termo = self.termo_atual()
+        return {
+            'preventiva_ativa': bool(prev and prev.ativa),
+            'preventiva_frequencia': (prev.frequencia if prev else '') or '',
+            'preventiva_proxima': prev.proxima_data.strftime('%Y-%m-%d') if prev and prev.proxima_data else None,
+            'preventiva_proxima_br': prev.proxima_data.strftime('%d/%m/%Y') if prev and prev.proxima_data else None,
+            'preventiva_duracao_dias': int(prev.duracao_dias or 1) if prev else 1,
+            'termo_id': termo.id if termo else None,
+            'termo_status': (termo.status if termo else '') or '',
+            'termo_responsavel': (termo.responsavel_nome if termo else '') or '',
+            'termo_assinado_em': termo.assinado_em.strftime('%d/%m/%Y %H:%M') if termo and termo.assinado_em else None,
+        }
+
+
+FREQUENCIAS_PREVENTIVA = (
+    ('semanal', 'Semanal'),
+    ('quinzenal', 'Quinzenal'),
+    ('mensal', 'Mensal'),
+    ('trimestral', 'Trimestral'),
+    ('semestral', 'Semestral'),
+    ('anual', 'Anual'),
+)
+FREQUENCIAS_PREVENTIVA_KEYS = {k for k, _ in FREQUENCIAS_PREVENTIVA}
+
+
+class EquipamentoPreventiva(db.Model):
+    """Agenda de manutenção preventiva por patrimônio; a automação abre o chamado no vencimento."""
+    __tablename__ = 'equipamento_preventivas'
+
+    id = db.Column(db.Integer, primary_key=True)
+    equipamento_id = db.Column(
+        db.Integer, db.ForeignKey('equipamentos.id'), nullable=False, unique=True, index=True
+    )
+    ativa = db.Column(db.Boolean, default=False, nullable=False)
+    frequencia = db.Column(db.String(20), default='mensal', nullable=False)
+    proxima_data = db.Column(db.Date)
+    duracao_dias = db.Column(db.Integer, default=1)
+    ultimo_chamado_id = db.Column(db.Integer, db.ForeignKey('chamados.id', ondelete='SET NULL'))
+    ultimo_em = db.Column(db.DateTime)
+    tecnico_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
+    atualizado_em = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    equipamento = db.relationship('Equipamento', back_populates='preventiva')
+    tecnico = db.relationship('Usuario', foreign_keys=[tecnico_id])
+    ultimo_chamado = db.relationship('Chamado', foreign_keys=[ultimo_chamado_id])
+
+
+class EquipamentoTermo(db.Model):
+    """Termo de responsabilidade pelo uso e guarda do equipamento (link + assinatura)."""
+    __tablename__ = 'equipamento_termos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    equipamento_id = db.Column(db.Integer, db.ForeignKey('equipamentos.id'), nullable=False, index=True)
+    token = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    status = db.Column(db.String(20), default='pendente', nullable=False, index=True)
+    responsavel_usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
+    responsavel_nome = db.Column(db.String(120), nullable=False)
+    responsavel_email = db.Column(db.String(120))
+    responsavel_telefone = db.Column(db.String(20))
+    responsavel_setor = db.Column(db.String(80))
+    responsavel_cargo = db.Column(db.String(80))
+    responsavel_matricula = db.Column(db.String(40))
+    eq_nome = db.Column(db.String(100))
+    eq_marca = db.Column(db.String(100))
+    eq_modelo = db.Column(db.String(100))
+    eq_patrimonio = db.Column(db.String(50))
+    eq_serie = db.Column(db.String(50))
+    eq_tipo = db.Column(db.String(20), default='ti')
+    data_entrega = db.Column(db.Date)
+    estado_geral = db.Column(db.String(200))
+    observacoes = db.Column(db.Text)
+    local_assinatura = db.Column(db.String(120))
+    acessorios_json = db.Column(db.Text)
+    assinatura_path = db.Column(db.String(255))
+    assinado_em = db.Column(db.DateTime)
+    enviado_em = db.Column(db.DateTime)
+    enviado_por_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
+    canal_envio = db.Column(db.String(40))
+    gestor_nome = db.Column(db.String(120))
+    criado_em = db.Column(db.DateTime, default=datetime.utcnow)
+    equipamento = db.relationship('Equipamento', back_populates='termos')
+    responsavel_usuario = db.relationship('Usuario', foreign_keys=[responsavel_usuario_id])
+    enviado_por = db.relationship('Usuario', foreign_keys=[enviado_por_id])
+
+    def acessorios(self):
+        import json
+        try:
+            data = json.loads(self.acessorios_json or '[]')
+        except (TypeError, ValueError):
+            data = []
+        return normalizar_acessorios(data)
+
+    def tipo_norm(self):
+        if self.eq_tipo:
+            return normalizar_tipo_eq(self.eq_tipo)
+        eq = self.equipamento
+        if eq is not None:
+            return eq.tipo_equipamento_norm()
+        return 'ti'
+
+    def textos(self):
+        return textos_termo_eq(self.tipo_norm())
+
+
+def normalizar_acessorios(raw):
+    """Converte lista nova ou dict legado em lista [{nome, qtd, obs}]."""
+    out = []
+    vistos = set()
+
+    def _add(nome, qtd, obs):
+        nome = str(nome or '').strip()[:80]
+        if not nome:
+            return
+        chave = nome.casefold()
+        if chave in vistos:
+            return
+        vistos.add(chave)
+        out.append({
+            'nome': nome,
+            'qtd': str(qtd or '')[:20],
+            'obs': str(obs or '')[:120],
+        })
+
+    if isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, dict):
+                if item.get('selecionado') in (False, 0, '0', 'false', 'False'):
+                    continue
+                _add(item.get('nome') or item.get('item'), item.get('qtd'), item.get('obs'))
+            elif isinstance(item, str):
+                _add(item, '01', '')
+        return out
+    if isinstance(raw, dict):
+        labels = {
+            'equipamento': 'Equipamento',
+            'fonte': 'Fonte/Carregador',
+            'cabo': 'Cabo de alimentação',
+            'teclado': 'Teclado',
+            'mouse': 'Mouse',
+            'outros': 'Outros',
+        }
+        for chave, label in labels.items():
+            item = raw.get(chave) or {}
+            if not isinstance(item, dict):
+                item = {}
+            qtd = str(item.get('qtd') or '').strip()
+            obs = str(item.get('obs') or '').strip()
+            if not qtd and not obs:
+                continue
+            _add(label, qtd, obs)
+    return out
 
 
 class ChamadoAtendimento(db.Model):
@@ -663,13 +973,21 @@ class ChamadoConhecimento(db.Model):
 
 
 class MesaServico(db.Model):
-    """Mesa de serviço (ex.: Suporte) — personalização da operação."""
+    """Mesa de serviço (ex.: Informática) — personalização da operação."""
     __tablename__ = 'mesas'
 
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(80), nullable=False, unique=True)
     ativa = db.Column(db.Boolean, default=True, nullable=False)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class ChamadoTecnicoMesa(db.Model):
+    """Vínculo N:N entre técnico/gestor e mesas de serviço."""
+    __tablename__ = 'chamado_tecnico_mesas'
+
+    tecnico_id = db.Column(db.Integer, db.ForeignKey('chamado_tecnicos.id'), primary_key=True)
+    mesa_id = db.Column(db.Integer, db.ForeignKey('mesas.id'), primary_key=True)
 
 
 class SlaPrioridade(db.Model):
@@ -730,6 +1048,61 @@ class ChamadoAutomacao(db.Model):
     ativa = db.Column(db.Boolean, default=True, nullable=False)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     mesa = db.relationship('MesaServico', foreign_keys=[mesa_id])
+
+
+class WhatsAppChamadoConfig(db.Model):
+    """Liga/desliga o atendimento de mensagens no número logado."""
+    __tablename__ = 'whatsapp_chamado_config'
+
+    id = db.Column(db.Integer, primary_key=True)
+    ativo = db.Column(db.Boolean, default=True, nullable=False)
+    atualizado_em = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class WhatsAppChamadoUsuario(db.Model):
+    """Cadastro do contato que falou com o WhatsApp de chamados."""
+    __tablename__ = 'whatsapp_chamado_usuarios'
+
+    id = db.Column(db.Integer, primary_key=True)
+    telefone = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    nome = db.Column(db.String(120))
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), index=True)
+    setor_id = db.Column(db.Integer, db.ForeignKey('chamado_setores.id'), index=True)
+    etapa = db.Column(db.String(30), default='novo', nullable=False)
+    lista_json = db.Column(db.Text)
+    criado_em = db.Column(db.DateTime, default=datetime.utcnow)
+    atualizado_em = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    cliente = db.relationship('Cliente', foreign_keys=[cliente_id])
+    setor = db.relationship('ChamadoSetor', foreign_keys=[setor_id])
+
+    def completo(self):
+        return bool((self.nome or '').strip() and self.cliente_id and self.setor_id)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'telefone': self.telefone,
+            'nome': self.nome or '',
+            'cliente_id': self.cliente_id,
+            'cliente': self.cliente.nome if self.cliente else '',
+            'setor_id': self.setor_id,
+            'setor': self.setor.nome if self.setor else '',
+            'etapa': self.etapa or '',
+            'atualizado_em': self.atualizado_em.strftime('%d/%m/%Y %H:%M') if self.atualizado_em else '',
+        }
+
+
+class WhatsAppChamadoLog(db.Model):
+    """Últimas mensagens do bot de chamados (entrada/saída)."""
+    __tablename__ = 'whatsapp_chamado_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('whatsapp_chamado_usuarios.id'), index=True)
+    telefone = db.Column(db.String(20), index=True)
+    direcao = db.Column(db.String(8), nullable=False)
+    texto = db.Column(db.Text)
+    criado_em = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    usuario = db.relationship('WhatsAppChamadoUsuario', foreign_keys=[usuario_id])
 
 
 class ChamadoRamal(db.Model):
@@ -1043,15 +1416,115 @@ def mesas_ativas():
         return []
 
 
+def mesa_por_nome(nome):
+    """Mesa cujo nome coincide ignorando acento e caixa (Informatica = Informática)."""
+    key = _fold_setor(nome)
+    if not key:
+        return None
+    try:
+        for row in MesaServico.query.order_by(MesaServico.id.asc()).all():
+            if _fold_setor(row.nome) == key:
+                return row
+    except Exception:
+        return None
+    return None
+
+
 def mesa_padrao():
     try:
-        row = MesaServico.query.filter_by(nome=MESA_PADRAO).first()
+        row = mesa_por_nome(MESA_PADRAO)
         if row:
             return row
         row = MesaServico.query.filter_by(ativa=True).order_by(MesaServico.id.asc()).first()
         return row
     except Exception:
         return None
+
+
+def migrar_mesa_suporte_para_informatica():
+    """Apaga a mesa Suporte e passa chamados, técnicos e automações para Informática."""
+    try:
+        from sqlalchemy import inspect
+        tabelas = set(inspect(db.engine).get_table_names())
+    except Exception:
+        return
+    if 'mesas' not in tabelas or 'chamados' not in tabelas:
+        return
+    destino = mesa_por_nome(MESA_PADRAO)
+    if not destino:
+        destino = MesaServico(nome=MESA_PADRAO, ativa=True)
+        db.session.add(destino)
+        db.session.flush()
+    origem = mesa_por_nome('Suporte')
+    if origem and origem.id != destino.id:
+        Chamado.query.filter(Chamado.mesa_id == origem.id).update(
+            {Chamado.mesa_id: destino.id}, synchronize_session=False
+        )
+        if 'chamado_automacoes' in tabelas:
+            ChamadoAutomacao.query.filter(ChamadoAutomacao.mesa_id == origem.id).update(
+                {ChamadoAutomacao.mesa_id: destino.id}, synchronize_session=False
+            )
+        if 'chamado_tecnico_mesas' in tabelas:
+            for link in ChamadoTecnicoMesa.query.filter_by(mesa_id=origem.id).all():
+                ja = ChamadoTecnicoMesa.query.filter_by(
+                    tecnico_id=link.tecnico_id, mesa_id=destino.id
+                ).first()
+                if ja:
+                    db.session.delete(link)
+                else:
+                    link.mesa_id = destino.id
+            db.session.flush()
+        db.session.delete(origem)
+    Chamado.query.filter(Chamado.mesa_id.is_(None)).update(
+        {Chamado.mesa_id: destino.id}, synchronize_session=False
+    )
+    db.session.commit()
+
+
+def preencher_inicio_atendimento_legado():
+    """Copia o primeiro atendimento já gravado para chamados sem data de início."""
+    try:
+        from sqlalchemy import inspect, text
+        tabelas = set(inspect(db.engine).get_table_names())
+        if 'chamados' not in tabelas:
+            return
+        cols = {c['name'] for c in inspect(db.engine).get_columns('chamados')}
+        if 'data_inicio_atendimento' not in cols:
+            return
+        if 'atendendo_em' in cols:
+            Chamado.query.filter(
+                Chamado.data_inicio_atendimento.is_(None),
+                Chamado.atendendo_em.isnot(None),
+            ).update(
+                {Chamado.data_inicio_atendimento: Chamado.atendendo_em},
+                synchronize_session=False,
+            )
+        if 'chamado_atendimentos' in tabelas:
+            db.session.execute(text(
+                'UPDATE chamados SET data_inicio_atendimento = ('
+                ' SELECT MIN(data_criacao) FROM chamado_atendimentos'
+                ' WHERE chamado_atendimentos.chamado_id = chamados.id'
+                ') WHERE data_inicio_atendimento IS NULL'
+                ' AND EXISTS ('
+                ' SELECT 1 FROM chamado_atendimentos'
+                ' WHERE chamado_atendimentos.chamado_id = chamados.id)'
+            ))
+            fechados = Chamado.query.filter(
+                Chamado.atendente_id.is_(None),
+                Chamado.status.in_(STATUS_FECHADOS),
+            ).all()
+            for chamado in fechados:
+                ultimo = (
+                    ChamadoAtendimento.query
+                    .filter_by(chamado_id=chamado.id)
+                    .order_by(ChamadoAtendimento.id.desc())
+                    .first()
+                )
+                if ultimo and ultimo.usuario_id:
+                    chamado.atendente_id = ultimo.usuario_id
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 def resolver_mesa_id(raw):
