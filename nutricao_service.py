@@ -1387,7 +1387,7 @@ def cardapios_por_refeicao():
     return by_meal
 
 
-def find_cardapio_for_meal(dieta, meal, data_ref=None, dieta_id=None):
+def find_cardapio_for_meal(dieta, meal, data_ref=None, dieta_id=None, exigir_dieta=False):
     """Melhor cardápio para dieta + horário (opcionalmente dia do mês).
 
     Preferência por dieta_id (FK) quando disponível — alinha com join futuro
@@ -1424,12 +1424,137 @@ def find_cardapio_for_meal(dieta, meal, data_ref=None, dieta_id=None):
         if score <= 0:
             continue
         _considerar(entry, score)
-    if best is None:
+    if best is None and not exigir_dieta:
         for entry in entries:
             _considerar(entry, 0)
     if best is None:
         return None
     return _CardapioResolvido(best)
+
+
+# Setor (grupo do cadastro) de cada tipo de cardápio. A aba da refeição só enxerga o seu.
+_SETORES_POR_TIPO_CARDAPIO = {
+    'grandes': (
+        ('ACOMPANHAMENTO', 'Acompanhamento', ('acompanhamento',)),
+        ('PRATO BASE', 'Prato', ('prato_base',)),
+        ('PROTEÍNA OPCIONAL', 'Proteína', ('proteina_opcional', 'proteico_opcional')),
+        ('GUARNIÇÃO', 'Guarnição', ('guarnicao',)),
+        ('SALADA', 'Salada', ('docinho_salada', 'diversos_salada', 'salada')),
+        ('SOBREMESA', 'Sobremesa', ('sobremesa',)),
+        ('FRUTA', 'Fruta', ('fruta',)),
+        ('SUCO', 'Suco', ('suco',)),
+        ('VITAMINA', 'Vitamina', ('vitamina_suco', 'vitamina', 'entrada_sopa')),
+        ('OUTROS', 'Outros', ('outros',)),
+    ),
+    'pequenas': (
+        ('BEBIDA', 'Bebida', ('bebida',)),
+        ('PRATO', 'Prato', ('prato1', 'prato2', 'prato3', 'prato4', 'prato5', 'prato6', 'prato7', 'prato8')),
+        ('SOBREMESA', 'Sobremesa', ('sobremesa',)),
+    ),
+    'liquidas': (
+        ('PRINCIPAL', 'Principal', ('principal',)),
+        ('BEBIDA', 'Bebida', ('bebida',)),
+        ('SOBREMESA', 'Sobremesa', ('sobremesa',)),
+        ('GELADO', 'Gelado', ('gelado',)),
+        ('OUTROS', 'Outros', ('outros',)),
+    ),
+}
+_TIPO_CARDAPIO_POR_REFEICAO = {
+    'desjejum': 'pequenas',
+    'colacao': 'pequenas',
+    'almoco': 'grandes',
+    'merenda': 'pequenas',
+    'jantar': 'grandes',
+    'ceia': 'pequenas',
+}
+_EXTRAS_ALIAS = {
+    'docinho_salada': ('salada',),
+    'vitamina_suco': ('vitamina',),
+}
+
+
+def _nomes_itens_campo(itens, campo):
+    itens = itens or {}
+    nomes = _vals_prato(itens.get(campo)) + _vals_prato(itens.get(f'{campo}_extras'))
+    for alias in _EXTRAS_ALIAS.get(campo, ()):
+        nomes.extend(_vals_prato(itens.get(alias)))
+        nomes.extend(_vals_prato(itens.get(f'{alias}_extras')))
+    return nomes
+
+
+def opcoes_itens_refeicao(mapa_row, meal):
+    """Itens que a aba pode adicionar: cardápio desta dieta nesta refeição + produtos do setor.
+
+    Desjejum não devolve pratos do almoço, e o almoço não devolve itens do desjejum.
+    """
+    meal = str(meal or '').strip().lower()
+    if meal not in MEALS_SUBST:
+        return {'ok': False, 'error': 'Refeição inválida'}
+    dieta = (getattr(mapa_row, 'dieta', None) or '').strip()
+    data_ref = getattr(mapa_row, 'data_refeicao', None)
+    lanc = info_lancamento_refeicoes(data_ref)
+    dest_iso = (lanc.get(meal) or {}).get('data_destino') or ''
+    data_meal = data_ref
+    if dest_iso:
+        try:
+            data_meal = date.fromisoformat(dest_iso)
+        except ValueError:
+            data_meal = data_ref
+    card = find_cardapio_for_meal(
+        dieta,
+        meal,
+        data_meal,
+        dieta_id=getattr(mapa_row, 'dieta_id', None),
+        exigir_dieta=True,
+    )
+    itens = {}
+    tipo = _TIPO_CARDAPIO_POR_REFEICAO.get(meal, 'pequenas')
+    if card is not None and card.id:
+        row = NutCardapio.query.get(card.id)
+        if row is not None:
+            itens = row.get_itens() or {}
+            tipo = (row.tipo or tipo or '').strip() or tipo
+    if tipo not in _SETORES_POR_TIPO_CARDAPIO:
+        tipo = _TIPO_CARDAPIO_POR_REFEICAO.get(meal, 'pequenas')
+
+    setores = []
+    for grupo, rotulo, campos in _SETORES_POR_TIPO_CARDAPIO[tipo]:
+        da_dieta = []
+        vistos = set()
+        for campo in campos:
+            for nome in _nomes_itens_campo(itens, campo):
+                chave = _norm_txt(nome)
+                if not chave or chave in vistos:
+                    continue
+                vistos.add(chave)
+                da_dieta.append(nome)
+        catalogo = []
+        for prod in list_produtos_tema_cardapio(grupo):
+            nome = (prod.get('nome') or '').strip()
+            chave = _norm_txt(nome)
+            if not chave or chave in vistos:
+                continue
+            vistos.add(chave)
+            catalogo.append(nome)
+        itens_setor = (
+            [{'nome': n, 'origem': 'dieta'} for n in da_dieta]
+            + [{'nome': n, 'origem': 'setor'} for n in catalogo]
+        )
+        if not itens_setor:
+            continue
+        setores.append({
+            'setor': grupo,
+            'label': rotulo,
+            'itens': itens_setor,
+        })
+    return {
+        'ok': True,
+        'meal': meal,
+        'meal_label': MEAL_LABELS.get(meal, meal),
+        'dieta': dieta,
+        'tipo': tipo,
+        'setores': setores,
+    }
 
 
 def get_mapa_substituicoes(mapa_row):

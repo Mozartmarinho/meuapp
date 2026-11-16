@@ -480,5 +480,96 @@ class CardapioCadastroTest(unittest.TestCase):
         self.assertIn('PÃO FRANCÊS', nomes_n)
 
 
+    def test_opcoes_de_adicao_respeitam_refeicao_e_dieta(self):
+        from datetime import date
+        from models_nutricao import NutMapaRefeicao  # noqa: E402
+        from nutricao_service import invalidar_cache_cardapios  # noqa: E402
+
+        dieta = NutDieta(nome='DI-PASTOSA TESTE ABAS', categoria='basica', ativo=True)
+        db.session.add(dieta)
+        db.session.commit()
+        dia = date.today().day
+        r_desj = self.client.post('/nutricao/api/cardapios', json={
+            'tipo': 'pequenas',
+            'dieta_id': dieta.id,
+            'dieta': dieta.nome,
+            'hr_desjejum': True,
+            'dia_mes': dia,
+            'itens': {
+                'bebida': 'CAFE DA MANHA ABA',
+                'prato1': 'PAO DO DIA ABA',
+                'bebida_extras': ['LEITE QUENTE ABA'],
+            },
+        })
+        self.assertEqual(r_desj.status_code, 200, r_desj.get_data(as_text=True))
+        r_alm = self.client.post('/nutricao/api/cardapios', json={
+            'tipo': 'grandes',
+            'dieta_id': dieta.id,
+            'dieta': dieta.nome,
+            'hr_almoco': True,
+            'dia_mes': dia,
+            'itens': {
+                'acompanhamento': 'ARROZ PAPA ABA',
+                'prato_base': 'ISCA DE PEIXE ABA',
+            },
+        })
+        self.assertEqual(r_alm.status_code, 200, r_alm.get_data(as_text=True))
+        bebida = self.client.post('/nutricao/api/cardapio-produtos', json={
+            'nome': 'SUCO LARANJA SETOR ABA',
+            'grupo': 'BEBIDA',
+        })
+        self.assertEqual(bebida.status_code, 200, bebida.get_data(as_text=True))
+        acomp = self.client.post('/nutricao/api/cardapio-produtos', json={
+            'nome': 'FEIJAO SETOR ABA',
+            'grupo': 'ACOMPANHAMENTO',
+        })
+        self.assertEqual(acomp.status_code, 200, acomp.get_data(as_text=True))
+        mapa = NutMapaRefeicao(
+            data_refeicao=date.today(),
+            nome='YURI TESTE ABAS',
+            dieta=dieta.nome,
+            dieta_id=dieta.id,
+            ativo=True,
+        )
+        db.session.add(mapa)
+        db.session.commit()
+        invalidar_cache_cardapios()
+
+        def nomes(payload):
+            out = []
+            for setor in payload.get('setores') or []:
+                out.extend((item.get('nome') or '').upper() for item in setor.get('itens') or [])
+            return out
+
+        desj = self.client.get(f'/nutricao/api/mapa/{mapa.id}/substituicoes/opcoes?meal=desjejum')
+        alm = self.client.get(f'/nutricao/api/mapa/{mapa.id}/substituicoes/opcoes?meal=almoco')
+        self.assertEqual(desj.status_code, 200, desj.get_data(as_text=True))
+        self.assertEqual(alm.status_code, 200, alm.get_data(as_text=True))
+        nomes_desj = nomes(desj.get_json())
+        nomes_alm = nomes(alm.get_json())
+        self.assertIn('CAFE DA MANHA ABA', nomes_desj)
+        self.assertIn('PAO DO DIA ABA', nomes_desj)
+        self.assertIn('LEITE QUENTE ABA', nomes_desj)
+        self.assertIn('SUCO LARANJA SETOR ABA', nomes_desj)
+        self.assertNotIn('ARROZ PAPA ABA', nomes_desj)
+        self.assertNotIn('ISCA DE PEIXE ABA', nomes_desj)
+        self.assertNotIn('FEIJAO SETOR ABA', nomes_desj)
+        self.assertIn('ARROZ PAPA ABA', nomes_alm)
+        self.assertIn('ISCA DE PEIXE ABA', nomes_alm)
+        self.assertIn('FEIJAO SETOR ABA', nomes_alm)
+        self.assertNotIn('CAFE DA MANHA ABA', nomes_alm)
+        self.assertNotIn('PAO DO DIA ABA', nomes_alm)
+        self.assertNotIn('SUCO LARANJA SETOR ABA', nomes_alm)
+        self.assertEqual(desj.get_json()['meal'], 'desjejum')
+        self.assertEqual(alm.get_json()['meal'], 'almoco')
+
+        pagina = self.client.get('/nutricao').get_data(as_text=True)
+        self.assertIn('substAbrirAdicionar()', pagina)
+        self.assertIn('id="substAddOverlay"', pagina)
+
+        invalido = self.client.get(f'/nutricao/api/mapa/{mapa.id}/substituicoes/opcoes?meal=liquidas')
+        self.assertEqual(invalido.status_code, 400)
+
+
 if __name__ == '__main__':
     unittest.main()

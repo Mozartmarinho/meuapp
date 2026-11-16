@@ -90,6 +90,7 @@ from nutricao_service import (
     gerar_impressao_mapa_distribuicao,
     list_tipos_refeicao_impressao,
     get_mapa_substituicoes,
+    opcoes_itens_refeicao,
     save_mapa_substituicoes,
     importar_substituicoes_anteriores,
     listar_justificativas_anteriores,
@@ -1286,6 +1287,20 @@ def api_mapa_substituicoes(mid):
     if isinstance(result, dict):
         payload['meals_adiados'] = result.get('meals_adiados') or []
         payload['aviso_salvamento'] = result.get('aviso') or ''
+    return jsonify(payload)
+
+
+@nutricao.route('/nutricao/api/mapa/<int:mid>/substituicoes/opcoes', methods=['GET'])
+def api_mapa_substituicoes_opcoes(mid):
+    """Itens da dieta nesta refeição e produtos do setor correspondente. Uma aba por vez."""
+    seed_nutricao()
+    row = _get_scoped_or_404(NutMapaRefeicao, mid)
+    if not row or not row.ativo:
+        return jsonify({'ok': False, 'error': 'Linha não encontrada'}), 404
+    meal = (request.args.get('meal') or '').strip().lower()
+    payload = opcoes_itens_refeicao(row, meal)
+    if payload.get('ok') is False:
+        return jsonify(payload), 400
     return jsonify(payload)
 
 
