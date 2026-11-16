@@ -180,8 +180,8 @@
           <button type="button" class="subst-icon-btn" title="Remover linha selecionada" onclick="substLimparLinha()">
             <span class="subst-ban" aria-hidden="true"></span>
           </button>
-          <button type="button" class="subst-icon-btn" title="Adicionar item selecionado à substituição" onclick="substAplicarSelecao()">
-            <i class="fas fa-pen" aria-hidden="true"></i>
+          <button type="button" class="subst-icon-btn" title="Adicionar itens desta refeição e desta dieta" onclick="substAbrirAdicionar()">
+            <i class="fas fa-plus" aria-hidden="true"></i>
           </button>
         </div>
         <div class="subst-col subst-grid-col">
@@ -217,6 +217,26 @@
       </button>
       <button type="button" class="btn btn-ghost btn-sm" onclick="fecharSubstituicoes(false)">
         <i class="fas fa-door-open"></i> Fechar
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="substAddOverlay" class="subst-just-overlay" hidden onclick="if(event.target===this)fecharAdicionarItens()">
+  <div class="subst-just-dialog subst-add-dialog" role="dialog" aria-modal="true" aria-labelledby="substAddTitulo">
+    <div class="subst-titlebar">
+      <h2 id="substAddTitulo">Adicionar itens</h2>
+      <button type="button" class="modal-close" onclick="fecharAdicionarItens()" aria-label="Fechar">&times;</button>
+    </div>
+    <p class="subst-just-hint" id="substAddHint">Selecione itens desta refeição e desta dieta.</p>
+    <div class="subst-add-busca">
+      <input class="form-control" id="substAddBusca" type="search" placeholder="Buscar item" autocomplete="off">
+    </div>
+    <div id="substAddLista" class="subst-add-lista"></div>
+    <div class="subst-footer">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="fecharAdicionarItens()">Cancelar</button>
+      <button type="button" class="btn btn-primary btn-sm" onclick="substConfirmarAdicionar()">
+        <i class="fas fa-plus"></i> Adicionar selecionados
       </button>
     </div>
   </div>
@@ -920,7 +940,7 @@
 .subst-just-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1200;
+  z-index: 10120;
   background: rgba(15, 23, 42, 0.45);
   display: flex;
   align-items: center;
@@ -986,6 +1006,52 @@
   color: #64748b;
   font-size: 0.88rem;
 }
+.subst-add-dialog { width: min(560px, 100%); max-height: min(86vh, 720px); }
+.subst-add-busca { padding: 0.35rem 0.9rem 0.15rem; }
+.subst-add-busca input {
+  width: 100%;
+  border: 1px solid #94a3b8;
+  border-radius: 4px;
+  padding: 0.4rem 0.55rem;
+  font: inherit;
+  box-sizing: border-box;
+}
+.subst-add-lista {
+  flex: 1;
+  overflow: auto;
+  padding: 0.35rem 0.75rem 0.75rem;
+}
+.subst-add-setor {
+  margin: 0.55rem 0 0.25rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #1e3a8a;
+}
+.subst-add-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.32rem 0.35rem;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.subst-add-item:hover { background: #eff6ff; }
+.subst-add-item input { margin: 0; }
+.subst-add-item .tag {
+  margin-left: auto;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #1d4ed8;
+  background: #dbeafe;
+  border-radius: 999px;
+  padding: 0.05rem 0.4rem;
+}
+.subst-add-item .tag.setor { color: #334155; background: #e2e8f0; }
+.subst-add-item.ja .nome { color: #64748b; }
 @media (max-width: 700px) {
   .subst-panels { grid-template-columns: 1fr; }
   .subst-mid { flex-direction: row; padding-top: 0; justify-content: center; }
@@ -1952,6 +2018,7 @@ async function substTrocarMeal(meal){
     const ok = await substSalvarAtual();
     if (!ok) return;
   }
+  fecharAdicionarItens();
   substState.meal = meal;
   substRenderMeal();
 }
@@ -1983,6 +2050,158 @@ function substAplicarSelecao(){
   _substSyncFromUi();
   substRefreshCardapioList();
   substState._dirty = true;
+}
+
+function fecharAdicionarItens(){
+  const overlay = document.getElementById('substAddOverlay');
+  if (overlay) overlay.hidden = true;
+  const busca = document.getElementById('substAddBusca');
+  if (busca) busca.value = '';
+}
+
+function _substNomesJaNoCardapio(){
+  const m = _substMealData();
+  const atuais = _substCardapioPersonalizado(m?.pratos || [], m?.pares || []);
+  return new Set(atuais.map(p => String(p).trim().toUpperCase()));
+}
+
+function _substFiltrarListaAdicionar(){
+  const q = (document.getElementById('substAddBusca')?.value || '').trim().toUpperCase();
+  document.querySelectorAll('#substAddLista .subst-add-setor, #substAddLista .subst-add-item').forEach(el => {
+    if (el.classList.contains('subst-add-setor')) return;
+    const nome = (el.dataset.nome || '').toUpperCase();
+    el.hidden = !!(q && !nome.includes(q));
+  });
+  document.querySelectorAll('#substAddLista .subst-add-setor').forEach(sec => {
+    let visivel = false;
+    let n = sec.nextElementSibling;
+    while (n && !n.classList.contains('subst-add-setor')) {
+      if (!n.hidden) visivel = true;
+      n = n.nextElementSibling;
+    }
+    sec.hidden = !visivel;
+  });
+}
+
+async function substAbrirAdicionar(){
+  if (!substState || substState.readonly) return;
+  const meal = substState.meal || 'desjejum';
+  const overlay = document.getElementById('substAddOverlay');
+  const lista = document.getElementById('substAddLista');
+  const titulo = document.getElementById('substAddTitulo');
+  const hint = document.getElementById('substAddHint');
+  if (!overlay || !lista) return;
+  const label = { desjejum: 'Desjejum', colacao: 'Colação', almoco: 'Almoço', merenda: 'Merenda', jantar: 'Jantar', ceia: 'Ceia' }[meal] || meal;
+  const dieta = substState.data?.dieta || document.getElementById('substDieta')?.textContent || '';
+  if (titulo) titulo.textContent = 'Adicionar itens — ' + label;
+  const prato = (substState.pratoSel || '').trim();
+  if (hint) {
+    hint.textContent = prato
+      ? `${label} · ${dieta}. O item selecionado (${prato}) vai para Remover; os marcados entram em Adicionar.`
+      : `${label} · ${dieta}. Só itens desta refeição e desta dieta.`;
+  }
+  lista.innerHTML = '<div class="subst-just-vazio">Carregando itens...</div>';
+  overlay.hidden = false;
+  const busca = document.getElementById('substAddBusca');
+  if (busca) {
+    busca.value = '';
+    busca.oninput = _substFiltrarListaAdicionar;
+  }
+  try {
+    const r = await fetch(`/nutricao/api/mapa/${substState.mapaId}/substituicoes/opcoes?meal=${encodeURIComponent(meal)}`);
+    const j = await r.json();
+    if (substState.meal !== meal) {
+      fecharAdicionarItens();
+      return;
+    }
+    if (!r.ok || j.ok === false) {
+      lista.innerHTML = `<div class="subst-just-vazio">${esc((j && j.error) || 'Falha ao carregar itens')}</div>`;
+      return;
+    }
+    const setores = j.setores || [];
+    if (!setores.length) {
+      lista.innerHTML = `<div class="subst-just-vazio">Nenhum item cadastrado para ${esc(label)} nesta dieta.</div>`;
+      return;
+    }
+    const ja = _substNomesJaNoCardapio();
+    lista.innerHTML = setores.map(sec => {
+      const itens = (sec.itens || []).map(item => {
+        const nome = item.nome || '';
+        const noCardapio = ja.has(String(nome).trim().toUpperCase());
+        const origem = item.origem === 'setor' ? 'setor' : 'dieta';
+        const tag = origem === 'setor' ? 'setor' : 'dieta';
+        return `<label class="subst-add-item${noCardapio ? ' ja' : ''}" data-nome="${esc(nome)}">
+          <input type="checkbox" value="${esc(nome)}">
+          <span class="nome">${esc(nome)}</span>
+          <span class="tag ${tag}">${noCardapio ? 'já no cardápio' : tag}</span>
+        </label>`;
+      }).join('');
+      return `<div class="subst-add-setor">${esc(sec.label || sec.setor || '')}</div>${itens}`;
+    }).join('');
+    setTimeout(() => busca?.focus(), 30);
+  } catch (e) {
+    lista.innerHTML = '<div class="subst-just-vazio">Erro ao carregar itens desta refeição.</div>';
+  }
+}
+
+function substConfirmarAdicionar(){
+  if (!substState || substState.readonly) return;
+  const marcados = [...document.querySelectorAll('#substAddLista input[type="checkbox"]:checked')]
+    .map(el => (el.value || '').trim())
+    .filter(Boolean);
+  if (!marcados.length) {
+    showToast('Selecione ao menos um item', 'error');
+    return;
+  }
+  const body = document.getElementById('substGridBody');
+  if (!body) return;
+  const prato = (substState.pratoSel || '').trim();
+  const jaAdd = new Set();
+  const jaCardapio = _substNomesJaNoCardapio();
+  body.querySelectorAll('[data-col="adicionar"]').forEach(inp => {
+    const v = (inp.value || '').trim().toUpperCase();
+    if (v) jaAdd.add(v);
+  });
+  let usados = 0;
+  let substituiu = false;
+  marcados.forEach((nome) => {
+    const chave = nome.toUpperCase();
+    if (jaAdd.has(chave)) return;
+    const substituir = !substituiu && prato && prato.toUpperCase() !== chave;
+    if (!substituir && jaCardapio.has(chave)) return;
+    jaAdd.add(chave);
+    if (substituir) substituiu = true;
+    if (substituir) {
+      let tr = body.querySelector('tr.selected');
+      const remAtual = (tr?.querySelector('[data-col="remover"]')?.value || '').trim();
+      const addAtual = (tr?.querySelector('[data-col="adicionar"]')?.value || '').trim();
+      if (tr && !addAtual && (!remAtual || remAtual.toUpperCase() === prato.toUpperCase())) {
+        const remInp = tr.querySelector('[data-col="remover"]');
+        const addInp = tr.querySelector('[data-col="adicionar"]');
+        if (remInp && !remAtual) remInp.value = prato;
+        if (addInp) addInp.value = nome;
+        substSelectGridRow(tr);
+      } else {
+        tr = _substAppendRow(body, prato, nome);
+        substSelectGridRow(tr);
+      }
+    } else {
+      const tr = _substAppendRow(body, '', nome);
+      substSelectGridRow(tr);
+    }
+    usados += 1;
+  });
+  if (!usados) {
+    showToast('Esses itens já estão nesta refeição', 'error');
+    return;
+  }
+  _substEnsureEmptyRow(body);
+  _substBindGridInputs(body);
+  _substSyncFromUi();
+  substRefreshCardapioList();
+  substState._dirty = true;
+  fecharAdicionarItens();
+  showToast(usados === 1 ? 'Item adicionado a esta refeição' : `${usados} itens adicionados a esta refeição`, 'success');
 }
 
 function substLimparLinha(){
@@ -2162,6 +2381,7 @@ async function fecharSubstituicoes(salvar){
     if (!window.confirm('Há alterações não salvas. Fechar mesmo assim?')) return;
   }
   fecharImportarJustificativa();
+  fecharAdicionarItens();
   document.getElementById('substOverlay').hidden = true;
   document.body.classList.remove('subst-aberto');
   const titulo = document.getElementById('substTitulo');
@@ -3156,6 +3376,10 @@ document.addEventListener('DOMContentLoaded', function(){
     if (e.key === 'Escape') {
       fecharContextMenu();
       limparSelecaoMapa();
+      if (!document.getElementById('substAddOverlay')?.hidden) {
+        fecharAdicionarItens();
+        return;
+      }
       if (!document.getElementById('substJustOverlay')?.hidden) {
         fecharImportarJustificativa();
         return;
