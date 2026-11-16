@@ -48,11 +48,12 @@
     <table id="mapaProducao" class="mapa-table">
       <thead>
         <tr>
+          <th class="col-acoes">Ações</th>
           <th class="col-enfermaria">Enfermaria</th>
           <th style="width:90px">Adm</th>
           <th style="width:80px">Leito</th>
           <th style="width:90px">Pront</th>
-          <th style="width:160px">Nome</th>
+          <th class="col-nome">Nome</th>
           <th style="width:60px">Idade</th>
           <th style="width:140px">Diagnóstico</th>
           <th style="width:140px">Dieta</th>
@@ -73,7 +74,6 @@
           <th style="min-width:140px">Data/Hora Inclusão</th>
           <th style="min-width:160px">Última alteração</th>
           <th style="min-width:110px">Motivo</th>
-          <th style="width:90px">Ações</th>
         </tr>
       </thead>
       <tbody id="mapaBody">
@@ -348,13 +348,36 @@
   align-items: center;
   gap: 0.45rem;
 }
-.mapa-table th.col-enfermaria,
-.mapa-table td.cell-enfermaria {
-  min-width: 160px;
-  max-width: 220px;
+.mapa-table {
+  --mapa-acoes-w: 118px;
+  --mapa-fixa-w: 180px;
+}
+.mapa-table th.col-acoes,
+.mapa-table td.cell-acoes {
   position: sticky;
   left: 0;
-  z-index: 1;
+  width: var(--mapa-acoes-w);
+  min-width: var(--mapa-acoes-w);
+  max-width: var(--mapa-acoes-w);
+  z-index: 2;
+  background: #fff;
+  text-align: center;
+  white-space: nowrap;
+}
+.mapa-table th.col-acoes {
+  z-index: 5;
+  background: #1f4f9c;
+  color: #fff;
+}
+.mapa-table th.col-enfermaria,
+.mapa-table td.cell-enfermaria,
+.mapa-table th.col-nome,
+.mapa-table td.cell-nome {
+  width: var(--mapa-fixa-w);
+  min-width: var(--mapa-fixa-w);
+  max-width: var(--mapa-fixa-w);
+  position: sticky;
+  z-index: 2;
   background: #dbeafe;
   color: #1e3a8a;
   font-weight: 700;
@@ -363,7 +386,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.mapa-table th.col-enfermaria {
+.mapa-table th.col-enfermaria,
+.mapa-table td.cell-enfermaria { left: var(--mapa-acoes-w); }
+.mapa-table th.col-nome,
+.mapa-table td.cell-nome { left: calc(var(--mapa-acoes-w) + var(--mapa-fixa-w)); }
+.mapa-table th.col-enfermaria,
+.mapa-table th.col-nome {
   z-index: 4;
   background: #1f4f9c;
   color: #fff;
@@ -371,7 +399,8 @@
 }
 .linha-vaga td { color: #94a3b8; }
 .linha-vaga .cell-leito { color: #0f2a56; font-weight: 600; }
-.linha-vaga .cell-enfermaria { color: #1e3a8a; }
+.linha-vaga .cell-enfermaria,
+.linha-vaga .cell-nome { color: #1e3a8a; }
 .linha-vaga:hover td { background: #f1f5f9 !important; }
 /* Destaque da linha no clique esquerdo — verde São Geraldo (--brand-lime) */
 .linha-mapa.selected td,
@@ -499,10 +528,6 @@
   font-weight: 600;
   margin: 0;
   cursor: pointer;
-}
-.cell-acoes {
-  white-space: nowrap;
-  text-align: center;
 }
 .cell-acoes .btn { padding: 0.25rem 0.4rem; }
 .motivo-opcoes {
@@ -1137,11 +1162,12 @@ function renderSlotGrade(slot){
       data-paciente-id="${esc(l.paciente_id || '')}" data-tipo-lancamento="${esc(tipo)}"
       data-obs_etiqueta="${esc(l.obs_etiqueta)}" data-extras="${esc(l.extras)}" data-suplementos="${esc(l.suplementos)}"
       data-enteral="${esc(l.enteral)}" data-formula_infantil="${esc(l.formula_infantil)}" data-lve="${esc(l.lve)}">
+      <td class="cell-acoes">${acoes}</td>
       <td class="cell-enfermaria" title="${esc(enfermaria)}">${esc(enfermaria) || '-'}</td>
       <td>${vago ? '-' : (l.adm || '-')}</td>
       <td class="cell-leito">${esc(leito) || '-'}</td>
       <td>${vago ? '' : (l.prontuario || '-')}</td>
-      <td>${vago ? '' : (l.nome || '-')}</td>
+      <td class="cell-nome" title="${esc(l.nome)}">${vago ? '' : (l.nome || '-')}</td>
       <td>${vago ? '' : (l.idade != null ? l.idade : '-')}</td>
       <td title="${esc(l.diagnostico)}">${vago ? '' : (l.diagnostico || '-')}</td>
       <td title="${esc(l.dieta)}">${vago ? '' : (esc(l.dieta || '-') + badge)}</td>
@@ -1162,7 +1188,6 @@ function renderSlotGrade(slot){
       <td>${vago ? '' : (l.data_inclusao || '-')}</td>
       <td title="${esc(l.ultima_alteracao)}">${vago ? '' : (l.ultima_alteracao || '-')}</td>
       <td class="cell-motivo">${vago ? '' : (l.motivo_saida || '-')}</td>
-      <td class="cell-acoes">${acoes}</td>
     </tr>`;
 }
 
@@ -2474,31 +2499,41 @@ function agendarBuscaPaciente(delay){
   buscaPacienteTimer = setTimeout(buscarPacientesPorNome, delay == null ? 280 : delay);
 }
 
+function htmlCadastrarPaciente(q){
+  const titulo = q
+    ? `Nenhum paciente encontrado para <strong>${esc(q)}</strong>.`
+    : 'Paciente ainda não está no cadastro.';
+  return `
+    <div class="busca-pac-vazio">
+      ${titulo}
+      <div>Cadastrar paciente?</div>
+      <div class="acoes">
+        <button type="button" class="btn btn-primary btn-sm" onclick="abrirCadastroPacienteRapido()">Sim, cadastrar</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="fecharModal()">Não</button>
+      </div>
+    </div>`;
+}
+
 async function buscarPacientesPorNome(){
   const input = document.getElementById('busca-pac-nome');
   const box = document.getElementById('busca-pac-resultados');
   if (!input || !box) return;
   const q = (input.value || '').trim();
+  const seq = (window._buscaPacSeq = (window._buscaPacSeq || 0) + 1);
   if (q.length < 1){
-    box.innerHTML = '<div class="busca-pac-vazio">Digite o nome para filtrar pacientes cadastrados.</div>';
+    box.innerHTML = '<div class="busca-pac-vazio">Digite o nome ou o prontuário para filtrar o cadastro.</div>';
     return;
   }
   box.innerHTML = '<div class="busca-pac-vazio">Buscando...</div>';
   try {
-    const r = await fetch('/nutricao/api/pacientes?q=' + encodeURIComponent(q) + '&limit=30');
+    const r = await fetch('/nutricao/api/pacientes?q=' + encodeURIComponent(q) + '&limit=30', { sgSkipLoading: true });
+    if (seq !== window._buscaPacSeq) return;
     const j = await r.json();
+    if (!r.ok || (j && j.ok === false)) throw new Error((j && j.error) || 'falha');
     const lista = Array.isArray(j) ? j : (j.pacientes || []);
     window._buscaPacientesCache = {};
     if (!lista.length){
-      box.innerHTML = `
-        <div class="busca-pac-vazio">
-          Paciente <strong>${esc(q)}</strong> não encontrado no cadastro.
-          <div>Cadastrar paciente?</div>
-          <div class="acoes">
-            <button type="button" class="btn btn-primary btn-sm" onclick="abrirCadastroPacienteRapido()">Sim, cadastrar</button>
-            <button type="button" class="btn btn-ghost btn-sm" onclick="fecharModal()">Não</button>
-          </div>
-        </div>`;
+      box.innerHTML = htmlCadastrarPaciente(q);
       return;
     }
     lista.forEach(p => { window._buscaPacientesCache[p.id] = p; });
@@ -2507,18 +2542,20 @@ async function buscarPacientesPorNome(){
       fluxoIncompleto = false;
     }
     box.innerHTML = lista.map(p => `
-      <button type="button" class="busca-pac-item${pacienteSelecionadoInserir && pacienteSelecionadoInserir.id === p.id ? ' selected' : ''}" data-pac-id="${p.id}" onclick="selecionarPacienteInserir(${p.id})">
+      <button type="button" class="busca-pac-item${pacienteSelecionadoInserir && String(pacienteSelecionadoInserir.id) === String(p.id) ? ' selected' : ''}" data-pac-id="${p.id}" onclick="selecionarPacienteInserir(${p.id})">
         <strong>${esc(p.nome)}</strong>
         <small>Pront: ${esc(p.prontuario || '-')} · Idade: ${p.idade != null ? p.idade : '-'} · ${esc(p.clinica || '')}</small>
       </button>
-    `).join('');
-    if (lista.length === 1 && !pacienteSelecionadoInserir){
-      pacienteSelecionadoInserir = lista[0];
-      fluxoIncompleto = !pacienteTemDietaVinculada(lista[0]);
-      destacarPacienteSelecionado(lista[0].id);
-    }
+    `).join('') + `
+      <div class="busca-pac-vazio">
+        Não é este paciente?
+        <div class="acoes">
+          <button type="button" class="btn btn-primary btn-sm" onclick="abrirCadastroPacienteRapido()">Cadastrar novo</button>
+        </div>
+      </div>`;
   } catch (e) {
-    box.innerHTML = '<div class="busca-pac-vazio">Erro ao buscar pacientes.</div>';
+    if (seq !== window._buscaPacSeq) return;
+    box.innerHTML = htmlCadastrarPaciente(q).replace('Nenhum paciente encontrado', 'Não foi possível buscar. Cadastre ou tente de novo');
   }
 }
 
@@ -2601,21 +2638,10 @@ async function salvarCadastroPacienteRapido(){
 function selecionarPacienteInserir(id){
   const p = (window._buscaPacientesCache || {})[id];
   if (!p){ showToast('Paciente não encontrado na busca','error'); return; }
-  // Segundo clique no mesmo paciente → ir ao mapa
-  if (pacienteSelecionadoInserir && pacienteSelecionadoInserir.id === p.id){
-    abrirFormularioInserirMapa(p);
-    return;
-  }
   pacienteSelecionadoInserir = p;
-  destacarPacienteSelecionado(p.id);
-  if (pacienteTemDietaVinculada(p)){
-    fluxoIncompleto = true;
-    abrirFormularioInserirMapa(p);
-    return;
-  }
-  // Sem dieta: permanece na tela; Fechar pergunta se deseja sair ou ir ao mapa
   fluxoIncompleto = true;
-  showToast('Paciente sem dieta vinculada. Clique novamente para inserir no mapa ou use Fechar.','info');
+  destacarPacienteSelecionado(p.id);
+  abrirFormularioInserirMapa(p);
 }
 
 function abrirFormularioInserirMapa(p){
@@ -2643,7 +2669,7 @@ function abrirFormularioInserirMapa(p){
     <div class="form-row">
       <div class="form-group"><label class="form-label">Diagnóstico</label><input class="form-control" id="ins-diagnostico" value="${esc(p.diagnostico || '')}"></div>
       <div class="form-group"><label class="form-label">Dieta</label>
-        <select class="form-control" id="ins-dieta">
+        <select class="form-control" id="ins-dieta" data-sg-search>
           <option value="">Selecione</option>
           ${dietasOpts}
           ${p.dieta && !(DIETAS_MAPA || []).some(d => d.nome === p.dieta) ? `<option value="${esc(p.dieta)}" selected>${esc(p.dieta)}</option>` : ''}
@@ -2665,18 +2691,18 @@ function abrirFormularioInserirMapa(p){
     <div class="form-group"><label class="form-label">Observação para etiqueta</label><textarea class="form-control" id="ins-obs_etiqueta" rows="2"></textarea></div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Clínica *</label>
-        <select class="form-control" id="ins-clinica" onchange="carregarEnfermariasInserir()">
+        <select class="form-control" id="ins-clinica" data-sg-search onchange="carregarEnfermariasInserir()">
           <option value="">Selecione</option>
           ${clinicasOpts}
         </select>
       </div>
       <div class="form-group"><label class="form-label">Enfermaria *</label>
-        <select class="form-control" id="ins-enfermaria" onchange="carregarLeitosInserir()">
+        <select class="form-control" id="ins-enfermaria" data-sg-search onchange="carregarLeitosInserir()">
           <option value="">Selecione a clínica</option>
         </select>
       </div>
       <div class="form-group"><label class="form-label">Leito *</label>
-        <select class="form-control" id="ins-leito">
+        <select class="form-control" id="ins-leito" data-sg-search>
           <option value="">Selecione a enfermaria</option>
         </select>
       </div>

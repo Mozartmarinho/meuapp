@@ -37,7 +37,9 @@
         if (select.dataset.sgCombo) return false;
         if (select.dataset.sgNoSearch != null) return false;
         if (select.multiple || select.size > 1) return false;
-        if (select.closest('.sg-combo, .modal, .modal-dialog, .modal-body, .portal-card, .tec-modal')) return false;
+        if (select.closest('.sg-combo')) return false;
+        if (select.dataset.sgSearch != null) return true;
+        if (select.closest('.modal, .modal-dialog, .modal-body, .portal-card, .tec-modal')) return false;
         var ident = ((select.id || '') + ' ' + (select.getAttribute('name') || '')).toLowerCase();
         if (ident.indexOf('filtro') !== -1) return true;
         return inFilterZone(select);

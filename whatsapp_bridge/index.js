@@ -28,6 +28,7 @@ let user = null;
 let starting = false;
 let loggingOut = false;
 let startError = null;
+let startAttempts = 0;
 
 function writePid() {
   try {
@@ -109,7 +110,7 @@ function buildUserAgent(chromePath) {
   if (process.env.PESAGEM_WA_UA) return process.env.PESAGEM_WA_UA;
   const major = chromeMajorVersion(chromePath) || '131';
   return (
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
     + '(KHTML, like Gecko) Chrome/' + major + '.0.0.0 Safari/537.36'
   );
 }
@@ -259,14 +260,40 @@ function markOpen(sock) {
 
 async function hydrateStatus() {
   if (loggingOut || !client) return;
-  const fromStore = await tryReadUserFromStore(client);
-  if (fromStore || (client.info && client.info.wid)) {
-    markOpen(client);
-    await refreshUser(client);
-    return;
+  try {
+    const fromStore = await tryReadUserFromStore(client);
+    if (fromStore || (client.info && client.info.wid)) {
+      markOpen(client);
+      await refreshUser(client);
+      return;
+    }
+    if (state === 'open') {
+      await refreshUser(client);
+    }
+  } catch (err) {
+    console.error('hydrate', err && err.message ? err.message : err);
   }
-  if (state === 'open') {
-    await refreshUser(client);
+}
+
+function contextDestroyed(msg) {
+  const low = String(msg || '').toLowerCase();
+  return (
+    low.includes('execution context was destroyed')
+    || low.includes('session closed')
+    || low.includes('target closed')
+    || low.includes('navigating frame was detached')
+    || low.includes('protocol error')
+  );
+}
+
+async function destroyClient() {
+  const sock = client;
+  client = null;
+  if (!sock) return;
+  try {
+    await sock.destroy();
+  } catch (err) {
+    console.error('destroy', err && err.message ? err.message : err);
   }
 }
 
@@ -390,7 +417,12 @@ async function startClient() {
       authTimeoutMs: 0,
       qrMaxRetries: 0,
       takeoverOnConflict: false,
-      webVersionCache: { type: 'none' },
+      bypassCSP: true,
+      webVersion: '2.3000.1054721061-alpha',
+      webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html',
+      },
     });
     bindClientEvents(sock);
     client = sock;
@@ -406,12 +438,30 @@ async function startClient() {
       }
     }
     await hydrateStatus();
+    startAttempts = 0;
   } catch (err) {
     const msg = String(err && err.message ? err.message : err);
     console.error('startClient', msg);
     startError = chromeMissingMessage(msg);
+    clearQr();
     state = 'close';
-    client = null;
+    await destroyClient();
+    startAttempts += 1;
+    if (contextDestroyed(msg) && startAttempts <= 3) {
+      if (startAttempts >= 2) {
+        console.log('sessão WhatsApp inválida; gerando QR novo');
+        await wipeAuthDir();
+      }
+      state = 'connecting';
+      startError = null;
+      starting = false;
+      setTimeout(() => {
+        startClient().catch((retryErr) => {
+          console.error('startClient retry', retryErr && retryErr.message ? retryErr.message : retryErr);
+        });
+      }, 1200);
+      return;
+    }
   } finally {
     starting = false;
   }

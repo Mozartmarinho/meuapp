@@ -14,7 +14,7 @@ Environment=PATH=/home/administrador/meuapp/venv/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1
 Environment=HOME=/home/administrador
 ExecStartPre=/bin/rm -f /home/administrador/meuapp/meuapp.sock
-ExecStart=/home/administrador/meuapp/venv/bin/python -m gunicorn --workers 3 --bind unix:/home/administrador/meuapp/meuapp.sock -m 007 --chdir /home/administrador/meuapp wsgi:application
+ExecStart=/home/administrador/meuapp/venv/bin/python -m gunicorn --workers 3 --timeout 180 --bind unix:/home/administrador/meuapp/meuapp.sock -m 007 --chdir /home/administrador/meuapp wsgi:application
 ExecReload=/bin/kill -s HUP $MAINPID
 Restart=always
 RestartSec=5

@@ -235,7 +235,13 @@ def _list_pacientes_db(ativos_only=True, q=None, limit=50):
         query = query.filter_by(ativo=True)
     termo = (q or '').strip()
     if termo:
-        query = query.filter(NutPaciente.nome.ilike(f'%{termo}%'))
+        like = f'%{termo}%'
+        query = query.filter(db.or_(
+            NutPaciente.nome.ilike(like),
+            NutPaciente.prontuario.ilike(like),
+            NutPaciente.clinica.ilike(like),
+            NutPaciente.leito.ilike(like),
+        ))
     query = query.order_by(NutPaciente.nome)
     if limit:
         query = query.limit(limit)

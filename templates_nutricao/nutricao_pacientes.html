@@ -90,7 +90,9 @@
 .paciente-cadastro .toolbar-search input {
   font-size: 0.72rem;
   padding: 0;
-  width: auto;
+  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   border: none;
   box-shadow: none;
 }
@@ -152,10 +154,20 @@ const dietasOptions = {{ dietas | tojson }};
 window.DIETAS_PACIENTE = dietasOptions;
 
 function filtrarPacientes(){
-  const q = (document.getElementById('buscaPaciente').value || '').toLowerCase();
+  const input = document.getElementById('buscaPaciente');
+  const q = (input && input.value || '').toLowerCase().trim();
   document.querySelectorAll('#tabelaPacientesBody tr').forEach(tr => {
     if (tr.id === 'linhaVazia') return;
-    tr.style.display = (tr.textContent || '').toLowerCase().includes(q) ? '' : 'none';
+    const blob = [
+      tr.textContent || '',
+      tr.dataset.nome || '',
+      tr.dataset.prontuario || '',
+      tr.dataset.clinica || '',
+      tr.dataset.leito || '',
+      tr.dataset.dieta || '',
+      tr.dataset.diagnostico || ''
+    ].join(' ').toLowerCase();
+    tr.style.display = !q || blob.includes(q) ? '' : 'none';
   });
 }
 
@@ -220,13 +232,13 @@ function abrirPopupPaciente(data){
     </div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Clínica</label>
-        <select class="form-control" id="f-clinica"><option value="">Selecione</option>${clinicaOpts}</select>
+        <select class="form-control" id="f-clinica" data-sg-search><option value="">Selecione</option>${clinicaOpts}</select>
       </div>
       <div class="form-group"><label class="form-label">Leito</label><input class="form-control" id="f-leito" value="${(data && data.leito) || ''}"></div>
     </div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Dieta</label>
-        <select class="form-control" id="f-dieta"><option value="">Selecione</option>${dietaOpts}</select>
+        <select class="form-control" id="f-dieta" data-sg-search><option value="">Selecione</option>${dietaOpts}</select>
       </div>
       <div class="form-group"><label class="form-label">Diagnóstico</label><input class="form-control" id="f-diagnostico" value="${(data && data.diagnostico) || ''}"></div>
     </div>
