@@ -12,6 +12,11 @@
     <input type="text" id="filtroPrincipal" placeholder="Buscar por leito, prontuário, nome, dieta..." oninput="filtrarTabelaPrincipal()">
   </div>
 
+  <label class="mapa-filtro-uma" id="filtroUmaLabel" title="Mostra, em qualquer clínica, enfermaria e leito, os pacientes com Extras, Suplementos, Enteral, Fórmula infantil ou LVE">
+    <input type="checkbox" id="filtroUma" onchange="onFiltroUmaChange()">
+    U.M.A
+  </label>
+
   <div class="mapa-filtro-clinica">
     <label for="filtroClinica">Clínica:</label>
     <select id="filtroClinica" class="form-control" autocomplete="off" onchange="onFiltroClinicaChange()">
@@ -81,6 +86,7 @@
 
 <nav id="mapaContextMenu" class="mapa-ctx" hidden>
   <button type="button" data-acao="editar_paciente">Editar <u>p</u>aciente</button>
+  <button type="button" data-acao="editar_uma"><u>U</u>.M.A</button>
   <button type="button" data-acao="editar_acompanhante">Editar acom<u>p</u>anhante</button>
   <button type="button" data-acao="nova_dieta"><u>N</u>ova dieta</button>
   <button type="button" data-acao="substituicao_dieta">Criar substituição de dieta</button>
@@ -399,6 +405,32 @@
   font-size: 0.88rem;
 }
 .ver-texto:hover { text-decoration: underline; }
+.mapa-filtro-uma {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid #93c5fd;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+.mapa-filtro-uma input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  cursor: pointer;
+}
+.mapa-filtro-uma.is-on {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #fff;
+}
 .mapa-filtro-clinica {
   display: flex;
   align-items: center;
@@ -618,6 +650,7 @@
   box-shadow: 0 18px 50px rgba(0,0,0,0.3);
   display: flex;
   flex-direction: column;
+  contain: layout paint;
 }
 .subst-titlebar {
   display: flex;
@@ -1034,7 +1067,19 @@ async function alterarData(deltaDias){
   await carregarMapa();
 }
 
+function umaFiltroAtivo(){
+  return !!document.getElementById('filtroUma')?.checked;
+}
+
+function sincronizarFiltroUma(){
+  const on = umaFiltroAtivo();
+  document.getElementById('filtroUmaLabel')?.classList.toggle('is-on', on);
+  const sel = document.getElementById('filtroClinica');
+  if (sel) sel.disabled = on;
+}
+
 function temFiltroMapa(){
+  if (umaFiltroAtivo()) return true;
   const cli = document.getElementById('filtroClinica')?.value || '';
   return cli !== '';
 }
@@ -1166,8 +1211,10 @@ async function carregarMapa(opts){
   }
   try {
     const qs = new URLSearchParams({ data: iso });
+    const uma = umaFiltroAtivo();
     const clinicaVal = clinicaFiltroAtual();
-    if (clinicaVal) qs.set('clinica', clinicaVal);
+    if (uma) qs.set('uma', '1');
+    else if (clinicaVal) qs.set('clinica', clinicaVal);
     const r = await fetch('/nutricao/api/mapa?' + qs.toString());
     const j = await r.json();
     if (!r.ok || j.ok === false){
@@ -1175,7 +1222,14 @@ async function carregarMapa(opts){
       return;
     }
     mapaCarregadoParaData = iso;
-    if (Array.isArray(j.grade)) renderGrade(j.grade);
+    if (uma){
+      const linhas = j.linhas || [];
+      if (!linhas.length){
+        mostrarMapaPlaceholder('Nenhum paciente com Extras, Suplementos, Enteral, Fórmula infantil ou LVE neste dia.');
+      } else {
+        renderLinhas(linhas);
+      }
+    } else if (Array.isArray(j.grade)) renderGrade(j.grade);
     else renderLinhas(j.linhas || []);
     abrirAvisoAlta(j.avisos_alta || []);
   } catch (e) {
@@ -1327,6 +1381,13 @@ function filtrarTabelaPrincipal(){
 }
 
 async function onFiltroClinicaChange(){
+  if (umaFiltroAtivo()) return;
+  mapaCarregadoParaData = null;
+  await garantirMapaVisivel();
+}
+
+async function onFiltroUmaChange(){
+  sincronizarFiltroUma();
   mapaCarregadoParaData = null;
   await garantirMapaVisivel();
 }
@@ -1697,9 +1758,19 @@ function _substBindGridInputs(body){
     inp._substBound = true;
     inp.addEventListener('input', () => {
       _substSyncFromUi();
-      substRefreshCardapioList();
+      substAgendarRefreshLista();
       if (substState) substState._dirty = true;
     });
+  });
+}
+
+let _substListRaf = 0;
+
+function substAgendarRefreshLista(){
+  if (_substListRaf) return;
+  _substListRaf = requestAnimationFrame(() => {
+    _substListRaf = 0;
+    substRefreshCardapioList();
   });
 }
 
@@ -1709,23 +1780,20 @@ function substRefreshCardapioList(){
   const list = document.getElementById('substCardapioList');
   if (!m || !list) return;
   const pratos = _substCardapioPersonalizado(m.pratos || [], m.pares || []);
+  const padrao = new Set((m.pratos || []).map(p => String(p).trim().toUpperCase()));
+  const sig = pratos.map(p => (padrao.has(String(p).trim().toUpperCase()) ? '0' : '1') + '\t' + p).join('\n')
+    + '|' + ((m.pratos || []).length ? '1' : '0');
+  if (list.dataset.sig === sig) return;
+  list.dataset.sig = sig;
   if (!pratos.length && !(m.pratos || []).length) {
     list.innerHTML = '<li class="subst-empty" style="cursor:default">Nenhum prato no cardápio padrão para esta dieta/refeição.</li>';
   } else if (!pratos.length) {
     list.innerHTML = '<li class="subst-empty" style="cursor:default">Cardápio do paciente vazio após as substituições.</li>';
   } else {
-    const padrao = new Set((m.pratos || []).map(p => String(p).trim().toUpperCase()));
     list.innerHTML = pratos.map(p => {
       const extra = !padrao.has(String(p).trim().toUpperCase());
       return `<li data-prato="${esc(p)}"${extra ? ' class="subst-prato-novo"' : ''}>${esc(p)}${extra ? ' <em>(substituto)</em>' : ''}</li>`;
     }).join('');
-    list.querySelectorAll('li[data-prato]').forEach(li => {
-      li.addEventListener('click', () => substSelectCardapioItem(li));
-      li.addEventListener('dblclick', () => {
-        substSelectCardapioItem(li);
-        substAplicarSelecao();
-      });
-    });
   }
 }
 
@@ -1818,6 +1886,8 @@ function substRenderMeal(){
 
   substState.pratoSel = '';
 
+  const listaPratos = document.getElementById('substCardapioList');
+  if (listaPratos) delete listaPratos.dataset.sig;
   body.innerHTML = '';
   const pares = (m.pares && m.pares.length) ? m.pares : [{ remover: '', adicionar: '' }];
   pares.forEach(p => _substAppendRow(body, p.remover, p.adicionar));
@@ -1878,7 +1948,7 @@ async function substSalvarClick(){
 
 async function substTrocarMeal(meal){
   if (!substState || meal === substState.meal) return;
-  if (!substState.readonly) {
+  if (!substState.readonly && substState._dirty) {
     const ok = await substSalvarAtual();
     if (!ok) return;
   }
@@ -2030,6 +2100,25 @@ function fecharImportarJustificativa(){
   window._substJustCache = null;
 }
 
+function _substPrepararOverlay(readonly){
+  const overlay = document.getElementById('substOverlay');
+  const titulo = document.getElementById('substTitulo');
+  const header = document.getElementById('substHeader');
+  const dietaEl = document.getElementById('substDieta');
+  if (titulo) titulo.textContent = readonly ? 'Visualizar cardápio' : 'Editar cardápio';
+  if (header) header.textContent = 'Carregando cardápio...';
+  if (dietaEl) dietaEl.textContent = '—';
+  const list = document.getElementById('substCardapioList');
+  if (list) {
+    delete list.dataset.sig;
+    list.innerHTML = '<li class="subst-empty" style="cursor:default">Carregando...</li>';
+  }
+  const body = document.getElementById('substGridBody');
+  if (body) body.innerHTML = '';
+  if (overlay) overlay.hidden = false;
+  document.body.classList.add('subst-aberto');
+}
+
 async function abrirSubstituicoes(mapaId, opts){
   const id = parseInt(mapaId, 10);
   if (!id) {
@@ -2037,18 +2126,19 @@ async function abrirSubstituicoes(mapaId, opts){
     return;
   }
   const readonly = !!(opts && opts.readonly);
+  _substPrepararOverlay(readonly);
   try {
     const r = await fetch(`/nutricao/api/mapa/${id}/substituicoes`);
     const j = await r.json();
     if (!r.ok || j.ok === false) {
+      document.getElementById('substOverlay').hidden = true;
+      document.body.classList.remove('subst-aberto');
       showToast((j && j.error) || 'Falha ao carregar substituições', 'error');
       return;
     }
     substState = { mapaId: id, meal: 'desjejum', data: j, pratoSel: '', gridRow: null, _dirty: false, readonly };
-    document.getElementById('substTitulo').textContent = readonly ? 'Visualizar cardápio' : 'Editar cardápio';
     document.getElementById('substHeader').textContent = j.header || '—';
     document.getElementById('substDieta').textContent = j.dieta || '—';
-    document.getElementById('substOverlay').hidden = false;
     document.querySelectorAll('#substOverlay .subst-footer .btn, #substOverlay .subst-icon-btn').forEach(btn => {
       if (btn.getAttribute('onclick') && String(btn.getAttribute('onclick')).includes('fecharSubstituicoes')) return;
       btn.style.display = readonly ? 'none' : '';
@@ -2057,6 +2147,8 @@ async function abrirSubstituicoes(mapaId, opts){
     if (just) just.readOnly = readonly;
     substRenderMeal();
   } catch (e) {
+    document.getElementById('substOverlay').hidden = true;
+    document.body.classList.remove('subst-aberto');
     showToast('Erro ao abrir substituições', 'error');
   }
 }
@@ -2071,6 +2163,7 @@ async function fecharSubstituicoes(salvar){
   }
   fecharImportarJustificativa();
   document.getElementById('substOverlay').hidden = true;
+  document.body.classList.remove('subst-aberto');
   const titulo = document.getElementById('substTitulo');
   if (titulo) titulo.textContent = 'Substituições';
   document.querySelectorAll('#substOverlay .subst-footer .btn, #substOverlay .subst-icon-btn').forEach(btn => {
@@ -2089,6 +2182,7 @@ function acaoContextMenu(acao){
   }
   switch(acao){
     case 'editar_paciente': editarLinhaMapa(ctxLinha?.dataset?.id); break;
+    case 'editar_uma': editarUmaLinha(ctxLinha?.dataset?.id); break;
     case 'editar_acompanhante': editarAcompanhanteLinha(ctxLinha); break;
     case 'nova_dieta': abrirNovaDieta(ctxLinha?.dataset?.id, 'adicional'); break;
     case 'substituicao_dieta': abrirNovaDieta(ctxLinha?.dataset?.id, 'substituicao'); break;
@@ -2591,15 +2685,6 @@ function abrirFormularioInserirMapa(p){
       <div class="form-group"><label class="form-label">Data de inclusão</label><input class="form-control" id="ins-inclusao" value="${agora}" readonly></div>
       <div class="form-group"><label class="form-label">Usuário</label><input class="form-control" value="${esc(USUARIO_ATUAL)}" readonly></div>
     </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Extras</label><input class="form-control" id="ins-extras"></div>
-      <div class="form-group"><label class="form-label">Suplementos</label><input class="form-control" id="ins-suplementos"></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Enteral</label><input class="form-control" id="ins-enteral"></div>
-      <div class="form-group"><label class="form-label">Fórm. Infantil</label><input class="form-control" id="ins-formula_infantil"></div>
-      <div class="form-group"><label class="form-label">LVE</label><input class="form-control" id="ins-lve"></div>
-    </div>
   `;
   abrirModal('Inserir paciente no mapa', html, 'Salvar no mapa', salvarInserirPacienteMapa);
   setTimeout(() => {
@@ -2697,11 +2782,6 @@ async function salvarInserirPacienteMapa(){
     dieta: document.getElementById('ins-dieta')?.value || '',
     observacoes: document.getElementById('ins-observacoes')?.value || '',
     obs_etiqueta: document.getElementById('ins-obs_etiqueta')?.value || '',
-    extras: document.getElementById('ins-extras')?.value || '',
-    suplementos: document.getElementById('ins-suplementos')?.value || '',
-    enteral: document.getElementById('ins-enteral')?.value || '',
-    formula_infantil: document.getElementById('ins-formula_infantil')?.value || '',
-    lve: document.getElementById('ins-lve')?.value || '',
     clinica,
     enfermaria,
     leito,
@@ -2731,6 +2811,49 @@ async function salvarInserirPacienteMapa(){
   showToast('Paciente inserido no mapa','success');
   await carregarMapa();
   perguntarIncluirAcompanhante(pacInserido);
+}
+
+function editarUmaLinha(id){
+  const l = linhasMapaCache[id];
+  if (!l){ showToast('Selecione uma linha','error'); return; }
+  window._editUmaId = id;
+  const html = `
+    <p style="margin:0 0 0.75rem;color:#475569">Paciente: <strong>${esc(l.nome)}</strong> · ${esc(l.clinica || '-')} · Leito ${esc(l.leito || '-')}</p>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Extras</label><input class="form-control" id="uma-extras" value="${esc(l.extras || '')}"></div>
+      <div class="form-group"><label class="form-label">Suplementos</label><input class="form-control" id="uma-suplementos" value="${esc(l.suplementos || '')}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Enteral</label><input class="form-control" id="uma-enteral" value="${esc(l.enteral || '')}"></div>
+      <div class="form-group"><label class="form-label">Fórm. Infantil</label><input class="form-control" id="uma-formula_infantil" value="${esc(l.formula_infantil || '')}"></div>
+    </div>
+    <div class="form-group"><label class="form-label">LVE</label><input class="form-control" id="uma-lve" value="${esc(l.lve || '')}"></div>
+  `;
+  abrirModal('U.M.A', html, 'Salvar', salvarUmaLinha);
+}
+
+async function salvarUmaLinha(){
+  const id = window._editUmaId;
+  if (!id) return;
+  const body = {
+    extras: document.getElementById('uma-extras')?.value || '',
+    suplementos: document.getElementById('uma-suplementos')?.value || '',
+    enteral: document.getElementById('uma-enteral')?.value || '',
+    formula_infantil: document.getElementById('uma-formula_infantil')?.value || '',
+    lve: document.getElementById('uma-lve')?.value || ''
+  };
+  const r = await fetch(`/nutricao/api/mapa/${id}`, {
+    method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+  });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){
+    showToast((j && j.error) || 'Falha ao salvar U.M.A','error');
+    return;
+  }
+  if (linhasMapaCache[id]) Object.assign(linhasMapaCache[id], body);
+  fecharModal();
+  showToast(j.aviso || 'U.M.A atualizada','success');
+  await carregarMapa();
 }
 
 function editarLinhaMapa(id){
@@ -3039,6 +3162,18 @@ document.addEventListener('DOMContentLoaded', function(){
       }
       if (!document.getElementById('substOverlay')?.hidden) fecharSubstituicoes(false);
     }
+  });
+
+  document.getElementById('substCardapioList')?.addEventListener('click', function(e){
+    const li = e.target.closest('li[data-prato]');
+    if (!li) return;
+    substSelectCardapioItem(li);
+  });
+  document.getElementById('substCardapioList')?.addEventListener('dblclick', function(e){
+    const li = e.target.closest('li[data-prato]');
+    if (!li || substState?.readonly) return;
+    substSelectCardapioItem(li);
+    substAplicarSelecao();
   });
 
   document.getElementById('substTabs')?.addEventListener('click', function(e){

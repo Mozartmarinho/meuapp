@@ -12,7 +12,11 @@ os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
 from app import create_app  # noqa: E402
 from models import db  # noqa: E402
 from models_nutricao import NutClinica, NutGrupoClinica, NutEnfermaria, NutLeito, NutMapaRefeicao  # noqa: E402
-from nutricao_service import _chaves_ocupacao_leito, montar_grade_leitos_mapa  # noqa: E402
+from nutricao_service import (  # noqa: E402
+    _chaves_ocupacao_leito,
+    montar_grade_leitos_mapa,
+    listar_linhas_mapa_uma,
+)  # noqa: E402
 
 
 class GradeLeitosMapaTest(unittest.TestCase):
@@ -98,6 +102,45 @@ class GradeLeitosMapaTest(unittest.TestCase):
         self.assertTrue(grade_grupo)
         self.assertTrue(all(s['clinica'] == self.clinica.nome for s in grade_grupo))
         self.assertEqual(montar_grade_leitos_mapa(date.today(), clinica_nomes=[]), [])
+
+    def test_uma_lista_qualquer_clinica_so_com_campo_preenchido(self):
+        hoje = date.today()
+        db.session.add_all([
+            NutMapaRefeicao(
+                data_refeicao=hoje, nome='Com Enteral', clinica='OUTRA CLINICA',
+                enfermaria='Sala 9', leito='99', enteral='Dieta 1.5', ativo=True,
+            ),
+            NutMapaRefeicao(
+                data_refeicao=hoje, nome='Sem Uma', clinica=self.clinica.nome,
+                enfermaria='Enf A', leito='01', ativo=True,
+            ),
+            NutMapaRefeicao(
+                data_refeicao=hoje, nome='So Espaco', clinica='Z', extras='   ', ativo=True,
+            ),
+            NutMapaRefeicao(
+                data_refeicao=hoje, nome='Inativo', suplementos='modulo', ativo=False,
+            ),
+        ])
+        db.session.commit()
+        nomes = [linha['nome'] for linha in listar_linhas_mapa_uma(hoje)]
+        self.assertEqual(nomes, ['Com Enteral'])
+
+    def test_cardapio_da_refeicao_sai_do_indice(self):
+        from models_nutricao import NutCardapio
+        from nutricao_service import find_cardapio_for_meal, invalidar_cache_cardapios
+        branda = NutCardapio(tipo='grandes', dieta='BRANDA COM SAL', hr_desjejum=True, ativo=True, dia_mes=1)
+        branda.set_itens({'pao': 'PAO CARECA'})
+        outra = NutCardapio(tipo='grandes', dieta='LIQUIDA', hr_desjejum=True, ativo=True, dia_mes=1)
+        outra.set_itens({'suco': 'SUCO'})
+        db.session.add_all([branda, outra])
+        db.session.commit()
+        invalidar_cache_cardapios()
+        hit = find_cardapio_for_meal('BRANDA COM SAL', 'desjejum', date.today())
+        self.assertIsNotNone(hit)
+        self.assertEqual(hit.dieta, 'BRANDA COM SAL')
+        self.assertIn('PAO CARECA', hit.pratos)
+        de_novo = find_cardapio_for_meal('BRANDA COM SAL', 'desjejum', date.today())
+        self.assertEqual(de_novo.id, hit.id)
 
 
 if __name__ == '__main__':

@@ -1341,36 +1341,95 @@ def cardapio_personalizado(pratos_padrao, pares):
     return result
 
 
+class _CardapioResolvido:
+    """Cardápio já escolhido, sem voltar ao banco nem reparsear o JSON."""
+
+    __slots__ = ('id', 'dieta', 'tipo', 'pratos')
+
+    def __init__(self, entry):
+        self.id = entry[3]
+        self.dieta = entry[4]
+        self.tipo = entry[5]
+        self.pratos = entry[6]
+
+
+# Índice em memória: uma leitura de nut_cardapios por processo, não 6 por abertura.
+_CARDAPIO_POR_REFEICAO = None
+
+
+def invalidar_cache_cardapios():
+    global _CARDAPIO_POR_REFEICAO
+    _CARDAPIO_POR_REFEICAO = None
+
+
+def cardapios_por_refeicao():
+    """Lista leve de cardápios ativos, agrupada pelo horário (hr_*)."""
+    global _CARDAPIO_POR_REFEICAO
+    if _CARDAPIO_POR_REFEICAO is not None:
+        return _CARDAPIO_POR_REFEICAO
+    rows = NutCardapio.query.filter_by(ativo=True).all()
+    by_meal = {m: [] for m in MEALS_SUBST}
+    for row in rows:
+        pratos = pratos_from_itens(row.get_itens(), row.tipo)
+        entry = (
+            int(row.dieta_id) if row.dieta_id else None,
+            row.dia_mes,
+            row.id or 0,
+            row.id,
+            row.dieta or '',
+            row.tipo or '',
+            pratos,
+        )
+        for meal in MEALS_SUBST:
+            if getattr(row, MEAL_HR_FIELD[meal], False):
+                by_meal[meal].append(entry)
+    _CARDAPIO_POR_REFEICAO = by_meal
+    return by_meal
+
+
 def find_cardapio_for_meal(dieta, meal, data_ref=None, dieta_id=None):
-    """Melhor NutCardapio para dieta + horário (opcionalmente dia do mês).
+    """Melhor cardápio para dieta + horário (opcionalmente dia do mês).
 
     Preferência por dieta_id (FK) quando disponível — alinha com join futuro
     em NutPrecoDietaTipo (dieta × tipo_refeicao / hr_*).
+    Usa o índice em memória: abrir o cardápio não varre a tabela 6 vezes.
     """
-    hr = MEAL_HR_FIELD.get(meal)
-    if not hr:
+    entries = cardapios_por_refeicao().get(meal) or []
+    if not entries:
         return None
     dia = data_ref.day if data_ref else None
-    q = NutCardapio.query.filter_by(ativo=True).filter(getattr(NutCardapio, hr).is_(True))
-    candidatos = []
-    for row in q.all():
-        if dieta_id and row.dieta_id and int(row.dieta_id) == int(dieta_id):
+    dieta_id_int = None
+    if dieta_id:
+        try:
+            dieta_id_int = int(dieta_id)
+        except (TypeError, ValueError):
+            dieta_id_int = None
+
+    best = None
+    best_key = None
+
+    def _considerar(entry, score):
+        nonlocal best, best_key
+        dia_bonus = 10 if (dia and entry[1] == dia) else 0
+        key = (score + dia_bonus, score, -(entry[2] or 0))
+        if best_key is None or key > best_key:
+            best_key = key
+            best = entry
+
+    for entry in entries:
+        if dieta_id_int and entry[0] and entry[0] == dieta_id_int:
             score = 110
         else:
-            score = _dieta_match_score(dieta, row.dieta)
+            score = _dieta_match_score(dieta, entry[4])
         if score <= 0:
             continue
-        dia_bonus = 10 if (dia and row.dia_mes == dia) else 0
-        candidatos.append((score + dia_bonus, score, row))
-    if not candidatos:
-        # fallback: qualquer cardápio do horário, priorizando dia
-        for row in NutCardapio.query.filter_by(ativo=True).filter(getattr(NutCardapio, hr).is_(True)).all():
-            dia_bonus = 10 if (dia and row.dia_mes == dia) else 0
-            candidatos.append((dia_bonus, 0, row))
-    if not candidatos:
+        _considerar(entry, score)
+    if best is None:
+        for entry in entries:
+            _considerar(entry, 0)
+    if best is None:
         return None
-    candidatos.sort(key=lambda x: (x[0], x[1], -(x[2].id or 0)), reverse=True)
-    return candidatos[0][2]
+    return _CardapioResolvido(best)
 
 
 def get_mapa_substituicoes(mapa_row):
@@ -1408,7 +1467,7 @@ def get_mapa_substituicoes(mapa_row):
             'pares': [], 'justificativa': ''
         }
         card = find_cardapio_for_meal(dieta, meal, data_meal, dieta_id=getattr(mapa_row, 'dieta_id', None))
-        pratos = pratos_from_itens(card.get_itens() if card else {}, card.tipo if card else None)
+        pratos = list(card.pratos) if card else []
         pares = subs_meal.get('pares') or []
         refeicoes[meal] = {
             'label': MEAL_LABELS[meal],
@@ -1644,6 +1703,7 @@ def _seed_cardapios():
         row.set_itens(item.get('itens') or {})
         db.session.add(row)
         existentes.add(sig)
+    invalidar_cache_cardapios()
 
 
 def list_tabelas_nutrientes(somente_ativas=True):
@@ -2587,6 +2647,10 @@ def seed_nutricao(force=False):
             db.session.add(p)
 
     db.session.commit()
+    try:
+        cardapios_por_refeicao()
+    except Exception:
+        invalidar_cache_cardapios()
     _SEED_NUTRICAO_DONE = True
 
 
@@ -3334,6 +3398,35 @@ def montar_grade_leitos_mapa(data_ref, clinica_nome=None, clinica_nomes=None):
         (item.get('linha') or {}).get('nome') or '',
     ))
     return grade
+
+
+CAMPOS_MAPA_UMA = ('extras', 'suplementos', 'enteral', 'formula_infantil', 'lve')
+
+
+def linha_tem_conteudo_uma(row):
+    """True se algum campo U.M.A. do paciente tem texto."""
+    for campo in CAMPOS_MAPA_UMA:
+        if (getattr(row, campo, None) or '').strip():
+            return True
+    return False
+
+
+def listar_linhas_mapa_uma(data_ref):
+    """Pacientes do dia com U.M.A. preenchida, de qualquer clínica, enfermaria ou leito."""
+    data_ref = data_ref or date.today()
+    rows = apply_cliente_filter(
+        NutMapaRefeicao.query.filter_by(data_refeicao=data_ref, ativo=True),
+        NutMapaRefeicao,
+    ).all()
+    linhas = [r for r in rows if linha_tem_conteudo_uma(r)]
+    linhas.sort(key=lambda r: (
+        (r.clinica or '').upper(),
+        (r.enfermaria or '').upper(),
+        (r.leito or '').upper(),
+        (r.nome or '').upper(),
+        r.id or 0,
+    ))
+    return [r.to_dict() for r in linhas]
 
 
 def _aplicar_baixa_linha(row, motivo, usuario=None, data_saida=None, hospital_transferencia=None):

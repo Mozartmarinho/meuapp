@@ -37,6 +37,8 @@ from nutricao_service import (
     MSG_LEITO_OCUPADO,
     list_leitos_vagos,
     montar_grade_leitos_mapa,
+    listar_linhas_mapa_uma,
+    invalidar_cache_cardapios,
     baixar_acompanhantes_do_paciente,
     paciente_ativo_no_mapa,
     MSG_ACOMP_SO_SAIDA_MAPA,
@@ -855,6 +857,16 @@ def api_mapa_get():
     seed_nutricao()
     data_ref = _parse_date(request.args.get('data')) or date.today()
     _seed_aviso_alta_demo(data_ref)
+    uma = str(request.args.get('uma') or '').strip().lower() in ('1', 'true', 'sim', 'on')
+    if uma:
+        garantir_mapa_do_dia(data_ref)
+        return jsonify({
+            'ok': True,
+            'uma': True,
+            'data': data_ref.isoformat(),
+            'linhas': listar_linhas_mapa_uma(data_ref),
+            'avisos_alta': listar_avisos_alta_mapa(data_ref),
+        })
     linhas = _mapa_linhas(data_ref)
     grupo = (request.args.get('grupo_clinica') or '').strip()
     clinica = (request.args.get('clinica') or '').strip()
@@ -2352,6 +2364,7 @@ def api_cardapios():
         _arquivar_cardapios_mesmo_horario(row, d, dieta_id)
         _soltar_horario_compartilhado(row, d, dieta_id)
         db.session.commit()
+        invalidar_cache_cardapios()
         return jsonify({'ok': True, 'id': row.id, 'cardapio': row.to_dict()})
     tipo = (request.args.get('tipo') or '').strip() or None
     dieta_id = request.args.get('dieta_id', type=int)
@@ -2366,6 +2379,7 @@ def api_cardapio_ops(cid):
     if request.method == 'DELETE':
         row.ativo = False
         db.session.commit()
+        invalidar_cache_cardapios()
         return jsonify({'ok': True})
     d = request.get_json(force=True) or {}
     hr = _horario_marcado(d)
@@ -2382,12 +2396,14 @@ def api_cardapio_ops(cid):
         _arquivar_cardapios_mesmo_horario(outro, d, dieta_id)
         _soltar_horario_compartilhado(outro, d, dieta_id)
         db.session.commit()
+        invalidar_cache_cardapios()
         return jsonify({'ok': True, 'id': outro.id, 'cardapio': outro.to_dict()})
     _cardapio_from_payload(d, row)
     db.session.flush()
     _arquivar_cardapios_mesmo_horario(row, d, row.dieta_id)
     _soltar_horario_compartilhado(row, d, row.dieta_id)
     db.session.commit()
+    invalidar_cache_cardapios()
     return jsonify({'ok': True, 'id': row.id, 'cardapio': row.to_dict()})
 
 
