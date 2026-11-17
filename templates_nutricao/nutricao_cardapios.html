@@ -1620,8 +1620,7 @@ async function abrirCardapioModal(dietaId, dietaNome){
   document.getElementById('cardapioModalOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
   prepararCamposSugestao();
-  await carregarProdutosCardapio();
-  await carregarAba();
+  await Promise.all([carregarProdutosCardapio(), carregarAba()]);
 }
 
 function fecharCardapioModal(){

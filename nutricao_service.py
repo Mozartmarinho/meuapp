@@ -1123,6 +1123,32 @@ def info_lancamento_refeicoes(data_mapa, agora=None):
     return out
 
 
+def _candidatos_mapa_sem_paciente(data_alvo, src, somente_ativos=True):
+    """Linhas sem paciente_id na data, já filtradas no banco pela chave disponível."""
+    if not src or not data_alvo:
+        return []
+    q = NutMapaRefeicao.query.filter(
+        NutMapaRefeicao.data_refeicao == data_alvo,
+        NutMapaRefeicao.paciente_id.is_(None),
+    )
+    if somente_ativos:
+        q = q.filter(NutMapaRefeicao.ativo.is_(True))
+    pront = (getattr(src, 'prontuario', None) or '').strip()
+    nome = (getattr(src, 'nome', None) or '').strip()
+    leito = (getattr(src, 'leito', None) or '').strip()
+    if pront:
+        q = q.filter(db.func.upper(NutMapaRefeicao.prontuario) == pront.upper())
+    elif nome:
+        q = q.filter(db.func.upper(NutMapaRefeicao.nome) == nome.upper())
+        if leito:
+            q = q.filter(db.func.upper(NutMapaRefeicao.leito) == leito.upper())
+    elif leito:
+        q = q.filter(db.func.upper(NutMapaRefeicao.leito) == leito.upper())
+    else:
+        return []
+    return q.all()
+
+
 def buscar_linha_mapa_dia(src, data_alvo):
     """Localiza a linha do mesmo lançamento em data_alvo (não cria)."""
     if not src or not data_alvo:
@@ -1155,9 +1181,8 @@ def buscar_linha_mapa_dia(src, data_alvo):
                 return row
         if len(candidatos) == 1:
             return candidatos[0]
-    chave = _chave_linha_mapa(src)
-    for r in NutMapaRefeicao.query.filter_by(data_refeicao=data_alvo, ativo=True).all():
-        if not r.paciente_id and _chave_linha_mapa(r) == chave:
+    for r in _candidatos_mapa_sem_paciente(data_alvo, src, somente_ativos=True):
+        if _chave_linha_mapa(r) == _chave_linha_mapa(src):
             return r
     return None
 
@@ -1194,8 +1219,8 @@ def obter_ou_criar_linha_mapa_dia(src, data_alvo, usuario=None):
         )
     if not existing:
         chave = _chave_linha_mapa(src)
-        for r in NutMapaRefeicao.query.filter_by(data_refeicao=data_alvo).all():
-            if not r.paciente_id and _chave_linha_mapa(r) == chave:
+        for r in _candidatos_mapa_sem_paciente(data_alvo, src, somente_ativos=False):
+            if _chave_linha_mapa(r) == chave:
                 existing = r
                 break
     if existing:
@@ -1345,33 +1370,33 @@ def cardapio_personalizado(pratos_padrao, pares):
 class _CardapioResolvido:
     """Cardápio já escolhido, sem voltar ao banco nem reparsear o JSON."""
 
-    __slots__ = ('id', 'dieta', 'tipo', 'pratos')
+    __slots__ = ('id', 'dieta', 'tipo', 'pratos', 'itens')
 
     def __init__(self, entry):
         self.id = entry[3]
         self.dieta = entry[4]
         self.tipo = entry[5]
         self.pratos = entry[6]
+        self.itens = entry[7] if len(entry) > 7 else None
 
 
 # Índice em memória: uma leitura de nut_cardapios por processo, não 6 por abertura.
 _CARDAPIO_POR_REFEICAO = None
+# Recorte por dieta: abrir o editor não lê a tabela inteira.
+_CARDAPIO_POR_DIETA = {}
 
 
 def invalidar_cache_cardapios():
     global _CARDAPIO_POR_REFEICAO
     _CARDAPIO_POR_REFEICAO = None
+    _CARDAPIO_POR_DIETA.clear()
 
 
-def cardapios_por_refeicao():
-    """Lista leve de cardápios ativos, agrupada pelo horário (hr_*)."""
-    global _CARDAPIO_POR_REFEICAO
-    if _CARDAPIO_POR_REFEICAO is not None:
-        return _CARDAPIO_POR_REFEICAO
-    rows = NutCardapio.query.filter_by(ativo=True).all()
+def _entries_cardapio(rows, guardar_itens=False):
     by_meal = {m: [] for m in MEALS_SUBST}
     for row in rows:
-        pratos = pratos_from_itens(row.get_itens(), row.tipo)
+        itens = row.get_itens() if guardar_itens else None
+        pratos = pratos_from_itens(itens if guardar_itens else row.get_itens(), row.tipo)
         entry = (
             int(row.dieta_id) if row.dieta_id else None,
             row.dia_mes,
@@ -1381,11 +1406,53 @@ def cardapios_por_refeicao():
             row.tipo or '',
             pratos,
         )
+        if guardar_itens:
+            entry = entry + (itens,)
         for meal in MEALS_SUBST:
             if getattr(row, MEAL_HR_FIELD[meal], False):
                 by_meal[meal].append(entry)
-    _CARDAPIO_POR_REFEICAO = by_meal
     return by_meal
+
+
+def cardapios_por_refeicao():
+    """Lista leve de cardápios ativos, agrupada pelo horário (hr_*)."""
+    global _CARDAPIO_POR_REFEICAO
+    if _CARDAPIO_POR_REFEICAO is not None:
+        return _CARDAPIO_POR_REFEICAO
+    rows = NutCardapio.query.filter_by(ativo=True).all()
+    _CARDAPIO_POR_REFEICAO = _entries_cardapio(rows, guardar_itens=False)
+    return _CARDAPIO_POR_REFEICAO
+
+
+def _indice_cardapios_dieta(dieta, dieta_id):
+    """Só os cardápios desta dieta. Uma consulta, reusada nas 6 refeições."""
+    dieta_id_int = None
+    if dieta_id:
+        try:
+            dieta_id_int = int(dieta_id)
+        except (TypeError, ValueError):
+            dieta_id_int = None
+    nome = _norm_txt(dieta)
+    key = (dieta_id_int or 0, nome)
+    cached = _CARDAPIO_POR_DIETA.get(key)
+    if cached is not None:
+        return cached
+    conds = []
+    if dieta_id_int:
+        conds.append(NutCardapio.dieta_id == dieta_id_int)
+    if nome:
+        conds.append(db.func.upper(db.func.trim(NutCardapio.dieta)) == nome)
+    if not conds:
+        _CARDAPIO_POR_DIETA[key] = {m: [] for m in MEALS_SUBST}
+        return _CARDAPIO_POR_DIETA[key]
+    rows = (
+        NutCardapio.query
+        .filter(NutCardapio.ativo.is_(True))
+        .filter(db.or_(*conds))
+        .all()
+    )
+    _CARDAPIO_POR_DIETA[key] = _entries_cardapio(rows, guardar_itens=True)
+    return _CARDAPIO_POR_DIETA[key]
 
 
 def find_cardapio_for_meal(dieta, meal, data_ref=None, dieta_id=None, exigir_dieta=False):
@@ -1393,9 +1460,14 @@ def find_cardapio_for_meal(dieta, meal, data_ref=None, dieta_id=None, exigir_die
 
     Preferência por dieta_id (FK) quando disponível — alinha com join futuro
     em NutPrecoDietaTipo (dieta × tipo_refeicao / hr_*).
-    Usa o índice em memória: abrir o cardápio não varre a tabela 6 vezes.
+    Com dieta informada, lê só essa dieta. A tabela inteira só entra se
+    não houver cardápio dela e a chamada aceitar fallback.
     """
-    entries = cardapios_por_refeicao().get(meal) or []
+    entries = []
+    if (dieta or '').strip() or dieta_id:
+        entries = _indice_cardapios_dieta(dieta, dieta_id).get(meal) or []
+    if not entries and not exigir_dieta:
+        entries = cardapios_por_refeicao().get(meal) or []
     if not entries:
         return None
     dia = data_ref.day if data_ref else None
@@ -1510,11 +1582,16 @@ def opcoes_itens_refeicao(mapa_row, meal):
     )
     itens = {}
     tipo = _TIPO_CARDAPIO_POR_REFEICAO.get(meal, 'pequenas')
-    if card is not None and card.id:
-        row = NutCardapio.query.get(card.id)
-        if row is not None:
-            itens = row.get_itens() or {}
-            tipo = (row.tipo or tipo or '').strip() or tipo
+    if card is not None:
+        if (card.tipo or '').strip():
+            tipo = card.tipo.strip()
+        if card.itens is not None:
+            itens = card.itens or {}
+        elif card.id:
+            row = NutCardapio.query.get(card.id)
+            if row is not None:
+                itens = row.get_itens() or {}
+                tipo = (row.tipo or tipo or '').strip() or tipo
     if tipo not in _SETORES_POR_TIPO_CARDAPIO:
         tipo = _TIPO_CARDAPIO_POR_REFEICAO.get(meal, 'pequenas')
 
@@ -2020,33 +2097,72 @@ def _codigo_produto_unico(estoque_id, nome):
     return codigo
 
 
+# Catálogo de itens do cardápio: 2 consultas por processo, não uma por setor.
+_CATALOGO_PRODUTOS_CARDAPIO = None
+
+
+def invalidar_cache_produtos_cardapio():
+    global _CATALOGO_PRODUTOS_CARDAPIO
+    _CATALOGO_PRODUTOS_CARDAPIO = None
+
+
+def _catalogo_produtos_cardapio():
+    """Produtos ativos agrupados pelo nome normalizado do grupo."""
+    global _CATALOGO_PRODUTOS_CARDAPIO
+    if _CATALOGO_PRODUTOS_CARDAPIO is not None:
+        return _CATALOGO_PRODUTOS_CARDAPIO
+    grupos = _q(NutGrupoProduto).all()
+    id_nome = {g.id: _norm_txt(g.nome) for g in grupos}
+    por_nome = {}
+    if id_nome:
+        rows = (
+            _q(NutProduto)
+            .filter(NutProduto.ativo.is_(True), NutProduto.grupo_id.in_(list(id_nome)))
+            .with_entities(NutProduto.id, NutProduto.descricao, NutProduto.grupo_id)
+            .order_by(NutProduto.descricao, NutProduto.id)
+            .all()
+        )
+        vistos = {}
+        for pid, descricao, gid in rows:
+            nome_grupo = id_nome.get(gid) or ''
+            nome = (descricao or '').strip()
+            key = _norm_txt(nome)
+            if not nome_grupo or not key:
+                continue
+            seen = vistos.setdefault(nome_grupo, set())
+            if key in seen:
+                continue
+            seen.add(key)
+            por_nome.setdefault(nome_grupo, []).append({
+                'id': pid,
+                'nome': nome,
+                'grupo': nome_grupo,
+            })
+    _CATALOGO_PRODUTOS_CARDAPIO = por_nome
+    return por_nome
+
+
 def list_produtos_tema_cardapio(tema):
     tema = _norm_txt(tema)
     if not tema:
         return []
+    catalogo = _catalogo_produtos_cardapio()
     nomes = nomes_grupo_tema_cardapio(tema, variantes_prato=True)
-    grupos = _q(NutGrupoProduto).filter(db.func.upper(NutGrupoProduto.nome).in_(nomes)).all()
-    if not grupos:
-        return []
-    ids = [g.id for g in grupos]
-    q = _q(NutProduto).filter(NutProduto.grupo_id.in_(ids), NutProduto.ativo.is_(True))
     seen = set()
     out = []
-    for p in q.order_by(NutProduto.descricao, NutProduto.id).all():
-        nome = (p.descricao or '').strip()
-        key = _norm_txt(nome)
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        out.append({
-            'id': p.id,
-            'nome': nome,
-            'grupo': p.grupo.nome if p.grupo else tema,
-        })
+    for nome_grupo in nomes:
+        for item in catalogo.get(nome_grupo) or []:
+            key = _norm_txt(item.get('nome'))
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            out.append(item)
+    out.sort(key=lambda item: (_norm_txt(item.get('nome')), item.get('id') or 0))
     return out
 
 
 def list_produtos_temas_cardapio(temas):
+    _catalogo_produtos_cardapio()
     out = {}
     for tema in temas or []:
         t = _norm_txt(tema)
@@ -2080,6 +2196,7 @@ def criar_produto_tema_cardapio(nome, tema):
         if not existente.ativo:
             existente.ativo = True
             db.session.flush()
+            invalidar_cache_produtos_cardapio()
         return existente, None
     row = NutProduto(
         estoque_id=estoque.id,
@@ -2093,6 +2210,7 @@ def criar_produto_tema_cardapio(nome, tema):
     )
     db.session.add(row)
     db.session.flush()
+    invalidar_cache_produtos_cardapio()
     return row, None
 
 

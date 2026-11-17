@@ -176,10 +176,10 @@
           </div>
         </div>
         <div class="subst-mid">
-          <button type="button" class="subst-icon-btn" title="Remover linha selecionada" onclick="substLimparLinha()">
+          <button type="button" class="subst-icon-btn" title="Remover substituição" aria-label="Remover substituição" onclick="substRemoverSubstituicao()">
             <span class="subst-ban" aria-hidden="true"></span>
           </button>
-          <button type="button" class="subst-icon-btn" title="Adicionar itens desta refeição e desta dieta" onclick="substAbrirAdicionar()">
+          <button type="button" class="subst-icon-btn" title="Substituir item" aria-label="Substituir item" onclick="substAbrirAdicionar()">
             <i class="fas fa-plus" aria-hidden="true"></i>
           </button>
         </div>
@@ -229,7 +229,7 @@
     </div>
     <p class="subst-just-hint" id="substAddHint">Selecione itens desta refeição e desta dieta.</p>
     <div class="subst-add-busca">
-      <input class="form-control" id="substAddBusca" type="search" placeholder="Buscar item" autocomplete="off">
+      <input class="form-control" id="substAddBusca" type="search" placeholder="Buscar item" autocomplete="off" oninput="_substFiltrarListaAdicionar()" onsearch="_substFiltrarListaAdicionar()">
     </div>
     <div id="substAddLista" class="subst-add-lista"></div>
     <div class="subst-footer">
@@ -1103,6 +1103,8 @@
 }
 .subst-add-item .tag.setor { color: #334155; background: #e2e8f0; }
 .subst-add-item.ja .nome { color: #64748b; }
+.subst-add-item.filtrado-fora,
+.subst-add-setor.filtrado-fora { display: none !important; }
 @media (max-width: 700px) {
   .subst-panels { grid-template-columns: 1fr; }
   .subst-mid { flex-direction: row; padding-top: 0; justify-content: center; }
@@ -2216,21 +2218,31 @@ function _substNomesJaNoCardapio(){
   return new Set(atuais.map(p => String(p).trim().toUpperCase()));
 }
 
+function _substNormBusca(s){
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
 function _substFiltrarListaAdicionar(){
-  const q = (document.getElementById('substAddBusca')?.value || '').trim().toUpperCase();
-  document.querySelectorAll('#substAddLista .subst-add-setor, #substAddLista .subst-add-item').forEach(el => {
-    if (el.classList.contains('subst-add-setor')) return;
-    const nome = (el.dataset.nome || '').toUpperCase();
-    el.hidden = !!(q && !nome.includes(q));
+  const q = _substNormBusca(document.getElementById('substAddBusca')?.value || '');
+  const lista = document.getElementById('substAddLista');
+  if (!lista) return;
+  lista.querySelectorAll('.subst-add-item').forEach(el => {
+    const nome = _substNormBusca(el.dataset.nome || el.querySelector('.nome')?.textContent || '');
+    el.classList.toggle('filtrado-fora', !!(q && !nome.includes(q)));
   });
-  document.querySelectorAll('#substAddLista .subst-add-setor').forEach(sec => {
+  lista.querySelectorAll('.subst-add-setor').forEach(sec => {
     let visivel = false;
     let n = sec.nextElementSibling;
     while (n && !n.classList.contains('subst-add-setor')) {
-      if (!n.hidden) visivel = true;
+      if (n.classList.contains('subst-add-item') && !n.classList.contains('filtrado-fora')) visivel = true;
       n = n.nextElementSibling;
     }
-    sec.hidden = !visivel;
+    sec.classList.toggle('filtrado-fora', !!q && !visivel);
   });
 }
 
@@ -2244,12 +2256,14 @@ async function substAbrirAdicionar(){
   if (!overlay || !lista) return;
   const label = { desjejum: 'Desjejum', colacao: 'Colação', almoco: 'Almoço', merenda: 'Merenda', jantar: 'Jantar', ceia: 'Ceia' }[meal] || meal;
   const dieta = substState.data?.dieta || document.getElementById('substDieta')?.textContent || '';
-  if (titulo) titulo.textContent = 'Adicionar itens — ' + label;
   const prato = (substState.pratoSel || '').trim();
+  if (!prato) {
+    showToast('Selecione o item do cardápio para substituir', 'error');
+    return;
+  }
+  if (titulo) titulo.textContent = 'Substituir item — ' + label;
   if (hint) {
-    hint.textContent = prato
-      ? `${label} · ${dieta}. O item selecionado (${prato}) vai para Remover; os marcados entram em Adicionar.`
-      : `${label} · ${dieta}. Só itens desta refeição e desta dieta.`;
+    hint.textContent = `${label} · ${dieta}. O item selecionado (${prato}) vai para Remover; os marcados entram em Adicionar.`;
   }
   lista.innerHTML = '<div class="subst-just-vazio">Carregando itens...</div>';
   overlay.hidden = false;
@@ -2257,6 +2271,7 @@ async function substAbrirAdicionar(){
   if (busca) {
     busca.value = '';
     busca.oninput = _substFiltrarListaAdicionar;
+    busca.onsearch = _substFiltrarListaAdicionar;
   }
   try {
     const r = await fetch(`/nutricao/api/mapa/${substState.mapaId}/substituicoes/opcoes?meal=${encodeURIComponent(meal)}`);
@@ -2289,6 +2304,7 @@ async function substAbrirAdicionar(){
       }).join('');
       return `<div class="subst-add-setor">${esc(sec.label || sec.setor || '')}</div>${itens}`;
     }).join('');
+    _substFiltrarListaAdicionar();
     setTimeout(() => busca?.focus(), 30);
   } catch (e) {
     lista.innerHTML = '<div class="subst-just-vazio">Erro ao carregar itens desta refeição.</div>';
@@ -2355,31 +2371,41 @@ function substConfirmarAdicionar(){
   showToast(usados === 1 ? 'Item adicionado a esta refeição' : `${usados} itens adicionados a esta refeição`, 'success');
 }
 
-function substLimparLinha(){
+function substRemoverSubstituicao(){
+  if (!substState || substState.readonly) return;
   const body = document.getElementById('substGridBody');
-  const tr = body?.querySelector('tr.selected');
-  if (!tr) {
-    showToast('Selecione uma linha em Remover e adicionar', 'error');
+  if (!body) return;
+  const prato = (substState.pratoSel || '').trim().toUpperCase();
+  let alvo = null;
+  if (prato) {
+    alvo = [...body.querySelectorAll('tr')].find(r => {
+      const rem = (r.querySelector('[data-col="remover"]')?.value || '').trim().toUpperCase();
+      const add = (r.querySelector('[data-col="adicionar"]')?.value || '').trim().toUpperCase();
+      return rem === prato || add === prato;
+    }) || null;
+  }
+  if (!alvo) {
+    const sel = body.querySelector('tr.selected');
+    const rem = (sel?.querySelector('[data-col="remover"]')?.value || '').trim();
+    const add = (sel?.querySelector('[data-col="adicionar"]')?.value || '').trim();
+    if (sel && (rem || add)) alvo = sel;
+  }
+  if (!alvo) {
+    showToast(prato ? 'Este item não tem substituição para remover' : 'Selecione o item substituído', 'error');
     return;
   }
-  const rem = tr.querySelector('[data-col="remover"]');
-  const add = tr.querySelector('[data-col="adicionar"]');
-  if (rem) rem.value = '';
-  if (add) add.value = '';
-  const filled = [...body.querySelectorAll('tr')].filter(r => {
-    const a = (r.querySelector('[data-col="remover"]')?.value || '').trim();
-    const b = (r.querySelector('[data-col="adicionar"]')?.value || '').trim();
-    return a || b;
-  });
-  if (filled.length && !(rem?.value || add?.value)) {
-    tr.remove();
-  }
+  alvo.remove();
   _substEnsureEmptyRow(body);
   _substBindGridInputs(body);
   substSelectGridRow(body.querySelector('tr'));
   _substSyncFromUi();
   substRefreshCardapioList();
-  if (substState) substState._dirty = true;
+  substState._dirty = true;
+  showToast('Substituição removida', 'success');
+}
+
+function substLimparLinha(){
+  substRemoverSubstituicao();
 }
 
 async function substImportar(soJustificativa){

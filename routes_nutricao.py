@@ -46,6 +46,7 @@ from nutricao_service import (
     montar_grade_leitos_mapa,
     listar_linhas_mapa_uma,
     invalidar_cache_cardapios,
+    invalidar_cache_produtos_cardapio,
     baixar_acompanhantes_do_paciente,
     paciente_ativo_no_mapa,
     MSG_ACOMP_SO_SAIDA_MAPA,
@@ -2363,7 +2364,6 @@ def cardapios():
     dietas_list = _list_dietas_db(somente_ativas=True)
     return render_template(
         'nutricao_cardapios.html',
-        cardapios=list_cardapios(dieta_id=dieta_id) if dieta_id else list_cardapios(),
         dietas=dietas_list,
         dieta_sel=dieta_sel.to_dict() if dieta_sel else None,
         opcoes=CARDAPIO_OPCOES,
@@ -2990,6 +2990,7 @@ def api_produtos_cadastro():
             _produto_from_payload(d, exists)
             exists.ativo = bool(d.get('ativo', True))
             db.session.commit()
+            invalidar_cache_produtos_cardapio()
             return jsonify({'ok': True, 'id': exists.id, 'produto': exists.to_dict()})
         row = _produto_from_payload(d)
         row.estoque_id = estoque_id
@@ -3001,6 +3002,7 @@ def api_produtos_cadastro():
         _tag_cliente(row)
         db.session.add(row)
         db.session.commit()
+        invalidar_cache_produtos_cardapio()
         return jsonify({'ok': True, 'id': row.id, 'produto': row.to_dict()})
     estoque_id = request.args.get('estoque_id', type=int)
     grupo_id = request.args.get('grupo_id', type=int)
@@ -3049,6 +3051,7 @@ def api_produto_cadastro_ops(pid):
         row.ativo = False
         row.data_alteracao = datetime.utcnow()
         db.session.commit()
+        invalidar_cache_produtos_cardapio()
         return jsonify({'ok': True})
     d = request.get_json(force=True) or {}
     if 'codigo' in d:
@@ -3065,6 +3068,7 @@ def api_produto_cadastro_ops(pid):
         row.codigo = codigo
     _produto_from_payload(d, row)
     db.session.commit()
+    invalidar_cache_produtos_cardapio()
     return jsonify({'ok': True, 'produto': row.to_dict()})
 
 

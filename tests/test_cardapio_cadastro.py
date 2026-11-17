@@ -566,6 +566,9 @@ class CardapioCadastroTest(unittest.TestCase):
         pagina = self.client.get('/nutricao').get_data(as_text=True)
         self.assertIn('substAbrirAdicionar()', pagina)
         self.assertIn('id="substAddOverlay"', pagina)
+        self.assertIn('Remover substituição', pagina)
+        self.assertIn('Substituir item', pagina)
+        self.assertIn('filtrado-fora', pagina)
 
         invalido = self.client.get(f'/nutricao/api/mapa/{mapa.id}/substituicoes/opcoes?meal=liquidas')
         self.assertEqual(invalido.status_code, 400)
