@@ -29,7 +29,8 @@
     <div class="eti-modo">
       <span class="eti-inline-label">Modo:</span>
       <label><input type="radio" name="modo" value="mapa" checked> Mapa de Refeições</label>
-      <label class="disabled" title="Em breve"><input type="radio" name="modo" value="totalizacao_direta" disabled> Totalização Direta</label>
+      <label class="disabled" title="Etiqueta de leito sai do mapa. A quantidade sem paciente fica na totalização direta."><input type="radio" name="modo" value="totalizacao_direta" disabled> Totalização Direta</label>
+      <a href="{{ url_for('nutricao.totalizacao_direta') }}">Abrir totalização direta</a>
     </div>
 
     <div class="eti-inline-label eti-lbl-por">Imprimir por:</div>

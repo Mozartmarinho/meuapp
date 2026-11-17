@@ -1,0 +1,150 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Totalização direta</h1>
+  <p>Quantidades por clínica e dieta, vinculadas ao cadastro e sem paciente</p>
+</div>
+
+<div class="card" style="padding:1rem 1.1rem 1.2rem;">
+  <form method="get" class="clin-topo">
+    <div class="form-group">
+      <label class="form-label" for="fData">Data</label>
+      <input class="form-control" type="date" id="fData" name="data" value="{{ data_padrao }}">
+    </div>
+    <div class="form-group" style="min-width:220px;">
+      <label class="form-label" for="fClinica">Clínica</label>
+      <select class="form-control" id="fClinica" name="clinica">
+        <option value="">Todas</option>
+        {% for c in clinicas %}
+        <option value="{{ c.nome }}" {% if clinica_sel == c.nome %}selected{% endif %}>{{ c.nome }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-secondary" type="submit">Carregar</button>
+  </form>
+
+  <form id="frmDir" onsubmit="return salvarDir(event)">
+    <div class="clin-grid">
+      <div class="form-group">
+        <label class="form-label" for="fTipo">Tipo</label>
+        <select class="form-control" id="fTipo" onchange="alternarTipo()">
+          <option value="dieta">Dietas</option>
+          <option value="extra">Extras</option>
+          <option value="suplemento">Suplementos</option>
+          <option value="formula_infantil">Fórmulas infantis</option>
+          <option value="lve">LVE</option>
+          <option value="enteral">Enteral</option>
+        </select>
+      </div>
+      <div class="form-group" id="boxDieta">
+        <label class="form-label" for="fDieta">Dieta cadastrada</label>
+        <select class="form-control" id="fDieta">
+          <option value="">Selecione</option>
+          {% for d in dietas %}
+          <option value="{{ d.id }}" data-nome="{{ d.nome }}">{{ d.nome }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group" id="boxItem" hidden>
+        <label class="form-label" for="fItem">Item</label>
+        <input class="form-control" id="fItem" placeholder="Nome do extra, suplemento ou fórmula">
+      </div>
+    </div>
+    <div id="boxRefeicoes" class="clin-grid">
+      {% for chave, rotulo in refeicoes %}
+      <div class="form-group">
+        <label class="form-label">{{ rotulo }}</label>
+        <input class="form-control qtd" data-chave="{{ chave }}" type="number" min="0" max="9999" value="0">
+      </div>
+      {% endfor %}
+    </div>
+    <div id="boxHoras" class="clin-horas" hidden>
+      {% for h in range(1, 25) %}
+      <label>{{ h }}<input class="form-control qtd-hora" data-chave="{{ h }}" type="number" min="0" max="9999" value="0"></label>
+      {% endfor %}
+    </div>
+    <div class="clin-acoes">
+      <button class="btn btn-primary" type="submit">Gravar linha</button>
+    </div>
+  </form>
+
+  <h2 class="clin-sec">Lançado nesta data</h2>
+  <table class="clin-tab">
+    <thead>
+      <tr><th>Clínica</th><th>Tipo</th><th>Item</th><th>Total</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for linha in linhas %}
+      <tr>
+        <td>{{ linha.clinica }}</td>
+        <td>{{ linha.tipo }}</td>
+        <td>{{ linha.item }}</td>
+        <td>{{ linha.total }}</td>
+        <td><button type="button" class="btn btn-ghost btn-sm" onclick="excluirDir({{ linha.id }})">Excluir</button></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">Nenhuma quantidade lançada.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<style>
+.clin-topo, .clin-acoes { display:flex; flex-wrap:wrap; gap:0.7rem; align-items:flex-end; }
+.clin-topo .form-group, .clin-grid .form-group { margin-bottom:0; }
+.clin-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:0.7rem; margin-top:0.9rem; }
+.clin-sec { font-size:1rem; margin:1.1rem 0 0.55rem; }
+.clin-horas { display:grid; grid-template-columns:repeat(12, minmax(52px, 1fr)); gap:0.35rem; margin-top:0.8rem; }
+.clin-horas label { display:flex; flex-direction:column; gap:0.15rem; font-size:0.75rem; }
+.clin-tab { width:100%; border-collapse:collapse; }
+.clin-tab th, .clin-tab td { border:1px solid #dbe3ee; padding:0.4rem 0.5rem; text-align:left; }
+.clin-tab th { background:#f8fafc; }
+@media (max-width:700px){ .clin-horas { grid-template-columns:repeat(6, 1fr); } }
+</style>
+<script>
+const CLINICAS = {{ clinicas|tojson }};
+function alternarTipo(){
+  const dieta = document.getElementById('fTipo').value === 'dieta';
+  document.getElementById('boxDieta').hidden = !dieta;
+  document.getElementById('boxItem').hidden = dieta;
+  document.getElementById('boxRefeicoes').hidden = !dieta;
+  document.getElementById('boxHoras').hidden = dieta;
+}
+function clinicaId(nome){
+  const achou = (CLINICAS || []).find(c => (c.nome || '') === nome);
+  return achou ? achou.id : null;
+}
+async function salvarDir(ev){
+  ev.preventDefault();
+  const tipo = document.getElementById('fTipo').value;
+  const clinica = document.getElementById('fClinica').value;
+  if (!clinica){ showToast('Selecione a clínica', 'error'); return false; }
+  const dieta = document.getElementById('fDieta');
+  const opt = dieta.selectedOptions[0];
+  const quantidades = {};
+  const seletor = tipo === 'dieta' ? '.qtd' : '.qtd-hora';
+  document.querySelectorAll(seletor).forEach(el => { quantidades[el.dataset.chave] = el.value; });
+  const r = await fetch('/nutricao/api/totalizacao_direta', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      data: document.getElementById('fData').value,
+      clinica, clinica_id: clinicaId(clinica), tipo, quantidades,
+      dieta_id: tipo === 'dieta' ? dieta.value : null,
+      item: tipo === 'dieta' ? (opt && opt.dataset.nome) : document.getElementById('fItem').value
+    })
+  });
+  const j = await r.json();
+  if (!r.ok || !j.ok){ showToast((j && j.error) || 'Não foi possível gravar', 'error'); return false; }
+  location.reload();
+  return false;
+}
+async function excluirDir(id){
+  if (!confirm('Excluir este lançamento?')) return;
+  const r = await fetch('/nutricao/api/totalizacao_direta/' + id, { method:'DELETE' });
+  const j = await r.json();
+  if (!r.ok || !j.ok){ showToast((j && j.error) || 'Não foi possível excluir', 'error'); return; }
+  location.reload();
+}
+alternarTipo();
+</script>
+{% endblock %}

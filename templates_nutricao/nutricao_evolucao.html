@@ -1,0 +1,160 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Evolução do paciente</h1>
+  <p>Protocolos de TNE e via oral ligados ao mapa</p>
+</div>
+
+<div class="card" style="padding:1rem 1.1rem 1.2rem;">
+  <form method="get" action="{{ url_for('nutricao.evolucao_paciente') }}" class="clin-topo">
+    <div class="form-group">
+      <label class="form-label" for="fData">Data do mapa</label>
+      <input class="form-control" type="date" name="data" id="fData" value="{{ data_padrao }}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Consulta</label>
+      <div class="clin-radios">
+        <label><input type="radio" name="modo" value="ambos" {% if modo == 'ambos' %}checked{% endif %}> Ambos</label>
+        <label><input type="radio" name="modo" value="tne" {% if modo == 'tne' %}checked{% endif %}> Somente TNE</label>
+        <label><input type="radio" name="modo" value="oral" {% if modo == 'oral' %}checked{% endif %}> Somente via oral</label>
+      </div>
+    </div>
+    <div class="form-group" style="flex:1;min-width:220px;">
+      <label class="form-label" for="fMapa">Paciente</label>
+      <select class="form-control" id="fMapa" name="mapa_id" onchange="this.form.submit()">
+        <option value="">Selecione</option>
+        {% for o in opcoes %}
+        <option value="{{ o.mapa_id }}" {% if ctx and ctx.mapa_id == o.mapa_id %}selected{% endif %}>{{ o.rotulo }} — {{ o.clinica }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-secondary" type="submit">Carregar</button>
+  </form>
+
+  {% if ctx %}
+  <div class="clin-id">
+    <span><strong>{{ ctx.nome }}</strong></span>
+    <span>Leito {{ ctx.leito or '—' }}</span>
+    <span>{{ ctx.clinica or '—' }}</span>
+    <span>Dieta {{ ctx.dieta or '—' }}</span>
+    <span>{% if ctx.enteral %}Em TNE{% else %}Via oral{% endif %}</span>
+    <a href="{{ url_for('nutricao.analise_nutricional', mapa_id=ctx.mapa_id, data=data_padrao) }}">Abrir análise nutricional</a>
+  </div>
+
+  <form id="frmEvo" onsubmit="return salvarEvo(event)">
+    <div class="clin-grid">
+      <div class="form-group">
+        <label class="form-label" for="fRegistro">Data do protocolo</label>
+        <input class="form-control" type="date" id="fRegistro" value="{{ data_padrao }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="fTipo">Protocolo</label>
+        <select class="form-control" id="fTipo">
+          <option value="tne" {% if ctx.enteral %}selected{% endif %}>Evolução da TNE</option>
+          <option value="oral" {% if not ctx.enteral %}selected{% endif %}>Evolução da via oral</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="fAlteracoes">Alterações metabólicas <span id="contAlt" class="clin-nota"></span></label>
+      <textarea class="form-control" id="fAlteracoes" rows="3" maxlength="1024"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="fConduta">Conduta <span id="contCond" class="clin-nota"></span></label>
+      <textarea class="form-control" id="fConduta" rows="3" maxlength="1024"></textarea>
+    </div>
+    <div class="clin-acoes">
+      <button class="btn btn-primary" type="submit">Salvar</button>
+      <button class="btn btn-secondary" type="button" onclick="importarUltima()">Importar última conduta</button>
+    </div>
+  </form>
+
+  <h2 class="clin-sec">Protocolos</h2>
+  <table class="clin-tab">
+    <thead>
+      <tr><th>Data</th><th>Tipo</th><th>Dieta no mapa</th><th>Alterações</th><th>Conduta</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for item in historico %}
+      <tr data-id="{{ item.id }}" data-conduta="{{ item.conduta|e }}" data-alteracoes="{{ item.alteracoes|e }}">
+        <td>{{ item.data_label }}</td>
+        <td>{{ item.tipo_label }}</td>
+        <td>{{ item.dieta }}</td>
+        <td>{{ item.alteracoes }}</td>
+        <td>{{ item.conduta }}</td>
+        <td><button type="button" class="btn btn-ghost btn-sm" onclick="excluirEvo({{ item.id }})">Excluir</button></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6">Nenhum protocolo para este paciente.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="clin-nota">Escolha um paciente que esteja no mapa desta data.</p>
+  {% endif %}
+</div>
+
+<style>
+.clin-topo { display:flex; flex-wrap:wrap; gap:0.8rem; align-items:flex-end; }
+.clin-topo .form-group { margin-bottom:0; }
+.clin-radios { display:flex; flex-wrap:wrap; gap:0.6rem 1rem; min-height:38px; align-items:center; }
+.clin-radios label { display:flex; gap:0.3rem; align-items:center; margin:0; }
+.clin-id { display:flex; flex-wrap:wrap; gap:0.45rem 1rem; margin:1rem 0; align-items:center; }
+.clin-sec { font-size:1rem; margin:1.1rem 0 0.55rem; }
+.clin-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:0.7rem; }
+.clin-grid .form-group { margin-bottom:0; }
+.clin-nota { color:#64748b; font-size:0.85rem; }
+.clin-acoes { display:flex; gap:0.5rem; flex-wrap:wrap; }
+.clin-tab { width:100%; border-collapse:collapse; margin-top:0.4rem; }
+.clin-tab th, .clin-tab td { border:1px solid #dbe3ee; padding:0.4rem 0.5rem; text-align:left; vertical-align:top; }
+.clin-tab th { background:#f8fafc; }
+</style>
+
+{% if ctx %}
+<script>
+const MAPA_ID = {{ ctx.mapa_id or 'null' }};
+const PACIENTE_ID = {{ ctx.paciente_id or 'null' }};
+function contar(id, out){
+  const el = document.getElementById(id);
+  const dest = document.getElementById(out);
+  if (el && dest) dest.textContent = el.value.length + '/1024';
+}
+document.getElementById('fAlteracoes').addEventListener('input', () => contar('fAlteracoes','contAlt'));
+document.getElementById('fConduta').addEventListener('input', () => contar('fConduta','contCond'));
+contar('fAlteracoes','contAlt');
+contar('fConduta','contCond');
+function importarUltima(){
+  const linha = document.querySelector('.clin-tab tbody tr[data-id]');
+  if (!linha){ showToast('Não há protocolo anterior', 'error'); return; }
+  document.getElementById('fAlteracoes').value = linha.dataset.alteracoes || '';
+  document.getElementById('fConduta').value = linha.dataset.conduta || '';
+  contar('fAlteracoes','contAlt');
+  contar('fConduta','contCond');
+}
+async function salvarEvo(ev){
+  ev.preventDefault();
+  const r = await fetch('/nutricao/api/evolucao', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      mapa_id: MAPA_ID, paciente_id: PACIENTE_ID,
+      data: document.getElementById('fRegistro').value,
+      tipo: document.getElementById('fTipo').value,
+      alteracoes: document.getElementById('fAlteracoes').value,
+      conduta: document.getElementById('fConduta').value
+    })
+  });
+  const j = await r.json();
+  if (!r.ok || !j.ok){ showToast((j && j.error) || 'Não foi possível salvar', 'error'); return false; }
+  location.reload();
+  return false;
+}
+async function excluirEvo(id){
+  if (!confirm('Excluir este protocolo?')) return;
+  const r = await fetch('/nutricao/api/evolucao/' + id, { method:'DELETE' });
+  const j = await r.json();
+  if (!r.ok || !j.ok){ showToast((j && j.error) || 'Não foi possível excluir', 'error'); return; }
+  location.reload();
+}
+</script>
+{% endif %}
+{% endblock %}

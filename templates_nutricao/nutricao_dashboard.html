@@ -98,6 +98,7 @@
   <button type="button" data-acao="alimentos"><u>A</u>limentos complementares</button>
   <button type="button" data-acao="substituicoes"><u>S</u>ubstituições (cardápio)</button>
   <button type="button" data-acao="avaliacao"><u>A</u>valiação Nutricional</button>
+  <button type="button" data-acao="evolucao">Evolução do paciente</button>
   <hr>
   <button type="button" data-acao="transferir"><u>T</u>ransferir de leito</button>
   <hr>
@@ -2419,6 +2420,13 @@ async function fecharSubstituicoes(salvar){
   substState = null;
 }
 
+function abrirClinico(pagina){
+  const id = ctxLinha?.dataset?.id;
+  if (!id){ showToast('Selecione um paciente do mapa','error'); return; }
+  const data = formatDateISO(dataAtual);
+  location.href = '/nutricao/' + pagina + '?mapa_id=' + encodeURIComponent(id) + '&data=' + encodeURIComponent(data);
+}
+
 function acaoContextMenu(acao){
   fecharContextMenu();
   if (!ctxLinha && !['salvar_arquivo'].includes(acao)){
@@ -2437,7 +2445,8 @@ function acaoContextMenu(acao){
     case 'encerrar_dieta': abrirExcluirLinhaMapa(ctxLinha?.dataset?.id); break;
     case 'alimentos': editarCampoTexto(ctxLinha, 'obs_etiqueta', 'Alimentos complementares'); break;
     case 'substituicoes': abrirSubstituicoes(ctxLinha?.dataset?.id); break;
-    case 'avaliacao': showToast('Avaliação nutricional em breve'); break;
+    case 'avaliacao': abrirClinico('analise-nutricional'); break;
+    case 'evolucao': abrirClinico('evolucao'); break;
     case 'transferir': transferirLeito(); break;
     case 'salvar_arquivo': salvarMapaArquivo(); break;
     case 'importar_extras': editarCampoTexto(ctxLinha, 'extras'); break;

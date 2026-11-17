@@ -15,6 +15,13 @@ from models_nutricao import (
     NutRefeicaoAcompanhante, NutRefeicaoFuncionario,
     CAMPOS_ITEM_CARDAPIO,
 )
+from nutricao_clinico import (
+    LABORATORIO, REFEICOES_DIRETAS,
+    avaliacao_dict, buscar_avaliacao, calcular_avaliacao, contexto_paciente,
+    excluir_evolucao, excluir_totalizacao_direta, listar_evolucoes,
+    listar_totalizacao_direta, macros_da_dieta, pacientes_do_mapa,
+    salvar_avaliacao, salvar_evolucao, salvar_totalizacao_direta,
+)
 from nutricao_tenant import (
     resolve_nutricao_cliente,
     require_cliente_for_write,
@@ -4266,22 +4273,151 @@ def utilitarios():
         **active('utilitarios')
     )
 
+def _ctx_clinico():
+    data_ref = _parse_date(request.values.get('data')) or date.today()
+    mapa_id = request.values.get('mapa_id', type=int)
+    paciente_id = request.values.get('paciente_id', type=int)
+    ctx = contexto_paciente(mapa_id, paciente_id) if (mapa_id or paciente_id) else None
+    return data_ref, ctx
+
+
+@nutricao.route('/nutricao/analise-nutricional')
+def analise_nutricional():
+    seed_nutricao()
+    data_ref = _parse_date(request.args.get('data')) or date.today()
+    mapa_id = request.args.get('mapa_id', type=int)
+    garantir_mapa_do_dia(data_ref)
+    opcoes = pacientes_do_mapa(data_ref, 'ambos')
+    ctx = contexto_paciente(mapa_id) if mapa_id else None
+    aval = None
+    if ctx:
+        row = buscar_avaliacao(ctx.get('paciente_id'), ctx.get('mapa_id'), data_ref)
+        aval = avaliacao_dict(row, ctx) if row else None
+    return render_template(
+        'nutricao_analise_nutricional.html',
+        data_padrao=data_ref.isoformat(),
+        opcoes=opcoes,
+        ctx=ctx,
+        aval=aval,
+        laboratorio=LABORATORIO,
+        **active('analise_nutricional')
+    )
+
+
+@nutricao.route('/nutricao/api/analise-nutricional/calcular', methods=['POST'])
+def api_analise_calcular():
+    d = request.get_json(force=True) or {}
+    _data_ref, ctx = _ctx_clinico()
+    if ctx:
+        d.setdefault('sexo', ctx.get('sexo'))
+        d.setdefault('idade', ctx.get('idade'))
+        d.setdefault('dieta', ctx.get('dieta'))
+    return jsonify({
+        'ok': True,
+        'calculo': calcular_avaliacao(d),
+        'macros': macros_da_dieta(d.get('dieta') or (ctx or {}).get('dieta'), d.get('volume_pct')),
+    })
+
+
+@nutricao.route('/nutricao/api/analise-nutricional', methods=['POST'])
+def api_analise_salvar():
+    seed_nutricao()
+    d = request.get_json(force=True) or {}
+    data_ref = _parse_date(d.get('data')) or date.today()
+    ctx = contexto_paciente(d.get('mapa_id'), d.get('paciente_id'))
+    if not ctx:
+        return jsonify({'ok': False, 'error': 'Selecione um paciente do mapa'}), 400
+    if ctx:
+        d.setdefault('sexo', ctx.get('sexo'))
+        d.setdefault('idade', ctx.get('idade'))
+        d.setdefault('dieta', ctx.get('dieta'))
+    row = salvar_avaliacao(d, data_ref, ctx)
+    return jsonify({'ok': True, 'avaliacao': avaliacao_dict(row, ctx)})
+
+
+@nutricao.route('/nutricao/evolucao')
+def evolucao_paciente():
+    seed_nutricao()
+    data_ref = _parse_date(request.args.get('data')) or date.today()
+    mapa_id = request.args.get('mapa_id', type=int)
+    modo = (request.args.get('modo') or 'ambos').strip().lower()
+    if modo not in ('tne', 'oral', 'ambos'):
+        modo = 'ambos'
+    garantir_mapa_do_dia(data_ref)
+    opcoes = pacientes_do_mapa(data_ref, modo)
+    ctx = contexto_paciente(mapa_id) if mapa_id else None
+    historico = []
+    if ctx:
+        historico = listar_evolucoes(ctx.get('paciente_id'), ctx.get('mapa_id'))
+    return render_template(
+        'nutricao_evolucao.html',
+        data_padrao=data_ref.isoformat(),
+        modo=modo,
+        opcoes=opcoes,
+        ctx=ctx,
+        historico=historico,
+        **active('evolucao')
+    )
+
+
+@nutricao.route('/nutricao/api/evolucao', methods=['POST'])
+def api_evolucao_salvar():
+    seed_nutricao()
+    d = request.get_json(force=True) or {}
+    data_ref = _parse_date(d.get('data')) or date.today()
+    ctx = contexto_paciente(d.get('mapa_id'), d.get('paciente_id'))
+    if not ctx:
+        return jsonify({'ok': False, 'error': 'Selecione um paciente do mapa'}), 400
+    item = salvar_evolucao(d, data_ref, ctx)
+    return jsonify({'ok': True, 'evolucao': item})
+
+
+@nutricao.route('/nutricao/api/evolucao/<int:evo_id>', methods=['DELETE'])
+def api_evolucao_excluir(evo_id):
+    if not excluir_evolucao(evo_id):
+        return jsonify({'ok': False, 'error': 'Registro não encontrado'}), 404
+    return jsonify({'ok': True})
+
+
+@nutricao.route('/nutricao/totalizacao-direta')
+def totalizacao_direta():
+    seed_nutricao()
+    data_ref = _parse_date(request.args.get('data')) or date.today()
+    clinica = (request.args.get('clinica') or '').strip()
+    linhas = listar_totalizacao_direta(data_ref, clinica or None)
+    return render_template(
+        'nutricao_totalizacao_direta.html',
+        data_padrao=data_ref.isoformat(),
+        clinica_sel=clinica,
+        clinicas=_list_clinicas_db(somente_ativas=True),
+        dietas=list_dietas(somente_ativas=True),
+        refeicoes=REFEICOES_DIRETAS,
+        linhas=linhas,
+        **active('totalizacao_direta')
+    )
+
+
 @nutricao.route('/nutricao/api/totalizacao_direta', methods=['GET', 'POST'])
 def api_totalizacao_direta():
+    seed_nutricao()
     if request.method == 'POST':
         d = request.get_json(force=True) or {}
-        novo = {
-            'id': max([x['id'] for x in TOTALIZACAO_DIRETA], default=0) + 1,
-            'data': d.get('data', date.today().isoformat()),
-            'clinica': d.get('clinica', ''),
-            'dieta': d.get('dieta', ''),
-            'horario': d.get('horario', ''),
-            'quantidade': int(d.get('quantidade', 0) or 0),
-            'observacao': d.get('observacao', '')
-        }
-        TOTALIZACAO_DIRETA.append(novo)
-        return jsonify({'ok': True, 'id': novo['id']})
-    return jsonify(TOTALIZACAO_DIRETA)
+        data_ref = _parse_date(d.get('data')) or date.today()
+        try:
+            item = salvar_totalizacao_direta(d, data_ref)
+        except ValueError as exc:
+            return jsonify({'ok': False, 'error': str(exc)}), 400
+        return jsonify({'ok': True, 'id': item['id'], 'item': item})
+    data_ref = _parse_date(request.args.get('data')) or date.today()
+    clinica = (request.args.get('clinica') or '').strip()
+    return jsonify(listar_totalizacao_direta(data_ref, clinica or None))
+
+
+@nutricao.route('/nutricao/api/totalizacao_direta/<int:item_id>', methods=['DELETE'])
+def api_totalizacao_direta_excluir(item_id):
+    if not excluir_totalizacao_direta(item_id):
+        return jsonify({'ok': False, 'error': 'Item não encontrado'}), 404
+    return jsonify({'ok': True})
 
 @nutricao.route('/nutricao/api/autorizacoes_substituicao', methods=['GET', 'POST', 'PUT'])
 def api_autorizacoes_substituicao():

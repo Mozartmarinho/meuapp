@@ -1,0 +1,189 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Análise nutricional</h1>
+  <p>Ligada ao paciente e à linha do mapa do dia</p>
+</div>
+
+<div class="card" style="padding:1rem 1.1rem 1.2rem;">
+  <form id="frmBusca" method="get" action="{{ url_for('nutricao.analise_nutricional') }}" class="clin-topo">
+    <div class="form-group">
+      <label class="form-label" for="fData">Data do mapa</label>
+      <input class="form-control" type="date" id="fData" name="data" value="{{ data_padrao }}">
+    </div>
+    <div class="form-group" style="flex:1;min-width:220px;">
+      <label class="form-label" for="fMapa">Paciente do mapa</label>
+      <select class="form-control" id="fMapa" name="mapa_id" onchange="this.form.submit()">
+        <option value="">Selecione</option>
+        {% for o in opcoes %}
+        <option value="{{ o.mapa_id }}" {% if ctx and ctx.mapa_id == o.mapa_id %}selected{% endif %}>{{ o.rotulo }} — {{ o.clinica }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-secondary" type="submit">Carregar</button>
+  </form>
+
+  {% if ctx %}
+  <div class="clin-id">
+    <span><strong>{{ ctx.nome }}</strong></span>
+    <span>Leito {{ ctx.leito or '—' }}</span>
+    <span>{{ ctx.clinica or '—' }}{% if ctx.enfermaria %} / {{ ctx.enfermaria }}{% endif %}</span>
+    <span>Dieta {{ ctx.dieta or '—' }}</span>
+    <span>Pront. {{ ctx.prontuario or '—' }}</span>
+    <span>{% if ctx.sexo == 'F' %}Feminino{% elif ctx.sexo == 'M' %}Masculino{% else %}Sexo não informado{% endif %}{% if ctx.idade is not none %} · {{ ctx.idade }} anos{% endif %}</span>
+  </div>
+
+  <form id="frmAval" onsubmit="return salvarAval(event)">
+    <input type="hidden" id="sexo" value="{{ ctx.sexo }}">
+    <input type="hidden" id="idade" value="{{ ctx.idade if ctx.idade is not none else '' }}">
+    <input type="hidden" id="dieta" value="{{ ctx.dieta }}">
+    <h2 class="clin-sec">Antropometria e necessidades</h2>
+    <div class="clin-grid">
+      <div class="form-group"><label class="form-label">Peso atual (kg)</label><input class="form-control" id="peso_atual" value="{{ aval.peso_atual if aval and aval.peso_atual is not none else (ctx.peso_kg or '') }}"></div>
+      <div class="form-group"><label class="form-label">Estatura (cm)</label><input class="form-control" id="estatura_cm" value="{{ aval.estatura_cm if aval and aval.estatura_cm is not none else (ctx.altura_cm or '') }}"></div>
+      <div class="form-group"><label class="form-label">IMC</label><input class="form-control" id="imc" readonly></div>
+      <div class="form-group"><label class="form-label">Peso teórico</label><input class="form-control" id="peso_teorico" readonly></div>
+      <div class="form-group"><label class="form-label">Peso habitual (kg)</label><input class="form-control" id="peso_habitual" value="{{ aval.peso_habitual if aval and aval.peso_habitual is not none else '' }}"></div>
+      <div class="form-group"><label class="form-label">Peso calculado (kg)</label><input class="form-control" id="peso_calculado" value="{{ aval.peso_calculado if aval and aval.peso_calculado is not none else '' }}"></div>
+      <div class="form-group"><label class="form-label">% perda de peso</label><input class="form-control" id="perda_peso" readonly></div>
+      <div class="form-group"><label class="form-label">Fator atividade</label><input class="form-control" id="fator_atividade" value="{{ aval.fator_atividade if aval else 1.2 }}"></div>
+      <div class="form-group"><label class="form-label">Fator injúria</label><input class="form-control" id="fator_injuria" value="{{ aval.fator_injuria if aval else 1 }}"></div>
+      <div class="form-group"><label class="form-label">Fator térmico</label><input class="form-control" id="fator_termico" value="{{ aval.fator_termico if aval else 1 }}"></div>
+      <div class="form-group"><label class="form-label">GEB</label><input class="form-control" id="geb" readonly></div>
+      <div class="form-group"><label class="form-label">GET</label><input class="form-control" id="get" readonly></div>
+      <div class="form-group"><label class="form-label">GET/kg</label><input class="form-control" id="get_kg" readonly></div>
+      <div class="form-group"><label class="form-label">ASG</label>
+        <select class="form-control" id="asg">
+          <option value="">—</option>
+          {% for letra in ['A','B','C'] %}
+          <option value="{{ letra }}" {% if aval and aval.asg == letra %}selected{% endif %}>{{ letra }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <h2 class="clin-sec">Dieta do mapa</h2>
+    <div class="clin-grid">
+      <div class="form-group"><label class="form-label">Volume (%)</label><input class="form-control" id="volume_pct" value="{{ aval.volume_pct if aval and aval.volume_pct is not none else 100 }}"></div>
+      <div class="form-group"><label class="form-label">VET</label><input class="form-control" id="macro_vet" readonly></div>
+      <div class="form-group"><label class="form-label">HC</label><input class="form-control" id="macro_hc" readonly></div>
+      <div class="form-group"><label class="form-label">Lip</label><input class="form-control" id="macro_lip" readonly></div>
+      <div class="form-group"><label class="form-label">Ptn</label><input class="form-control" id="macro_ptn" readonly></div>
+    </div>
+    <p class="clin-nota" id="macroFonte">Os valores saem da tabela nutricional quando a dieta do mapa tem o mesmo nome do alimento.</p>
+
+    <h2 class="clin-sec">Pregas (mm) e circunferências (cm)</h2>
+    <div class="clin-grid">
+      <div class="form-group"><label class="form-label">Bíceps</label><input class="form-control" id="prega_biceps" value="{{ aval.prega_biceps if aval and aval.prega_biceps is not none else '' }}"></div>
+      <div class="form-group"><label class="form-label">Tríceps</label><input class="form-control" id="prega_triceps" value="{{ aval.prega_triceps if aval and aval.prega_triceps is not none else '' }}"></div>
+      <div class="form-group"><label class="form-label">Subescapular</label><input class="form-control" id="prega_subescapular" value="{{ aval.prega_subescapular if aval and aval.prega_subescapular is not none else '' }}"></div>
+      <div class="form-group"><label class="form-label">Supra-ilíaca</label><input class="form-control" id="prega_suprailiaca" value="{{ aval.prega_suprailiaca if aval and aval.prega_suprailiaca is not none else '' }}"></div>
+      <div class="form-group"><label class="form-label">% gordura</label><input class="form-control" id="gordura" readonly></div>
+      <div class="form-group"><label class="form-label">Braço</label><input class="form-control" id="circ_braco" value="{{ aval.circ_braco if aval and aval.circ_braco is not none else '' }}"></div>
+      <div class="form-group"><label class="form-label">Abdômen</label><input class="form-control" id="circ_abdomen" value="{{ aval.circ_abdomen if aval and aval.circ_abdomen is not none else '' }}"></div>
+      <div class="form-group"><label class="form-label">Panturrilha</label><input class="form-control" id="circ_panturrilha" value="{{ aval.circ_panturrilha if aval and aval.circ_panturrilha is not none else '' }}"></div>
+      <div class="form-group"><label class="form-label">CMB</label><input class="form-control" id="cmb" readonly></div>
+    </div>
+
+    <h2 class="clin-sec">Outras informações</h2>
+    <div class="clin-grid">
+      <div class="form-group"><label class="form-label">Freq. cardíaca</label><input class="form-control" id="freq_cardiaca" value="{{ aval.freq_cardiaca if aval else '' }}"></div>
+      <div class="form-group"><label class="form-label">Freq. respiratória</label><input class="form-control" id="freq_respiratoria" value="{{ aval.freq_respiratoria if aval else '' }}"></div>
+      <div class="form-group"><label class="form-label">Pressão arterial</label><input class="form-control" id="pressao_arterial" value="{{ aval.pressao_arterial if aval else '' }}"></div>
+      <div class="form-group"><label class="form-label">Função intestinal</label>
+        <select class="form-control" id="funcao_intestinal">
+          <option value="">—</option>
+          <option value="sim" {% if aval and aval.funcao_intestinal == 'sim' %}selected{% endif %}>Sim</option>
+          <option value="nao" {% if aval and aval.funcao_intestinal == 'nao' %}selected{% endif %}>Não</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">HGT</label><input class="form-control" id="hgt" value="{{ aval.hgt if aval else '' }}"></div>
+      <div class="form-group"><label class="form-label">Insulina</label><input class="form-control" id="insulina" value="{{ aval.insulina if aval else '' }}"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Intercorrências</label><textarea class="form-control" id="intercorrencias" rows="2">{{ aval.intercorrencias if aval else '' }}</textarea></div>
+    <div class="form-group"><label class="form-label">Observações</label><textarea class="form-control" id="observacoes" rows="2">{{ aval.observacoes if aval else '' }}</textarea></div>
+
+    <h2 class="clin-sec">Dados laboratoriais</h2>
+    <div class="clin-grid">
+      {% for chave in laboratorio %}
+      <div class="form-group">
+        <label class="form-label">{{ chave.replace('_', ' ') }}</label>
+        <input class="form-control lab" data-lab="{{ chave }}" value="{{ (aval.laboratoriais or {}).get(chave, '') if aval else '' }}">
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="clin-acoes">
+      <button class="btn btn-primary" type="submit">Salvar</button>
+      <button class="btn btn-secondary" type="button" onclick="window.print()">Imprimir</button>
+      <a class="btn btn-ghost" href="{{ url_for('nutricao.evolucao_paciente', mapa_id=ctx.mapa_id, data=data_padrao) }}">Evolução deste paciente</a>
+    </div>
+  </form>
+  {% else %}
+  <p class="clin-nota">Escolha a data e um paciente que já esteja no mapa de refeições.</p>
+  {% endif %}
+</div>
+
+<style>
+.clin-topo { display:flex; flex-wrap:wrap; gap:0.8rem; align-items:flex-end; }
+.clin-topo .form-group { margin-bottom:0; }
+.clin-id { display:flex; flex-wrap:wrap; gap:0.45rem 1rem; margin:1rem 0; font-size:0.92rem; }
+.clin-sec { font-size:1rem; margin:1.1rem 0 0.55rem; }
+.clin-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:0.7rem 0.8rem; }
+.clin-grid .form-group { margin-bottom:0; }
+.clin-nota { color:#64748b; font-size:0.85rem; margin:0.35rem 0 0; }
+.clin-acoes { display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:1rem; }
+@media print { .clin-acoes, .clin-topo, .sidebar, .projeto-versao-bar { display:none !important; } }
+</style>
+
+{% if ctx %}
+<script>
+const MAPA_ID = {{ ctx.mapa_id or 'null' }};
+const PACIENTE_ID = {{ ctx.paciente_id or 'null' }};
+const DATA = {{ data_padrao|tojson }};
+const CAMPOS = ['peso_atual','estatura_cm','peso_habitual','peso_calculado','fator_atividade','fator_injuria','fator_termico','asg','freq_cardiaca','freq_respiratoria','pressao_arterial','funcao_intestinal','prega_biceps','prega_triceps','prega_subescapular','prega_suprailiaca','circ_braco','circ_abdomen','circ_panturrilha','hgt','insulina','volume_pct','intercorrencias','observacoes'];
+
+function coletar(){
+  const d = { data: DATA, mapa_id: MAPA_ID, paciente_id: PACIENTE_ID, sexo: document.getElementById('sexo').value, idade: document.getElementById('idade').value, dieta: document.getElementById('dieta').value, laboratoriais: {} };
+  CAMPOS.forEach(id => { const el = document.getElementById(id); if (el) d[id] = el.value; });
+  document.querySelectorAll('.lab').forEach(el => { d.laboratoriais[el.dataset.lab] = el.value; });
+  return d;
+}
+function pintar(calc, macros){
+  ['imc','peso_teorico','perda_peso','geb','get','get_kg','gordura','cmb'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = calc && calc[id] != null ? calc[id] : '';
+  });
+  const fonte = document.getElementById('macroFonte');
+  if (macros){
+    document.getElementById('macro_vet').value = macros.vet ?? '';
+    document.getElementById('macro_hc').value = macros.hc ?? '';
+    document.getElementById('macro_lip').value = macros.lip ?? '';
+    document.getElementById('macro_ptn').value = macros.ptn ?? '';
+    if (fonte) fonte.textContent = 'Valores da tabela nutricional: ' + (macros.fonte || '');
+  } else {
+    ['macro_vet','macro_hc','macro_lip','macro_ptn'].forEach(id => { document.getElementById(id).value = ''; });
+    if (fonte) fonte.textContent = 'Não há alimento com o mesmo nome da dieta deste paciente.';
+  }
+}
+let _timer = null;
+async function recalcular(){
+  const r = await fetch('/nutricao/api/analise-nutricional/calcular', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(coletar()) });
+  const j = await r.json();
+  if (j && j.ok) pintar(j.calculo, j.macros);
+}
+function agendar(){ clearTimeout(_timer); _timer = setTimeout(recalcular, 180); }
+document.getElementById('frmAval').addEventListener('input', agendar);
+async function salvarAval(ev){
+  ev.preventDefault();
+  const r = await fetch('/nutricao/api/analise-nutricional', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(coletar()) });
+  const j = await r.json();
+  if (!r.ok || !j.ok){ showToast((j && j.error) || 'Não foi possível salvar', 'error'); return false; }
+  pintar(j.avaliacao.calculo, j.avaliacao.macros);
+  showToast('Avaliação salva e peso/altura atualizados no paciente', 'success');
+  return false;
+}
+recalcular();
+</script>
+{% endif %}
+{% endblock %}

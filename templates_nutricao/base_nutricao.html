@@ -185,6 +185,24 @@
                 </a>
             </li>
             <li>
+                <a href="{{ url_for('nutricao.analise_nutricional') }}" class="{% if active_page == 'analise_nutricional' %}active{% endif %}" title="Análise nutricional">
+                    <i class="fas fa-notes-medical menu-icon"></i>
+                    <span class="menu-label">Análise nutricional</span>
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('nutricao.evolucao_paciente') }}" class="{% if active_page == 'evolucao' %}active{% endif %}" title="Evolução do paciente">
+                    <i class="fas fa-heartbeat menu-icon"></i>
+                    <span class="menu-label">Evolução do paciente</span>
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('nutricao.totalizacao_direta') }}" class="{% if active_page == 'totalizacao_direta' %}active{% endif %}" title="Totalização direta">
+                    <i class="fas fa-list-ol menu-icon"></i>
+                    <span class="menu-label">Totalização direta</span>
+                </a>
+            </li>
+            <li>
                 <a href="{{ url_for('nutricao.impressao_etiquetas') }}" class="{% if active_page == 'impressao_etiquetas' %}active{% endif %}" title="Impressão de Etiquetas">
                     <i class="fas fa-tag menu-icon"></i>
                     <span class="menu-label">Impressão de Etiquetas</span>

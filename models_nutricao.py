@@ -1163,3 +1163,82 @@ class NutRefeicaoFuncionario(db.Model):
             'fl_jantar': bool(self.fl_jantar) if self.fl_jantar is not None else True,
             'ativo': bool(self.ativo),
         }
+
+
+class NutAvaliacaoNutricional(db.Model):
+    """Avaliação do nutricionista ligada ao paciente e à linha do mapa."""
+    __tablename__ = 'nut_avaliacoes_nutricionais'
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    paciente_id = db.Column(db.Integer, db.ForeignKey('nut_pacientes.id'), nullable=True, index=True)
+    mapa_id = db.Column(db.Integer, db.ForeignKey('nut_mapa_refeicoes.id'), nullable=True, index=True)
+    data_avaliacao = db.Column(db.Date, nullable=False, index=True)
+    peso_atual = db.Column(db.Float)
+    estatura_cm = db.Column(db.Float)
+    peso_habitual = db.Column(db.Float)
+    peso_calculado = db.Column(db.Float)
+    fator_atividade = db.Column(db.Float, default=1.2)
+    fator_injuria = db.Column(db.Float, default=1.0)
+    fator_termico = db.Column(db.Float, default=1.0)
+    asg = db.Column(db.String(1))
+    freq_cardiaca = db.Column(db.String(20))
+    freq_respiratoria = db.Column(db.String(20))
+    pressao_arterial = db.Column(db.String(20))
+    funcao_intestinal = db.Column(db.String(3))
+    prega_biceps = db.Column(db.Float)
+    prega_triceps = db.Column(db.Float)
+    prega_subescapular = db.Column(db.Float)
+    prega_suprailiaca = db.Column(db.Float)
+    circ_braco = db.Column(db.Float)
+    circ_abdomen = db.Column(db.Float)
+    circ_panturrilha = db.Column(db.Float)
+    hgt = db.Column(db.String(20))
+    insulina = db.Column(db.String(20))
+    volume_pct = db.Column(db.Float, default=100)
+    intercorrencias = db.Column(db.Text)
+    observacoes = db.Column(db.Text)
+    laboratoriais = db.Column(db.Text)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    data_atualizacao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    paciente = db.relationship('NutPaciente', lazy='select')
+    mapa = db.relationship('NutMapaRefeicao', lazy='select')
+
+
+class NutEvolucaoPaciente(db.Model):
+    """Protocolo de evolução da TNE ou da via oral, ligado ao paciente do mapa."""
+    __tablename__ = 'nut_evolucoes_paciente'
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    paciente_id = db.Column(db.Integer, db.ForeignKey('nut_pacientes.id'), nullable=True, index=True)
+    mapa_id = db.Column(db.Integer, db.ForeignKey('nut_mapa_refeicoes.id'), nullable=True, index=True)
+    data_registro = db.Column(db.Date, nullable=False, index=True)
+    tipo = db.Column(db.String(10), nullable=False, default='oral')
+    alteracoes = db.Column(db.Text)
+    conduta = db.Column(db.Text)
+    dieta = db.Column(db.String(200))
+    clinica = db.Column(db.String(120))
+    leito = db.Column(db.String(40))
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    data_atualizacao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    paciente = db.relationship('NutPaciente', lazy='select')
+
+
+class NutTotalizacaoDireta(db.Model):
+    """Quantidades por clínica e dieta, sem paciente — alternativa ao mapa."""
+    __tablename__ = 'nut_totalizacao_direta'
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    data_ref = db.Column(db.Date, nullable=False, index=True)
+    clinica_id = db.Column(db.Integer, db.ForeignKey('nut_clinicas.id'), nullable=True, index=True)
+    clinica = db.Column(db.String(160), nullable=False)
+    tipo = db.Column(db.String(30), nullable=False, default='dieta')
+    dieta_id = db.Column(db.Integer, db.ForeignKey('nut_dietas.id'), nullable=True, index=True)
+    item = db.Column(db.String(200), nullable=False)
+    quantidades = db.Column(db.Text)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    data_atualizacao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    clinica_rel = db.relationship('NutClinica', lazy='select')
+    dieta_rel = db.relationship('NutDieta', lazy='select')
