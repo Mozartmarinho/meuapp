@@ -1,5 +1,6 @@
 """Seed inicial e helpers do módulo de nutrição."""
 from datetime import date, datetime, timedelta
+import json
 import re
 import unicodedata
 from models import db, now_brasilia, fmt_brasilia
@@ -4059,6 +4060,68 @@ def _compact_vol_uma(num, un):
     return f'{n}{un}'
 
 
+def _marcado_uma(valor):
+    if valor is True or valor == 1:
+        return True
+    if isinstance(valor, str) and valor.strip().lower() in ('1', 'true', 'on', 'sim', 's', 'x'):
+        return True
+    return False
+
+
+def _linha_legivel_uma(item):
+    """Converte um item da grade em texto que o mapa da U.M.A. já sabe ler."""
+    nome = ''
+    for chave in ('extra', 'suplemento', 'dieta', 'formula', 'lve', 'nome'):
+        val = item.get(chave)
+        if isinstance(val, str) and val.strip():
+            nome = val.strip()
+            break
+    partes = [nome]
+    volume = str(item.get('volume') or '').strip()
+    unid = str(item.get('unid') or '').strip()
+    if volume:
+        partes.append(volume)
+        if unid:
+            partes.append(unid)
+    horas = [h for h in range(1, 25) if _marcado_uma(item.get(f'h{h}'))]
+    if horas:
+        partes.append('D: ' + ' / '.join(str(h) for h in horas) + ' /')
+    vol_dieta = str(item.get('vol_dieta') or '').strip()
+    unidade = str(item.get('unidade') or '').strip()
+    if vol_dieta or unidade:
+        partes.append(f'{vol_dieta} {unidade}'.strip())
+    vol_agua = str(item.get('vol_agua') or '').strip()
+    if vol_agua:
+        partes.append(f'AGUA: {vol_agua}')
+    return ' '.join(p for p in partes if p).strip()
+
+
+def descricoes_campo_uma(texto):
+    """Lista de itens de extras/suplementos/enteral/fórmula/LVE.
+
+    Aceita o JSON da grade ({uma_itens: [...]}) e o texto livre antigo.
+    """
+    bruto = (texto or '').strip()
+    if not bruto:
+        return []
+    if bruto.startswith('{'):
+        try:
+            data = json.loads(bruto)
+        except (TypeError, ValueError):
+            data = None
+        itens = data.get('uma_itens') if isinstance(data, dict) else None
+        if isinstance(itens, list):
+            saida = []
+            for item in itens:
+                if not isinstance(item, dict):
+                    continue
+                linha = _linha_legivel_uma(item)
+                if linha:
+                    saida.append(linha)
+            return saida
+    return [p.strip() for p in re.split(r'[\n;]+', bruto) if p.strip()]
+
+
 def _chave_leito_uma(leito):
     s = (leito or '').strip()
     m = re.search(r'\d+', s)
@@ -4203,10 +4266,9 @@ def totalizar_mapa_uma(
     montadas = []
 
     for l in linhas:
-        texto = (getattr(l, campo, None) or '').strip()
-        if not texto:
+        partes = descricoes_campo_uma(getattr(l, campo, None))
+        if not partes:
             continue
-        partes = [p.strip() for p in re.split(r'[\n;]+', texto) if p.strip()]
         for item in partes:
             codigo_sis = _sistema_texto_uma(item, categoria)
             if not _aceita_sistema_uma(codigo_sis, sistema, categoria):
@@ -4590,20 +4652,14 @@ def relatorio_faturamento(data_de, data_ate, tipo='espelho_1', por_grupo_clinica
 
         # fórmulas infantis e enterais
         for campo in ('enteral', 'formula_infantil'):
-            texto = (getattr(l, campo, None) or '').strip()
-            if not texto:
-                continue
-            for parte in [p.strip() for p in texto.replace('\n', ';').split(';') if p.strip()]:
+            for parte in descricoes_campo_uma(getattr(l, campo, None)):
                 k = parte.upper()
                 formulas[k]['item'] = parte
                 formulas[k]['qtd'] += 1
 
         # complementares: extras / suplementos / lve
         for campo in ('extras', 'suplementos', 'lve'):
-            texto = (getattr(l, campo, None) or '').strip()
-            if not texto:
-                continue
-            for parte in [p.strip() for p in texto.replace('\n', ';').split(';') if p.strip()]:
+            for parte in descricoes_campo_uma(getattr(l, campo, None)):
                 k = parte.upper()
                 complementares[k]['item'] = parte
                 complementares[k]['qtd'] += 1
@@ -4980,10 +5036,7 @@ def relatorio_faturamento_valores(data_de, data_ate):
             ('formula_infantil', 'Fórmula infantil'),
             ('lve', 'LVE'),
         ):
-            texto = (getattr(l, campo, None) or '').strip()
-            if not texto:
-                continue
-            for parte in [p.strip() for p in texto.replace('\n', ';').split(';') if p.strip()]:
+            for parte in descricoes_campo_uma(getattr(l, campo, None)):
                 _add_linha_fat_valor(
                     linhas,
                     data_ref=l.data_refeicao,

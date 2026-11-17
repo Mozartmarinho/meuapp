@@ -96,6 +96,38 @@ class MapaUmaTest(unittest.TestCase):
         ))
         db.session.commit()
 
+    def test_grade_json_entra_no_mapa(self):
+        import json
+        db.session.add(NutMapaRefeicao(
+            data_refeicao=date.today(),
+            nome='JSON PAC',
+            clinica='PEDIATRIA',
+            enfermaria='ALA A',
+            leito='09',
+            suplementos=json.dumps({'uma_itens': [{
+                'enfermaria': 'ALA A',
+                'leito': '09',
+                'suplemento': 'ENSURE',
+                'volume': '200',
+                'unid': 'ML',
+                'h8': True,
+                'h20': True,
+                'embalagem': 'LATA',
+            }]}),
+            ativo=True,
+        ))
+        db.session.commit()
+        rel = totalizar_mapa_uma(
+            date.today(),
+            categoria='suplementos',
+            sistema='ambos',
+            selecionar_horarios=False,
+        )
+        ln = next(x for x in rel['grupos'][0]['linhas'] if x['nome'] == 'JSON PAC')
+        self.assertIn('ENSURE', ln['produto'])
+        self.assertEqual(ln['horas'], [8, 20])
+        self.assertEqual(ln['volume'], '200ML')
+
     def test_enteral_cobranca_volume_e_horarios(self):
         rel = totalizar_mapa_uma(
             date.today(),
