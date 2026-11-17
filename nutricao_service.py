@@ -3904,19 +3904,200 @@ CAMPO_UMA = {
 }
 
 
-def totalizar_mapa_uma(data_ref, categoria='enteral', imprimir_por='clinica', filtro_id=None, filtro_nome=None, horarios=None, amostra=None):
-    """Agrega itens do mapa (enteral/suplementos/fórmula/LVE) para impressão U.M.A."""
-    from collections import defaultdict
+_VOL_UMA_RE = re.compile(r'(\d+(?:[.,]\d+)?)\s*(ML|MG|G|L)\b', re.IGNORECASE)
+_MLH_UMA_RE = re.compile(r'(\d+(?:[.,]\d+)?)\s*ML\s*/\s*H\b', re.IGNORECASE)
+_AGUA_UMA_RE = re.compile(
+    r'(?:TOT(?:AL)?\.?\s*)?(?:ÁGUA|AGUA)\s*[:\-]\s*(\d+(?:[.,]\d+)?)',
+    re.IGNORECASE,
+)
+_VIA_UMA_RE = re.compile(
+    r'(FRASCO\s*-\s*V\.?\s*O\.?|CHUCA|SNE|SNG|SOG|GTT|GASTROSTOMIA|JEJUNOSTOMIA|V\.?\s*O\.?)',
+    re.IGNORECASE,
+)
+_HORAS_PREFIX_UMA_RE = re.compile(
+    r'\b(?:HOR[AÁ]RIOS?|DIETAS?|[DH])\s*[:\-]\s*((?:\d{1,2}(?!\d)\s*[,/;]\s*)+\d{1,2}(?!\d))',
+    re.IGNORECASE,
+)
+_HORAS_SLASH_UMA_RE = re.compile(r'(?:\d{1,2}(?!\d)\s+/\s+)+\d{1,2}(?!\d)')
+_HORA_SOLTA_UMA_RE = re.compile(r'(?:^|\s)(\d{1,2})(?!\d)\s*/(?=\s|$)')
 
-    data_ref = data_ref or date.today()
-    garantir_mapa_do_dia(data_ref)
-    campo = CAMPO_UMA.get(categoria, 'enteral')
 
-    q = NutMapaRefeicao.query.filter_by(data_refeicao=data_ref, ativo=True)
-    linhas = q.order_by(NutMapaRefeicao.clinica, NutMapaRefeicao.leito, NutMapaRefeicao.nome).all()
+def _num_uma(txt):
+    s = (txt or '').strip()
+    if not s:
+        return 0.0
+    if ',' in s and '.' in s:
+        s = s.replace('.', '').replace(',', '.')
+    elif ',' in s:
+        s = s.replace(',', '.')
+    try:
+        return float(s)
+    except (TypeError, ValueError):
+        return 0.0
 
-    # filtro por clínica / grupo (mesmo cadastro NutClinica) ou enfermaria
+
+def _fmt_num_uma(valor, casas=0):
+    try:
+        valor = float(valor)
+    except (TypeError, ValueError):
+        valor = 0.0
+    txt = f'{valor:.{casas}f}'
+    inteiro, _, frac = txt.partition('.')
+    if casas:
+        return f'{inteiro},{frac}'
+    return inteiro
+
+
+def _horas_texto_uma(texto):
+    found = []
+
+    def _add(nums):
+        for n in nums:
+            try:
+                h = int(n)
+            except (TypeError, ValueError):
+                continue
+            if 1 <= h <= 24 and h not in found:
+                found.append(h)
+
+    bruto = texto or ''
+    for m in _HORAS_PREFIX_UMA_RE.finditer(bruto):
+        _add(re.findall(r'\d{1,2}', m.group(1)))
+    if not found:
+        for m in _HORAS_SLASH_UMA_RE.finditer(bruto):
+            _add(re.findall(r'\d{1,2}', m.group(0)))
+    if not found:
+        _add(_HORA_SOLTA_UMA_RE.findall(bruto))
+    return found
+
+
+def _volume_texto_uma(texto):
+    achados = list(_VOL_UMA_RE.finditer(texto or ''))
+    if not achados:
+        return 0.0, ''
+    m = achados[-1]
+    num = _num_uma(m.group(1))
+    un = m.group(2).upper()
+    if un == 'L':
+        num *= 1000.0
+        un = 'ML'
+    return num, un
+
+
+def _sistema_texto_uma(texto, categoria):
+    t = (texto or '').upper()
+    if re.search(r'\bFECHAD', t) or re.search(r'\bSIS(?:TEMA)?\s*[:=]?\s*F\b', t):
+        return 'F'
+    if re.search(r'\bABERT', t) or re.search(r'\bSIS(?:TEMA)?\s*[:=]?\s*A\b', t):
+        return 'A'
+    if categoria in ('enteral', 'formula_infantil'):
+        return 'A'
+    return ''
+
+
+def _aceita_sistema_uma(codigo, sistema, categoria):
+    if categoria not in ('enteral', 'formula_infantil'):
+        return True
+    sistema = (sistema or 'aberto').strip().lower()
+    if sistema == 'ambos':
+        return True
+    if sistema == 'fechado':
+        return codigo == 'F'
+    return codigo != 'F'
+
+
+def _produto_exibicao_uma(texto):
+    """Nome do produto sem horários, via ou marca de sistema."""
+    t = texto or ''
+    t = _HORAS_PREFIX_UMA_RE.sub(' ', t)
+    t = _HORAS_SLASH_UMA_RE.sub(' ', t)
+    t = _HORA_SOLTA_UMA_RE.sub(' ', t)
+    t = _VIA_UMA_RE.sub(' ', t)
+    t = _MLH_UMA_RE.sub(' ', t)
+    t = _AGUA_UMA_RE.sub(' ', t)
+    t = re.sub(r'\b(FECHADO|ABERTO)\b', ' ', t, flags=re.IGNORECASE)
+    t = re.sub(r'\bSIS(?:TEMA)?\s*[:=]?\s*[AF]\b', ' ', t, flags=re.IGNORECASE)
+    t = re.sub(r'\s+/\s+', ' ', t)
+    t = re.sub(r'\s+', ' ', t).strip(' -/')
+    return t or (texto or '').strip()
+
+
+def _via_texto_uma(texto):
+    m = _VIA_UMA_RE.search(texto or '')
+    if not m:
+        return ''
+    via = re.sub(r'\s+', ' ', m.group(1).upper()).strip()
+    via = via.replace('V. O.', 'V. O.').replace('V.O.', 'V. O.')
+    if via.startswith('FRASCO'):
+        return 'FRASCO - V. O.'
+    if via in ('V. O.', 'V.O.', 'VO'):
+        return 'V. O.'
+    return via
+
+
+def _agua_texto_uma(texto):
+    m = _AGUA_UMA_RE.search(texto or '')
+    if not m:
+        return 0.0
+    return _num_uma(m.group(1))
+
+
+def _mlh_texto_uma(texto):
+    m = _MLH_UMA_RE.search(texto or '')
+    if not m:
+        return 0.0
+    return _num_uma(m.group(1))
+
+
+def _compact_vol_uma(num, un):
+    if not num or not un:
+        return ''
+    if abs(num - round(num)) < 0.001:
+        n = str(int(round(num)))
+    else:
+        n = _fmt_num_uma(num, 1)
+    return f'{n}{un}'
+
+
+def _chave_leito_uma(leito):
+    s = (leito or '').strip()
+    m = re.search(r'\d+', s)
+    return (int(m.group()) if m else 10 ** 9, s.upper())
+
+
+def _mapa_grupo_dieta_uma():
+    mapa = {}
+    for row in NutDieta.query.all():
+        nome = (row.nome or '').strip().upper()
+        if nome:
+            mapa[nome] = (row.grupo or '').strip()
+    return mapa
+
+
+def _mapa_grupos_por_clinica_uma():
+    out = {}
+    grupos = (
+        NutGrupoClinica.query
+        .filter_by(ativo=True)
+        .order_by(NutGrupoClinica.nome)
+        .all()
+    )
+    for g in grupos:
+        for c in (g.clinicas or []):
+            key = (c.nome or '').strip().upper()
+            if key:
+                out.setdefault(key, []).append(g.nome)
+    return out
+
+
+def _filtrar_linhas_mapa_uma(linhas, imprimir_por, filtro_id, filtro_nome, grupo_id, grupo_nome):
     filtro_nome = (filtro_nome or '').strip()
+    if grupo_id or grupo_nome:
+        nomes = set(nomes_clinicas_do_grupo(grupo_id, grupo_nome))
+        if nomes:
+            linhas = [l for l in linhas if (l.clinica or '').strip().upper() in nomes]
+        else:
+            linhas = []
     if imprimir_por == 'grupo_clinica' and (filtro_id or filtro_nome):
         nomes = set(nomes_clinicas_do_grupo(filtro_id, filtro_nome))
         if nomes:
@@ -3926,57 +4107,273 @@ def totalizar_mapa_uma(data_ref, categoria='enteral', imprimir_por='clinica', fi
     elif imprimir_por == 'clinica' and filtro_nome:
         linhas = [l for l in linhas if (l.clinica or '').strip().upper() == filtro_nome.upper()]
     elif imprimir_por == 'enfermaria' and filtro_id:
-        enf = NutEnfermaria.query.get(int(filtro_id))
+        try:
+            enf = NutEnfermaria.query.get(int(filtro_id))
+        except (TypeError, ValueError):
+            enf = None
         if enf:
-            leitos = { (lt.numero_leito or '').strip().upper() for lt in (enf.leitos or []) }
-            # também aceita match por nome da enfermaria na clínica do mapa
-            nome_enf = (enf.nome or '').upper()
+            leitos = {(lt.nome or '').strip().upper() for lt in (enf.leitos or [])}
+            leitos |= {str(lt.numero) for lt in (enf.leitos or []) if lt.numero is not None}
+            nome_enf = (enf.nome or '').strip().upper()
             filtradas = []
             for l in linhas:
                 leito = (l.leito or '').strip().upper()
                 clinica = (l.clinica or '').strip().upper()
-                if leito in leitos or nome_enf in clinica or clinica == nome_enf:
+                enf_linha = (l.enfermaria or '').strip().upper()
+                if leito in leitos or enf_linha == nome_enf or nome_enf in clinica or clinica == nome_enf:
                     filtradas.append(l)
             linhas = filtradas
+    return linhas, filtro_nome
+
+
+def totalizar_mapa_uma(
+    data_ref,
+    categoria='enteral',
+    imprimir_por='clinica',
+    filtro_id=None,
+    filtro_nome=None,
+    horarios=None,
+    amostra=None,
+    grupo_clinica_id=None,
+    grupo_clinica_nome=None,
+    selecionar_horarios=None,
+    coluna_extra='diagnostico',
+    sistema='aberto',
+    tipo_mapa='trabalho',
+    linhas_em_branco=0,
+    separar_grupo=False,
+    nao_imprimir_produto=False,
+):
+    """Monta o mapa da U.M.A. (enteral, fórmula infantil, suplementos ou LVE)."""
+    from collections import defaultdict
+
+    data_ref = data_ref or date.today()
+    garantir_mapa_do_dia(data_ref)
+    categoria = CAMPO_UMA.get(categoria, 'enteral') and categoria
+    if categoria not in CAMPO_UMA:
+        categoria = 'enteral'
+    campo = CAMPO_UMA[categoria]
+    coluna_extra = 'grupo_dieta' if coluna_extra == 'grupo_dieta' else 'diagnostico'
+    sistema = (sistema or 'aberto').strip().lower()
+    if sistema not in ('aberto', 'fechado', 'ambos'):
+        sistema = 'aberto'
+    tipo_mapa = 'cobranca' if tipo_mapa == 'cobranca' else 'trabalho'
+    try:
+        linhas_em_branco = int(linhas_em_branco or 0)
+    except (TypeError, ValueError):
+        linhas_em_branco = 0
+    linhas_em_branco = max(0, min(linhas_em_branco, 40))
+
+    horas_pedidas = []
+    for h in (horarios or []):
+        try:
+            n = int(h)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= n <= 24 and n not in horas_pedidas:
+            horas_pedidas.append(n)
+    if selecionar_horarios is None:
+        selecionar = bool(horas_pedidas)
+    else:
+        selecionar = bool(selecionar_horarios)
+    colunas_horas = sorted(horas_pedidas) if selecionar and horas_pedidas else list(range(1, 25))
+    horas_set = set(colunas_horas)
+
+    q = NutMapaRefeicao.query.filter_by(data_refeicao=data_ref, ativo=True)
+    linhas = q.order_by(NutMapaRefeicao.clinica, NutMapaRefeicao.leito, NutMapaRefeicao.nome).all()
+    linhas, filtro_nome = _filtrar_linhas_mapa_uma(
+        linhas, imprimir_por, filtro_id, filtro_nome, grupo_clinica_id, grupo_clinica_nome,
+    )
+
+    grupo_rotulo = (grupo_clinica_nome or '').strip()
+    if grupo_clinica_id and not grupo_rotulo:
+        try:
+            grp = NutGrupoClinica.query.get(int(grupo_clinica_id))
+        except (TypeError, ValueError):
+            grp = None
+        if grp:
+            grupo_rotulo = grp.nome or ''
+
+    grupos_dieta = _mapa_grupo_dieta_uma()
+    grupos_clinica = _mapa_grupos_por_clinica_uma()
+    mostrar_produto = not bool(nao_imprimir_produto)
 
     totais = defaultdict(lambda: {'item': '', 'qtd_pacientes': 0, 'leitos': [], 'pacientes': []})
     detalhe = []
+    montadas = []
+
     for l in linhas:
         texto = (getattr(l, campo, None) or '').strip()
         if not texto:
             continue
-        # cada linha de texto pode ter múltiplos itens separados por ; ou quebra
-        partes = [p.strip() for p in texto.replace('\n', ';').split(';') if p.strip()]
+        partes = [p.strip() for p in re.split(r'[\n;]+', texto) if p.strip()]
         for item in partes:
+            codigo_sis = _sistema_texto_uma(item, categoria)
+            if not _aceita_sistema_uma(codigo_sis, sistema, categoria):
+                continue
+            horas_item = _horas_texto_uma(item)
+            if selecionar and horas_item:
+                visiveis = [h for h in horas_item if h in horas_set]
+                if not visiveis:
+                    continue
+            else:
+                visiveis = [h for h in horas_item if h in horas_set] if horas_item else []
+            vol_num, un = _volume_texto_uma(item)
+            etapas = len(visiveis) if horas_item else 0
+            total_num = (vol_num * etapas) if etapas and vol_num else 0.0
+            agua = _agua_texto_uma(item)
+            mlh = _mlh_texto_uma(item)
+            dieta_nome = (l.dieta or '').strip()
+            grupo_dieta = grupos_dieta.get(dieta_nome.upper(), '')
+            extra = grupo_dieta if coluna_extra == 'grupo_dieta' else (l.diagnostico or '')
+            idade = ''
+            if l.idade is not None:
+                idade = f'{int(l.idade)}A'
+            clinica = (l.clinica or '').strip()
+            enfermaria = (l.enfermaria or '').strip()
+            leito = (l.leito or '').strip()
+            if enfermaria and leito:
+                enf_leito = f'{enfermaria}/{leito}'
+            else:
+                enf_leito = leito or enfermaria
+            titulo_sec = clinica or 'Sem clínica'
+            if enfermaria and enfermaria.upper() != clinica.upper():
+                titulo_sec = f'{titulo_sec} / {enfermaria}' if clinica else enfermaria
+            produto = _produto_exibicao_uma(item) if mostrar_produto else ''
+            horas_txt = (' / '.join(str(h) for h in visiveis) + ' /') if visiveis else ''
+            linha = {
+                'item': item,
+                'produto': produto,
+                'paciente': l.nome or '',
+                'nome': l.nome or '',
+                'leito': leito,
+                'enf_leito': enf_leito,
+                'prontuario': l.prontuario or '',
+                'clinica': clinica,
+                'enfermaria': enfermaria,
+                'clinica_key': clinica.upper(),
+                'titulo_secao': titulo_sec,
+                'dieta': dieta_nome,
+                'diagnostico': l.diagnostico or '',
+                'grupo_dieta': grupo_dieta,
+                'extra': extra,
+                'idade': idade,
+                'volume': _compact_vol_uma(vol_num, un),
+                'volume_lve': _fmt_num_uma(vol_num, 3) if vol_num else '',
+                'volume_num': vol_num,
+                'unidade': un or ('ML' if categoria == 'lve' else ''),
+                'etapas': etapas if horas_item else '',
+                'total': (f'{_fmt_num_uma(total_num, 1)} {un}' if total_num and un else ''),
+                'total_lve': _fmt_num_uma(total_num, 3) if total_num else '',
+                'total_infantil': (_fmt_num_uma(total_num, 0) if total_num and abs(total_num - round(total_num)) < 0.001 else (_fmt_num_uma(total_num, 1) if total_num else '')),
+                'vol_infantil': (_fmt_num_uma(vol_num, 0) if vol_num and abs(vol_num - round(vol_num)) < 0.001 else (_fmt_num_uma(vol_num, 1) if vol_num else '')),
+                'agua': f'{_fmt_num_uma(agua, 1)} ML',
+                'mlh': _fmt_num_uma(mlh, 0),
+                'horas': visiveis,
+                'horas_txt': horas_txt,
+                'horas_enteral': (f'D: {horas_txt}' if horas_txt else ''),
+                'via': _via_texto_uma(item),
+                'sis': codigo_sis,
+                'amostra': False,
+            }
+            montadas.append(linha)
             key = item.upper()
-            totais[key]['item'] = item
+            totais[key]['item'] = item if mostrar_produto else ''
             totais[key]['qtd_pacientes'] += 1
-            if l.leito:
-                totais[key]['leitos'].append(l.leito)
+            if leito:
+                totais[key]['leitos'].append(leito)
             if l.nome:
                 totais[key]['pacientes'].append(l.nome)
             detalhe.append({
-                'item': item,
+                'item': item if mostrar_produto else '',
                 'paciente': l.nome or '',
-                'leito': l.leito or '',
+                'leito': leito,
                 'prontuario': l.prontuario or '',
-                'clinica': l.clinica or '',
-                'dieta': l.dieta or '',
+                'clinica': clinica,
+                'dieta': dieta_nome,
+                'horas': visiveis,
+                'sis': codigo_sis,
             })
 
-    itens = sorted(totais.values(), key=lambda x: x['item'].upper())
+    montadas.sort(key=lambda r: (
+        r['clinica_key'],
+        (r['enfermaria'] or '').upper(),
+        _chave_leito_uma(r['leito']),
+        (r['nome'] or '').upper(),
+        (r['produto'] or r['item'] or '').upper(),
+    ))
+
+    secoes_map = {}
+    ordem_sec = []
+    for row in montadas:
+        sk = (row['clinica_key'], (row['enfermaria'] or '').upper(), row['titulo_secao'])
+        if sk not in secoes_map:
+            secoes_map[sk] = {
+                'titulo': row['titulo_secao'],
+                'clinica': row['clinica'],
+                'enfermaria': row['enfermaria'],
+                'clinica_key': row['clinica_key'],
+                'linhas': [],
+                'blocos': [],
+            }
+            ordem_sec.append(sk)
+        secoes_map[sk]['linhas'].append(row)
+
+    for sk in ordem_sec:
+        sec = secoes_map[sk]
+        blocos = {}
+        ordem_b = []
+        for row in sec['linhas']:
+            prod = (row['produto'] or row['item'] or '').strip()
+            bk = prod.upper() if mostrar_produto else ''
+            if bk not in blocos:
+                blocos[bk] = {'produto': prod if mostrar_produto else '', 'linhas': []}
+                ordem_b.append(bk)
+            blocos[bk]['linhas'].append(row)
+        sec['blocos'] = [blocos[k] for k in ordem_b]
+
+    secoes = [secoes_map[k] for k in ordem_sec]
+    if separar_grupo:
+        buckets = {}
+        ordem_g = []
+        for sec in secoes:
+            nomes = grupos_clinica.get(sec['clinica_key']) or ['Sem grupo']
+            nome_g = nomes[0]
+            if nome_g not in buckets:
+                buckets[nome_g] = []
+                ordem_g.append(nome_g)
+            buckets[nome_g].append(sec)
+        if 'Sem grupo' in ordem_g:
+            ordem_g = [n for n in ordem_g if n != 'Sem grupo'] + ['Sem grupo']
+        grupos = []
+        for nome_g in ordem_g:
+            secs = buckets[nome_g]
+            grupos.append({
+                'nome': nome_g,
+                'secoes': secs,
+                'linhas': [ln for sec in secs for ln in sec['linhas']],
+            })
+    else:
+        grupos = [{
+            'nome': '',
+            'secoes': secoes,
+            'linhas': montadas,
+        }]
+
+    itens = sorted(totais.values(), key=lambda x: (x['item'] or '').upper())
+    amostra_valor = None
     if amostra is not None:
         try:
-            val = float(amostra)
+            amostra_valor = float(amostra)
         except (TypeError, ValueError):
-            val = 0
+            amostra_valor = 0.0
         itens.append({
-            'item': f'AMOSTRA ({val:g})',
+            'item': f'AMOSTRA ({amostra_valor:g})',
             'qtd_pacientes': 1,
             'leitos': ['—'],
             'pacientes': ['AMOSTRA'],
             'amostra': True,
-            'valor_amostra': val,
+            'valor_amostra': amostra_valor,
         })
 
     labels = {
@@ -3985,16 +4382,60 @@ def totalizar_mapa_uma(data_ref, categoria='enteral', imprimir_por='clinica', fi
         'formula_infantil': 'Fórm. Infantis',
         'lve': 'LVE',
     }
+    titulos = {
+        'enteral': 'MAPA DE ENTERAL',
+        'suplementos': 'MAPA DE SUPLEMENTOS',
+        'formula_infantil': 'MAPA DE FÓRMULAS INFANTIS',
+        'lve': 'MAPA DE LVE',
+    }
+    sistema_labels = {'aberto': 'ABERTO', 'fechado': 'FECHADO', 'ambos': 'AMBOS'}
+    sis_label = sistema_labels.get(sistema, 'ABERTO')
+    if categoria == 'enteral':
+        if tipo_mapa == 'cobranca':
+            subtitulo = f'PEDIDO / COBRANÇA DE DIETAS ENTERAIS - SISTEMA {sis_label}'
+        else:
+            subtitulo = f'MAPA DE TRABALHO - SISTEMA {sis_label}'
+    elif categoria == 'suplementos':
+        faixa = 'TODOS OS HORÁRIOS' if not selecionar else ' / '.join(str(h) for h in colunas_horas)
+        prefixo = 'COBRANÇA - ' if tipo_mapa == 'cobranca' else ''
+        subtitulo = f'{prefixo}{faixa}'
+    elif tipo_mapa == 'cobranca':
+        subtitulo = 'PEDIDO / COBRANÇA'
+    else:
+        subtitulo = ''
+    layout = 'lista'
+    if tipo_mapa == 'trabalho' and categoria in ('enteral', 'formula_infantil', 'lve'):
+        layout = 'grade'
+
     return {
         'data': data_ref.isoformat(),
         'data_label': data_ref.strftime('%d/%m/%Y'),
+        'emitido_em': fmt_brasilia(now_brasilia(), '%d/%m/%Y %H:%M:%S'),
+        'empresa': 'São Geraldo Refeições e Alimentos',
         'categoria': categoria,
         'categoria_label': labels.get(categoria, categoria),
+        'titulo': titulos.get(categoria, 'MAPA DA U.M.A.'),
+        'subtitulo': subtitulo,
+        'layout': layout,
+        'tipo_mapa': tipo_mapa,
+        'tipo_mapa_label': 'Cobrança' if tipo_mapa == 'cobranca' else 'Trabalho',
+        'sistema': sistema,
+        'sistema_label': {'aberto': 'Aberto', 'fechado': 'Fechado', 'ambos': 'Ambos'}.get(sistema, 'Aberto'),
+        'coluna_extra': coluna_extra,
+        'coluna_extra_label': 'Grupo da dieta' if coluna_extra == 'grupo_dieta' else 'Diagnóstico',
+        'nao_imprimir_produto': not mostrar_produto,
+        'linhas_em_branco': linhas_em_branco,
+        'separar_grupo': bool(separar_grupo),
         'imprimir_por': imprimir_por,
         'filtro_nome': filtro_nome or 'TODOS',
-        'horarios': sorted(set(int(h) for h in (horarios or []) if str(h).isdigit())),
+        'grupo_nome': grupo_rotulo or 'TODOS',
+        'horarios': colunas_horas,
+        'selecionar_horarios': selecionar,
+        'todos_horarios': not selecionar,
         'itens': itens,
         'detalhe': detalhe,
+        'grupos': grupos,
+        'amostra_valor': amostra_valor,
         'total_linhas': len(detalhe),
         'total_itens': len([i for i in itens if not i.get('amostra')]),
     }

@@ -2,83 +2,435 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Mapa de totalização U.M.A. — {{ r.data_label }}</title>
+  <title>{{ r.titulo }} — {{ r.data_label }}</title>
   <style>
-    @page { margin: 14mm; }
+    {% if r.layout == 'grade' %}
+    @page { size: A4 landscape; margin: 6mm; }
+    {% else %}
+    @page { size: A4 portrait; margin: 8mm; }
+    {% endif %}
+    * { box-sizing: border-box; }
     body {
-      font-family: "Segoe UI", Tahoma, sans-serif;
-      color: #152238;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #000;
       margin: 0;
-      padding: 16px 20px 28px;
-      font-size: 12px;
+      padding: 8px 10px 28px;
+      font-size: 9px;
     }
-    h1 { font-size: 16px; margin: 0 0 4px; }
-    .sub { color: #475569; margin-bottom: 14px; }
-    .meta { display:flex; flex-wrap:wrap; gap:8px 18px; margin-bottom:14px; }
-    .meta span { white-space:nowrap; }
-    .meta strong { color:#0f2a5c; }
-    table { width:100%; border-collapse:collapse; margin-top:8px; }
-    th, td { border:1px solid #94a3b8; padding:6px 8px; text-align:left; }
-    th { background:#e8eef6; font-size:11px; text-transform:uppercase; letter-spacing:.02em; }
-    td.num { text-align:right; font-variant-numeric:tabular-nums; }
-    .amostra { background:#fff7ed; }
-    .foot { margin-top:14px; color:#64748b; font-size:11px; }
-    .no-print { margin-bottom:12px; }
+    h1 { font-size: 12px; margin: 0; text-align: center; letter-spacing: 0.01em; }
+    .empresa { font-size: 11px; font-weight: 700; }
+    .sub { text-align: center; font-size: 10px; font-weight: 700; margin: 2px 0 8px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+    th, td { border: 1px solid #000; padding: 2px 3px; vertical-align: top; }
+    th { background: #f3f3f3; font-size: 8px; text-align: center; font-weight: 700; }
+    td.num, th.num { text-align: right; white-space: nowrap; }
+    td.mid, th.mid { text-align: center; }
+    td.hora, th.hora { width: 15px; text-align: center; padding: 1px; font-size: 7.5px; }
+    tr.sec td {
+      background: #e8eef6;
+      font-weight: 700;
+      border: 1px solid #000;
+    }
+    tr.produto td {
+      background: #f8fafc;
+      font-weight: 700;
+    }
+    tr.grupo td {
+      background: #0f2a56;
+      color: #fff;
+      font-weight: 700;
+      border-color: #0f2a56;
+    }
+    .bloco { page-break-inside: avoid; margin-bottom: 10px; }
+    .grupo-pagina { page-break-before: always; }
+    .grupo-pagina:first-child { page-break-before: auto; }
+    .vazio { text-align: center; color: #333; padding: 14px; }
+    .legenda { margin-top: 8px; font-size: 9px; }
+    .amostra { margin-top: 8px; font-weight: 700; }
+    .rodape {
+      margin-top: 12px;
+      font-size: 8px;
+      color: #333;
+    }
+    .no-print { margin-bottom: 8px; }
+    .no-print button { padding: 6px 12px; cursor: pointer; }
     @media print {
-      .no-print { display:none !important; }
-      body { padding:0; }
+      .no-print { display: none !important; }
+      body { padding: 0; }
     }
   </style>
 </head>
 <body>
   <div class="no-print">
-    <button onclick="window.print()" style="padding:8px 14px;cursor:pointer;">Imprimir</button>
-    <button onclick="window.close()" style="padding:8px 14px;cursor:pointer;margin-left:6px;">Fechar</button>
+    <button onclick="window.print()">Imprimir</button>
+    <button onclick="window.close()" style="margin-left:6px;">Fechar</button>
   </div>
 
-  <h1>Mapa de totalização da U.M.A.</h1>
-  <div class="sub">São Geraldo Service — Nutrição Hospitalar</div>
+  {% set horas = r.horarios or [] %}
+  {% set extra = r.coluna_extra_label %}
+  {% set brancos = r.linhas_em_branco or 0 %}
 
-  <div class="meta">
-    <span><strong>Data:</strong> {{ r.data_label }}</span>
-    <span><strong>Categoria:</strong> {{ r.categoria_label }}</span>
-    <span><strong>Filtro:</strong> {{ r.filtro_nome }}</span>
-    <span><strong>Horários:</strong>
-      {% if r.horarios %}{{ r.horarios|join(', ') }}{% else %}—{% endif %}
-    </span>
-  </div>
+  {% for g in r.grupos %}
+  <section class="{% if r.separar_grupo %}grupo-pagina{% endif %}">
+    <div class="empresa">{{ r.empresa }}</div>
+    <h1>SERVIÇO DE NUTRIÇÃO - {{ r.empresa }} - {{ r.titulo }}</h1>
+    {% if r.subtitulo %}<div class="sub">{{ r.subtitulo }}</div>{% endif %}
+    {% if g.nome %}
+    <div class="sub">Grupo de clínica: {{ g.nome }}</div>
+    {% endif %}
 
-  <table>
-    <thead>
-      <tr>
-        <th style="width:45%">Item</th>
-        <th class="num" style="width:12%">Qtd.</th>
-        <th>Leitos</th>
-        <th>Pacientes</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for i in r.itens %}
-      <tr class="{% if i.amostra %}amostra{% endif %}">
-        <td>{{ i.item }}</td>
-        <td class="num">{{ i.qtd_pacientes }}</td>
-        <td>{{ (i.leitos or [])|join(', ') }}</td>
-        <td>{{ (i.pacientes or [])|join(', ') }}</td>
-      </tr>
+    {% if r.categoria == 'suplementos' %}
+      {% set linhas = g.linhas %}
+      <table>
+        <thead>
+          <tr>
+            <th>Clínica</th>
+            <th>Leito</th>
+            <th>Nome</th>
+            {% if not r.nao_imprimir_produto %}<th>Dieta</th>{% endif %}
+            <th>Volume</th>
+            <th>Horários</th>
+            {% if r.tipo_mapa == 'cobranca' %}<th class="num">Total</th>{% endif %}
+            <th>Prontuário</th>
+            <th>{{ extra }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ln in linhas %}
+          <tr>
+            <td>{{ ln.clinica }}</td>
+            <td class="mid">{{ ln.leito }}</td>
+            <td>{{ ln.nome }}</td>
+            {% if not r.nao_imprimir_produto %}<td>{{ ln.produto }}</td>{% endif %}
+            <td class="mid">{{ ln.volume }}</td>
+            <td>{{ ln.horas_txt }}</td>
+            {% if r.tipo_mapa == 'cobranca' %}<td class="num">{{ ln.total }}</td>{% endif %}
+            <td class="mid">{{ ln.prontuario }}</td>
+            <td>{{ ln.extra }}</td>
+          </tr>
+          {% else %}
+          <tr><td class="vazio" colspan="10">Nenhum registro encontrado para os filtros selecionados.</td></tr>
+          {% endfor %}
+          {% for _ in range(brancos) %}
+          <tr>
+            <td>&nbsp;</td><td></td><td></td>
+            {% if not r.nao_imprimir_produto %}<td></td>{% endif %}
+            <td></td><td></td>
+            {% if r.tipo_mapa == 'cobranca' %}<td></td>{% endif %}
+            <td></td><td></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+    {% elif r.categoria == 'lve' and r.tipo_mapa == 'cobranca' %}
+      <table>
+        <thead>
+          <tr>
+            <th>Enf/Leito</th>
+            <th>Nome</th>
+            {% if not r.nao_imprimir_produto %}<th>Dieta</th>{% endif %}
+            <th class="num">Volume</th>
+            <th>Horários</th>
+            <th class="num">Total</th>
+            <th>Un.</th>
+            <th>Clínica</th>
+            <th>{{ extra }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ln in g.linhas %}
+          <tr>
+            <td>{{ ln.enf_leito }}</td>
+            <td>{{ ln.nome }}</td>
+            {% if not r.nao_imprimir_produto %}<td>{{ ln.produto }}</td>{% endif %}
+            <td class="num">{{ ln.volume_lve }}</td>
+            <td>{{ ln.horas_txt }}</td>
+            <td class="num">{{ ln.total_lve }}</td>
+            <td class="mid">{{ ln.unidade }}</td>
+            <td>{{ ln.clinica }}</td>
+            <td>{{ ln.extra }}</td>
+          </tr>
+          {% else %}
+          <tr><td class="vazio" colspan="10">Nenhum registro encontrado para os filtros selecionados.</td></tr>
+          {% endfor %}
+          {% for _ in range(brancos) %}
+          <tr><td>&nbsp;</td><td></td>{% if not r.nao_imprimir_produto %}<td></td>{% endif %}<td></td><td></td><td></td><td></td><td></td><td></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+    {% elif r.categoria == 'lve' %}
+      <table>
+        <thead>
+          <tr>
+            <th>Enf/Leito</th>
+            <th>Nome</th>
+            {% if not r.nao_imprimir_produto %}<th>Dieta</th>{% endif %}
+            <th class="num">Volume</th>
+            {% for h in horas %}<th class="hora">{{ h }}</th>{% endfor %}
+            <th class="num">Total</th>
+            <th>Un.</th>
+            <th>Clínica</th>
+            <th>{{ extra }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ln in g.linhas %}
+          <tr>
+            <td>{{ ln.enf_leito }}</td>
+            <td>{{ ln.nome }}</td>
+            {% if not r.nao_imprimir_produto %}<td>{{ ln.produto }}</td>{% endif %}
+            <td class="num">{{ ln.volume_lve }}</td>
+            {% for h in horas %}<td class="hora">{% if h in ln.horas %}X{% endif %}</td>{% endfor %}
+            <td class="num">{{ ln.total_lve }}</td>
+            <td class="mid">{{ ln.unidade }}</td>
+            <td>{{ ln.clinica }}</td>
+            <td>{{ ln.extra }}</td>
+          </tr>
+          {% else %}
+          <tr><td class="vazio" colspan="40">Nenhum registro encontrado para os filtros selecionados.</td></tr>
+          {% endfor %}
+          {% for _ in range(brancos) %}
+          <tr>
+            <td>&nbsp;</td><td></td>
+            {% if not r.nao_imprimir_produto %}<td></td>{% endif %}
+            <td></td>
+            {% for h in horas %}<td class="hora"></td>{% endfor %}
+            <td></td><td></td><td></td><td></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+    {% elif r.categoria == 'enteral' and r.tipo_mapa == 'cobranca' %}
+      {% for sec in g.secoes %}
+      <div class="bloco">
+        <table>
+          <thead>
+            <tr class="sec">
+              <td colspan="20">Data da refeição: {{ r.data_label }} &nbsp;&nbsp; Clínica-Enf.: {{ sec.titulo }}</td>
+            </tr>
+            <tr>
+              <th>Leito</th>
+              <th>Paciente</th>
+              <th>Pront.</th>
+              {% if not r.nao_imprimir_produto %}<th>Especificação</th>{% endif %}
+              <th>Vol.</th>
+              <th class="num">Total</th>
+              <th class="num">Tot. Água</th>
+              <th>ml/h</th>
+              <th>Horários (Dietas e Água)</th>
+              <th>Sis</th>
+              <th>{{ extra }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for ln in sec.linhas %}
+            <tr>
+              <td class="mid">{{ ln.leito }}</td>
+              <td>{{ ln.nome }}</td>
+              <td class="mid">{{ ln.prontuario }}</td>
+              {% if not r.nao_imprimir_produto %}<td>{{ ln.produto }}</td>{% endif %}
+              <td class="mid">{{ ln.volume }}</td>
+              <td class="num">{{ ln.total }}</td>
+              <td class="num">{{ ln.agua }}</td>
+              <td class="mid">{{ ln.mlh }}</td>
+              <td>{{ ln.horas_enteral }}</td>
+              <td class="mid">{{ ln.sis }}</td>
+              <td>{{ ln.extra }}</td>
+            </tr>
+            {% else %}
+            <tr><td class="vazio" colspan="12">Nenhum registro encontrado para os filtros selecionados.</td></tr>
+            {% endfor %}
+            {% for _ in range(brancos) %}
+            <tr>
+              <td>&nbsp;</td><td></td><td></td>
+              {% if not r.nao_imprimir_produto %}<td></td>{% endif %}
+              <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
       {% else %}
-      <tr>
-        <td colspan="4" style="text-align:center;color:#64748b;padding:18px;">
-          Nenhum registro encontrado para os filtros selecionados.
-        </td>
-      </tr>
+      <table><tr><td class="vazio">Nenhum registro encontrado para os filtros selecionados.</td></tr></table>
       {% endfor %}
-    </tbody>
-  </table>
+      <div class="legenda">Sis. &nbsp; A = Aberto &nbsp;&nbsp;&nbsp; F = Fechado</div>
 
-  <div class="foot">
-    Total de itens: {{ r.total_itens }} &nbsp;|&nbsp; Linhas detalhe: {{ r.total_linhas }}
-    &nbsp;|&nbsp; Emitido em {{ r.data_label }}
-  </div>
+    {% elif r.categoria == 'enteral' %}
+      {% for sec in g.secoes %}
+      <div class="bloco">
+        <table>
+          <thead>
+            <tr class="sec">
+              <td colspan="40">Data da refeição: {{ r.data_label }} &nbsp;&nbsp; Clínica-Enf.: {{ sec.titulo }}</td>
+            </tr>
+            <tr>
+              <th>Leito</th>
+              <th>Paciente</th>
+              <th>Pront.</th>
+              {% if not r.nao_imprimir_produto %}<th>Especificação</th>{% endif %}
+              <th>Vol.</th>
+              {% for h in horas %}<th class="hora">{{ h }}</th>{% endfor %}
+              <th class="num">Total</th>
+              <th class="num">Água</th>
+              <th>ml/h</th>
+              <th>Sis</th>
+              <th>{{ extra }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for ln in sec.linhas %}
+            <tr>
+              <td class="mid">{{ ln.leito }}</td>
+              <td>{{ ln.nome }}</td>
+              <td class="mid">{{ ln.prontuario }}</td>
+              {% if not r.nao_imprimir_produto %}<td>{{ ln.produto }}</td>{% endif %}
+              <td class="mid">{{ ln.volume }}</td>
+              {% for h in horas %}<td class="hora">{% if h in ln.horas %}X{% endif %}</td>{% endfor %}
+              <td class="num">{{ ln.total }}</td>
+              <td class="num">{{ ln.agua }}</td>
+              <td class="mid">{{ ln.mlh }}</td>
+              <td class="mid">{{ ln.sis }}</td>
+              <td>{{ ln.extra }}</td>
+            </tr>
+            {% endfor %}
+            {% for _ in range(brancos) %}
+            <tr>
+              <td>&nbsp;</td><td></td><td></td>
+              {% if not r.nao_imprimir_produto %}<td></td>{% endif %}
+              <td></td>
+              {% for h in horas %}<td class="hora"></td>{% endfor %}
+              <td></td><td></td><td></td><td></td><td></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <table><tr><td class="vazio">Nenhum registro encontrado para os filtros selecionados.</td></tr></table>
+      {% endfor %}
+      <div class="legenda">Sis. &nbsp; A = Aberto &nbsp;&nbsp;&nbsp; F = Fechado</div>
+
+    {% elif r.categoria == 'formula_infantil' and r.tipo_mapa == 'cobranca' %}
+      {% for sec in g.secoes %}
+      <div class="bloco">
+        <table>
+          <thead>
+            <tr class="sec">
+              <td colspan="12">Data da Refeição: {{ r.data_label }} &nbsp;&nbsp; Clínica/Enfermaria: {{ sec.titulo }}</td>
+            </tr>
+            <tr>
+              <th>Nome</th>
+              <th>Leito</th>
+              <th>Idade</th>
+              <th>Dieta</th>
+              <th>{{ extra }}</th>
+              {% if not r.nao_imprimir_produto %}<th>Produto</th>{% endif %}
+              <th>Vol.</th>
+              <th>Etapa</th>
+              <th>Vol. Total</th>
+              <th>Via</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for ln in sec.linhas %}
+            <tr>
+              <td>{{ ln.nome }}</td>
+              <td class="mid">{{ ln.leito }}</td>
+              <td class="mid">{{ ln.idade }}</td>
+              <td>{{ ln.dieta }}</td>
+              <td>{{ ln.extra }}</td>
+              {% if not r.nao_imprimir_produto %}<td>{{ ln.produto }}</td>{% endif %}
+              <td class="mid">{{ ln.vol_infantil }}</td>
+              <td class="mid">{{ ln.etapas }}</td>
+              <td class="mid">{{ ln.total_infantil }}</td>
+              <td>{{ ln.via }}</td>
+            </tr>
+            {% endfor %}
+            {% for _ in range(brancos) %}
+            <tr>
+              <td>&nbsp;</td><td></td><td></td><td></td><td></td>
+              {% if not r.nao_imprimir_produto %}<td></td>{% endif %}
+              <td></td><td></td><td></td><td></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <table><tr><td class="vazio">Nenhum registro encontrado para os filtros selecionados.</td></tr></table>
+      {% endfor %}
+
+    {% else %}
+      {% for sec in g.secoes %}
+      <div class="bloco">
+        <table>
+          <thead>
+            <tr class="sec">
+              <td colspan="40">Data da Refeição: {{ r.data_label }} &nbsp;&nbsp; Clínica/Enfermaria: {{ sec.titulo }}</td>
+            </tr>
+            <tr>
+              <th>Nome</th>
+              <th>Leito</th>
+              <th>Idade</th>
+              <th>Dieta</th>
+              <th>{{ extra }}</th>
+              <th>Vol.</th>
+              {% for h in horas %}<th class="hora">{{ h }}</th>{% endfor %}
+              <th>Etapa</th>
+              <th>Vol. Total</th>
+              <th>Via</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for bloco in sec.blocos %}
+              {% if bloco.produto %}
+              <tr class="produto"><td colspan="40">{{ bloco.produto }}</td></tr>
+              {% endif %}
+              {% for ln in bloco.linhas %}
+              <tr>
+                <td>{{ ln.nome }}</td>
+                <td class="mid">{{ ln.leito }}</td>
+                <td class="mid">{{ ln.idade }}</td>
+                <td>{{ ln.dieta }}</td>
+                <td>{{ ln.extra }}</td>
+                <td class="mid">{{ ln.vol_infantil }}</td>
+                {% for h in horas %}<td class="hora">{% if h in ln.horas %}X{% endif %}</td>{% endfor %}
+                <td class="mid">{{ ln.etapas }}</td>
+                <td class="mid">{{ ln.total_infantil }}</td>
+                <td>{{ ln.via }}</td>
+              </tr>
+              {% endfor %}
+            {% else %}
+            <tr><td class="vazio" colspan="40">Nenhum registro encontrado para os filtros selecionados.</td></tr>
+            {% endfor %}
+            {% for _ in range(brancos) %}
+            <tr>
+              <td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td>
+              {% for h in horas %}<td class="hora"></td>{% endfor %}
+              <td></td><td></td><td></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <table><tr><td class="vazio">Nenhum registro encontrado para os filtros selecionados.</td></tr></table>
+      {% endfor %}
+    {% endif %}
+
+    {% if r.amostra_valor is not none %}
+    <div class="amostra">Amostra: {{ r.amostra_valor }}</div>
+    {% endif %}
+    <div class="rodape">SISTEMA DE CONTROLE NUTRICIONAL - {{ r.emitido_em }}</div>
+  </section>
+  {% else %}
+  <div class="empresa">{{ r.empresa }}</div>
+  <h1>SERVIÇO DE NUTRIÇÃO - {{ r.empresa }} - {{ r.titulo }}</h1>
+  <table><tr><td class="vazio">Nenhum registro encontrado para os filtros selecionados.</td></tr></table>
+  {% endfor %}
 
   <script>
     window.addEventListener('load', function(){

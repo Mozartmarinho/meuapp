@@ -3691,6 +3691,52 @@ def relatorio_mapa_uma():
     )
 
 
+def _flag_uma(src, name):
+    if not hasattr(src, 'get'):
+        return None
+    val = src.get(name, None)
+    if val is None or val == '':
+        return None
+    return str(val).strip().lower() in ('1', 'true', 'sim', 'on', 'yes')
+
+
+def _opcoes_mapa_uma(src):
+    """Filtros da impressão de mapas da U.M.A. (tela e API)."""
+    horarios_raw = src.get('horarios') or []
+    if isinstance(horarios_raw, str):
+        horarios_raw = [h for h in horarios_raw.split(',') if h.strip()]
+    try:
+        linhas_branco = int(src.get('linhas_em_branco') or 0)
+    except (TypeError, ValueError):
+        linhas_branco = 0
+    grupo_id = src.get('grupo_id')
+    try:
+        grupo_id = int(grupo_id) if grupo_id not in (None, '', 'null') else None
+    except (TypeError, ValueError):
+        grupo_id = None
+    coluna = (src.get('coluna_extra') or 'diagnostico').strip()
+    if coluna not in ('diagnostico', 'grupo_dieta'):
+        coluna = 'diagnostico'
+    sistema = (src.get('sistema') or 'aberto').strip().lower()
+    if sistema not in ('aberto', 'fechado', 'ambos'):
+        sistema = 'aberto'
+    tipo = (src.get('tipo_mapa') or 'trabalho').strip().lower()
+    if tipo not in ('trabalho', 'cobranca'):
+        tipo = 'trabalho'
+    return {
+        'horarios': horarios_raw,
+        'selecionar_horarios': _flag_uma(src, 'selecionar_horarios'),
+        'grupo_clinica_id': grupo_id,
+        'grupo_clinica_nome': (src.get('grupo_nome') or '').strip() or None,
+        'coluna_extra': coluna,
+        'sistema': sistema,
+        'tipo_mapa': tipo,
+        'linhas_em_branco': linhas_branco,
+        'separar_grupo': bool(_flag_uma(src, 'separar_grupo')),
+        'nao_imprimir_produto': bool(_flag_uma(src, 'nao_imprimir_produto')),
+    }
+
+
 @nutricao.route('/nutricao/api/relatorio-mapa-uma', methods=['POST'])
 def api_relatorio_mapa_uma():
     seed_nutricao()
@@ -3704,7 +3750,6 @@ def api_relatorio_mapa_uma():
         filtro_id,
         (d.get('filtro_nome') or '').strip() or None,
     )
-    horarios = d.get('horarios') or []
     amostra = None
     if d.get('imprimir_amostra'):
         amostra = d.get('amostra_valor', 50)
@@ -3718,8 +3763,8 @@ def api_relatorio_mapa_uma():
         imprimir_por=imprimir_por,
         filtro_id=filtro_id,
         filtro_nome=filtro_nome,
-        horarios=horarios,
         amostra=amostra,
+        **_opcoes_mapa_uma(d),
     )
     return jsonify({'ok': True, 'relatorio': resultado})
 
@@ -3827,7 +3872,6 @@ def relatorio_mapa_uma_imprimir():
         filtro_id,
         (request.args.get('filtro_nome') or '').strip() or None,
     )
-    horarios = [h for h in (request.args.get('horarios') or '').split(',') if h.strip()]
     amostra = None
     if str(request.args.get('imprimir_amostra', '')).lower() in ('1', 'true', 'sim'):
         try:
@@ -3842,8 +3886,8 @@ def relatorio_mapa_uma_imprimir():
         imprimir_por=imprimir_por,
         filtro_id=filtro_id,
         filtro_nome=filtro_nome,
-        horarios=horarios,
         amostra=amostra,
+        **_opcoes_mapa_uma(request.args),
     )
     return render_template(
         'nutricao_relatorio_mapa_uma_print.html',
