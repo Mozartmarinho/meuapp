@@ -173,6 +173,49 @@ class MapaMultiDietaTest(unittest.TestCase):
         })
         self.assertEqual(NutPaciente.query.count(), 1)
 
+    def test_garantir_repetido_nao_duplica_e_copia_inclusao_nova(self):
+        self._inserir_principal()
+        amanha = date.today() + timedelta(days=1)
+        garantir_mapa_do_dia(amanha)
+        db.session.commit()
+        self.assertEqual(
+            NutMapaRefeicao.query.filter_by(data_refeicao=amanha, nome='João da Silva').count(),
+            1,
+        )
+        garantir_mapa_do_dia(amanha)
+        self.assertEqual(
+            NutMapaRefeicao.query.filter_by(data_refeicao=amanha, nome='João da Silva').count(),
+            1,
+        )
+
+        pac2 = NutPaciente(nome='Maria Souza', prontuario='222', ativo=True, admissao=date.today())
+        db.session.add(pac2)
+        db.session.commit()
+        linha = mapa_from_paciente(
+            pac2,
+            date.today(),
+            flags={'fl_almoco': True},
+            extras={
+                'leito': '102',
+                'prontuario': '222',
+                'dieta': self.dieta_normal.nome,
+                'clinica': self.clinica.nome,
+                'enfermaria': self.enf.nome,
+            },
+            usuario='teste',
+        )
+        db.session.add(linha)
+        db.session.flush()
+        garantir_grupo_lancamento(linha)
+        db.session.commit()
+
+        garantir_mapa_do_dia(amanha)
+        db.session.commit()
+        nomes = [
+            r.nome for r in NutMapaRefeicao.query.filter_by(data_refeicao=amanha, ativo=True).all()
+        ]
+        self.assertEqual(sorted(nomes), ['João da Silva', 'Maria Souza'])
+
 
 if __name__ == '__main__':
     unittest.main()

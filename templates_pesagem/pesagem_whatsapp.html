@@ -373,9 +373,9 @@ async function atualizarStatus() {
       setPill(st, detalhe);
       mostrarQr('');
       mostrarConectado(true, detalhe);
-    } else if (st === 'qr' && j.qr_image) {
+    } else if (j.qr_image && st !== 'open') {
       mostrarConectado(false);
-      setPill(st, 'Abra o WhatsApp no celular e aponte a câmera.');
+      setPill('qr', 'Abra o WhatsApp no celular e aponte a câmera.');
       mostrarQr(j.qr_image);
     } else if (st === 'connecting') {
       mostrarConectado(false);

@@ -244,10 +244,10 @@ class NutPaciente(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
-    nome = db.Column(db.String(150), nullable=False)
+    nome = db.Column(db.String(150), nullable=False, index=True)
     sexo = db.Column(db.String(1))
     nascimento = db.Column(db.Date)
-    prontuario = db.Column(db.String(40))
+    prontuario = db.Column(db.String(40), index=True)
     clinica = db.Column(db.String(120))
     leito = db.Column(db.String(40))
     dieta = db.Column(db.String(200))
@@ -359,6 +359,10 @@ class NutMapaRefeicao(db.Model):
     data_criacao = db.Column(db.DateTime, default=now_brasilia)
     data_atualizacao = db.Column(db.DateTime, default=now_brasilia, onupdate=now_brasilia)
 
+    __table_args__ = (
+        db.Index('ix_nut_mapa_data_ativo', 'data_refeicao', 'ativo'),
+    )
+
     def get_substituicoes(self):
         import json
         if not self.substituicoes:
@@ -373,7 +377,7 @@ class NutMapaRefeicao(db.Model):
         import json
         self.substituicoes = json.dumps(data or {}, ensure_ascii=False)
 
-    def to_dict(self):
+    def to_dict(self, incluir_substituicoes=True):
         inclusao = self.data_inclusao or self.data_criacao
         alteracao = self.data_atualizacao or inclusao
         usuario = (self.usuario_alteracao or '').strip()
@@ -416,7 +420,7 @@ class NutMapaRefeicao(db.Model):
             'enteral': self.enteral or '',
             'formula_infantil': self.formula_infantil or '',
             'lve': self.lve or '',
-            'substituicoes': self.get_substituicoes(),
+            'substituicoes': self.get_substituicoes() if incluir_substituicoes else {},
             'data_inclusao': fmt_brasilia(inclusao, '%d/%m/%y %H:%M:%S') if inclusao else '',
             'usuario_alteracao': usuario,
             'ultima_alteracao': ultima,

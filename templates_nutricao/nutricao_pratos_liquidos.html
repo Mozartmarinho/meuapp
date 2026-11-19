@@ -1,287 +1,424 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
-<div class="pl-cadastro">
-<div class="page-header">
-  <h1>Cadastro de Pratos — Dietas Líquidas</h1>
-  <p>Pratos usados nos cardápios de dietas líquidas</p>
+<div class="pl-cadastro chamados-page">
+  <div class="header">
+    <div>
+      <h1>Cadastro de Pratos — Dietas Líquidas</h1>
+      <p class="chamados-sub">Pratos usados nos cardápios de dietas líquidas</p>
+    </div>
+    <div class="eq-header-actions">
+      <button type="button" class="btn btn-success" id="btnNovoPrato">
+        <i class="fas fa-plus"></i> Novo prato
+      </button>
+    </div>
+  </div>
+
+  <div class="eq-filters">
+    <input type="text" id="filtroNome" placeholder="Buscar por nome..." autocomplete="off">
+    <select id="filtroGrupo">
+      <option value="">Todos os grupos</option>
+      <option value="principal">Principal</option>
+      <option value="sobremesa">Sobremesa</option>
+      <option value="outros">Outros</option>
+      <option value="bebida">Bebida</option>
+      <option value="gelado">Gelado</option>
+      <option value="extra">Extra</option>
+    </select>
+    <select id="filtroSituacao">
+      <option value="">Todas as situações</option>
+      <option value="1">Ativos</option>
+      <option value="0">Inativos</option>
+    </select>
+    <button type="button" class="btn btn-sm nc-btn-muted" id="btnLimparFiltros">Limpar filtros</button>
+    <button type="button" class="btn btn-sm btn-primary" id="btnImprimir">
+      <i class="fas fa-print"></i> Imprimir
+    </button>
+  </div>
+
+  <div class="eq-print-header" aria-hidden="true">
+    <h1>Cadastro de Pratos — Dietas Líquidas</h1>
+  </div>
+
+  <div class="table-wrap">
+    <table class="table" id="tabelaPratos">
+      <thead>
+        <tr>
+          <th>Prato</th>
+          <th>Grupos</th>
+          <th>Fator</th>
+          <th>Ativo</th>
+          <th class="no-print">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in pratos %}
+        {% set ns = namespace(grupos=[]) %}
+        {% if p.grupo_principal %}{% set ns.grupos = ns.grupos + ['Principal'] %}{% endif %}
+        {% if p.grupo_sobremesa %}{% set ns.grupos = ns.grupos + ['Sobremesa'] %}{% endif %}
+        {% if p.grupo_outros %}{% set ns.grupos = ns.grupos + ['Outros'] %}{% endif %}
+        {% if p.grupo_bebida %}{% set ns.grupos = ns.grupos + ['Bebida'] %}{% endif %}
+        {% if p.grupo_gelado %}{% set ns.grupos = ns.grupos + ['Gelado'] %}{% endif %}
+        {% if p.grupo_extra %}{% set ns.grupos = ns.grupos + ['Extra'] %}{% endif %}
+        <tr data-id="{{ p.id }}"
+            data-nome="{{ p.nome }}"
+            data-ativo="{{ '1' if p.ativo else '0' }}"
+            data-principal="{{ '1' if p.grupo_principal else '0' }}"
+            data-sobremesa="{{ '1' if p.grupo_sobremesa else '0' }}"
+            data-outros="{{ '1' if p.grupo_outros else '0' }}"
+            data-bebida="{{ '1' if p.grupo_bebida else '0' }}"
+            data-gelado="{{ '1' if p.grupo_gelado else '0' }}"
+            data-extra="{{ '1' if p.grupo_extra else '0' }}"
+            data-fator="{{ p.fator_conv_tot }}">
+          <td><strong>{{ p.nome }}</strong></td>
+          <td>{{ ns.grupos|join(', ') or '—' }}</td>
+          <td>{{ p.fator_conv_tot }}</td>
+          <td>{{ 'Sim' if p.ativo else 'Não' }}</td>
+          <td class="acoes-cell no-print">
+            <button type="button" class="btn btn-sm btn-editar-link btn-editar" title="Editar">
+              <i class="fas fa-edit"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-excluir" title="Excluir">
+              <i class="fas fa-trash"></i>
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr id="linhaVazia">
+          <td colspan="5" class="empty-row">Nenhum prato cadastrado.</td>
+        </tr>
+        {% endfor %}
+        <tr id="linhaFiltro" hidden>
+          <td colspan="5" class="empty-row">Nenhum prato encontrado.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 </div>
 
-<div class="card pl-panel">
-  <div class="pl-toolbar">
-    <button class="btn btn-ghost btn-sm" type="button" onclick="nav('first')" title="Primeiro"><i class="fas fa-step-backward"></i></button>
-    <button class="btn btn-ghost btn-sm" type="button" onclick="nav('prev')" title="Anterior"><i class="fas fa-caret-left"></i></button>
-    <button class="btn btn-ghost btn-sm" type="button" onclick="nav('next')" title="Próximo"><i class="fas fa-caret-right"></i></button>
-    <button class="btn btn-ghost btn-sm" type="button" onclick="nav('last')" title="Último"><i class="fas fa-step-forward"></i></button>
-    <span class="pl-sep"></span>
-    <button class="btn btn-primary btn-sm" type="button" onclick="novo()" title="Novo"><i class="fas fa-plus"></i></button>
-    <button class="btn btn-ghost btn-sm" type="button" onclick="excluir()" title="Excluir"><i class="fas fa-minus"></i></button>
-    <button class="btn btn-ghost btn-sm" type="button" onclick="setEdit(true)" title="Editar"><i class="fas fa-pencil-alt"></i></button>
-    <button class="btn btn-primary btn-sm" type="button" id="btnSalvar" onclick="salvar()" title="Salvar" disabled><i class="fas fa-check"></i></button>
-    <button class="btn btn-ghost btn-sm" type="button" id="btnCancelar" onclick="cancelar()" title="Cancelar" disabled><i class="fas fa-times"></i></button>
-    <span class="pl-sep"></span>
-    <button class="btn btn-ghost btn-sm" type="button" onclick="abrirBusca()" title="Buscar"><i class="fas fa-search"></i></button>
-    <span class="pl-pos" id="posLabel">0 / 0</span>
-  </div>
-
-  <div class="form-group">
-    <label class="form-label" for="fNome">Prato:</label>
-    <input class="form-control" id="fNome" data-field placeholder="Nome do prato">
-  </div>
-
-  <fieldset class="pl-grupos">
-    <legend>Grupos</legend>
-    <div class="pl-checks">
-      <label><input type="checkbox" id="gPrincipal" data-field> Principal</label>
-      <label><input type="checkbox" id="gSobremesa" data-field> Sobremesa</label>
-      <label><input type="checkbox" id="gOutros" data-field> Outros</label>
-      <label><input type="checkbox" id="gBebida" data-field> Bebida</label>
-      <label><input type="checkbox" id="gGelado" data-field> Gelado</label>
-      <label><input type="checkbox" id="gExtra" data-field> Extra</label>
+<div id="modalPrato" class="modal-overlay nc-modal" hidden>
+  <div class="modal-dialog nc-dialog pl-dialog" role="dialog" aria-modal="true" aria-labelledby="pratoModalTitle">
+    <div class="modal-header">
+      <h2 id="pratoModalTitle">Novo prato</h2>
+      <button type="button" class="modal-close" id="btnFecharPratoX" aria-label="Fechar">&times;</button>
     </div>
-  </fieldset>
-
-  <div class="pl-footer-fields">
-    <div class="form-group pl-fator">
-      <label class="form-label" for="fFator">Fator de Conv. Tot.:</label>
-      <input class="form-control" type="number" step="any" id="fFator" data-field value="1">
-    </div>
-    <label class="pl-ativo"><input type="checkbox" id="fAtivo" data-field checked> Prato ativo</label>
+    <form id="formPrato">
+      <input type="hidden" id="prato_id" value="">
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="fNome">Prato *</label>
+          <input type="text" id="fNome" maxlength="200" required placeholder="Nome do prato">
+        </div>
+        <fieldset class="pl-grupos">
+          <legend>Grupos</legend>
+          <div class="pl-checks">
+            <label><input type="checkbox" id="gPrincipal"> Principal</label>
+            <label><input type="checkbox" id="gSobremesa"> Sobremesa</label>
+            <label><input type="checkbox" id="gOutros"> Outros</label>
+            <label><input type="checkbox" id="gBebida"> Bebida</label>
+            <label><input type="checkbox" id="gGelado"> Gelado</label>
+            <label><input type="checkbox" id="gExtra"> Extra</label>
+          </div>
+        </fieldset>
+        <div class="pl-footer-fields">
+          <div class="form-group pl-fator">
+            <label for="fFator">Fator de conv. tot.</label>
+            <input type="number" step="any" id="fFator" value="1">
+          </div>
+          <label class="pl-ativo" for="fAtivo">
+            <input type="checkbox" id="fAtivo" checked>
+            Prato ativo
+          </label>
+        </div>
+      </div>
+      <div class="nc-footer">
+        <button type="button" class="btn nc-btn-muted" id="btnFecharPrato">
+          <i class="fas fa-times"></i> Fechar
+        </button>
+        <button type="submit" class="btn btn-success" id="btnGravarPrato">
+          <i class="fas fa-save"></i> Gravar
+        </button>
+      </div>
+    </form>
   </div>
-</div>
 </div>
 
 <style>
-.pl-cadastro .page-header { margin-bottom: 1rem; }
-.pl-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
-.pl-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
-.pl-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
-.pl-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
-.pl-cadastro .btn-ghost { padding: 0.28rem 0.4rem; }
-.pl-cadastro .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
-.pl-cadastro .form-control {
-  padding: 0.48rem 0.6rem;
-  font-size: 0.8rem;
-  border-radius: 0.3rem;
-  min-height: 0;
-  height: auto;
-  line-height: 1.25;
+.pl-cadastro { padding: 4px 0; }
+.pl-cadastro .header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 1rem; gap: 0.8rem; flex-wrap: wrap;
 }
-.pl-cadastro .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
-.pl-cadastro .form-group { margin-bottom: 0.8rem; }
-.pl-cadastro input[type="checkbox"] { width: 0.72rem; height: 0.72rem; margin: 0; }
-.pl-cadastro .pl-toolbar .btn-sm { padding: 0.24rem 0.36rem; }
-.pl-cadastro .pl-toolbar .btn-sm i { font-size: 0.72rem; }
-.pl-panel { padding: 0.8rem 0.92rem 1.08rem; max-width: 576px; }
-.pl-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:0.24rem; margin-bottom:0.8rem; }
-.pl-sep { width:1px; height:18px; background:#cbd5e1; margin:0 0.28rem; }
-.pl-pos { margin-left:auto; font-size:0.68rem; color:#64748b; font-weight:600; }
+.pl-cadastro h1 { margin: 0; font-size: 1.6rem; }
+.chamados-sub { margin: 0.2rem 0 0; color: var(--gray-600); font-size: 0.8rem; }
+.eq-header-actions { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.eq-filters { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.8rem; flex-wrap: wrap; }
+.eq-filters input[type="text"], .eq-filters select {
+  padding: 0.42rem 0.6rem; font-size: 0.82rem; border: 1px solid #ccc;
+  border-radius: 0.3rem; line-height: 1.35; background: #fff;
+}
+.eq-filters input[type="text"] { width: 220px; }
+.eq-filters select { width: 180px; }
+.eq-print-header { display: none; }
+.table-wrap { background: white; border-radius: 0.4rem; overflow: auto; box-shadow: 0 2px 5px rgba(0,0,0,0.08); }
+.pl-cadastro .table { width: 100%; border-collapse: collapse; background: white; }
+.pl-cadastro .table th, .pl-cadastro .table td {
+  padding: 0.6rem 0.7rem; text-align: left; border-bottom: 1px solid #ddd; font-size: 0.85rem;
+}
+.pl-cadastro .table th { background: #f2f2f2; }
+.pl-cadastro .table tr:hover { background: #f1f1f1; }
+.pl-cadastro .table tr[hidden] { display: none; }
+.empty-row { text-align: center; color: var(--gray-600); padding: 1.4rem !important; }
+.acoes-cell { white-space: nowrap; }
+.acoes-cell .btn { margin-right: 0.25rem; }
+.btn-editar-link { background-color: var(--gray-300); color: var(--gray-800); }
+.btn-excluir { background-color: #f8d7da; color: #842029; }
+.nc-modal { padding: 0.8rem; align-items: center; justify-content: center; }
+.nc-modal:not([hidden]) { display: flex; }
+.pl-dialog {
+  max-width: 480px; width: 100%; max-height: 90vh; overflow: hidden;
+  display: flex; flex-direction: column; font-size: 0.8rem;
+}
+.pl-dialog .modal-header { padding: 0.92rem 1rem 0; gap: 0.6rem; }
+.pl-dialog .modal-header h2 { font-size: 0.96rem; margin: 0; }
+.pl-dialog .modal-close { font-size: 1.2rem; }
+.pl-dialog .modal-body { padding: 0.72rem 1rem 0.4rem; overflow-y: auto; }
+.pl-dialog .form-group { margin-bottom: 0.56rem; }
+.pl-dialog label { font-size: 0.72rem; margin-bottom: 0.16rem; }
+.pl-dialog input[type="text"], .pl-dialog input[type="number"] {
+  padding: 0.48rem 0.6rem; font-size: 0.8rem; border-radius: 0.3rem;
+  line-height: 1.35; width: 100%; border: 1px solid #ccc; box-sizing: border-box;
+}
+.pl-dialog input.pl-campo-erro {
+  border-color: #dc2626 !important; box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2); outline: none;
+}
 .pl-grupos {
-  border:1px solid #dbe3ee;
-  border-radius:6px;
-  padding:0.6rem 0.8rem 0.8rem;
-  margin:0.8rem 0;
-  background:#f8fafc;
+  border: 1px solid #dbe3ee; border-radius: 6px; padding: 0.55rem 0.7rem 0.7rem;
+  margin: 0 0 0.75rem; background: #f8fafc;
 }
-.pl-grupos legend {
-  font-size:0.68rem;
-  font-weight:700;
-  color:#334155;
-  padding:0 0.32rem;
+.pl-grupos legend { font-size: 0.68rem; font-weight: 700; color: #334155; padding: 0 0.32rem; }
+.pl-checks { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem 0.7rem; }
+.pl-checks label, .pl-ativo {
+  display: flex; align-items: center; gap: 0.36rem; font-size: 0.76rem; color: #334155; margin: 0;
 }
-.pl-checks {
-  display:grid;
-  grid-template-columns:repeat(3, minmax(96px, 1fr));
-  gap:0.44rem 0.8rem;
+.pl-checks input, .pl-ativo input { width: auto; margin: 0; }
+.pl-footer-fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 1rem; }
+.pl-fator { margin: 0; width: 140px; }
+.pl-ativo { margin-bottom: 0.45rem; font-weight: 600; }
+.nc-footer {
+  display: flex; justify-content: space-between; align-items: center; gap: 0.4rem;
+  padding: 0.64rem 1rem 0.8rem; flex-wrap: wrap; border-top: 1px solid var(--gray-200);
 }
-.pl-checks label {
-  display:flex;
-  align-items:center;
-  gap:0.36rem;
-  font-size:0.72rem;
-  color:#334155;
-  margin:0;
+.pl-dialog .btn { gap: 0.32rem; padding: 0.45rem 0.8rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.nc-btn-muted { background-color: var(--gray-300); color: var(--gray-800); }
+body.modal-open { overflow: hidden; }
+@media print {
+  .sidebar, .sidebar-overlay, .app-topbar, .eq-filters,
+  .pl-cadastro > .header, .modal-overlay, .no-print, .projeto-versao-bar { display: none !important; }
+  .eq-print-header { display: block !important; margin: 0 0 1rem; }
+  .eq-print-header h1 { margin: 0; font-size: 1.35rem; }
+  .pl-cadastro { padding: 0; }
+  .table-wrap { box-shadow: none; border-radius: 0; overflow: visible; }
+  .pl-cadastro .table tr:hover { background: transparent; }
 }
-.pl-footer-fields {
-  display:flex;
-  flex-wrap:wrap;
-  align-items:flex-end;
-  gap:1rem;
-}
-.pl-fator { margin:0; max-width:144px; }
-.pl-ativo {
-  display:flex;
-  align-items:center;
-  gap:0.36rem;
-  font-size:0.72rem;
-  color:#334155;
-  margin-bottom:0.28rem;
-}
-.pl-panel:not(.editing) [data-field] {
-  pointer-events:none;
-  background:#f1f5f9;
-}
-.pl-panel:not(.editing) input[type=checkbox][data-field] {
-  background:transparent;
-}
-@media (max-width:640px) {
-  .pl-checks { grid-template-columns:1fr 1fr; }
-}
-#modalOverlay .modal-dialog { max-width: 512px; }
-#modalOverlay .modal-header { padding: 0.92rem 1rem 0; gap: 0.6rem; }
-#modalOverlay .modal-header h2 { font-size: 0.96rem; }
-#modalOverlay .modal-close { font-size: 1.2rem; }
-#modalOverlay .modal-body { padding: 0.8rem 1rem 0.92rem; }
-#modalOverlay .modal-footer { gap: 0.4rem; padding: 0.8rem 1rem; }
-#modalOverlay .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
-#modalOverlay .form-control {
-  padding: 0.48rem 0.6rem;
-  font-size: 0.8rem;
-  border-radius: 0.3rem;
-  min-height: 0;
-  height: auto;
-  line-height: 1.25;
-}
-#modalOverlay .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
-#modalOverlay .form-group { margin-bottom: 1rem; }
-#modalOverlay .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
 </style>
 
 <script>
-const PRATOS = {{ pratos|tojson }};
-let idx = 0;
-let editing = false;
-let isNew = false;
+(function () {
+  const overlay = document.getElementById('modalPrato');
+  const form = document.getElementById('formPrato');
+  const btnGravar = document.getElementById('btnGravarPrato');
+  const fNome = document.getElementById('fNome');
+  let ultimoNomeVerificado = '';
 
-function current(){
-  if (!PRATOS.length || isNew) return null;
-  return PRATOS[Math.max(0, Math.min(idx, PRATOS.length-1))];
-}
+  function abrirModal() {
+    overlay.hidden = false;
+    document.body.classList.add('modal-open');
+  }
+  function fecharModal() {
+    overlay.hidden = true;
+    document.body.classList.remove('modal-open');
+    form.reset();
+    document.getElementById('prato_id').value = '';
+    fNome.classList.remove('pl-campo-erro');
+    ultimoNomeVerificado = '';
+    btnGravar.disabled = false;
+  }
+  function dadosDaLinha(tr) {
+    return {
+      id: tr.getAttribute('data-id') || '',
+      nome: tr.getAttribute('data-nome') || '',
+      fator: tr.getAttribute('data-fator') || '1',
+      ativo: tr.getAttribute('data-ativo') === '1',
+      principal: tr.getAttribute('data-principal') === '1',
+      sobremesa: tr.getAttribute('data-sobremesa') === '1',
+      outros: tr.getAttribute('data-outros') === '1',
+      bebida: tr.getAttribute('data-bebida') === '1',
+      gelado: tr.getAttribute('data-gelado') === '1',
+      extra: tr.getAttribute('data-extra') === '1'
+    };
+  }
+  function preencher(dados) {
+    document.getElementById('pratoModalTitle').textContent = dados.id ? 'Editar prato' : 'Novo prato';
+    document.getElementById('prato_id').value = dados.id || '';
+    fNome.value = dados.nome || '';
+    document.getElementById('gPrincipal').checked = !!dados.principal;
+    document.getElementById('gSobremesa').checked = !!dados.sobremesa;
+    document.getElementById('gOutros').checked = !!dados.outros;
+    document.getElementById('gBebida').checked = !!dados.bebida;
+    document.getElementById('gGelado').checked = !!dados.gelado;
+    document.getElementById('gExtra').checked = !!dados.extra;
+    document.getElementById('fFator').value = dados.fator == null || dados.fator === '' ? 1 : dados.fator;
+    document.getElementById('fAtivo').checked = dados.ativo !== false;
+    fNome.classList.remove('pl-campo-erro');
+    ultimoNomeVerificado = (dados.nome || '').trim().toUpperCase();
+  }
+  function linhaPorNome(nome, idAtual) {
+    const alvo = (nome || '').trim().toUpperCase();
+    if (!alvo) return null;
+    const rows = document.querySelectorAll('#tabelaPratos tbody tr[data-id]');
+    for (let i = 0; i < rows.length; i++) {
+      const tr = rows[i];
+      if (idAtual && tr.getAttribute('data-id') === idAtual) continue;
+      if ((tr.getAttribute('data-nome') || '').trim().toUpperCase() === alvo) return tr;
+    }
+    return null;
+  }
+  function abrirNovo() {
+    preencher({ id: '', nome: '', fator: 1, ativo: true });
+    ultimoNomeVerificado = '';
+    document.getElementById('pratoModalTitle').textContent = 'Novo prato';
+    abrirModal();
+    setTimeout(function () { fNome.focus(); }, 30);
+  }
+  function abrirEditar(tr) {
+    preencher(dadosDaLinha(tr));
+    abrirModal();
+    setTimeout(function () { fNome.focus(); }, 30);
+  }
+  function marcarErroNome() {
+    fNome.classList.add('pl-campo-erro');
+    fNome.focus();
+    fNome.select();
+  }
+  function verificarNomeExistente() {
+    if (overlay.hidden) return;
+    const nome = (fNome.value || '').trim().toUpperCase();
+    if (!nome) {
+      fNome.classList.remove('pl-campo-erro');
+      ultimoNomeVerificado = '';
+      return;
+    }
+    if (nome === ultimoNomeVerificado && !fNome.classList.contains('pl-campo-erro')) return;
+    const idAtual = (document.getElementById('prato_id').value || '').trim();
+    const tr = linhaPorNome(nome, idAtual);
+    if (!tr) {
+      fNome.classList.remove('pl-campo-erro');
+      ultimoNomeVerificado = nome;
+      return;
+    }
+    if (confirm('Nome já cadastrado. Deseja editar?')) preencher(dadosDaLinha(tr));
+    else { ultimoNomeVerificado = ''; marcarErroNome(); }
+  }
+  function filtrar() {
+    const nome = (document.getElementById('filtroNome').value || '').trim().toLowerCase();
+    const grupo = document.getElementById('filtroGrupo').value;
+    const sit = document.getElementById('filtroSituacao').value;
+    const rows = document.querySelectorAll('#tabelaPratos tbody tr[data-id]');
+    let visiveis = 0;
+    rows.forEach(function (tr) {
+      const ok = (!nome || (tr.dataset.nome || '').toLowerCase().indexOf(nome) >= 0)
+        && (!grupo || tr.getAttribute('data-' + grupo) === '1')
+        && (!sit || tr.dataset.ativo === sit);
+      tr.hidden = !ok;
+      if (ok) visiveis += 1;
+    });
+    const aviso = document.getElementById('linhaFiltro');
+    if (aviso) aviso.hidden = visiveis > 0 || rows.length === 0;
+  }
+  function collect() {
+    return {
+      nome: (fNome.value || '').trim().toUpperCase(),
+      grupo_principal: !!document.getElementById('gPrincipal').checked,
+      grupo_sobremesa: !!document.getElementById('gSobremesa').checked,
+      grupo_outros: !!document.getElementById('gOutros').checked,
+      grupo_bebida: !!document.getElementById('gBebida').checked,
+      grupo_gelado: !!document.getElementById('gGelado').checked,
+      grupo_extra: !!document.getElementById('gExtra').checked,
+      fator_conv_tot: parseFloat(document.getElementById('fFator').value) || 1,
+      ativo: !!document.getElementById('fAtivo').checked
+    };
+  }
+  async function salvar() {
+    const body = collect();
+    if (!body.nome) { showToast('Informe o nome do prato', 'error'); fNome.focus(); return; }
+    const idAtual = (document.getElementById('prato_id').value || '').trim();
+    const existente = linhaPorNome(body.nome, idAtual);
+    if (existente) {
+      if (confirm('Nome já cadastrado. Deseja editar?')) { preencher(dadosDaLinha(existente)); return; }
+      marcarErroNome();
+      showToast('Nome já cadastrado', 'error');
+      return;
+    }
+    btnGravar.disabled = true;
+    try {
+      const r = await fetch(idAtual ? ('/nutricao/api/pratos-liquidos/' + idAtual) : '/nutricao/api/pratos-liquidos', {
+        method: idAtual ? 'PUT' : 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+      });
+      const j = await r.json();
+      if (!r.ok || j.ok === false) {
+        showToast((j && j.error) || 'Falha ao salvar', 'error');
+        btnGravar.disabled = false;
+        return;
+      }
+      showToast(idAtual ? 'Prato atualizado' : 'Prato cadastrado', 'success');
+      setTimeout(function () { location.reload(); }, 400);
+    } catch (err) {
+      showToast('Falha ao salvar', 'error');
+      btnGravar.disabled = false;
+    }
+  }
+  async function excluir(tr) {
+    const id = tr.getAttribute('data-id');
+    if (!id) return;
+    if (!confirm('Desativar este prato?')) return;
+    const r = await fetch('/nutricao/api/pratos-liquidos/' + id, { method: 'DELETE' });
+    const j = await r.json();
+    if (!r.ok || j.ok === false) { showToast((j && j.error) || 'Falha ao excluir', 'error'); return; }
+    showToast('Prato desativado', 'success');
+    setTimeout(function () { location.reload(); }, 400);
+  }
 
-function blank(){
-  return {
-    id: null, nome: '',
-    grupo_principal: false, grupo_sobremesa: false, grupo_outros: false,
-    grupo_bebida: false, grupo_gelado: false, grupo_extra: false,
-    fator_conv_tot: 1, ativo: true
-  };
-}
-
-function setEdit(on){
-  editing = !!on;
-  document.querySelector('.pl-panel').classList.toggle('editing', editing);
-  document.getElementById('btnSalvar').disabled = !editing;
-  document.getElementById('btnCancelar').disabled = !editing;
-  if (editing && !isNew) render(current() || blank());
-}
-
-function updatePos(){
-  const total = PRATOS.length;
-  const cur = total ? (idx + 1) : 0;
-  document.getElementById('posLabel').textContent = isNew ? `Novo / ${total}` : `${cur} / ${total}`;
-}
-
-function render(p){
-  p = p || blank();
-  document.getElementById('fNome').value = p.nome || '';
-  document.getElementById('gPrincipal').checked = !!p.grupo_principal;
-  document.getElementById('gSobremesa').checked = !!p.grupo_sobremesa;
-  document.getElementById('gOutros').checked = !!p.grupo_outros;
-  document.getElementById('gBebida').checked = !!p.grupo_bebida;
-  document.getElementById('gGelado').checked = !!p.grupo_gelado;
-  document.getElementById('gExtra').checked = !!p.grupo_extra;
-  document.getElementById('fFator').value = p.fator_conv_tot ?? 1;
-  document.getElementById('fAtivo').checked = p.ativo !== false;
-  updatePos();
-}
-
-function collect(){
-  return {
-    nome: (document.getElementById('fNome').value || '').trim().toUpperCase(),
-    grupo_principal: !!document.getElementById('gPrincipal').checked,
-    grupo_sobremesa: !!document.getElementById('gSobremesa').checked,
-    grupo_outros: !!document.getElementById('gOutros').checked,
-    grupo_bebida: !!document.getElementById('gBebida').checked,
-    grupo_gelado: !!document.getElementById('gGelado').checked,
-    grupo_extra: !!document.getElementById('gExtra').checked,
-    fator_conv_tot: parseFloat(document.getElementById('fFator').value) || 1,
-    ativo: !!document.getElementById('fAtivo').checked,
-  };
-}
-
-function nav(dir){
-  if (editing){ showToast('Salve ou cancele a edição','error'); return; }
-  if (!PRATOS.length) return;
-  if (dir === 'first') idx = 0;
-  if (dir === 'prev') idx = Math.max(0, idx - 1);
-  if (dir === 'next') idx = Math.min(PRATOS.length - 1, idx + 1);
-  if (dir === 'last') idx = PRATOS.length - 1;
-  isNew = false;
-  render(current());
-}
-
-function novo(){
-  isNew = true;
-  setEdit(true);
-  render(blank());
-  document.getElementById('fNome').focus();
-}
-
-function cancelar(){
-  isNew = false;
-  setEdit(false);
-  render(current() || blank());
-}
-
-async function salvar(){
-  const body = collect();
-  if (!body.nome){ showToast('Informe o nome do prato','error'); return; }
-  const cur = current();
-  const id = (!isNew && cur) ? cur.id : null;
-  const url = id ? `/nutricao/api/pratos-liquidos/${id}` : '/nutricao/api/pratos-liquidos';
-  const method = id ? 'PUT' : 'POST';
-  const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-  const j = await r.json();
-  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao salvar','error'); return; }
-  showToast(id ? 'Prato atualizado' : 'Prato cadastrado','success');
-  setTimeout(() => location.reload(), 400);
-}
-
-async function excluir(){
-  const cur = current();
-  if (!cur || !cur.id){ showToast('Nenhum prato selecionado','error'); return; }
-  if (!confirm('Desativar este prato?')) return;
-  const r = await fetch(`/nutricao/api/pratos-liquidos/${cur.id}`, { method:'DELETE' });
-  const j = await r.json();
-  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao excluir','error'); return; }
-  showToast('Prato desativado','success');
-  setTimeout(() => location.reload(), 400);
-}
-
-function abrirBusca(){
-  const html = `
-    <div class="form-group">
-      <label class="form-label">Buscar prato</label>
-      <input class="form-control" id="f-busca" placeholder="Digite parte do nome..." autofocus>
-    </div>
-  `;
-  abrirModal('Buscar prato', html, 'Localizar', () => {
-    const q = (document.getElementById('f-busca')?.value || '').trim().toUpperCase();
-    if (!q){ showToast('Digite um termo','error'); return; }
-    const i = PRATOS.findIndex(p => (p.nome||'').toUpperCase().includes(q));
-    if (i < 0){ showToast('Prato não encontrado','error'); return; }
-    if (editing){ showToast('Salve ou cancele a edição','error'); return; }
-    idx = i; isNew = false; render(current()); fecharModal();
+  document.getElementById('btnNovoPrato').addEventListener('click', abrirNovo);
+  document.getElementById('btnFecharPrato').addEventListener('click', fecharModal);
+  document.getElementById('btnFecharPratoX').addEventListener('click', fecharModal);
+  document.getElementById('btnLimparFiltros').addEventListener('click', function () {
+    document.getElementById('filtroNome').value = '';
+    document.getElementById('filtroGrupo').value = '';
+    document.getElementById('filtroSituacao').value = '';
+    filtrar();
   });
-  setTimeout(() => document.getElementById('f-busca')?.focus(), 50);
-}
-
-if (PRATOS.length){
-  const i = PRATOS.findIndex(p => (p.nome||'') === 'CREME DE LARANJA LIMA');
-  idx = i >= 0 ? i : 0;
-  render(current());
-} else {
-  render(blank());
-}
-setEdit(false);
+  document.getElementById('btnImprimir').addEventListener('click', function () { window.print(); });
+  document.getElementById('filtroNome').addEventListener('input', filtrar);
+  document.getElementById('filtroGrupo').addEventListener('change', filtrar);
+  document.getElementById('filtroSituacao').addEventListener('change', filtrar);
+  overlay.addEventListener('click', function (ev) { if (ev.target === overlay) fecharModal(); });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape' && !overlay.hidden) fecharModal();
+  });
+  form.addEventListener('submit', function (ev) { ev.preventDefault(); salvar(); });
+  fNome.addEventListener('input', function () {
+    fNome.classList.remove('pl-campo-erro');
+    ultimoNomeVerificado = '';
+  });
+  fNome.addEventListener('blur', function () { setTimeout(verificarNomeExistente, 0); });
+  document.querySelectorAll('#tabelaPratos .btn-editar').forEach(function (btn) {
+    btn.addEventListener('click', function () { abrirEditar(btn.closest('tr')); });
+  });
+  document.querySelectorAll('#tabelaPratos .btn-excluir').forEach(function (btn) {
+    btn.addEventListener('click', function () { excluir(btn.closest('tr')); });
+  });
+})();
 </script>
 {% endblock %}

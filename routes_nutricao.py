@@ -296,8 +296,9 @@ def _list_clinicas_db(somente_ativas=False):
     return CLINICAS
 
 
-def _mapa_linhas(data_ref):
-    garantir_mapa_do_dia(data_ref)
+def _mapa_linhas(data_ref, garantir=True):
+    if garantir:
+        garantir_mapa_do_dia(data_ref)
     rows = (
         apply_cliente_filter(
             NutMapaRefeicao.query.filter_by(data_refeicao=data_ref, ativo=True),
@@ -879,6 +880,8 @@ def api_mapa_get():
     data_ref = _parse_date(request.args.get('data')) or date.today()
     _seed_aviso_alta_demo(data_ref)
     uma = str(request.args.get('uma') or '').strip().lower() in ('1', 'true', 'sim', 'on')
+    grupo = (request.args.get('grupo_clinica') or '').strip()
+    clinica = (request.args.get('clinica') or '').strip()
     if uma:
         garantir_mapa_do_dia(data_ref)
         return jsonify({
@@ -886,28 +889,35 @@ def api_mapa_get():
             'uma': True,
             'data': data_ref.isoformat(),
             'linhas': listar_linhas_mapa_uma(data_ref),
-            'avisos_alta': listar_avisos_alta_mapa(data_ref),
+            'avisos_alta': listar_avisos_alta_mapa(data_ref, garantir=False),
+        })
+    # Clínica/grupo: a tela só usa a grade. Não serializa o hospital inteiro.
+    if grupo or clinica:
+        garantir_mapa_do_dia(data_ref)
+        if grupo == '__todas__' or clinica == '__todas__':
+            grade = montar_grade_leitos_mapa(data_ref, clinica_nome='__todas__')
+        elif grupo:
+            gid = int(grupo) if grupo.isdigit() else None
+            nomes = nomes_clinicas_do_grupo(grupo_id=gid, grupo_nome=None if gid else grupo)
+            grade = montar_grade_leitos_mapa(data_ref, clinica_nomes=nomes)
+        else:
+            grade = montar_grade_leitos_mapa(data_ref, clinica_nome=clinica)
+        return jsonify({
+            'ok': True,
+            'data': data_ref.isoformat(),
+            'linhas': [],
+            'grade': grade,
+            'avisos_alta': listar_avisos_alta_mapa(data_ref, garantir=False),
         })
     linhas = _mapa_linhas(data_ref)
-    grupo = (request.args.get('grupo_clinica') or '').strip()
-    clinica = (request.args.get('clinica') or '').strip()
-    grade = []
-    if grupo == '__todas__' or clinica == '__todas__':
-        grade = montar_grade_leitos_mapa(data_ref, clinica_nome='__todas__')
-    elif grupo:
-        gid = int(grupo) if grupo.isdigit() else None
-        nomes = nomes_clinicas_do_grupo(grupo_id=gid, grupo_nome=None if gid else grupo)
-        grade = montar_grade_leitos_mapa(data_ref, clinica_nomes=nomes)
-    elif clinica:
-        grade = montar_grade_leitos_mapa(data_ref, clinica_nome=clinica)
     return jsonify({
         'ok': True,
         'data': data_ref.isoformat(),
         'linhas': linhas,
-        'grade': grade,
+        'grade': [],
         'clinicas': _list_clinicas_db(somente_ativas=True),
         'enfermarias': list_enfermarias(somente_ativas=True),
-        'avisos_alta': listar_avisos_alta_mapa(data_ref),
+        'avisos_alta': listar_avisos_alta_mapa(data_ref, garantir=False),
     })
 
 

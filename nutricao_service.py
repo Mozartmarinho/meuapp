@@ -51,6 +51,8 @@ _ENSURE_COLUMNS_DONE = False
 _SEED_NUTRICAO_DONE = False
 # Histórico do mapa: olha no máximo N dias atrás ao preencher buracos (evita carregar anos).
 _MAPA_LOOKBACK_DIAS = 60
+# data -> carimbo do histórico. Troca de clínica no mesmo dia não relê 60 dias se nada mudou.
+_MAPA_GARANTIDO = {}
 
 SEXO_LABELS = {
     'M': 'Masculino',
@@ -477,6 +479,26 @@ def _limpar_cache_inspetor(insp):
         limpar()
 
 
+def _ensure_index(table, name, columns):
+    """Cria índice em banco já existente. create_all não altera tabela antiga."""
+    from sqlalchemy import inspect, text
+    try:
+        insp = inspect(db.engine)
+        if table not in set(insp.get_table_names()):
+            return
+        existentes = {ix['name'] for ix in insp.get_indexes(table)}
+        if name in existentes:
+            return
+        cols = ', '.join(columns)
+        sql = f'CREATE INDEX {name} ON {table} ({cols})'
+        if db.engine.dialect.name == 'mysql':
+            sql += ' ALGORITHM=INPLACE, LOCK=NONE'
+        db.session.execute(text(sql))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 def _ensure_nutricao_columns(force=False):
     """Adiciona colunas novas em tabelas já existentes (create_all não altera).
 
@@ -529,6 +551,7 @@ def _ensure_nutricao_columns(force=False):
                     'WHERE lancamento_grupo_id IS NULL'
                 ))
             db.session.commit()
+            _ensure_index('nut_mapa_refeicoes', 'ix_nut_mapa_data_ativo', ('data_refeicao', 'ativo'))
         if 'nut_pacientes' in tables:
             cols = {c['name'] for c in insp.get_columns('nut_pacientes')}
             if 'hora_saida' not in cols:
@@ -536,6 +559,8 @@ def _ensure_nutricao_columns(force=False):
             if 'motivo_saida' not in cols:
                 db.session.execute(text("ALTER TABLE nut_pacientes ADD COLUMN motivo_saida VARCHAR(40)"))
             db.session.commit()
+            _ensure_index('nut_pacientes', 'ix_nut_pacientes_nome', ('nome',))
+            _ensure_index('nut_pacientes', 'ix_nut_pacientes_prontuario', ('prontuario',))
         if 'nut_produtos' in tables:
             cols = {c['name'] for c in insp.get_columns('nut_produtos')}
             alteracoes = {
@@ -3530,21 +3555,22 @@ def _linha_mapa_ativa_para_copia(src):
 
 def _sanear_baixas_incompletas(data_ref):
     """Reativa linhas inativas sem motivo (baixa incompleta / bug antigo)."""
-    sanadas = 0
-    rows = (
-        NutMapaRefeicao.query
-        .filter_by(data_refeicao=data_ref, ativo=False)
-        .all()
+    agora = now_brasilia()
+    q = NutMapaRefeicao.query.filter(
+        NutMapaRefeicao.data_refeicao == data_ref,
+        NutMapaRefeicao.ativo.is_(False),
+        db.or_(
+            NutMapaRefeicao.motivo_saida.is_(None),
+            db.func.trim(NutMapaRefeicao.motivo_saida) == '',
+        ),
     )
-    for row in rows:
-        if _linha_com_baixa(row):
-            continue
-        row.ativo = True
-        row.data_saida = None
-        row.hospital_transferencia = None
-        marcar_alteracao_mapa(row, 'sistema')
-        sanadas += 1
-    return sanadas
+    return q.update({
+        NutMapaRefeicao.ativo: True,
+        NutMapaRefeicao.data_saida: None,
+        NutMapaRefeicao.hospital_transferencia: None,
+        NutMapaRefeicao.usuario_alteracao: 'sistema',
+        NutMapaRefeicao.data_atualizacao: agora,
+    }, synchronize_session=False) or 0
 
 
 def _upsert_linha_no_dia(src, data_ref, by_grupo, by_chave):
@@ -3608,6 +3634,71 @@ def _indices_linhas_mapa(existentes):
     return by_grupo, by_chave
 
 
+_MAPA_COLS_LEVES = (
+    'id', 'data_refeicao', 'lancamento_grupo_id', 'paciente_id', 'tipo_lancamento',
+    'dieta', 'prontuario', 'nome', 'leito', 'motivo_saida', 'ativo',
+)
+
+
+def _query_linhas_mapa_leves():
+    """Identidade da linha, sem os TEXT (dieta livre, cardápio, UMA)."""
+    from sqlalchemy.orm import load_only
+    return NutMapaRefeicao.query.options(load_only(*_MAPA_COLS_LEVES))
+
+
+def _hidratar_linhas_mapa(rows):
+    """Carrega colunas completas só das linhas que vão ser clonadas."""
+    from sqlalchemy.orm import joinedload
+    ids = [r.id for r in rows if getattr(r, 'id', None)]
+    if not ids:
+        return {}
+    for r in rows:
+        if getattr(r, 'id', None):
+            db.session.expire(r)
+    loaded = (
+        NutMapaRefeicao.query
+        .options(joinedload(NutMapaRefeicao.paciente))
+        .filter(NutMapaRefeicao.id.in_(ids))
+        .all()
+    )
+    return {r.id: r for r in loaded}
+
+
+def _copiar_fontes_para_o_dia(fontes, data_ref, by_grupo, by_chave):
+    """Cria ou reativa no dia alvo. Só hidrata a fonte quando falta clonar."""
+    alteradas = 0
+    clonar = []
+    for src in fontes:
+        if not _linha_mapa_ativa_para_copia(src):
+            continue
+        grupo = getattr(src, 'lancamento_grupo_id', None)
+        if grupo:
+            existing = by_grupo.get(int(grupo))
+        else:
+            existing = by_chave.get(_chave_grupo_lancamento(src))
+        if existing:
+            if _linha_com_baixa(existing):
+                continue
+            if not existing.ativo:
+                existing.ativo = True
+                existing.data_saida = None
+                existing.motivo_saida = None
+                existing.hospital_transferencia = None
+                marcar_alteracao_mapa(existing, 'sistema')
+                alteradas += 1
+            continue
+        clonar.append(src)
+    if not clonar:
+        return alteradas
+    full = _hidratar_linhas_mapa(clonar)
+    for src in clonar:
+        row = full.get(src.id)
+        if row is None:
+            continue
+        alteradas += _upsert_linha_no_dia(row, data_ref, by_grupo, by_chave)
+    return alteradas
+
+
 def _copiar_ativos_dia_anterior(data_ref):
     """Merge: cada lançamento ativo (sem baixa com motivo) de data_ref-1 passa a existir em data_ref.
 
@@ -3617,21 +3708,18 @@ def _copiar_ativos_dia_anterior(data_ref):
     alteradas = _sanear_baixas_incompletas(data_ref)
     alteradas += _sanear_baixas_incompletas(data_origem)
 
-    existentes = NutMapaRefeicao.query.filter_by(data_refeicao=data_ref).all()
+    existentes = _query_linhas_mapa_leves().filter_by(data_refeicao=data_ref).all()
     by_grupo, by_chave = _indices_linhas_mapa(existentes)
 
     fontes = (
-        NutMapaRefeicao.query
+        _query_linhas_mapa_leves()
         .filter_by(data_refeicao=data_origem)
         .order_by(NutMapaRefeicao.id)
         .all()
     )
     if not fontes:
         return alteradas
-
-    for src in fontes:
-        alteradas += _upsert_linha_no_dia(src, data_ref, by_grupo, by_chave)
-    return alteradas
+    return alteradas + _copiar_fontes_para_o_dia(fontes, data_ref, by_grupo, by_chave)
 
 
 def _garantir_ausentes_desde_historico(data_ref):
@@ -3640,12 +3728,12 @@ def _garantir_ausentes_desde_historico(data_ref):
     Cobre buracos se um dia intermediário nunca recebeu a linha.
     Limita o lookback para não carregar o histórico inteiro do banco.
     """
-    existentes = NutMapaRefeicao.query.filter_by(data_refeicao=data_ref).all()
+    existentes = _query_linhas_mapa_leves().filter_by(data_refeicao=data_ref).all()
     by_grupo, by_chave = _indices_linhas_mapa(existentes)
 
     since = data_ref - timedelta(days=_MAPA_LOOKBACK_DIAS)
     priors = (
-        NutMapaRefeicao.query
+        _query_linhas_mapa_leves()
         .filter(
             NutMapaRefeicao.data_refeicao < data_ref,
             NutMapaRefeicao.data_refeicao >= since,
@@ -3655,7 +3743,7 @@ def _garantir_ausentes_desde_historico(data_ref):
     )
     seen_grupos = set()
     seen_chaves = set()
-    alteradas = 0
+    fontes = []
     for src in priors:
         gid = getattr(src, 'lancamento_grupo_id', None)
         if gid:
@@ -3670,8 +3758,43 @@ def _garantir_ausentes_desde_historico(data_ref):
         # Último estado anterior: se foi baixa com motivo, não ressuscita
         if _linha_com_baixa(src):
             continue
-        alteradas += _upsert_linha_no_dia(src, data_ref, by_grupo, by_chave)
-    return alteradas
+        fontes.append(src)
+    return _copiar_fontes_para_o_dia(fontes, data_ref, by_grupo, by_chave)
+
+
+def _stamp_parte(valor):
+    if valor is None:
+        return ''
+    if hasattr(valor, 'isoformat'):
+        return valor.isoformat()
+    return str(valor)
+
+
+def _stamp_historico_mapa(data_ref):
+    """Carimbo barato do que a cópia do dia precisa enxergar. Muda se entrar ou sair linha."""
+    since = data_ref - timedelta(days=_MAPA_LOOKBACK_DIAS)
+    mapa = db.session.query(
+        db.func.count(NutMapaRefeicao.id),
+        db.func.max(NutMapaRefeicao.id),
+        db.func.max(NutMapaRefeicao.data_atualizacao),
+    ).filter(
+        NutMapaRefeicao.data_refeicao < data_ref,
+        NutMapaRefeicao.data_refeicao >= since,
+    ).one()
+    ac = db.session.query(
+        db.func.count(NutRefeicaoAcompanhante.id),
+        db.func.max(NutRefeicaoAcompanhante.id),
+        db.func.max(NutRefeicaoAcompanhante.data_atualizacao),
+    ).filter(
+        db.or_(
+            NutRefeicaoAcompanhante.data_refeicao.is_(None),
+            db.and_(
+                NutRefeicaoAcompanhante.data_refeicao < data_ref,
+                NutRefeicaoAcompanhante.data_refeicao >= since,
+            ),
+        )
+    ).one()
+    return tuple(_stamp_parte(v) for v in (tuple(mapa) + tuple(ac)))
 
 
 def garantir_mapa_do_dia(data_ref=None):
@@ -3686,30 +3809,41 @@ def garantir_mapa_do_dia(data_ref=None):
       (não varre mais o histórico dia a dia desde a primeira linha).
     Cadastro do paciente (data_saida no NutPaciente) NÃO impede a cópia —
     só a baixa no mapa com motivo.
+
+    Se o histórico do lookback não mudou desde a última garantia deste processo,
+    a troca de clínica não relê os TEXT dos 60 dias.
     """
     data_ref = data_ref or date.today()
+    chave = data_ref.isoformat()
 
     alteradas = _sanear_baixas_incompletas(data_ref)
-    tem_anterior = (
-        db.session.query(NutMapaRefeicao.id)
-        .filter(NutMapaRefeicao.data_refeicao < data_ref)
-        .limit(1)
-        .first()
-    )
-    if not tem_anterior:
+    stamp = _stamp_historico_mapa(data_ref)
+    if _MAPA_GARANTIDO.get(chave) == stamp:
         if alteradas:
             db.session.commit()
             print(f'[mapa] garantir {data_ref}: sanadas/criadas={alteradas}')
         return alteradas
 
-    alteradas += _copiar_ativos_dia_anterior(data_ref)
-    alteradas += _garantir_ausentes_desde_historico(data_ref)
-    # Acompanhantes acompanham o paciente enquanto ele permanece no mapa
-    alteradas += garantir_acompanhantes_do_dia(data_ref, commit=False)
+    since = data_ref - timedelta(days=_MAPA_LOOKBACK_DIAS)
+    tem_anterior = (
+        db.session.query(NutMapaRefeicao.id)
+        .filter(
+            NutMapaRefeicao.data_refeicao < data_ref,
+            NutMapaRefeicao.data_refeicao >= since,
+        )
+        .limit(1)
+        .first()
+    )
+    if tem_anterior:
+        alteradas += _copiar_ativos_dia_anterior(data_ref)
+        alteradas += _garantir_ausentes_desde_historico(data_ref)
+        # Acompanhantes acompanham o paciente enquanto ele permanece no mapa
+        alteradas += garantir_acompanhantes_do_dia(data_ref, commit=False)
 
     if alteradas:
         db.session.commit()
-    print(f'[mapa] garantir {data_ref}: sanadas/criadas={alteradas}')
+        print(f'[mapa] garantir {data_ref}: sanadas/criadas={alteradas}')
+    _MAPA_GARANTIDO[chave] = _stamp_historico_mapa(data_ref)
     return alteradas
 
 
@@ -3885,7 +4019,10 @@ def montar_grade_leitos_mapa(data_ref, clinica_nome=None, clinica_nomes=None):
             return []
     todas = nomes_set is None and ((not nome_filtro) or nome_filtro == '__todas__')
 
-    q_cli = _q(NutClinica).filter_by(ativo=True)
+    from sqlalchemy.orm import selectinload
+    q_cli = _q(NutClinica).filter_by(ativo=True).options(
+        selectinload(NutClinica.enfermarias)
+    )
     if nomes_set is not None:
         q_cli = q_cli.filter(db.func.upper(NutClinica.nome).in_(list(nomes_set)))
     elif not todas:
@@ -3929,8 +4066,23 @@ def montar_grade_leitos_mapa(data_ref, clinica_nome=None, clinica_nomes=None):
             'leito_numero': leito_numero,
             'vago': linha is None,
             'fora_cadastro': bool(fora_cadastro),
-            'linha': linha.to_dict() if linha is not None else None,
+            'linha': linha.to_dict(incluir_substituicoes=False) if linha is not None else None,
         }
+
+    enf_ids = []
+    for clinica in clinicas:
+        for enf in (clinica.enfermarias or []):
+            if getattr(enf, 'ativo', True) and enf.id not in enf_ids:
+                enf_ids.append(enf.id)
+    leitos_por_enf = defaultdict(list)
+    if enf_ids:
+        for leito in (
+            NutLeito.query
+            .filter(NutLeito.enfermaria_id.in_(enf_ids), NutLeito.ativo.is_(True))
+            .order_by(NutLeito.numero, NutLeito.nome)
+            .all()
+        ):
+            leitos_por_enf[leito.enfermaria_id].append(leito)
 
     grade = []
     for clinica in clinicas:
@@ -3941,12 +4093,7 @@ def montar_grade_leitos_mapa(data_ref, clinica_nome=None, clinica_nomes=None):
         for enf in enfermarias:
             enf_nome = enf.nome or ''
             enf_u = enf_nome.strip().upper()
-            leitos = (
-                NutLeito.query
-                .filter_by(enfermaria_id=enf.id, ativo=True)
-                .order_by(NutLeito.numero, NutLeito.nome)
-                .all()
-            )
+            leitos = leitos_por_enf.get(enf.id, [])
             bucket = idx.get((cli_u, enf_u), [])
             for leito in leitos:
                 valor, rotulo = _rotulo_valor_leito(leito)
@@ -4013,10 +4160,13 @@ def linha_tem_conteudo_uma(row):
 def listar_linhas_mapa_uma(data_ref):
     """Pacientes do dia com U.M.A. preenchida, de qualquer clínica, enfermaria ou leito."""
     data_ref = data_ref or date.today()
+    uma_cols = [getattr(NutMapaRefeicao, campo) for campo in CAMPOS_MAPA_UMA]
     rows = apply_cliente_filter(
         NutMapaRefeicao.query.filter_by(data_refeicao=data_ref, ativo=True),
         NutMapaRefeicao,
-    ).all()
+    ).filter(db.or_(*[
+        db.and_(col.isnot(None), db.func.trim(col) != '') for col in uma_cols
+    ])).all()
     linhas = [r for r in rows if linha_tem_conteudo_uma(r)]
     linhas.sort(key=lambda r: (
         (r.clinica or '').upper(),
@@ -4293,13 +4443,28 @@ def registrar_saida_mapa(row, motivo, usuario=None, data_saida=None, hospital_tr
     return row
 
 
-def listar_avisos_alta_mapa(data_ref=None):
+def listar_avisos_alta_mapa(data_ref=None, garantir=True):
     """Pacientes com alta anteriores à data do mapa, ainda presentes nas linhas ativas."""
+    from sqlalchemy.orm import joinedload
     data_ref = data_ref or date.today()
-    garantir_mapa_do_dia(data_ref)
+    if garantir:
+        garantir_mapa_do_dia(data_ref)
+    alta_pac = NutMapaRefeicao.paciente.has(db.and_(
+        NutPaciente.data_saida.isnot(None),
+        NutPaciente.data_saida < data_ref,
+    ))
+    alta_linha = db.and_(
+        NutMapaRefeicao.data_saida.isnot(None),
+        NutMapaRefeicao.data_saida < data_ref,
+    )
     rows = (
         NutMapaRefeicao.query
-        .filter_by(data_refeicao=data_ref, ativo=True)
+        .options(joinedload(NutMapaRefeicao.paciente))
+        .filter(
+            NutMapaRefeicao.data_refeicao == data_ref,
+            NutMapaRefeicao.ativo.is_(True),
+            db.or_(alta_pac, alta_linha),
+        )
         .order_by(NutMapaRefeicao.clinica, NutMapaRefeicao.leito, NutMapaRefeicao.nome)
         .all()
     )

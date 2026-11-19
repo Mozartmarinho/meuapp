@@ -272,14 +272,51 @@ function markOpen(sock) {
   refreshUser(sock || client).catch(() => {});
 }
 
+async function readLiveLink(sock) {
+  const page = sock && sock.pupPage;
+  if (!page) return null;
+  try {
+    return await page.evaluate(() => {
+      const app = window.AuthStore && window.AuthStore.AppState;
+      const conn = window.AuthStore && window.AuthStore.Conn;
+      const appState = app && (app.state || app.__x_state || '');
+      const stream = app && (app.stream || app.__x_stream || '');
+      const ref = conn && (conn.ref || conn.__x_ref || '');
+      let canvasData = null;
+      const canvas = document.querySelector('canvas');
+      if (canvas && ref) {
+        try { canvasData = canvas.toDataURL('image/png'); } catch (e) { canvasData = null; }
+      }
+      return {
+        appState: String(appState || ''),
+        stream: String(stream || ''),
+        hasRef: !!ref,
+        canvasData: canvasData,
+      };
+    });
+  } catch (err) {
+    return null;
+  }
+}
+
 async function hydrateStatus() {
   if (loggingOut || !client) return;
   try {
-    const fromStore = await tryReadUserFromStore(client);
-    if (fromStore || (client.info && client.info.wid)) {
-      markOpen(client);
-      await refreshUser(client);
-      return;
+    const live = await readLiveLink(client);
+    if (live) {
+      const connected = (live.appState === 'CONNECTED' || live.stream === 'CONNECTED') && !live.hasRef;
+      if (connected) {
+        markOpen(client);
+        await refreshUser(client);
+        return;
+      }
+      if (live.hasRef || live.appState === 'UNPAIRED' || live.appState === 'UNPAIRED_IDLE') {
+        state = 'qr';
+        user = null;
+        startError = null;
+        if (live.canvasData) qrImage = live.canvasData;
+        return;
+      }
     }
     if (state === 'open') {
       await refreshUser(client);
@@ -338,9 +375,8 @@ function bindClientEvents(sock) {
   sock.on('authenticated', () => {
     console.log('whatsapp-web authenticated');
     startError = null;
-    clearQr();
+    if (state === 'qr') return;
     if (state !== 'open') state = 'connecting';
-    if (sock.info && sock.info.wid) markOpen(sock);
   });
 
   sock.on('auth_failure', (msg) => {
@@ -388,22 +424,34 @@ function bindClientEvents(sock) {
   });
 }
 
+function releaseLockedSessionChrome() {
+  const needle = path.join(AUTH_DIR, 'session-pesagem');
+  try {
+    execFileSync('pkill', ['-f', needle], { stdio: 'ignore' });
+  } catch (err) {
+    /* nenhum Chrome preso nesta sessão */
+  }
+}
+
 async function startClient() {
   if (starting || loggingOut) return;
   if (client) return;
   starting = true;
-  state = 'connecting';
+  if (state !== 'qr') state = 'connecting';
   startError = null;
-  clearQr();
   user = null;
   try {
     loadLibs();
     fs.mkdirSync(AUTH_DIR, { recursive: true });
+    releaseLockedSessionChrome();
+    await new Promise((resolve) => setTimeout(resolve, 400));
     const chromePath = findChrome();
     const userAgent = buildUserAgent(chromePath);
     console.log('chrome', chromePath || 'bundled', 'ua', userAgent);
     const puppeteerOpts = {
       headless: HEADLESS ? 'new' : false,
+      protocolTimeout: 180000,
+      timeout: 180000,
       defaultViewport: { width: 1280, height: 900 },
       ignoreDefaultArgs: ['--enable-automation'],
       args: [
@@ -457,15 +505,12 @@ async function startClient() {
     const msg = String(err && err.message ? err.message : err);
     console.error('startClient', msg);
     startError = chromeMissingMessage(msg);
-    clearQr();
     state = 'close';
     await destroyClient();
     startAttempts += 1;
-    if (contextDestroyed(msg) && startAttempts <= 3) {
-      if (startAttempts >= 2) {
-        console.log('sessão WhatsApp inválida; gerando QR novo');
-        await wipeAuthDir();
-      }
+    const transient = contextDestroyed(msg) || msg.toLowerCase().includes('timed out') || msg.toLowerCase().includes('already running');
+    if (transient && startAttempts <= 4) {
+      console.log('religando WhatsApp sem apagar a sessão');
       state = 'connecting';
       startError = null;
       starting = false;
@@ -473,7 +518,7 @@ async function startClient() {
         startClient().catch((retryErr) => {
           console.error('startClient retry', retryErr && retryErr.message ? retryErr.message : retryErr);
         });
-      }, 1200);
+      }, 1500);
       return;
     }
   } finally {
@@ -661,14 +706,32 @@ server.on('error', (err) => {
   process.exit(1);
 });
 
+let shuttingDown = false;
 function shutdown() {
-  clearPid();
-  process.exit(0);
+  if (shuttingDown) return;
+  shuttingDown = true;
+  loggingOut = true;
+  destroyClient().finally(() => {
+    clearPid();
+    setTimeout(() => process.exit(0), 300);
+  });
 }
 
 process.on('exit', clearPid);
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+process.on('unhandledRejection', (err) => {
+  const msg = String(err && err.message ? err.message : err);
+  console.error('unhandledRejection', msg);
+  if (shuttingDown || starting || client || loggingOut) return;
+  if (!contextDestroyed(msg)) return;
+  console.log('religando WhatsApp sem apagar a sessão');
+  setTimeout(() => {
+    startClient().catch((retryErr) => {
+      console.error('startClient retry', retryErr && retryErr.message ? retryErr.message : retryErr);
+    });
+  }, 1500);
+});
 
 server.listen(PORT, HOST, () => {
   writePid();

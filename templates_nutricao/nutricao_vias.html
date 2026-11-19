@@ -1,159 +1,457 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
-<div class="via-cadastro">
-<div class="page-header">
-  <h1>Cadastro de Via de Administração</h1>
-  <p>Embalagem e via usadas em extras, suplementos, enteral, fórmula infantil e LVE</p>
-</div>
-
-<div class="toolbar">
-  <div class="toolbar-search">
-    <i class="fas fa-search"></i>
-    <input type="text" id="buscaVia" placeholder="Buscar via..." oninput="filtrarVias()">
+<div class="via-cadastro chamados-page">
+  <div class="header">
+    <div>
+      <h1>Cadastro de Via de Administração</h1>
+      <p class="chamados-sub">Embalagem e via usadas em extras, suplementos, enteral, fórmula infantil e LVE</p>
+    </div>
+    <div class="eq-header-actions">
+      <button type="button" class="btn btn-success" id="btnNovaVia">
+        <i class="fas fa-plus"></i> Nova via
+      </button>
+    </div>
   </div>
-  <button class="btn btn-primary btn-sm" type="button" onclick="abrirVia()">
-    <i class="fas fa-plus"></i> Nova via
-  </button>
-</div>
 
-<div class="card" style="padding:0;overflow:hidden">
-  <div class="table-container" style="box-shadow:none;border-radius:0;">
-    <table class="data-table" id="tabelaVias">
+  <div class="eq-filters">
+    <input type="text" id="filtroNome" placeholder="Buscar por nome..." autocomplete="off">
+    <input type="text" id="filtroProduto" placeholder="Buscar por produto..." autocomplete="off">
+    <select id="filtroOral">
+      <option value="">Via oral: todas</option>
+      <option value="1">Via oral: sim</option>
+      <option value="0">Via oral: não</option>
+    </select>
+    <select id="filtroSituacao">
+      <option value="">Todas as situações</option>
+      <option value="1">Ativas</option>
+      <option value="0">Inativas</option>
+    </select>
+    <button type="button" class="btn btn-sm nc-btn-muted" id="btnLimparFiltros">Limpar filtros</button>
+    <button type="button" class="btn btn-sm btn-primary" id="btnImprimir">
+      <i class="fas fa-print"></i> Imprimir
+    </button>
+  </div>
+
+  <div class="eq-print-header" aria-hidden="true">
+    <h1>Cadastro de Via de Administração</h1>
+  </div>
+
+  <div class="table-wrap">
+    <table class="table" id="tabelaVias">
       <thead>
         <tr>
           <th>Nome da embalagem</th>
           <th>Produto</th>
-          <th style="width:88px;text-align:center">Via oral</th>
-          <th style="width:72px;text-align:center">Ativo</th>
-          <th style="width:88px">Ações</th>
+          <th>Via oral</th>
+          <th>Ativo</th>
+          <th class="no-print">Ações</th>
         </tr>
       </thead>
-      <tbody id="tabelaViasBody">
+      <tbody>
         {% for v in vias %}
-        <tr data-id="{{ v.id }}" data-nome="{{ v.nome }}" data-produto="{{ v.produto }}" data-oral="{{ '1' if v.via_oral else '0' }}" data-ativo="{{ '1' if v.ativo else '0' }}">
-          <td>{{ v.nome }}</td>
+        <tr data-id="{{ v.id }}"
+            data-nome="{{ v.nome }}"
+            data-produto="{{ v.produto or '' }}"
+            data-oral="{{ '1' if v.via_oral else '0' }}"
+            data-ativo="{{ '1' if v.ativo else '0' }}">
+          <td><strong>{{ v.nome }}</strong></td>
           <td>{{ v.produto or '—' }}</td>
-          <td style="text-align:center">{{ 'Sim' if v.via_oral else 'Não' }}</td>
-          <td style="text-align:center">
-            <input type="checkbox" {% if v.ativo %}checked{% endif %} onchange="toggleViaAtivo({{ v.id }}, this.checked)">
-          </td>
-          <td>
-            <button class="btn btn-ghost btn-sm" type="button"
-              onclick='abrirVia({{ {"id": v.id, "nome": v.nome, "produto": v.produto, "via_oral": v.via_oral, "ativo": v.ativo}|tojson }})'
-              title="Editar">
+          <td>{{ 'Sim' if v.via_oral else 'Não' }}</td>
+          <td>{{ 'Sim' if v.ativo else 'Não' }}</td>
+          <td class="acoes-cell no-print">
+            <button type="button" class="btn btn-sm btn-editar-link btn-editar" title="Editar">
               <i class="fas fa-edit"></i>
             </button>
-            <button class="btn btn-ghost btn-sm" type="button" onclick="excluirVia({{ v.id }})" title="Desativar">
+            <button type="button" class="btn btn-sm btn-excluir" title="Excluir">
               <i class="fas fa-trash"></i>
             </button>
           </td>
         </tr>
         {% else %}
         <tr id="linhaVazia">
-          <td colspan="5" style="text-align:center;color:#6B7280;">Nenhuma via cadastrada.</td>
+          <td colspan="5" class="empty-row">Nenhuma via cadastrada.</td>
         </tr>
         {% endfor %}
+        <tr id="linhaFiltro" hidden>
+          <td colspan="5" class="empty-row">Nenhuma via encontrada.</td>
+        </tr>
       </tbody>
     </table>
   </div>
 </div>
+
+<div id="modalVia" class="modal-overlay nc-modal" hidden>
+  <div class="modal-dialog nc-dialog" role="dialog" aria-modal="true" aria-labelledby="viaModalTitle">
+    <div class="modal-header">
+      <h2 id="viaModalTitle">Nova via</h2>
+      <button type="button" class="modal-close" id="btnFecharViaX" aria-label="Fechar">&times;</button>
+    </div>
+    <form id="formVia">
+      <input type="hidden" id="via_id" value="">
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="fViaNome">Nome da embalagem *</label>
+          <input type="text" id="fViaNome" maxlength="80" required placeholder="Nome da embalagem">
+        </div>
+        <div class="form-group">
+          <label for="fViaProduto">Produto</label>
+          <input type="text" id="fViaProduto" maxlength="200" placeholder="Opcional">
+        </div>
+        <div class="form-group">
+          <label class="via-flag" for="fViaOral">
+            <input type="checkbox" id="fViaOral">
+            Via oral
+          </label>
+        </div>
+        <div class="form-group">
+          <label class="via-flag" for="fViaAtivo">
+            <input type="checkbox" id="fViaAtivo">
+            Ativo
+          </label>
+        </div>
+      </div>
+      <div class="nc-footer">
+        <button type="button" class="btn nc-btn-muted" id="btnFecharVia">
+          <i class="fas fa-times"></i> Fechar
+        </button>
+        <button type="submit" class="btn btn-success" id="btnGravarVia">
+          <i class="fas fa-save"></i> Gravar
+        </button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <style>
-.via-cadastro .page-header { margin-bottom: 1rem; }
-.via-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
-.via-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
-.via-cadastro .toolbar { gap: 0.6rem; margin-bottom: 0.8rem; }
-.via-cadastro .toolbar-search {
+.via-cadastro { padding: 4px 0; }
+.via-cadastro .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+.via-cadastro h1 { margin: 0; font-size: 1.6rem; }
+.chamados-sub { margin: 0.2rem 0 0; color: var(--gray-600); font-size: 0.8rem; }
+.eq-header-actions { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.eq-filters {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+  flex-wrap: wrap;
+}
+.eq-filters input[type="text"],
+.eq-filters select {
+  padding: 0.42rem 0.6rem;
+  font-size: 0.82rem;
+  border: 1px solid #ccc;
+  border-radius: 0.3rem;
+  line-height: 1.35;
+  background: #fff;
+}
+.eq-filters input[type="text"] { width: 200px; }
+.eq-filters select { width: 170px; }
+.eq-print-header { display: none; }
+.table-wrap {
+  background: white;
+  border-radius: 0.4rem;
+  overflow: auto;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+}
+.via-cadastro .table { width: 100%; border-collapse: collapse; background: white; }
+.via-cadastro .table th,
+.via-cadastro .table td {
+  padding: 0.6rem 0.7rem;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+  font-size: 0.85rem;
+}
+.via-cadastro .table th { background: #f2f2f2; }
+.via-cadastro .table tr:hover { background: #f1f1f1; }
+.via-cadastro .table tr[hidden] { display: none; }
+.empty-row { text-align: center; color: var(--gray-600); padding: 1.4rem !important; }
+.acoes-cell { white-space: nowrap; }
+.acoes-cell .btn { margin-right: 0.25rem; }
+.btn-editar-link { background-color: var(--gray-300); color: var(--gray-800); }
+.btn-excluir { background-color: #f8d7da; color: #842029; }
+.nc-modal { padding: 0.8rem; align-items: center; justify-content: center; }
+.nc-modal:not([hidden]) { display: flex; }
+.nc-dialog {
+  max-width: 420px;
+  width: 100%;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.8rem;
+}
+.nc-dialog .modal-header { padding: 0.92rem 1rem 0; gap: 0.6rem; }
+.nc-dialog .modal-header h2 { font-size: 0.96rem; margin: 0; }
+.nc-dialog .modal-close { font-size: 1.2rem; }
+.nc-dialog .modal-body { padding: 0.72rem 1rem 0.4rem; overflow-y: auto; }
+.nc-dialog .form-group { margin-bottom: 0.56rem; }
+.nc-dialog label { font-size: 0.72rem; margin-bottom: 0.16rem; display: block; }
+.nc-dialog input[type="text"] {
+  padding: 0.48rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.3rem;
+  line-height: 1.35;
+  width: 100%;
+  border: 1px solid #ccc;
+}
+.nc-dialog input.via-campo-erro {
+  border-color: #dc2626 !important;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);
+  outline: none;
+}
+.via-flag { display: flex; align-items: center; gap: 0.4rem; font-weight: 600; margin: 0; }
+.via-flag input { width: auto; margin: 0; }
+.nc-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   gap: 0.4rem;
-  padding: 0.44rem 0.68rem;
-  max-width: 336px;
-  flex-basis: 176px;
+  padding: 0.64rem 1rem 0.8rem;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--gray-200);
 }
-.via-cadastro .toolbar-search i { font-size: 0.72rem; }
-.via-cadastro .toolbar-search input {
-  font-size: 0.72rem;
-  padding: 0;
-  width: auto;
-  border: none;
-  box-shadow: none;
+.nc-dialog .btn {
+  gap: 0.32rem;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.76rem;
+  border-radius: 0.3rem;
 }
-.via-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
-.via-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
+.nc-btn-muted { background-color: var(--gray-300); color: var(--gray-800); }
+body.modal-open { overflow: hidden; }
+@media print {
+  .sidebar, .sidebar-overlay, .app-topbar, .eq-filters,
+  .via-cadastro > .header, .modal-overlay, .no-print, .projeto-versao-bar { display: none !important; }
+  .eq-print-header { display: block !important; margin: 0 0 1rem; }
+  .eq-print-header h1 { margin: 0; font-size: 1.35rem; }
+  .via-cadastro { padding: 0; }
+  .table-wrap { box-shadow: none; border-radius: 0; overflow: visible; }
+  .via-cadastro .table tr:hover { background: transparent; }
+}
 </style>
 
 <script>
-function filtrarVias(){
-  const q = (document.getElementById('buscaVia').value || '').toLowerCase().trim();
-  document.querySelectorAll('#tabelaViasBody tr').forEach(tr => {
-    if (tr.id === 'linhaVazia') return;
-    const nome = ((tr.dataset.nome || '') + ' ' + (tr.dataset.produto || '')).toLowerCase();
-    tr.style.display = (!q || nome.includes(q)) ? '' : 'none';
+(function () {
+  const overlay = document.getElementById('modalVia');
+  const form = document.getElementById('formVia');
+  const btnGravar = document.getElementById('btnGravarVia');
+  const fNome = document.getElementById('fViaNome');
+  let ultimoNomeVerificado = '';
+
+  function abrirModal() {
+    overlay.hidden = false;
+    document.body.classList.add('modal-open');
+  }
+
+  function fecharModal() {
+    overlay.hidden = true;
+    document.body.classList.remove('modal-open');
+    form.reset();
+    document.getElementById('via_id').value = '';
+    fNome.classList.remove('via-campo-erro');
+    ultimoNomeVerificado = '';
+    btnGravar.disabled = false;
+  }
+
+  function preencher(dados) {
+    document.getElementById('viaModalTitle').textContent = dados.id ? 'Editar via' : 'Nova via';
+    document.getElementById('via_id').value = dados.id || '';
+    fNome.value = dados.nome || '';
+    document.getElementById('fViaProduto').value = dados.produto || '';
+    document.getElementById('fViaOral').checked = !!dados.via_oral;
+    document.getElementById('fViaAtivo').checked = dados.ativo !== false;
+    fNome.classList.remove('via-campo-erro');
+    ultimoNomeVerificado = (dados.nome || '').trim().toUpperCase();
+  }
+
+  function dadosDaLinha(tr) {
+    return {
+      id: tr.getAttribute('data-id') || '',
+      nome: tr.getAttribute('data-nome') || '',
+      produto: tr.getAttribute('data-produto') || '',
+      via_oral: tr.getAttribute('data-oral') === '1',
+      ativo: tr.getAttribute('data-ativo') === '1'
+    };
+  }
+
+  function linhaPorNome(nome, idAtual) {
+    const alvo = (nome || '').trim().toUpperCase();
+    if (!alvo) return null;
+    const rows = document.querySelectorAll('#tabelaVias tbody tr[data-id]');
+    for (let i = 0; i < rows.length; i++) {
+      const tr = rows[i];
+      if (idAtual && tr.getAttribute('data-id') === idAtual) continue;
+      if ((tr.getAttribute('data-nome') || '').trim().toUpperCase() === alvo) return tr;
+    }
+    return null;
+  }
+
+  function abrirNovo() {
+    preencher({ id: '', nome: '', produto: '', via_oral: false, ativo: true });
+    ultimoNomeVerificado = '';
+    document.getElementById('viaModalTitle').textContent = 'Nova via';
+    abrirModal();
+    setTimeout(function () { fNome.focus(); }, 30);
+  }
+
+  function abrirEditar(tr) {
+    preencher(dadosDaLinha(tr));
+    abrirModal();
+    setTimeout(function () { fNome.focus(); }, 30);
+  }
+
+  function marcarErroNome() {
+    fNome.classList.add('via-campo-erro');
+    fNome.focus();
+    fNome.select();
+  }
+
+  function verificarNomeExistente() {
+    if (overlay.hidden) return;
+    const nome = (fNome.value || '').trim().toUpperCase();
+    if (!nome) {
+      fNome.classList.remove('via-campo-erro');
+      ultimoNomeVerificado = '';
+      return;
+    }
+    if (nome === ultimoNomeVerificado && !fNome.classList.contains('via-campo-erro')) return;
+    const idAtual = (document.getElementById('via_id').value || '').trim();
+    const tr = linhaPorNome(nome, idAtual);
+    if (!tr) {
+      fNome.classList.remove('via-campo-erro');
+      ultimoNomeVerificado = nome;
+      return;
+    }
+    if (confirm('Nome já cadastrado. Deseja editar?')) {
+      preencher(dadosDaLinha(tr));
+    } else {
+      ultimoNomeVerificado = '';
+      marcarErroNome();
+    }
+  }
+
+  function filtrar() {
+    const nome = (document.getElementById('filtroNome').value || '').trim().toLowerCase();
+    const produto = (document.getElementById('filtroProduto').value || '').trim().toLowerCase();
+    const oral = document.getElementById('filtroOral').value;
+    const sit = document.getElementById('filtroSituacao').value;
+    const rows = document.querySelectorAll('#tabelaVias tbody tr[data-id]');
+    let visiveis = 0;
+    rows.forEach(function (tr) {
+      const ok = (!nome || (tr.dataset.nome || '').toLowerCase().indexOf(nome) >= 0)
+        && (!produto || (tr.dataset.produto || '').toLowerCase().indexOf(produto) >= 0)
+        && (!oral || tr.dataset.oral === oral)
+        && (!sit || tr.dataset.ativo === sit);
+      tr.hidden = !ok;
+      if (ok) visiveis += 1;
+    });
+    const aviso = document.getElementById('linhaFiltro');
+    if (aviso) aviso.hidden = visiveis > 0 || rows.length === 0;
+  }
+
+  async function salvar() {
+    const nome = (fNome.value || '').trim();
+    if (!nome) {
+      showToast('Informe o nome da embalagem', 'error');
+      fNome.focus();
+      return;
+    }
+    const idAtual = (document.getElementById('via_id').value || '').trim();
+    const existente = linhaPorNome(nome, idAtual);
+    if (existente) {
+      if (confirm('Nome já cadastrado. Deseja editar?')) {
+        preencher(dadosDaLinha(existente));
+        return;
+      }
+      marcarErroNome();
+      showToast('Nome já cadastrado', 'error');
+      return;
+    }
+    const body = {
+      nome: nome,
+      produto: (document.getElementById('fViaProduto').value || '').trim(),
+      via_oral: !!document.getElementById('fViaOral').checked,
+      ativo: !!document.getElementById('fViaAtivo').checked
+    };
+    btnGravar.disabled = true;
+    try {
+      const r = await fetch(idAtual ? ('/nutricao/api/vias/' + idAtual) : '/nutricao/api/vias', {
+        method: idAtual ? 'PUT' : 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+      });
+      const j = await r.json();
+      if (!r.ok || j.ok === false) {
+        showToast((j && j.error) || 'Falha ao salvar', 'error');
+        btnGravar.disabled = false;
+        return;
+      }
+      showToast(idAtual ? 'Via atualizada' : 'Via cadastrada', 'success');
+      setTimeout(function () { location.reload(); }, 400);
+    } catch (err) {
+      showToast('Falha ao salvar', 'error');
+      btnGravar.disabled = false;
+    }
+  }
+
+  async function excluir(tr) {
+    const id = tr.getAttribute('data-id');
+    if (!id) return;
+    if (!confirm('Desativar esta via?')) return;
+    const r = await fetch('/nutricao/api/vias/' + id, { method: 'DELETE' });
+    const j = await r.json();
+    if (!r.ok || j.ok === false) {
+      showToast((j && j.error) || 'Falha ao desativar', 'error');
+      return;
+    }
+    showToast('Via desativada', 'success');
+    setTimeout(function () { location.reload(); }, 400);
+  }
+
+  document.getElementById('btnNovaVia').addEventListener('click', abrirNovo);
+  document.getElementById('btnFecharVia').addEventListener('click', fecharModal);
+  document.getElementById('btnFecharViaX').addEventListener('click', fecharModal);
+  document.getElementById('btnLimparFiltros').addEventListener('click', function () {
+    document.getElementById('filtroNome').value = '';
+    document.getElementById('filtroProduto').value = '';
+    document.getElementById('filtroOral').value = '';
+    document.getElementById('filtroSituacao').value = '';
+    filtrar();
   });
-}
-
-function abrirVia(data){
-  const isEdit = !!(data && data.id);
-  const html = `
-    <div class="form-group">
-      <label class="form-label">Nome da embalagem *</label>
-      <input class="form-control" id="f-via-nome" value="${data && data.nome ? String(data.nome).replace(/"/g,'&quot;') : ''}">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Produto</label>
-      <input class="form-control" id="f-via-produto" value="${data && data.produto ? String(data.produto).replace(/"/g,'&quot;') : ''}">
-    </div>
-    <div class="form-group" style="display:flex;align-items:center;gap:6px;">
-      <input type="checkbox" id="f-via-oral" ${data && data.via_oral ? 'checked' : ''}>
-      <label class="form-label" for="f-via-oral" style="margin:0">Via oral</label>
-    </div>
-    <div class="form-group" style="display:flex;align-items:center;gap:6px;">
-      <input type="checkbox" id="f-via-ativo" ${(data ? data.ativo !== false : true) ? 'checked' : ''}>
-      <label class="form-label" for="f-via-ativo" style="margin:0">Ativo</label>
-    </div>
-  `;
-  window._editViaId = isEdit ? data.id : null;
-  abrirModal(isEdit ? 'Editar via' : 'Cadastro de Via de Administração', html, isEdit ? 'Atualizar' : 'Salvar', salvarVia);
-}
-
-async function salvarVia(){
-  const nome = (document.getElementById('f-via-nome')?.value || '').trim();
-  if (!nome){ showToast('Informe o nome da embalagem','error'); return; }
-  const body = {
-    nome,
-    produto: (document.getElementById('f-via-produto')?.value || '').trim(),
-    via_oral: !!document.getElementById('f-via-oral')?.checked,
-    ativo: !!document.getElementById('f-via-ativo')?.checked,
-  };
-  const id = window._editViaId;
-  const r = await fetch(id ? `/nutricao/api/vias/${id}` : '/nutricao/api/vias', {
-    method: id ? 'PUT' : 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify(body)
+  document.getElementById('btnImprimir').addEventListener('click', function () { window.print(); });
+  document.getElementById('filtroNome').addEventListener('input', filtrar);
+  document.getElementById('filtroProduto').addEventListener('input', filtrar);
+  document.getElementById('filtroOral').addEventListener('change', filtrar);
+  document.getElementById('filtroSituacao').addEventListener('change', filtrar);
+  overlay.addEventListener('click', function (ev) {
+    if (ev.target === overlay) fecharModal();
   });
-  const j = await r.json();
-  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao salvar','error'); return; }
-  fecharModal();
-  showToast(id ? 'Via atualizada' : 'Via cadastrada','success');
-  setTimeout(() => location.reload(), 450);
-}
-
-async function toggleViaAtivo(id, ativo){
-  const r = await fetch(`/nutricao/api/vias/${id}`, {
-    method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ativo: !!ativo })
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape' && !overlay.hidden) fecharModal();
   });
-  const j = await r.json();
-  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao atualizar','error'); return; }
-  showToast(ativo ? 'Via ativada' : 'Via desativada','success');
-}
-
-async function excluirVia(id){
-  if (!confirm('Desativar esta via?')) return;
-  const r = await fetch(`/nutricao/api/vias/${id}`, { method: 'DELETE' });
-  const j = await r.json();
-  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao desativar','error'); return; }
-  showToast('Via desativada','success');
-  setTimeout(() => location.reload(), 450);
-}
+  form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    salvar();
+  });
+  fNome.addEventListener('input', function () {
+    fNome.classList.remove('via-campo-erro');
+    ultimoNomeVerificado = '';
+  });
+  fNome.addEventListener('blur', function () {
+    setTimeout(verificarNomeExistente, 0);
+  });
+  document.querySelectorAll('#tabelaVias .btn-editar').forEach(function (btn) {
+    btn.addEventListener('click', function () { abrirEditar(btn.closest('tr')); });
+  });
+  document.querySelectorAll('#tabelaVias .btn-excluir').forEach(function (btn) {
+    btn.addEventListener('click', function () { excluir(btn.closest('tr')); });
+  });
+})();
 </script>
 {% endblock %}
