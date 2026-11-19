@@ -83,6 +83,7 @@
   </div>
 </div>
 </div>
+<div id="mapaTip" class="mapa-tip" hidden></div>
 
 <nav id="mapaContextMenu" class="mapa-ctx" hidden>
   <button type="button" data-acao="editar_paciente">Editar <u>p</u>aciente</button>
@@ -480,6 +481,21 @@
   font-size: 0.88rem;
 }
 .ver-texto:hover { text-decoration: underline; }
+.mapa-tip {
+  position: fixed;
+  z-index: 4000;
+  max-width: min(440px, 72vw);
+  padding: 0.45rem 0.65rem;
+  background: #0f2a56;
+  color: #fff;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  pointer-events: none;
+  box-shadow: 0 8px 24px rgba(15, 42, 86, 0.28);
+}
+.mapa-tip[hidden] { display: none !important; }
 .mapa-filtro-uma {
   display: flex;
   align-items: center;
@@ -1313,9 +1329,104 @@ function flagCell(campo, on){
   return `<td class="col-flag"><button type="button" class="flag-btn ${on ? 'on' : ''}" data-campo="${campo}" onclick="toggleFlag(this)">${on ? '●' : '○'}</button></td>`;
 }
 
+const CAMPOS_TIP_UMA = new Set(['extras', 'suplementos', 'enteral', 'formula_infantil', 'lve']);
+
+function escTip(s){
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/\r\n|\r|\n/g, '&#10;');
+}
+
+function linhaUmaLegivel(item){
+  if (!item || typeof item !== 'object') return '';
+  let nome = '';
+  for (const chave of ['extra', 'suplemento', 'dieta', 'formula', 'lve', 'nome']){
+    const val = item[chave];
+    if (typeof val === 'string' && val.trim()){ nome = val.trim(); break; }
+  }
+  const partes = [];
+  if (nome) partes.push(nome);
+  const volume = String(item.volume || '').trim();
+  const unid = String(item.unid || '').trim();
+  if (volume) partes.push(unid ? (volume + ' ' + unid) : volume);
+  const horas = [];
+  for (let h = 1; h <= 24; h++){
+    if (xcadMarcado(item['h' + h])) horas.push(String(h));
+  }
+  if (horas.length) partes.push('D: ' + horas.join(' / ') + ' /');
+  const volDieta = String(item.vol_dieta || '').trim();
+  const unidade = String(item.unidade || '').trim();
+  if (volDieta || unidade) partes.push((volDieta + ' ' + unidade).trim());
+  const aguaH = [];
+  for (let h = 1; h <= 24; h++){
+    if (xcadMarcado(item['a' + h])) aguaH.push(String(h));
+  }
+  const volAgua = String(item.vol_agua || '').trim();
+  if (volAgua || aguaH.length){
+    let agua = volAgua ? ('AGUA: ' + volAgua) : 'AGUA';
+    if (aguaH.length) agua += ' ' + aguaH.join(' / ');
+    partes.push(agua);
+  }
+  const embalagem = String(item.embalagem || '').trim();
+  if (embalagem) partes.push(embalagem);
+  return partes.join(' · ');
+}
+
+function textoUmaLegivel(valor){
+  const bruto = String(valor || '').trim();
+  if (!bruto) return '';
+  if (bruto.startsWith('{')){
+    try {
+      const data = JSON.parse(bruto);
+      const itens = data && Array.isArray(data.uma_itens) ? data.uma_itens : null;
+      if (itens){
+        const linhas = itens.map(linhaUmaLegivel).filter(Boolean);
+        if (linhas.length) return linhas.join('\n');
+      }
+    } catch (e) { /* texto livre */ }
+  }
+  return bruto;
+}
+
+function htmlBotaoVerTexto(valor){
+  const v = String(valor || '').trim();
+  if (!v) return '';
+  return `<button type="button" class="ver-texto" onclick="abrirTextoCampo(this)"> (Ver Texto)</button>`;
+}
+
 function textoCell(campo, valor){
-  const v = (valor || '').trim();
-  return `<td class="cell-texto" data-campo="${campo}">${v ? '<button type="button" class="ver-texto" onclick="abrirTextoCampo(this)"> (Ver Texto)</button>' : ''}</td>`;
+  const v = String(valor || '').trim();
+  const tip = (v && CAMPOS_TIP_UMA.has(campo)) ? textoUmaLegivel(v) : '';
+  const attr = tip ? ` data-tip="${escTip(tip)}"` : '';
+  return `<td class="cell-texto" data-campo="${campo}"${attr}>${v ? htmlBotaoVerTexto(v) : ''}</td>`;
+}
+
+function mostrarMapaTip(el){
+  const tip = document.getElementById('mapaTip');
+  if (!tip || !el) return;
+  const texto = el.getAttribute('data-tip') || '';
+  if (!texto.trim()){ tip.hidden = true; return; }
+  tip.textContent = texto;
+  tip.hidden = false;
+  const r = el.getBoundingClientRect();
+  const margem = 8;
+  tip.style.left = '0px';
+  tip.style.top = '0px';
+  const w = tip.offsetWidth;
+  const h = tip.offsetHeight;
+  let left = r.left;
+  let top = r.bottom + 6;
+  if (left + w > window.innerWidth - margem) left = Math.max(margem, window.innerWidth - w - margem);
+  if (top + h > window.innerHeight - margem) top = Math.max(margem, r.top - h - 6);
+  tip.style.left = left + 'px';
+  tip.style.top = top + 'px';
+}
+
+function esconderMapaTip(){
+  const tip = document.getElementById('mapaTip');
+  if (tip) tip.hidden = true;
 }
 
 function renderCabecalhoClinica(nome){
@@ -1672,9 +1783,10 @@ async function salvarCampoTexto(){
   edit.tr.dataset[edit.campo] = valor;
   const td = edit.tr.querySelector(`td.cell-texto[data-campo="${edit.campo}"]`);
   if (td){
-    td.innerHTML = valor.trim()
-      ? '<button type="button" class="ver-texto" onclick="abrirTextoCampo(this)"> (Ver Texto)</button>'
-      : '';
+    const tip = (valor.trim() && CAMPOS_TIP_UMA.has(edit.campo)) ? textoUmaLegivel(valor) : '';
+    if (tip) td.setAttribute('data-tip', tip);
+    else td.removeAttribute('data-tip');
+    td.innerHTML = htmlBotaoVerTexto(valor);
   } else if (edit.campo === 'observacoes' && linhasMapaCache[edit.id]) {
     linhasMapaCache[edit.id].observacoes = valor;
     await carregarMapa();
@@ -3825,6 +3937,20 @@ document.addEventListener('DOMContentLoaded', function(){
   mostrarMapaPlaceholder(MSG_MAPA_SELECIONE);
 
   const body = document.getElementById('mapaBody');
+  body?.addEventListener('mouseover', function(e){
+    const el = e.target.closest('[data-tip]');
+    if (!el || !body.contains(el)) return;
+    mostrarMapaTip(el);
+  });
+  body?.addEventListener('mouseout', function(e){
+    const el = e.target.closest('[data-tip]');
+    if (!el) return;
+    const rel = e.relatedTarget;
+    if (rel && el.contains(rel)) return;
+    esconderMapaTip();
+  });
+  document.querySelector('.mapa-table-scroll')?.addEventListener('scroll', esconderMapaTip, {passive: true});
+
   body?.addEventListener('contextmenu', function(e){
     const tr = e.target.closest('tr.linha-mapa');
     if (!tr) return;
