@@ -1,0 +1,473 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="uma-cadastro tipo-{{ tipo }}">
+<div class="page-header">
+  <h1>Cadastro de {{ titulo }}</h1>
+  <p>Itens usados no lançamento de extras, suplementos, enteral, fórmula infantil e LVE</p>
+</div>
+
+<nav class="uma-abas" aria-label="Tipo de cadastro">
+  <a href="{{ url_for('nutricao.cadastro_uma', tipo='formula') }}" class="{% if tipo == 'formula' %}active{% endif %}">Fórmula Infantil</a>
+  <a href="{{ url_for('nutricao.cadastro_uma', tipo='enteral') }}" class="{% if tipo == 'enteral' %}active{% endif %}">Enteral</a>
+  <a href="{{ url_for('nutricao.cadastro_uma', tipo='suplemento') }}" class="{% if tipo == 'suplemento' %}active{% endif %}">Suplemento</a>
+  <a href="{{ url_for('nutricao.cadastro_uma', tipo='lve') }}" class="{% if tipo == 'lve' %}active{% endif %}">LVE</a>
+</nav>
+
+<div class="card uma-panel">
+  <div class="uma-toolbar">
+    <button class="btn btn-ghost btn-sm" type="button" onclick="nav('first')" title="Primeiro"><i class="fas fa-step-backward"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="nav('prev')" title="Anterior"><i class="fas fa-caret-left"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="nav('next')" title="Próximo"><i class="fas fa-caret-right"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="nav('last')" title="Último"><i class="fas fa-step-forward"></i></button>
+    <span class="uma-sep"></span>
+    <button class="btn btn-primary btn-sm" type="button" onclick="novo()" title="Novo"><i class="fas fa-plus"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="excluir()" title="Excluir"><i class="fas fa-minus"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="setEdit(true)" title="Editar"><i class="fas fa-pencil-alt"></i></button>
+    <button class="btn btn-primary btn-sm" type="button" id="btnSalvar" onclick="salvar()" title="Salvar" disabled><i class="fas fa-check"></i></button>
+    <button class="btn btn-ghost btn-sm" type="button" id="btnCancelar" onclick="cancelar()" title="Cancelar" disabled><i class="fas fa-times"></i></button>
+    <span class="uma-sep"></span>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="abrirBusca()" title="Buscar"><i class="fas fa-search"></i></button>
+    <span class="uma-pos" id="posLabel">0 / 0</span>
+  </div>
+
+  <div class="uma-linha">
+    <div class="form-group uma-nome">
+      <label class="form-label" for="fNome">{% if tipo == 'enteral' %}Dieta{% elif tipo == 'suplemento' %}Suplemento{% elif tipo == 'lve' %}LVE{% else %}Nome{% endif %}:</label>
+      <input class="form-control" id="fNome" data-field>
+    </div>
+    <div class="form-group uma-curto so-formula">
+      <label class="form-label" for="fDiluicao">Diluição:</label>
+      <input class="form-control" id="fDiluicao" data-field>
+    </div>
+    <div class="form-group uma-curto so-suplemento">
+      <label class="form-label" for="fQuant">Quant. padrão:</label>
+      <input class="form-control" id="fQuant" data-field>
+    </div>
+    <div class="form-group uma-curto">
+      <label class="form-label" for="fUnidade">Unidade:</label>
+      <select class="form-control" id="fUnidade" data-field></select>
+    </div>
+    <label class="uma-check so-disponivel"><input type="checkbox" id="fDisponivel" data-field> Produto disponível</label>
+    <label class="uma-check so-lve"><input type="checkbox" id="fAtivo" data-field> Ativo</label>
+  </div>
+
+  <div class="uma-linha">
+    <div class="form-group uma-grow so-produto">
+      <label class="form-label" for="fProduto">Produto principal:</label>
+      <div class="uma-combo">
+        <select class="form-control" id="fProduto" data-field></select>
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('nutricao.produtos') }}" title="Cadastro de produtos">...</a>
+      </div>
+    </div>
+    <div class="form-group uma-grow so-grupo">
+      <label class="form-label" for="fGrupo">{% if tipo == 'suplemento' %}Grupo para totalização{% else %}Grupo{% endif %}:</label>
+      <div class="uma-combo">
+        <select class="form-control" id="fGrupo" data-field></select>
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('nutricao.grupos_dietas') }}" title="Grupos de dietas">...</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="uma-linha">
+    <div class="form-group uma-grow">
+      <label class="form-label" for="fColuna">{% if tipo == 'lve' %}Coluna para totalização{% else %}Coluna para totalização no faturamento{% endif %}:</label>
+      <select class="form-control" id="fColuna" data-field></select>
+    </div>
+    <label class="uma-check so-fechado"><input type="checkbox" id="fFechado" data-field> Sistema fechado</label>
+    <label class="uma-check so-suplemento"><input type="checkbox" id="fManipulado" data-field> Suplemento manipulado</label>
+  </div>
+
+  <fieldset class="uma-box so-lve">
+    <legend>Cobrança relatório</legend>
+    <div class="uma-radios">
+      <label><input type="radio" name="cobranca" value="nao" data-field> Não especificado</label>
+      <label><input type="radio" name="cobranca" value="espelho_1" data-field> Espelho 1</label>
+      <label><input type="radio" name="cobranca" value="espelho_2" data-field> Espelho 2</label>
+    </div>
+  </fieldset>
+
+  <fieldset class="uma-box">
+    <legend>Quantidades para 100ml</legend>
+    <div class="uma-nutri">
+      <div class="form-group">
+        <label class="form-label" for="fCalorias">Calorias (kcal):</label>
+        <input class="form-control" id="fCalorias" data-field inputmode="decimal">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="fPtn">Ptn (%):</label>
+        <input class="form-control" id="fPtn" data-field inputmode="decimal">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="fHc">HC (%):</label>
+        <input class="form-control" id="fHc" data-field inputmode="decimal">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="fLip">Lip (%):</label>
+        <input class="form-control" id="fLip" data-field inputmode="decimal">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="fFibras">Fibras ({% if tipo == 'enteral' %}g{% else %}%{% endif %}):</label>
+        <input class="form-control" id="fFibras" data-field inputmode="decimal">
+      </div>
+    </div>
+  </fieldset>
+
+  <div class="form-group so-composicao">
+    <label class="form-label" for="fComposicao">Composição nutricional:</label>
+    <input class="form-control" id="fComposicao" data-field>
+  </div>
+
+  <fieldset class="uma-box">
+    <legend>Componentes e fórmulas</legend>
+    <div class="uma-grid-scroll">
+      <table class="uma-grid">
+        <thead>
+          <tr>
+            <th>Componente</th>
+            <th>Fórmula</th>
+            <th class="uma-flag">Und.</th>
+            <th class="uma-flag">Vol.</th>
+            <th>Cód. Produto</th>
+            <th>Un.</th>
+            <th class="uma-flag"></th>
+          </tr>
+        </thead>
+        <tbody id="compBody"></tbody>
+      </table>
+    </div>
+    <button class="btn btn-ghost btn-sm" type="button" id="btnCompAdd" onclick="addComponente()">
+      <i class="fas fa-plus"></i> Adicionar componente
+    </button>
+  </fieldset>
+</div>
+</div>
+
+<style>
+.uma-cadastro .page-header { margin-bottom: 0.7rem; }
+.uma-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.uma-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
+.uma-cadastro .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+.uma-cadastro .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.68rem; }
+.uma-cadastro .btn-ghost { padding: 0.28rem 0.4rem; }
+.uma-cadastro .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
+.uma-cadastro .form-control {
+  padding: 0.42rem 0.55rem;
+  font-size: 0.78rem;
+  border-radius: 0.3rem;
+  min-height: 0;
+  height: auto;
+  line-height: 1.25;
+}
+.uma-cadastro .form-group { margin-bottom: 0; }
+.uma-cadastro input[type="checkbox"],
+.uma-cadastro input[type="radio"] { width: 0.72rem; height: 0.72rem; margin: 0; }
+.uma-abas { display:flex; flex-wrap:wrap; gap:0.35rem; margin-bottom:0.7rem; }
+.uma-abas a {
+  font-size:0.72rem; font-weight:700; color:#334155; text-decoration:none;
+  padding:0.32rem 0.65rem; border-radius:999px; background:#e8eef6;
+}
+.uma-abas a.active { background:#1b4f9c; color:#fff; }
+.uma-panel { padding: 0.8rem 0.92rem 1rem; max-width: 980px; }
+.uma-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:0.24rem; margin-bottom:0.8rem; }
+.uma-toolbar .btn-sm { padding: 0.24rem 0.36rem; }
+.uma-sep { width:1px; height:18px; background:#cbd5e1; margin:0 0.28rem; }
+.uma-pos { margin-left:auto; font-size:0.68rem; color:#64748b; font-weight:600; }
+.uma-linha { display:flex; flex-wrap:wrap; align-items:flex-end; gap:0.7rem; margin-bottom:0.7rem; }
+.uma-nome { flex: 1 1 280px; }
+.uma-curto { flex: 0 1 140px; }
+.uma-grow { flex: 1 1 240px; }
+.uma-check { display:flex; align-items:center; gap:0.36rem; font-size:0.72rem; color:#334155; margin:0 0 0.35rem; }
+.uma-combo { display:flex; gap:0.3rem; align-items:center; }
+.uma-combo .form-control { flex:1; }
+.uma-box {
+  border:1px solid #dbe3ee; border-radius:6px; padding:0.55rem 0.7rem 0.7rem;
+  margin:0 0 0.75rem; background:#f8fafc;
+}
+.uma-box legend { font-size:0.68rem; font-weight:700; color:#334155; padding:0 0.32rem; }
+.uma-nutri, .uma-radios { display:flex; flex-wrap:wrap; gap:0.55rem 0.7rem; }
+.uma-nutri .form-group { width: 120px; }
+.uma-radios label { display:flex; align-items:center; gap:0.32rem; font-size:0.72rem; color:#334155; margin:0; }
+.uma-grid-scroll { overflow:auto; margin-bottom:0.45rem; }
+.uma-grid { width:100%; border-collapse:collapse; font-size:0.72rem; }
+.uma-grid th { text-align:left; background:#1b4f9c; color:#fff; padding:0.28rem 0.4rem; font-weight:600; }
+.uma-grid td { padding:0.15rem; border-bottom:1px solid #e2e8f0; background:#fff; }
+.uma-grid input[type="text"], .uma-grid input:not([type]) {
+  width:100%; border:1px solid #dbe3ee; border-radius:4px; padding:0.28rem 0.35rem; font-size:0.72rem;
+}
+.uma-flag { width:42px; text-align:center; }
+.uma-panel:not(.editing) [data-field] { pointer-events:none; background:#f1f5f9; }
+.uma-panel:not(.editing) input[type=checkbox][data-field],
+.uma-panel:not(.editing) input[type=radio][data-field] { background:transparent; }
+.tipo-formula .so-suplemento, .tipo-formula .so-lve, .tipo-formula .so-grupo,
+.tipo-enteral .so-formula, .tipo-enteral .so-suplemento, .tipo-enteral .so-lve,
+.tipo-suplemento .so-formula, .tipo-suplemento .so-produto, .tipo-suplemento .so-fechado, .tipo-suplemento .so-lve,
+.tipo-lve .so-formula, .tipo-lve .so-produto, .tipo-lve .so-fechado, .tipo-lve .so-suplemento, .tipo-lve .so-disponivel, .tipo-lve .so-composicao { display:none; }
+</style>
+
+<script>
+const TIPO = {{ tipo|tojson }};
+const ITENS = {{ itens|tojson }};
+const UNIDADES = {{ unidades|tojson }};
+const PRODUTOS = {{ produtos|tojson }};
+const GRUPOS = {{ grupos|tojson }};
+const COLUNAS = {{ colunas|tojson }};
+let idx = 0;
+let editing = false;
+let isNew = false;
+let compSelecionado = 0;
+
+function escHtml(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function current(){
+  if (!ITENS.length || isNew) return null;
+  return ITENS[Math.max(0, Math.min(idx, ITENS.length - 1))];
+}
+
+function compVazio(){
+  return { componente:'', formula:'', und:false, vol:false, codigo:'', un:'' };
+}
+
+function blank(){
+  return {
+    id: null, nome: '', diluicao: '', unidade: TIPO === 'lve' ? 'ML' : '',
+    produto_disponivel: true, produto_principal: '', coluna_faturamento: '',
+    grupo: '', quant_padrao: '', sistema_fechado: false, manipulado: false,
+    ativo: true, cobranca: 'espelho_1', calorias: '', ptn: '', hc: '', lip: '',
+    fibras: '', composicao: '', componentes: [compVazio()]
+  };
+}
+
+function setEdit(on){
+  editing = !!on;
+  document.querySelector('.uma-panel').classList.toggle('editing', editing);
+  document.getElementById('btnSalvar').disabled = !editing;
+  document.getElementById('btnCancelar').disabled = !editing;
+  document.getElementById('btnCompAdd').disabled = !editing;
+  if (editing && !isNew) render(current() || blank());
+}
+
+function updatePos(){
+  const total = ITENS.length;
+  const cur = total ? (idx + 1) : 0;
+  document.getElementById('posLabel').textContent = isNew ? `Novo / ${total}` : `${cur} / ${total}`;
+}
+
+function preencherSelect(id, opcoes, valor){
+  const sel = document.getElementById(id);
+  const lista = opcoes.slice();
+  if (valor && !lista.some(o => o.valor === valor)) lista.push({ valor: valor, rotulo: valor });
+  sel.innerHTML = '<option value=""></option>' + lista.map(o =>
+    `<option value="${escHtml(o.valor)}"${o.valor === valor ? ' selected' : ''}>${escHtml(o.rotulo)}</option>`
+  ).join('');
+}
+
+function numTela(v){
+  if (v == null || v === '') return '';
+  return String(v).replace('.', ',');
+}
+
+function renderComponentes(lista){
+  const rows = (lista && lista.length) ? lista : [compVazio()];
+  document.getElementById('compBody').innerHTML = rows.map((c, i) => `
+    <tr data-i="${i}" class="${i === compSelecionado ? 'is-sel' : ''}">
+      <td><input data-field data-c="componente" value="${escHtml(c.componente || '')}"></td>
+      <td><input data-field data-c="formula" value="${escHtml(c.formula || '')}"></td>
+      <td class="uma-flag"><input type="checkbox" data-field data-c="und" ${c.und ? 'checked' : ''}></td>
+      <td class="uma-flag"><input type="checkbox" data-field data-c="vol" ${c.vol ? 'checked' : ''}></td>
+      <td><input data-field data-c="codigo" value="${escHtml(c.codigo || '')}"></td>
+      <td><input data-field data-c="un" value="${escHtml(c.un || '')}"></td>
+      <td class="uma-flag"><button type="button" class="btn btn-ghost btn-sm" data-field onclick="removerComponente(${i})" title="Remover"><i class="fas fa-times"></i></button></td>
+    </tr>
+  `).join('');
+}
+
+function render(p){
+  p = p || blank();
+  document.getElementById('fNome').value = p.nome || '';
+  const dil = document.getElementById('fDiluicao');
+  if (dil) dil.value = p.diluicao || '';
+  const quant = document.getElementById('fQuant');
+  if (quant) quant.value = p.quant_padrao || '';
+  preencherSelect('fUnidade', UNIDADES.map(u => ({
+    valor: u.codigo, rotulo: u.descricao ? `${u.codigo} — ${u.descricao}` : u.codigo
+  })), p.unidade || '');
+  document.getElementById('fDisponivel').checked = p.produto_disponivel !== false;
+  document.getElementById('fAtivo').checked = p.ativo !== false;
+  preencherSelect('fProduto', PRODUTOS.map(pr => ({
+    valor: pr.descricao, rotulo: pr.codigo ? `${pr.codigo} — ${pr.descricao}` : pr.descricao
+  })), p.produto_principal || '');
+  preencherSelect('fGrupo', GRUPOS.map(g => ({ valor: g, rotulo: g })), p.grupo || '');
+  preencherSelect('fColuna', COLUNAS.map(g => ({ valor: g, rotulo: g })), p.coluna_faturamento || '');
+  document.getElementById('fFechado').checked = !!(p.sistema_fechado || p.sistema === 'fechado');
+  document.getElementById('fManipulado').checked = !!p.manipulado;
+  const cobranca = p.cobranca || 'espelho_1';
+  document.querySelectorAll('input[name="cobranca"]').forEach(el => { el.checked = el.value === cobranca; });
+  document.getElementById('fCalorias').value = numTela(p.calorias);
+  document.getElementById('fPtn').value = numTela(p.ptn);
+  document.getElementById('fHc').value = numTela(p.hc);
+  document.getElementById('fLip').value = numTela(p.lip);
+  document.getElementById('fFibras').value = numTela(p.fibras);
+  document.getElementById('fComposicao').value = p.composicao || '';
+  compSelecionado = 0;
+  renderComponentes(p.componentes);
+  updatePos();
+}
+
+function numEnvio(id){
+  const s = (document.getElementById(id).value || '').trim().replace(',', '.');
+  return s;
+}
+
+function linhasComponentes(){
+  return Array.from(document.querySelectorAll('#compBody tr')).map(tr => {
+    const val = nome => {
+      const el = tr.querySelector(`[data-c="${nome}"]`);
+      if (!el) return '';
+      if (el.type === 'checkbox') return el.checked;
+      return (el.value || '').trim().toUpperCase();
+    };
+    return {
+      componente: val('componente'), formula: val('formula'),
+      und: !!val('und'), vol: !!val('vol'), codigo: val('codigo'), un: val('un')
+    };
+  });
+}
+
+function collectComponentes(){
+  return linhasComponentes().filter(item => item.componente || item.formula || item.codigo || item.un);
+}
+
+function collect(){
+  const cobranca = document.querySelector('input[name="cobranca"]:checked');
+  return {
+    tipo: TIPO,
+    nome: (document.getElementById('fNome').value || '').trim().toUpperCase(),
+    diluicao: (document.getElementById('fDiluicao')?.value || '').trim().toUpperCase(),
+    quant_padrao: (document.getElementById('fQuant')?.value || '').trim().toUpperCase(),
+    unidade: document.getElementById('fUnidade').value || '',
+    produto_disponivel: !!document.getElementById('fDisponivel').checked,
+    ativo: !!document.getElementById('fAtivo').checked,
+    produto_principal: document.getElementById('fProduto').value || '',
+    grupo: document.getElementById('fGrupo').value || '',
+    coluna_faturamento: document.getElementById('fColuna').value || '',
+    sistema_fechado: !!document.getElementById('fFechado').checked,
+    manipulado: !!document.getElementById('fManipulado').checked,
+    cobranca: cobranca ? cobranca.value : 'espelho_1',
+    calorias: numEnvio('fCalorias'),
+    ptn: numEnvio('fPtn'),
+    hc: numEnvio('fHc'),
+    lip: numEnvio('fLip'),
+    fibras: numEnvio('fFibras'),
+    composicao: (document.getElementById('fComposicao').value || '').trim(),
+    componentes: collectComponentes()
+  };
+}
+
+function nav(dir){
+  if (editing){ showToast('Salve ou cancele a edição','error'); return; }
+  if (!ITENS.length) return;
+  if (dir === 'first') idx = 0;
+  if (dir === 'prev') idx = Math.max(0, idx - 1);
+  if (dir === 'next') idx = Math.min(ITENS.length - 1, idx + 1);
+  if (dir === 'last') idx = ITENS.length - 1;
+  isNew = false;
+  render(current());
+}
+
+function novo(){
+  isNew = true;
+  setEdit(true);
+  render(blank());
+  document.getElementById('fNome').focus();
+}
+
+function cancelar(){
+  isNew = false;
+  setEdit(false);
+  render(current() || blank());
+}
+
+function addComponente(){
+  if (!editing) return;
+  const lista = linhasComponentes();
+  lista.push(compVazio());
+  compSelecionado = lista.length - 1;
+  renderComponentes(lista);
+}
+
+function removerComponente(i){
+  if (!editing) return;
+  const lista = linhasComponentes();
+  lista.splice(i, 1);
+  compSelecionado = Math.max(0, Math.min(i, lista.length - 1));
+  renderComponentes(lista.length ? lista : [compVazio()]);
+}
+
+async function salvar(){
+  const body = collect();
+  if (!body.nome){ showToast('Informe o nome','error'); return; }
+  const cur = current();
+  const id = (!isNew && cur) ? cur.id : null;
+  const r = await fetch(id ? `/nutricao/api/cadastro-uma/${id}` : '/nutricao/api/cadastro-uma', {
+    method: id ? 'PUT' : 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao salvar','error'); return; }
+  showToast(id ? 'Cadastro atualizado' : 'Item cadastrado','success');
+  const url = new URL(location.href);
+  url.searchParams.set('tipo', TIPO);
+  url.searchParams.set('id', j.id);
+  setTimeout(() => { location.href = url.toString(); }, 400);
+}
+
+async function excluir(){
+  const cur = current();
+  if (!cur || !cur.id){ showToast('Nenhum item selecionado','error'); return; }
+  if (!confirm('Desativar este item? Ele deixa de aparecer nos lançamentos.')) return;
+  const r = await fetch(`/nutricao/api/cadastro-uma/${cur.id}`, { method:'DELETE' });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao excluir','error'); return; }
+  showToast('Item desativado','success');
+  setTimeout(() => location.reload(), 400);
+}
+
+function abrirBusca(){
+  const html = `
+    <div class="form-group">
+      <label class="form-label">Buscar</label>
+      <input class="form-control" id="f-busca" placeholder="Digite parte do nome..." autofocus>
+    </div>`;
+  abrirModal('Buscar', html, 'Localizar', () => {
+    const q = (document.getElementById('f-busca')?.value || '').trim().toUpperCase();
+    if (!q){ showToast('Digite um termo','error'); return; }
+    const i = ITENS.findIndex(p => (p.nome || '').toUpperCase().includes(q));
+    if (i < 0){ showToast('Item não encontrado','error'); return; }
+    if (editing){ showToast('Salve ou cancele a edição','error'); return; }
+    idx = i; isNew = false; render(current()); fecharModal();
+  });
+  setTimeout(() => document.getElementById('f-busca')?.focus(), 50);
+}
+
+document.querySelectorAll('.uma-abas a').forEach(a => {
+  a.addEventListener('click', ev => {
+    if (editing){
+      ev.preventDefault();
+      showToast('Salve ou cancele a edição','error');
+    }
+  });
+});
+
+const want = new URLSearchParams(location.search).get('id');
+if (want){
+  const i = ITENS.findIndex(p => String(p.id) === String(want));
+  if (i >= 0) idx = i;
+}
+render(current() || blank());
+setEdit(false);
+</script>
+{% endblock %}

@@ -23,7 +23,7 @@
         } catch (e) { /* ignore */ }
     })();
     </script>
-    {% set cadastro_pages = active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_categorias','cadastro_grupos_dietas','cadastro_dietas','cadastro_tipos_refeicao','cadastro_cardapios','cadastro_precos_refeicoes','cadastro_nutricional','cadastro_pratos_liquidos','cadastro_produtos','cadastro_fornecedores','cadastro_etiquetas'] %}
+    {% set cadastro_pages = active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_categorias','cadastro_grupos_dietas','cadastro_dietas','cadastro_vias','cadastro_uma_formula','cadastro_uma_enteral','cadastro_uma_suplemento','cadastro_uma_lve','cadastro_tipos_refeicao','cadastro_cardapios','cadastro_precos_refeicoes','cadastro_nutricional','cadastro_pratos_liquidos','cadastro_produtos','cadastro_fornecedores','cadastro_etiquetas'] %}
     <header class="app-topbar">
         <button type="button" class="menu-toggle" id="menuToggle" aria-label="Recuar menu" aria-expanded="true" aria-controls="appSidebar">
             <i class="fas fa-bars"></i>
@@ -114,6 +114,36 @@
                         <a href="{{ url_for('nutricao.dietas') }}" class="{% if active_page == 'cadastro_dietas' %}active{% endif %}" title="Dietas">
                             <i class="fas fa-utensils menu-icon"></i>
                             <span class="menu-label">Dietas</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.vias_administracao') }}" class="{% if active_page == 'cadastro_vias' %}active{% endif %}" title="Vias de Administração">
+                            <i class="fas fa-prescription-bottle menu-icon"></i>
+                            <span class="menu-label">Vias de Administração</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.cadastro_uma', tipo='formula') }}" class="{% if active_page == 'cadastro_uma_formula' %}active{% endif %}" title="Fórmula Infantil">
+                            <i class="fas fa-baby menu-icon"></i>
+                            <span class="menu-label">Fórmula Infantil</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.cadastro_uma', tipo='enteral') }}" class="{% if active_page == 'cadastro_uma_enteral' %}active{% endif %}" title="Enteral">
+                            <i class="fas fa-tint menu-icon"></i>
+                            <span class="menu-label">Enteral</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.cadastro_uma', tipo='suplemento') }}" class="{% if active_page == 'cadastro_uma_suplemento' %}active{% endif %}" title="Suplemento">
+                            <i class="fas fa-pills menu-icon"></i>
+                            <span class="menu-label">Suplemento</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.cadastro_uma', tipo='lve') }}" class="{% if active_page == 'cadastro_uma_lve' %}active{% endif %}" title="LVE">
+                            <i class="fas fa-flask menu-icon"></i>
+                            <span class="menu-label">LVE</span>
                         </a>
                     </li>
                     <li>

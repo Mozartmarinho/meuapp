@@ -200,6 +200,7 @@ CATEGORIAS_DIETA_SEED = [
     ('enteral', 'Enteral', 20),
     ('formula', 'Fórmula', 30),
     ('suplemento', 'Suplemento', 40),
+    ('lve', 'LVE', 45),
     ('outro', 'Outro', 50),
 ]
 
@@ -210,8 +211,13 @@ GRUPOS_DIETA_SEED = [
     ('DIETAS ORAIS', 20),
     ('DIETAS PEDIATRICAS', 30),
     ('NUTRICAO ENTERAL', 40),
+    ('ENTERAL SISTEMA ABERTO', 41),
+    ('ENTERAL SISTEMA FECHADO', 42),
     ('FORMULAS INFANTIS', 50),
     ('SUPLEMENTOS E MODULOS', 60),
+    ('SUPLEMENTOS', 61),
+    ('SUPLEMENTOS MANIPULADOS', 62),
+    ('LVE', 65),
     ('ACOMPANHANTE E KITS', 70),
     ('ACOMPANHANTE', 80),
     ('FUNCIONARIO', 90),

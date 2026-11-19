@@ -11,6 +11,7 @@ from models_nutricao import (
     NutEstoqueLocal, NutUnidadeMedida, NutGrupoProduto, NutProduto, NutFornecedor,
     NutEtiqueta, NutEtiquetaCampo, NutPrecoRefeicao, NutTipoRefeicao, NutPrecoDietaTipo,
     NutRefeicaoAcompanhante, NutRefeicaoFuncionario,
+    NutViaAdministracao, NutUmaItem,
 )
 from nutricao_seed_enfermarias import ENFERMARIAS_SEED, VINCULOS_CLINICA_ENFERMARIA_SEED
 from nutricao_seed_dietas import (
@@ -32,6 +33,7 @@ from nutricao_seed_dietas import (
 from nutricao_seed_cardapios import CARDAPIOS_SEED, CARDAPIO_OPCOES
 from nutricao_seed_nutricional import ALIMENTOS_SEED, NUTRIENTES_PADRAO
 from nutricao_seed_pratos_liquidos import PRATOS_LIQUIDOS_SEED
+from nutricao_seed_uma import VIAS_ADMINISTRACAO_SEED, itens_uma_seed
 from nutricao_seed_produtos import (
     ESTOQUES_SEED, UNIDADES_SEED, GRUPOS_PRODUTO_SEED, PRODUTOS_SEED,
 )
@@ -723,6 +725,24 @@ def _ensure_nutricao_columns(force=False):
          'ALTER TABLE nut_refeicao_acompanhantes ADD COLUMN fl_almoco BOOLEAN DEFAULT 1'),
         ('nut_refeicao_acompanhantes', 'fl_jantar',
          'ALTER TABLE nut_refeicao_acompanhantes ADD COLUMN fl_jantar BOOLEAN DEFAULT 1'),
+        ('nut_uma_itens', 'diluicao', "ALTER TABLE nut_uma_itens ADD COLUMN diluicao VARCHAR(40) DEFAULT ''"),
+        ('nut_uma_itens', 'unidade', "ALTER TABLE nut_uma_itens ADD COLUMN unidade VARCHAR(20) DEFAULT ''"),
+        ('nut_uma_itens', 'produto_disponivel',
+         'ALTER TABLE nut_uma_itens ADD COLUMN produto_disponivel BOOLEAN DEFAULT 1'),
+        ('nut_uma_itens', 'produto_principal',
+         "ALTER TABLE nut_uma_itens ADD COLUMN produto_principal VARCHAR(200) DEFAULT ''"),
+        ('nut_uma_itens', 'coluna_faturamento',
+         "ALTER TABLE nut_uma_itens ADD COLUMN coluna_faturamento VARCHAR(80) DEFAULT ''"),
+        ('nut_uma_itens', 'grupo', "ALTER TABLE nut_uma_itens ADD COLUMN grupo VARCHAR(80) DEFAULT ''"),
+        ('nut_uma_itens', 'quant_padrao', "ALTER TABLE nut_uma_itens ADD COLUMN quant_padrao VARCHAR(40) DEFAULT ''"),
+        ('nut_uma_itens', 'calorias', 'ALTER TABLE nut_uma_itens ADD COLUMN calorias FLOAT NULL'),
+        ('nut_uma_itens', 'ptn', 'ALTER TABLE nut_uma_itens ADD COLUMN ptn FLOAT NULL'),
+        ('nut_uma_itens', 'hc', 'ALTER TABLE nut_uma_itens ADD COLUMN hc FLOAT NULL'),
+        ('nut_uma_itens', 'lip', 'ALTER TABLE nut_uma_itens ADD COLUMN lip FLOAT NULL'),
+        ('nut_uma_itens', 'fibras', 'ALTER TABLE nut_uma_itens ADD COLUMN fibras FLOAT NULL'),
+        ('nut_uma_itens', 'composicao', 'ALTER TABLE nut_uma_itens ADD COLUMN composicao TEXT'),
+        ('nut_uma_itens', 'componentes', "ALTER TABLE nut_uma_itens ADD COLUMN componentes TEXT"),
+        ('nut_uma_itens', 'cobranca', "ALTER TABLE nut_uma_itens ADD COLUMN cobranca VARCHAR(20) DEFAULT ''"),
     ):
         try:
             insp = inspect(db.engine)
@@ -736,6 +756,19 @@ def _ensure_nutricao_columns(force=False):
                 _limpar_cache_inspetor(insp)
         except Exception:
             db.session.rollback()
+
+    try:
+        insp = inspect(db.engine)
+        if 'nut_uma_itens' in set(insp.get_table_names()):
+            cols = {c['name'] for c in insp.get_columns('nut_uma_itens')}
+            if 'produto_disponivel' in cols:
+                db.session.execute(text(
+                    'UPDATE nut_uma_itens SET produto_disponivel = 1 '
+                    'WHERE produto_disponivel IS NULL'
+                ))
+                db.session.commit()
+    except Exception:
+        db.session.rollback()
 
     try:
         NutDietaExcluida.__table__.create(db.engine, checkfirst=True)
@@ -2003,6 +2036,326 @@ def _seed_pratos_liquidos():
         ))
 
 
+def _uma_categoria_grupo(tipo, sistema, manipulado):
+    sistema = (sistema or '').strip().lower()
+    if tipo == 'formula':
+        return 'formula', 'FORMULAS INFANTIS'
+    if tipo == 'lve':
+        return 'lve', 'LVE'
+    if tipo == 'modulo':
+        return 'suplemento', 'SUPLEMENTOS E MODULOS'
+    if tipo == 'enteral':
+        if sistema == 'fechado':
+            return 'enteral', 'ENTERAL SISTEMA FECHADO'
+        return 'enteral', 'ENTERAL SISTEMA ABERTO'
+    if manipulado:
+        return 'suplemento', 'SUPLEMENTOS MANIPULADOS'
+    return 'suplemento', 'SUPLEMENTOS'
+
+
+def _produto_do_nome_uma(nome, produto=''):
+    produto = (produto or '').strip().upper()
+    if produto:
+        return produto[:200]
+    nome = (nome or '').strip().upper()
+    if ' - ' in nome:
+        return nome.split(' - ', 1)[1].strip()[:200]
+    return ''
+
+
+def _espelhar_uma_item(cid, tipo, nome, sistema, manipulado, grupo='', atualizar=False):
+    """Leva o item para o cadastro que o sistema já usa (prato ou dieta)."""
+    nome = (nome or '').strip().upper()
+    if not nome or tipo == 'prato':
+        if nome and not NutPratoLiquido.query.filter_by(cliente_id=cid, nome=nome).first():
+            db.session.add(NutPratoLiquido(
+                cliente_id=cid,
+                nome=nome,
+                grupo_extra=True,
+                fator_conv_tot=1,
+                ativo=True,
+            ))
+        return
+    if dieta_foi_excluida(nome, cid):
+        return
+    categoria, grupo_padrao = _uma_categoria_grupo(tipo, sistema, manipulado)
+    grupo = (grupo or '').strip().upper() or grupo_padrao
+    dieta = NutDieta.query.filter_by(cliente_id=cid, nome=nome).first()
+    if dieta:
+        if atualizar and grupo:
+            dieta.grupo = grupo[:80]
+            dieta.categoria = categoria
+        return
+    db.session.add(NutDieta(
+        cliente_id=cid,
+        nome=nome[:200],
+        categoria=categoria,
+        grupo=grupo[:80],
+        ativo=True,
+    ))
+
+
+def gravar_uma_item(cid, tipo, nome, sistema='', papel='', manipulado=False, produto='', quantidade=0):
+    tipo = (tipo or '').strip().lower()
+    if tipo not in ('prato', 'suplemento', 'enteral', 'formula', 'lve', 'modulo'):
+        raise ValueError('Tipo de item inválido')
+    nome = (nome or '').strip().upper()
+    if not nome:
+        raise ValueError('Informe o nome')
+    sistema = (sistema or '').strip().lower()
+    if sistema not in ('', 'aberto', 'fechado'):
+        sistema = ''
+    papel = (papel or '').strip().lower()
+    if papel not in ('', 'dieta', 'suplemento'):
+        papel = ''
+    manipulado = bool(manipulado)
+    row = NutUmaItem.query.filter_by(
+        cliente_id=cid,
+        tipo=tipo,
+        sistema=sistema,
+        papel=papel,
+        manipulado=manipulado,
+        nome=nome[:200],
+    ).first()
+    if row:
+        if produto:
+            row.produto = _produto_do_nome_uma(nome, produto)
+        row.ativo = True
+    else:
+        row = NutUmaItem(
+            cliente_id=cid,
+            tipo=tipo,
+            sistema=sistema,
+            papel=papel,
+            manipulado=manipulado,
+            nome=nome[:200],
+            produto=_produto_do_nome_uma(nome, produto),
+            quantidade=float(quantidade or 0),
+            ativo=True,
+        )
+        db.session.add(row)
+    _espelhar_uma_item(cid, tipo, row.nome, sistema, manipulado)
+    return row
+
+
+def list_uma_itens(tipo=None, sistema=None, papel=None, manipulado=None, somente_ativos=True,
+                   somente_disponiveis=False):
+    q = _q(NutUmaItem)
+    if tipo:
+        q = q.filter(db.func.lower(NutUmaItem.tipo) == (tipo or '').strip().lower())
+    if sistema:
+        q = q.filter(db.func.lower(NutUmaItem.sistema) == (sistema or '').strip().lower())
+    if papel:
+        q = q.filter(db.func.lower(NutUmaItem.papel) == (papel or '').strip().lower())
+    if manipulado is not None:
+        q = q.filter(NutUmaItem.manipulado.is_(bool(manipulado)))
+    if somente_ativos:
+        q = q.filter(NutUmaItem.ativo.is_(True))
+    if somente_disponiveis:
+        q = q.filter(NutUmaItem.produto_disponivel.is_(True))
+    return [i.to_dict() for i in q.order_by(NutUmaItem.nome, NutUmaItem.id).all()]
+
+
+TIPOS_CADASTRO_UMA = ('formula', 'enteral', 'suplemento', 'lve')
+
+COLUNAS_FATURAMENTO_UMA = (
+    'BÁSICAS',
+    'LÍQUIDAS',
+    'D.I.',
+    'ACOMP.',
+    'FORMULAS INFANTIS',
+    'ENTERAL SISTEMA ABERTO',
+    'ENTERAL SISTEMA FECHADO',
+    'SUPLEMENTOS',
+    'SUPLEMENTOS MANIPULADOS',
+    'LVE',
+)
+
+
+def colunas_faturamento_uma(grupos=None):
+    vistos = []
+    for nome in list(COLUNAS_FATURAMENTO_UMA) + list(grupos or []):
+        nome = (nome or '').strip().upper()
+        if nome and nome not in vistos:
+            vistos.append(nome)
+    return vistos
+
+
+def _txt_uma(v, limite):
+    return (v or '').strip().upper()[:limite]
+
+
+def _num_uma_opt(v):
+    if v in (None, ''):
+        return None
+    try:
+        return float(str(v).replace(',', '.'))
+    except (TypeError, ValueError):
+        return None
+
+
+def _componentes_uma(valor):
+    if isinstance(valor, str):
+        try:
+            valor = json.loads(valor) if valor.strip() else []
+        except (TypeError, ValueError):
+            return []
+    if not isinstance(valor, list):
+        return []
+    limpos = []
+    for item in valor:
+        if not isinstance(item, dict):
+            continue
+        componente = _txt_uma(item.get('componente'), 120)
+        formula = _txt_uma(item.get('formula'), 200)
+        codigo = _txt_uma(item.get('codigo') or item.get('cod_produto'), 40)
+        un = _txt_uma(item.get('un'), 20)
+        if not any((componente, formula, codigo, un)):
+            continue
+        limpos.append({
+            'componente': componente,
+            'formula': formula,
+            'und': bool(item.get('und')),
+            'vol': bool(item.get('vol')),
+            'codigo': codigo,
+            'un': un,
+        })
+    return limpos
+
+
+def _chave_uma(cid):
+    if cid is None:
+        return NutUmaItem.cliente_id.is_(None)
+    return NutUmaItem.cliente_id == cid
+
+
+def _sistema_cadastro_uma(tipo, d, row=None):
+    if tipo in ('formula', 'enteral'):
+        fechado = d.get('sistema_fechado')
+        if fechado is None and 'sistema' in d:
+            fechado = (d.get('sistema') or '').strip().lower() == 'fechado'
+        if fechado is None and row is not None:
+            return row.sistema or ''
+        if fechado:
+            return 'fechado'
+        return 'aberto' if tipo == 'enteral' else ''
+    return ''
+
+
+def salvar_cadastro_uma(cid, d, row=None):
+    """Grava o cadastro da foto (fórmula, enteral, suplemento ou LVE)."""
+    tipo = (d.get('tipo') or (row.tipo if row else '') or '').strip().lower()
+    if tipo not in TIPOS_CADASTRO_UMA:
+        raise ValueError('Tipo de cadastro inválido')
+    nome = _txt_uma(d.get('nome') if 'nome' in d else (row.nome if row else ''), 200)
+    if not nome:
+        raise ValueError('Informe o nome')
+    sistema = _sistema_cadastro_uma(tipo, d, row)
+    papel = 'dieta' if tipo == 'enteral' else ''
+    manipulado = bool(d.get('manipulado')) if tipo == 'suplemento' else False
+    conflito = NutUmaItem.query.filter(
+        _chave_uma(cid),
+        NutUmaItem.tipo == tipo,
+        NutUmaItem.sistema == sistema,
+        NutUmaItem.papel == papel,
+        NutUmaItem.manipulado == manipulado,
+        NutUmaItem.nome == nome,
+    )
+    if row is not None:
+        conflito = conflito.filter(NutUmaItem.id != row.id)
+    if conflito.first():
+        raise ValueError('Já existe um item com este nome')
+    if row is None:
+        row = NutUmaItem(
+            cliente_id=cid,
+            tipo=tipo,
+            ativo=True,
+            produto_disponivel=True,
+            cobranca='espelho_1' if tipo == 'lve' else '',
+        )
+        db.session.add(row)
+    row.tipo = tipo
+    row.nome = nome
+    row.sistema = sistema
+    row.papel = papel
+    row.manipulado = manipulado
+    if tipo == 'formula':
+        row.diluicao = _txt_uma(d.get('diluicao'), 40)
+    if 'unidade' in d:
+        row.unidade = _txt_uma(d.get('unidade'), 20)
+    if tipo == 'lve':
+        row.ativo = bool(d.get('ativo', True))
+        cobranca = (d.get('cobranca') or 'espelho_1').strip().lower()
+        if cobranca not in ('nao', 'espelho_1', 'espelho_2'):
+            cobranca = 'espelho_1'
+        row.cobranca = cobranca
+        row.produto_disponivel = True
+    else:
+        row.produto_disponivel = bool(d.get('produto_disponivel', True))
+        row.ativo = True
+    if tipo in ('formula', 'enteral'):
+        row.produto_principal = _txt_uma(d.get('produto_principal'), 200)
+        if row.produto_principal:
+            row.produto = row.produto_principal[:200]
+    if tipo in ('enteral', 'suplemento', 'lve'):
+        row.grupo = _txt_uma(d.get('grupo'), 80)
+    if tipo == 'suplemento':
+        row.quant_padrao = _txt_uma(d.get('quant_padrao'), 40)
+    if 'coluna_faturamento' in d:
+        row.coluna_faturamento = _txt_uma(d.get('coluna_faturamento'), 80)
+    for campo in ('calorias', 'ptn', 'hc', 'lip', 'fibras'):
+        if campo in d:
+            setattr(row, campo, _num_uma_opt(d.get(campo)))
+    if tipo != 'lve' and 'composicao' in d:
+        row.composicao = (d.get('composicao') or '').strip()[:4000]
+    if 'componentes' in d:
+        row.componentes = json.dumps(_componentes_uma(d.get('componentes')), ensure_ascii=False)
+    _espelhar_uma_item(
+        cid, tipo, row.nome, row.sistema, row.manipulado,
+        grupo=row.grupo or '',
+        atualizar=bool((row.grupo or '').strip()),
+    )
+    return row
+
+
+def list_vias(somente_ativas=True):
+    q = _q(NutViaAdministracao)
+    if somente_ativas:
+        q = q.filter_by(ativo=True)
+    return [v.to_dict() for v in q.order_by(NutViaAdministracao.nome, NutViaAdministracao.id).all()]
+
+
+def _seed_uma(cid):
+    try:
+        NutViaAdministracao.__table__.create(db.engine, checkfirst=True)
+        NutUmaItem.__table__.create(db.engine, checkfirst=True)
+    except Exception:
+        db.session.rollback()
+    for nome, via_oral in VIAS_ADMINISTRACAO_SEED:
+        nome = (nome or '').strip().upper()
+        if not nome:
+            continue
+        row = NutViaAdministracao.query.filter_by(cliente_id=cid, nome=nome).first()
+        if row:
+            continue
+        db.session.add(NutViaAdministracao(
+            cliente_id=cid,
+            nome=nome,
+            produto='',
+            via_oral=bool(via_oral),
+            ativo=True,
+        ))
+    for item in itens_uma_seed():
+        gravar_uma_item(
+            cid,
+            item['tipo'],
+            item['nome'],
+            sistema=item.get('sistema') or '',
+            papel=item.get('papel') or '',
+            manipulado=bool(item.get('manipulado')),
+        )
+
+
 def list_estoques(somente_ativos=True):
     q = _q(NutEstoqueLocal)
     if somente_ativos:
@@ -2841,6 +3194,7 @@ def seed_nutricao(force=False):
     _backfill_cardapio_dieta_id()
     _seed_nutricional()
     _seed_pratos_liquidos()
+    _seed_uma(cid)
     _seed_produtos()
     _seed_fornecedores()
     _seed_etiquetas()
@@ -2858,6 +3212,7 @@ def seed_nutricao(force=False):
         NutClinica, NutGrupoClinica, NutEnfermaria, NutDieta, NutDietaExcluida, NutGrupoDieta, NutCategoriaDieta, NutPaciente, NutMapaRefeicao,
         NutCardapio, NutTabelaNutrientes, NutPratoLiquido, NutEstoqueLocal, NutUnidadeMedida,
         NutGrupoProduto, NutProduto, NutFornecedor, NutEtiqueta, NutPrecoRefeicao, NutTipoRefeicao,
+        NutViaAdministracao, NutUmaItem,
     ):
         try:
             model.query.filter(model.cliente_id.is_(None)).update(
@@ -4030,7 +4385,11 @@ _AGUA_UMA_RE = re.compile(
     re.IGNORECASE,
 )
 _VIA_UMA_RE = re.compile(
-    r'(FRASCO\s*-\s*V\.?\s*O\.?|CHUCA|SNE|SNG|SOG|GTT|GASTROSTOMIA|JEJUNOSTOMIA|V\.?\s*O\.?)',
+    r'(MAMADEIRA\s+DR\s+BROWN|MAMADEIRA\s+KUKA|'
+    r'MAMADEIRA\s+C\s*/\s*BICO(?:\s*-\s*V\.?\s*O\.?)?|'
+    r'FRASCO\s*-\s*V\.?\s*O\.?|COPO\s*-\s*V\.?\s*O\.?|'
+    r'CHUCA|SNE|SNG|SOG|GTT|GASTROSTOMIA|JEJUNOSTOMIA|'
+    r'MAM\s*[0-2]|V\.?\s*O\.?)',
     re.IGNORECASE,
 )
 _HORAS_PREFIX_UMA_RE = re.compile(
@@ -4195,6 +4554,9 @@ def _linha_legivel_uma(item):
             nome = val.strip()
             break
     partes = [nome]
+    diluicao = str(item.get('diluicao') or '').strip()
+    if diluicao:
+        partes.append(f'DIL {diluicao}')
     volume = str(item.get('volume') or '').strip()
     unid = str(item.get('unid') or '').strip()
     if volume:
@@ -4206,11 +4568,22 @@ def _linha_legivel_uma(item):
         partes.append('D: ' + ' / '.join(str(h) for h in horas) + ' /')
     vol_dieta = str(item.get('vol_dieta') or '').strip()
     unidade = str(item.get('unidade') or '').strip()
-    if vol_dieta or unidade:
+    if (vol_dieta or unidade) and vol_dieta != volume:
         partes.append(f'{vol_dieta} {unidade}'.strip())
     vol_agua = str(item.get('vol_agua') or '').strip()
     if vol_agua:
         partes.append(f'AGUA: {vol_agua}')
+    via = str(item.get('via') or item.get('via_dieta') or '').strip()
+    if via:
+        partes.append(via)
+    sistema = str(item.get('sistema') or '').strip().lower()
+    if sistema in ('fechado', 'f'):
+        partes.append('FECHADO')
+    elif sistema in ('aberto', 'a'):
+        partes.append('ABERTO')
+    gotejamento = str(item.get('gotejamento') or '').strip()
+    if gotejamento and gotejamento not in ('0', '0,0', '0,00', '0.0', '0.00'):
+        partes.append(f'{gotejamento} ML/H')
     return ' '.join(p for p in partes if p).strip()
 
 

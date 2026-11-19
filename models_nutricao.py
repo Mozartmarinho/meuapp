@@ -1,4 +1,5 @@
 """Modelos do módulo de Nutrição Hospitalar."""
+import json
 from datetime import datetime, date
 from models import db, now_brasilia, fmt_brasilia
 
@@ -1242,3 +1243,104 @@ class NutTotalizacaoDireta(db.Model):
     data_atualizacao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     clinica_rel = db.relationship('NutClinica', lazy='select')
     dieta_rel = db.relationship('NutDieta', lazy='select')
+
+
+class NutViaAdministracao(db.Model):
+    """Embalagem / via usada em extras, suplementos, enteral, fórmula e LVE."""
+    __tablename__ = 'nut_vias_administracao'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'nome', name='uq_nut_vias_cliente_nome'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    nome = db.Column(db.String(80), nullable=False)
+    produto = db.Column(db.String(200), default='')
+    via_oral = db.Column(db.Boolean, default=False)
+    ativo = db.Column(db.Boolean, default=True)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'nome': self.nome or '',
+            'produto': self.produto or '',
+            'via_oral': bool(self.via_oral),
+            'ativo': bool(self.ativo),
+        }
+
+
+class NutUmaItem(db.Model):
+    """Item das telas Localizar (prato, suplemento, enteral, fórmula, LVE, módulo)."""
+    __tablename__ = 'nut_uma_itens'
+    __table_args__ = (
+        db.UniqueConstraint(
+            'cliente_id', 'tipo', 'sistema', 'papel', 'manipulado', 'nome',
+            name='uq_nut_uma_item',
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    tipo = db.Column(db.String(20), nullable=False, index=True)
+    sistema = db.Column(db.String(20), default='')
+    papel = db.Column(db.String(20), default='')
+    manipulado = db.Column(db.Boolean, default=False)
+    nome = db.Column(db.String(200), nullable=False)
+    produto = db.Column(db.String(200), default='')
+    quantidade = db.Column(db.Float, default=0)
+    ativo = db.Column(db.Boolean, default=True)
+    diluicao = db.Column(db.String(40), default='')
+    unidade = db.Column(db.String(20), default='')
+    produto_disponivel = db.Column(db.Boolean, default=True)
+    produto_principal = db.Column(db.String(200), default='')
+    coluna_faturamento = db.Column(db.String(80), default='')
+    grupo = db.Column(db.String(80), default='')
+    quant_padrao = db.Column(db.String(40), default='')
+    calorias = db.Column(db.Float)
+    ptn = db.Column(db.Float)
+    hc = db.Column(db.Float)
+    lip = db.Column(db.Float)
+    fibras = db.Column(db.Float)
+    composicao = db.Column(db.Text, default='')
+    componentes = db.Column(db.Text, default='[]')
+    cobranca = db.Column(db.String(20), default='')
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        comps = []
+        bruto = (self.componentes or '').strip()
+        if bruto:
+            try:
+                data = json.loads(bruto)
+                if isinstance(data, list):
+                    comps = data
+            except (TypeError, ValueError):
+                comps = []
+        return {
+            'id': self.id,
+            'tipo': self.tipo or '',
+            'sistema': self.sistema or '',
+            'sistema_fechado': (self.sistema or '') == 'fechado',
+            'papel': self.papel or '',
+            'manipulado': bool(self.manipulado),
+            'nome': self.nome or '',
+            'produto': self.produto or '',
+            'quantidade': self.quantidade or 0,
+            'ativo': bool(self.ativo),
+            'diluicao': self.diluicao or '',
+            'unidade': self.unidade or '',
+            'produto_disponivel': self.produto_disponivel is not False,
+            'produto_principal': self.produto_principal or '',
+            'coluna_faturamento': self.coluna_faturamento or '',
+            'grupo': self.grupo or '',
+            'quant_padrao': self.quant_padrao or '',
+            'calorias': self.calorias,
+            'ptn': self.ptn,
+            'hc': self.hc,
+            'lip': self.lip,
+            'fibras': self.fibras,
+            'composicao': self.composicao or '',
+            'componentes': comps,
+            'cobranca': self.cobranca or '',
+        }

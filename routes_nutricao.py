@@ -13,6 +13,7 @@ from models_nutricao import (
     NutEstoqueLocal, NutUnidadeMedida, NutGrupoProduto, NutProduto, NutFornecedor,
     NutEtiqueta, NutEtiquetaCampo, NutPrecoRefeicao, NutTipoRefeicao, NutPrecoDietaTipo,
     NutRefeicaoAcompanhante, NutRefeicaoFuncionario,
+    NutViaAdministracao, NutUmaItem,
     CAMPOS_ITEM_CARDAPIO,
 )
 from nutricao_clinico import (
@@ -71,6 +72,11 @@ from nutricao_service import (
     list_alimentos,
     import_tabela_fdc,
     list_pratos_liquidos,
+    list_vias,
+    list_uma_itens,
+    gravar_uma_item,
+    salvar_cadastro_uma,
+    colunas_faturamento_uma,
     list_estoques,
     list_unidades,
     list_grupos_produto,
@@ -2747,6 +2753,215 @@ def api_prato_liquido_ops(pid):
     _prato_liquido_from_payload(d, row)
     db.session.commit()
     return jsonify({'ok': True, 'prato': row.to_dict()})
+
+
+# ---- VIAS DE ADMINISTRAÇÃO E ITENS DA U.M.A. ----
+@nutricao.route('/nutricao/vias')
+def vias_administracao():
+    seed_nutricao()
+    return render_template(
+        'nutricao_vias.html',
+        vias=list_vias(somente_ativas=False),
+        **active('cadastro_vias')
+    )
+
+
+def _via_from_payload(d, row=None):
+    row = row or NutViaAdministracao()
+    if 'nome' in d or row.nome is None:
+        row.nome = (d.get('nome') or row.nome or '').strip().upper()
+    if 'produto' in d:
+        row.produto = (d.get('produto') or '').strip().upper()
+    if 'via_oral' in d:
+        row.via_oral = bool(d.get('via_oral'))
+    if 'ativo' in d:
+        row.ativo = bool(d.get('ativo'))
+    return row
+
+
+@nutricao.route('/nutricao/api/vias', methods=['GET', 'POST'])
+def api_vias():
+    seed_nutricao()
+    if request.method == 'POST':
+        d = request.get_json(force=True) or {}
+        nome = (d.get('nome') or '').strip().upper()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome da embalagem é obrigatório'}), 400
+        exists = scoped_query(NutViaAdministracao).filter_by(nome=nome).first()
+        if exists:
+            _via_from_payload(d, exists)
+            exists.ativo = bool(d.get('ativo', True))
+            db.session.commit()
+            return jsonify({'ok': True, 'id': exists.id, 'via': exists.to_dict()})
+        row = _via_from_payload(d)
+        row.nome = nome
+        if 'ativo' not in d:
+            row.ativo = True
+        _tag_cliente(row)
+        db.session.add(row)
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            return jsonify({'ok': False, 'error': 'Já existe via com este nome'}), 400
+        return jsonify({'ok': True, 'id': row.id, 'via': row.to_dict()})
+    somente = str(request.args.get('ativos', '')).lower() in ('1', 'true', 'sim')
+    return jsonify(list_vias(somente_ativas=somente))
+
+
+@nutricao.route('/nutricao/api/vias/<int:vid>', methods=['PUT', 'DELETE'])
+def api_via_ops(vid):
+    row = _get_scoped_or_404(NutViaAdministracao, vid)
+    if not row:
+        return jsonify({'ok': False, 'error': 'Via não encontrada'}), 404
+    if request.method == 'DELETE':
+        row.ativo = False
+        db.session.commit()
+        return jsonify({'ok': True})
+    d = request.get_json(force=True) or {}
+    if 'nome' in d:
+        nome = (d.get('nome') or '').strip().upper()
+        if not nome:
+            return jsonify({'ok': False, 'error': 'Nome da embalagem é obrigatório'}), 400
+        outro = scoped_query(NutViaAdministracao).filter(
+            NutViaAdministracao.nome == nome,
+            NutViaAdministracao.id != vid,
+        ).first()
+        if outro:
+            return jsonify({'ok': False, 'error': 'Já existe via com este nome'}), 400
+        row.nome = nome
+    _via_from_payload(d, row)
+    db.session.commit()
+    return jsonify({'ok': True, 'via': row.to_dict()})
+
+
+@nutricao.route('/nutricao/api/uma-itens', methods=['GET', 'POST'])
+def api_uma_itens():
+    seed_nutricao()
+    if request.method == 'POST':
+        d = request.get_json(force=True) or {}
+        try:
+            row = gravar_uma_item(
+                write_cliente_id(),
+                d.get('tipo'),
+                d.get('nome'),
+                sistema=d.get('sistema') or '',
+                papel=d.get('papel') or '',
+                manipulado=bool(d.get('manipulado')),
+                produto=d.get('produto') or '',
+            )
+        except ValueError as exc:
+            return jsonify({'ok': False, 'error': str(exc)}), 400
+        db.session.commit()
+        return jsonify({'ok': True, 'id': row.id, 'item': row.to_dict()})
+    manipulado = request.args.get('manipulado')
+    if manipulado is None or manipulado == '':
+        flag = None
+    else:
+        flag = str(manipulado).lower() in ('1', 'true', 'sim')
+    disponivel = request.args.get('disponivel')
+    somente_disp = str(disponivel or '').lower() in ('1', 'true', 'sim')
+    return jsonify(list_uma_itens(
+        tipo=request.args.get('tipo') or None,
+        sistema=request.args.get('sistema') or None,
+        papel=request.args.get('papel') or None,
+        manipulado=flag,
+        somente_ativos=str(request.args.get('ativos', '1')).lower() not in ('0', 'false', 'nao', 'não'),
+        somente_disponiveis=somente_disp,
+    ))
+
+
+_CADASTRO_UMA = {
+    'formula': ('Fórmula Infantil', 'cadastro_uma_formula'),
+    'enteral': ('Enteral', 'cadastro_uma_enteral'),
+    'suplemento': ('Suplemento', 'cadastro_uma_suplemento'),
+    'lve': ('LVE', 'cadastro_uma_lve'),
+}
+
+
+def _tipo_cadastro_uma(valor):
+    tipo = (valor or 'formula').strip().lower()
+    return tipo if tipo in _CADASTRO_UMA else 'formula'
+
+
+@nutricao.route('/nutricao/cadastro-uma')
+def cadastro_uma():
+    seed_nutricao()
+    tipo = _tipo_cadastro_uma(request.args.get('tipo'))
+    titulo, page = _CADASTRO_UMA[tipo]
+    grupos = [g['nome'] for g in list_grupos_dieta(somente_ativos=True)]
+    unidades = [
+        u for u in list_unidades(somente_ativas=True)
+        if u.get('flag_uma', True)
+    ]
+    produtos = [
+        {
+            'codigo': p.get('codigo') or '',
+            'descricao': p.get('descricao') or '',
+            'unidade': p.get('unidade') or '',
+        }
+        for p in list_produtos(somente_ativos=True)
+    ]
+    return render_template(
+        'nutricao_cadastro_uma.html',
+        tipo=tipo,
+        titulo=titulo,
+        itens=list_uma_itens(tipo=tipo, somente_ativos=False),
+        unidades=unidades,
+        produtos=produtos,
+        grupos=grupos,
+        colunas=colunas_faturamento_uma(grupos),
+        **active(page),
+    )
+
+
+def _payload_cadastro_uma(d, tipo):
+    d = dict(d or {})
+    d['tipo'] = tipo
+    return d
+
+
+@nutricao.route('/nutricao/api/cadastro-uma', methods=['POST'])
+def api_cadastro_uma():
+    seed_nutricao()
+    d = request.get_json(force=True) or {}
+    tipo = _tipo_cadastro_uma(d.get('tipo'))
+    try:
+        row = salvar_cadastro_uma(write_cliente_id(), _payload_cadastro_uma(d, tipo))
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': 'Já existe um item com este nome'}), 400
+    return jsonify({'ok': True, 'id': row.id, 'item': row.to_dict()})
+
+
+@nutricao.route('/nutricao/api/cadastro-uma/<int:iid>', methods=['PUT', 'DELETE'])
+def api_cadastro_uma_ops(iid):
+    row = _get_scoped_or_404(NutUmaItem, iid)
+    if not row:
+        return jsonify({'ok': False, 'error': 'Item não encontrado'}), 404
+    if request.method == 'DELETE':
+        row.ativo = False
+        row.produto_disponivel = False
+        db.session.commit()
+        return jsonify({'ok': True})
+    d = request.get_json(force=True) or {}
+    tipo = _tipo_cadastro_uma(d.get('tipo') or row.tipo)
+    if tipo != (row.tipo or ''):
+        return jsonify({'ok': False, 'error': 'Tipo do item não confere'}), 400
+    try:
+        salvar_cadastro_uma(row.cliente_id, _payload_cadastro_uma(d, tipo), row=row)
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': 'Já existe um item com este nome'}), 400
+    return jsonify({'ok': True, 'id': row.id, 'item': row.to_dict()})
 
 
 # ---- CADASTRO DE PRODUTOS ----

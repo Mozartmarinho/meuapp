@@ -46,8 +46,22 @@ function clearPid() {
   }
 }
 
+function corrigirEnvioDeMidia() {
+  const alvo = path.join(__dirname, 'node_modules', 'whatsapp-web.js', 'src', 'util', 'Injected', 'Utils.js');
+  if (!fs.existsSync(alvo)) return;
+  let src;
+  try { src = fs.readFileSync(alvo, 'utf8'); } catch (err) { return; }
+  if (src.includes('delete message.__x_id')) return;
+  const marcador = "        // Bot's won't reply if canonicalUrl is set (linking)";
+  if (!src.includes(marcador)) return;
+  try {
+    fs.writeFileSync(alvo, src.replace(marcador, "        delete message.__x_id;\n\n" + marcador));
+  } catch (err) { /* ignore */ }
+}
+
 function loadLibs() {
   if (Client) return;
+  corrigirEnvioDeMidia();
   const wweb = require('whatsapp-web.js');
   Client = wweb.Client;
   LocalAuth = wweb.LocalAuth;

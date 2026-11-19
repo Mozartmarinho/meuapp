@@ -283,6 +283,101 @@
   </div>
 </div>
 
+<div id="umaFormOverlay" class="xcad-overlay uma-layer" hidden>
+  <div class="uma-dialog" role="dialog" aria-modal="true" aria-labelledby="umaFormTitulo">
+    <div class="xcad-titlebar">
+      <h2 id="umaFormTitulo">Adicionar</h2>
+      <button type="button" class="modal-close" onclick="umaFecharForm()" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="uma-body" id="umaFormBody"></div>
+    <div class="xcad-footer">
+      <button type="button" class="btn btn-primary btn-sm" onclick="umaConfirmarForm()"><i class="fas fa-check"></i> OK</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="umaFecharForm()"><i class="fas fa-times"></i> Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<div id="umaLocOverlay" class="xcad-overlay uma-layer uma-topo" hidden>
+  <div class="uma-dialog uma-loc" role="dialog" aria-modal="true" aria-labelledby="umaLocTitulo">
+    <div class="xcad-titlebar">
+      <h2 id="umaLocTitulo">Localizar</h2>
+      <button type="button" class="modal-close" onclick="umaFecharLoc()" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="uma-loc-busca">
+      <label class="form-label" id="umaLocDica" for="umaLocBusca">Digite o texto a localizar:</label>
+      <input class="form-control" id="umaLocBusca" autocomplete="off">
+    </div>
+    <div id="umaLocFiltros"></div>
+    <div class="uma-loc-lista" id="umaLocLista"></div>
+    <div class="xcad-footer">
+      <button type="button" class="btn btn-ghost btn-sm" id="umaLocCadastrar" onclick="umaCadastrarLoc()" hidden>Cadastrar</button>
+      <button type="button" class="btn btn-primary btn-sm" onclick="umaEscolherLoc()"><i class="fas fa-check"></i> OK</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="umaFecharLoc()"><i class="fas fa-times"></i> Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<div id="umaViaOverlay" class="xcad-overlay uma-layer uma-topo" hidden>
+  <div class="uma-dialog uma-via" role="dialog" aria-modal="true" aria-labelledby="umaViaTitulo">
+    <div class="xcad-titlebar">
+      <h2 id="umaViaTitulo">Cadastro de Via de Administração</h2>
+      <button type="button" class="modal-close" onclick="umaFecharVia()" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="uma-body">
+      <div class="uma-nav">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="umaViaNav('first')" title="Primeiro"><i class="fas fa-step-backward"></i></button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="umaViaNav('prev')" title="Anterior"><i class="fas fa-caret-left"></i></button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="umaViaNav('next')" title="Próximo"><i class="fas fa-caret-right"></i></button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="umaViaNav('last')" title="Último"><i class="fas fa-step-forward"></i></button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="umaViaNova()" title="Novo"><i class="fas fa-plus"></i></button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="umaViaExcluir()" title="Excluir"><i class="fas fa-minus"></i></button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="umaViaSalvar()" title="Salvar"><i class="fas fa-check"></i></button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="umaRecarregarVias()" title="Atualizar"><i class="fas fa-sync"></i></button>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="umaViaNome">Nome da embalagem:</label>
+        <input class="form-control" id="umaViaNome">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="umaViaProduto">Produto:</label>
+        <div class="uma-via-linha">
+          <input class="form-control" id="umaViaProduto">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="umaAbrirProduto()" title="Localizar produto">...</button>
+        </div>
+      </div>
+      <label class="uma-tipos"><input type="checkbox" id="umaViaOral"> Via oral</label>
+    </div>
+    <div class="xcad-footer">
+      <button type="button" class="btn btn-primary btn-sm" onclick="umaFecharVia()"><i class="fas fa-times"></i> Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div id="umaModOverlay" class="xcad-overlay uma-layer uma-topo" hidden>
+  <div class="uma-dialog uma-mod" role="dialog" aria-modal="true">
+    <div class="xcad-titlebar">
+      <h2>Módulo</h2>
+      <button type="button" class="modal-close" onclick="umaFecharMod()" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="uma-body">
+      <div class="uma-vols">
+        <div class="form-group">
+          <label class="form-label" for="umaModNome">Módulo:</label>
+          <select class="form-control" id="umaModNome"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="umaModVolume">Volume:</label>
+          <input class="form-control" id="umaModVolume" value="0,00">
+        </div>
+      </div>
+    </div>
+    <div class="xcad-footer">
+      <button type="button" class="btn btn-primary btn-sm" onclick="umaConfirmarMod()"><i class="fas fa-check"></i> OK</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="umaFecharMod()"><i class="fas fa-times"></i> Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <style>
 /* Pin mapa page to the viewport so both scrollbars stay on-screen. */
 .mapa-page {
@@ -1219,6 +1314,53 @@
   gap: 0.5rem;
   padding: 0.55rem 0.75rem;
   background: #f8fafc;
+}
+.uma-layer { z-index: 10080; }
+.uma-layer.uma-topo { z-index: 10090; }
+.uma-dialog {
+  background: #f4f6f8;
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  width: min(760px, 96vw);
+  max-height: min(92vh, 820px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.3);
+}
+.uma-dialog.uma-loc { width: min(560px, 96vw); max-height: min(78vh, 640px); }
+.uma-dialog.uma-via, .uma-dialog.uma-mod { width: min(480px, 96vw); }
+.uma-body { padding: 0.7rem 0.85rem; overflow: auto; background: #fff; }
+.uma-body .form-label { font-size: 0.75rem; margin-bottom: 0.2rem; }
+.uma-body .form-control { font-size: 0.82rem; padding: 0.32rem 0.45rem; }
+.uma-nome-linha, .uma-via-linha { display: flex; gap: 0.35rem; align-items: center; }
+.uma-nome-linha .form-control, .uma-via-linha .form-control { flex: 1; }
+.uma-atalho { font-size: 0.68rem; color: #64748b; font-weight: 700; }
+.uma-vols, .uma-vias { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem 0.75rem; }
+.uma-vol-um { max-width: 160px; margin-left: auto; }
+.uma-box { border: 1px solid #dbe3ee; border-radius: 6px; margin: 0.55rem 0; padding: 0.45rem 0.6rem 0.6rem; }
+.uma-box legend { font-size: 0.75rem; font-weight: 700; color: #1e3a8a; padding: 0 0.3rem; }
+.uma-horas { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 0.15rem 0.35rem; }
+.uma-hora-col { display: flex; flex-direction: column; gap: 0.12rem; font-size: 0.75rem; }
+.uma-hora-col label, .uma-tipos label { display: flex; align-items: center; gap: 0.25rem; }
+.uma-tipos { display: flex; flex-wrap: wrap; gap: 0.65rem 1rem; font-size: 0.8rem; }
+.uma-local { display: grid; grid-template-columns: 1fr 140px auto; gap: 0.5rem; align-items: end; margin-top: 0.4rem; }
+.uma-mod-grid { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.uma-mod-grid th { background: #1e4b8f; color: #fff; text-align: left; padding: 0.25rem 0.4rem; }
+.uma-mod-grid td { border: 1px solid #cbd5e1; padding: 0.2rem 0.4rem; }
+.uma-mod-grid tr.is-sel td { background: #2563eb; color: #fff; }
+.uma-mod-acoes { display: flex; gap: 0.4rem; margin-top: 0.4rem; }
+.uma-loc-busca { padding: 0.55rem 0.75rem 0; background: #fff; }
+.uma-loc-lista { flex: 1; overflow: auto; margin: 0.45rem 0.75rem; border: 1px solid #94a3b8; background: #fff; min-height: 180px; }
+.uma-loc-head, .uma-loc-item { display: flex; justify-content: space-between; gap: 0.5rem; width: 100%; text-align: left; }
+.uma-loc-head { background: #1e4b8f; color: #fff; font-size: 0.75rem; font-weight: 700; padding: 0.28rem 0.45rem; position: sticky; top: 0; }
+.uma-loc-item { border: 0; border-bottom: 1px solid #e2e8f0; background: #fff; font: inherit; font-size: 0.78rem; padding: 0.22rem 0.45rem; cursor: pointer; }
+.uma-loc-item.is-sel { background: #2563eb; color: #fff; }
+.uma-loc-vazio { padding: 0.8rem; color: #64748b; font-size: 0.8rem; }
+.uma-qtd { min-width: 4.5rem; text-align: right; }
+.uma-radios { display: flex; flex-wrap: wrap; gap: 0.7rem; align-items: center; font-size: 0.78rem; padding: 0.25rem 0.75rem; }
+.uma-nav { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-bottom: 0.7rem; }
+@media (max-width: 720px) {
+  .uma-vols, .uma-vias, .uma-local, .uma-horas { grid-template-columns: 1fr 1fr; }
 }
 </style>
 
@@ -3409,7 +3551,9 @@ const XCAD_ABAS = [
   }
 ];
 
-let xcadState = null;
+var xcadState = null;
+
+const XCAD_EXTRAS = ['via','quant_via','via_dieta','quant_via_dieta','via_agua','quant_via_agua','tipo_admin','gotejamento','horarios_envio','sistema','uma_item_id','diluicao','coluna_faturamento'];
 
 function xcadAba(id){
   return XCAD_ABAS.find(a => a.id === id) || XCAD_ABAS[0];
@@ -3422,7 +3566,20 @@ function xcadLinhaVazia(aba, prefill){
     row.enfermaria = prefill.enfermaria || '';
     row.leito = prefill.leito || '';
   }
+  row.modulos = [];
   return row;
+}
+
+function xcadCopiarExtras(row, item){
+  XCAD_EXTRAS.forEach(k => {
+    if (item[k] != null && item[k] !== '') row[k] = String(item[k]);
+  });
+  if (Array.isArray(item.modulos)){
+    row.modulos = item.modulos.map(m => ({
+      descricao: String((m && (m.descricao || m.modulo)) || ''),
+      volume: String((m && m.volume) || '')
+    }));
+  }
 }
 
 function xcadMarcado(valor){
@@ -3443,6 +3600,7 @@ function xcadParse(texto, abaId){
             if (c.type === 'check') row[c.key] = xcadMarcado(item[c.key]);
             else if (item[c.key] != null) row[c.key] = String(item[c.key]);
           });
+          xcadCopiarExtras(row, item);
           return row;
         });
       }
@@ -3573,14 +3731,7 @@ function xcadSelecionar(idx){
 
 function xcadAdicionar(){
   if (!xcadState) return;
-  const aba = xcadAba(xcadState.aba);
-  const row = xcadLinhaVazia(aba, xcadState.linha);
-  xcadState.dados[aba.id].push(row);
-  xcadState.sel = xcadState.dados[aba.id].length - 1;
-  xcadState.dirty = true;
-  xcadRender();
-  const inp = document.querySelector(`#xcadBody tr[data-idx="${xcadState.sel}"] input[data-k="${aba.nomeKey}"]`);
-  if (inp) inp.focus();
+  if (typeof umaAbrirForm === 'function') umaAbrirForm(null);
 }
 
 function xcadRemover(){
@@ -3595,11 +3746,8 @@ function xcadRemover(){
 function xcadAlterar(){
   if (!xcadState || xcadState.sel < 0) return;
   const aba = xcadAba(xcadState.aba);
-  const inp = document.querySelector(`#xcadBody tr[data-idx="${xcadState.sel}"] input[data-k="${aba.nomeKey}"]`);
-  if (inp){
-    inp.focus();
-    inp.select();
-  }
+  const row = xcadState.dados[aba.id][xcadState.sel];
+  if (row && typeof umaAbrirForm === 'function') umaAbrirForm(row);
 }
 
 function xcadOnGrade(e){
@@ -4001,9 +4149,14 @@ document.addEventListener('DOMContentLoaded', function(){
   });
 
   document.addEventListener('keydown', function(e){
+    if ((e.key === 'F2' || e.key === 'F3') && typeof umaAtalho === 'function' && umaAtalho(e.key)) {
+      e.preventDefault();
+      return;
+    }
     if (e.key === 'Escape') {
       fecharContextMenu();
       limparSelecaoMapa();
+      if (typeof umaTratarEscape === 'function' && umaTratarEscape()) return;
       if (!document.getElementById('xcadOverlay')?.hidden) {
         fecharCadastroUma();
         return;
@@ -4054,4 +4207,5 @@ document.addEventListener('DOMContentLoaded', function(){
   });
 });
 </script>
+<script src="{{ url_for('static', filename='js/nutricao-uma-forms.js') }}?v=2"></script>
 {% endblock %}
