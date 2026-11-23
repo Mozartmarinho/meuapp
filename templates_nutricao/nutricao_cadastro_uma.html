@@ -152,7 +152,7 @@
             <label class="form-label" for="fGrupo">{% if tipo == 'suplemento' %}Grupo para totalização{% else %}Grupo{% endif %}</label>
             <div class="uma-combo">
               <select class="form-control" id="fGrupo"></select>
-              <a class="btn btn-ghost btn-sm" href="{{ url_for('nutricao.grupos_dietas') }}" title="Grupos de dietas">...</a>
+              <a class="btn btn-ghost btn-sm so-atalho-dieta" href="{{ url_for('nutricao.grupos_dietas') }}" title="Grupos de dietas">...</a>
             </div>
           </div>
         </div>
@@ -374,7 +374,7 @@
 .tipo-formula .so-suplemento, .tipo-formula .so-lve, .tipo-formula .so-grupo,
 .tipo-enteral .so-formula, .tipo-enteral .so-suplemento, .tipo-enteral .so-lve,
 .tipo-suplemento .so-formula, .tipo-suplemento .so-produto, .tipo-suplemento .so-fechado, .tipo-suplemento .so-lve,
-.tipo-lve .so-formula, .tipo-lve .so-produto, .tipo-lve .so-fechado, .tipo-lve .so-suplemento, .tipo-lve .so-disponivel, .tipo-lve .so-composicao { display: none; }
+.tipo-lve .so-formula, .tipo-lve .so-produto, .tipo-lve .so-fechado, .tipo-lve .so-suplemento, .tipo-lve .so-disponivel, .tipo-lve .so-composicao, .tipo-lve .so-atalho-dieta { display: none; }
 body.modal-open { overflow: hidden; }
 @media print {
   .sidebar, .sidebar-overlay, .app-topbar, .eq-filters, .uma-abas,

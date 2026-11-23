@@ -2244,6 +2244,22 @@ COLUNAS_FATURAMENTO_UMA = (
     'LVE',
 )
 
+# Cadastro de LVE do sistema legado. Não usa grupo de dieta nem coluna de faturamento.
+GRUPOS_LVE = (
+    'MISTURA NUTRITIVA S/LACTOSE',
+    'SEM LACTOSE',
+)
+
+COLUNAS_TOTALIZACAO_LVE = (
+    'PREMATUROS E RECEM - NATOS DE BAIXO PESO',
+    'LACTENTES 0 A 6 MESES',
+    'LACTENTES DE 6 A 12 MESES',
+    'ERROS INATOS DO METABOLISMO',
+    'FÓRMULAS LÁCTEAS',
+    'LACTENTES ANTI-REGURGITAÇÃO',
+    'ISENTAS DE LACTOSE',
+)
+
 
 def colunas_faturamento_uma(grupos=None):
     vistos = []

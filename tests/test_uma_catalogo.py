@@ -170,6 +170,13 @@ class UmaCatalogoTest(unittest.TestCase):
         pagina = lve.get_data(as_text=True)
         self.assertIn('Cobrança relatório', pagina)
         self.assertIn('Espelho 1', pagina)
+        self.assertIn('MISTURA NUTRITIVA S/LACTOSE', pagina)
+        self.assertIn('SEM LACTOSE', pagina)
+        self.assertIn('LACTENTES 0 A 6 MESES', pagina)
+        self.assertIn('ISENTAS DE LACTOSE', pagina)
+        self.assertIn('PREMATUROS E RECEM - NATOS DE BAIXO PESO', pagina)
+        self.assertNotIn('BÁSICAS', pagina)
+        self.assertNotIn('LACTÁRIO', pagina)
 
 
 if __name__ == '__main__':

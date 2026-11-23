@@ -77,6 +77,8 @@ from nutricao_service import (
     gravar_uma_item,
     salvar_cadastro_uma,
     colunas_faturamento_uma,
+    GRUPOS_LVE,
+    COLUNAS_TOTALIZACAO_LVE,
     list_estoques,
     list_unidades,
     list_grupos_produto,
@@ -2908,7 +2910,12 @@ def cadastro_uma():
     seed_nutricao()
     tipo = _tipo_cadastro_uma(request.args.get('tipo'))
     titulo, page = _CADASTRO_UMA[tipo]
-    grupos = [g['nome'] for g in list_grupos_dieta(somente_ativos=True)]
+    if tipo == 'lve':
+        grupos = list(GRUPOS_LVE)
+        colunas = list(COLUNAS_TOTALIZACAO_LVE)
+    else:
+        grupos = [g['nome'] for g in list_grupos_dieta(somente_ativos=True)]
+        colunas = colunas_faturamento_uma(grupos)
     unidades = [
         u for u in list_unidades(somente_ativas=True)
         if u.get('flag_uma', True)
@@ -2929,7 +2936,7 @@ def cadastro_uma():
         unidades=unidades,
         produtos=produtos,
         grupos=grupos,
-        colunas=colunas_faturamento_uma(grupos),
+        colunas=colunas,
         **active(page),
     )
 
