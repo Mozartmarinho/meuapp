@@ -224,6 +224,76 @@ class UmaCatalogoTest(unittest.TestCase):
         )
         self.assertEqual(vazio.status_code, 400)
 
+    def test_popup_edita_remove_e_lista_em_ordem(self):
+        import json
+        import re
+        import unicodedata
+
+        def ordem(nome):
+            base = unicodedata.normalize('NFD', nome or '')
+            return ''.join(ch for ch in base if unicodedata.category(ch) != 'Mn').casefold()
+
+        client = self.app.test_client()
+        pagina = client.get('/nutricao/cadastro-uma?tipo=lve').get_data(as_text=True)
+        self.assertIn('modalOpcao', pagina)
+        self.assertIn('Digite para filtrar', pagina)
+        self.assertIn('opcaoAdicionar', pagina)
+        grupos = json.loads(re.search(r'const GRUPOS = (\[.*?\]);', pagina).group(1))
+        colunas = json.loads(re.search(r'const COLUNAS = (\[.*?\]);', pagina).group(1))
+        self.assertEqual(grupos, sorted(grupos, key=ordem))
+        self.assertEqual(colunas, sorted(colunas, key=ordem))
+        self.assertGreater(len(grupos), 1)
+
+        novo_grupo = client.post('/nutricao/api/cadastro-uma/opcao', json={
+            'tipo': 'suplemento',
+            'campo': 'grupo',
+            'nome': 'grupo popup zz',
+        })
+        self.assertEqual(novo_grupo.status_code, 200, novo_grupo.get_data(as_text=True))
+
+        criado = client.post('/nutricao/api/cadastro-uma', json={
+            'tipo': 'suplemento',
+            'nome': 'ITEM OPCAO POPUP',
+            'grupo': 'GRUPO POPUP ZZ',
+            'coluna_faturamento': 'COLUNA TOTAL TESTE',
+        })
+        self.assertEqual(criado.status_code, 200, criado.get_data(as_text=True))
+
+        editado = client.put('/nutricao/api/cadastro-uma/opcao', json={
+            'tipo': 'suplemento',
+            'campo': 'grupo',
+            'nome': 'GRUPO POPUP ZZ',
+            'nome_novo': 'grupo total editado',
+        })
+        self.assertEqual(editado.status_code, 200, editado.get_data(as_text=True))
+        corpo = editado.get_json()
+        self.assertEqual(corpo['nome'], 'GRUPO TOTAL EDITADO')
+        self.assertIn('GRUPO TOTAL EDITADO', corpo['nomes'])
+        self.assertNotIn('GRUPO POPUP ZZ', corpo['nomes'])
+        self.assertEqual(corpo['nomes'], sorted(corpo['nomes'], key=ordem))
+
+        from models_nutricao import NutUmaItem
+        item = NutUmaItem.query.filter_by(nome='ITEM OPCAO POPUP', tipo='suplemento').one()
+        self.assertEqual(item.grupo, 'GRUPO TOTAL EDITADO')
+
+        removido = client.delete('/nutricao/api/cadastro-uma/opcao', json={
+            'tipo': 'lve',
+            'campo': 'grupo',
+            'nome': 'SEM LACTOSE',
+        })
+        self.assertEqual(removido.status_code, 200, removido.get_data(as_text=True))
+        self.assertNotIn('SEM LACTOSE', removido.get_json()['nomes'])
+        lve = client.get('/nutricao/cadastro-uma?tipo=lve').get_data(as_text=True)
+        self.assertNotIn('SEM LACTOSE', lve)
+        self.assertIn('MISTURA NUTRITIVA S/LACTOSE', lve)
+        restaurado = client.post('/nutricao/api/cadastro-uma/opcao', json={
+            'tipo': 'lve',
+            'campo': 'grupo',
+            'nome': 'SEM LACTOSE',
+        })
+        self.assertEqual(restaurado.status_code, 200, restaurado.get_data(as_text=True))
+        self.assertIn('SEM LACTOSE', restaurado.get_json()['nomes'])
+
 
 if __name__ == '__main__':
     unittest.main()

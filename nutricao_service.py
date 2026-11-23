@@ -2297,6 +2297,121 @@ def list_opcoes_uma(lista):
     return [row.nome for row in q.order_by(NutUmaOpcao.nome, NutUmaOpcao.id).all()]
 
 
+def _ordem_nome_uma(nome):
+    base = unicodedata.normalize('NFD', nome or '')
+    sem_acento = ''.join(ch for ch in base if unicodedata.category(ch) != 'Mn')
+    return sem_acento.casefold()
+
+
+def _ordenar_nomes_uma(nomes):
+    return sorted(nomes, key=_ordem_nome_uma)
+
+
+def _nomes_seed_grupo_dieta():
+    nomes = set()
+    for item in GRUPOS_DIETA_SEED:
+        if isinstance(item, (list, tuple)):
+            nome = (item[0] or '').strip().upper()
+        else:
+            nome = (item or '').strip().upper()
+        if nome:
+            nomes.add(nome)
+    return nomes
+
+
+def _tipos_campo_uma(tipo):
+    if (tipo or '').strip().lower() == 'lve':
+        return ('lve',)
+    return ('formula', 'enteral', 'suplemento')
+
+
+def _opcoes_da_lista(lista):
+    rows = _q(NutUmaOpcao).filter(NutUmaOpcao.lista == lista).all()
+    ativos = [row.nome for row in rows if row.ativo and row.nome]
+    ocultos = {(row.nome or '').strip().upper() for row in rows if not row.ativo}
+    return ativos, ocultos
+
+
+def listar_campo_uma(tipo, campo):
+    """Nomes visíveis do grupo ou da coluna, em ordem alfabética."""
+    lista = _lista_opcao_uma(tipo, campo)
+    if lista == 'grupo':
+        base = [g['nome'] for g in list_grupos_dieta(somente_ativos=True)]
+        return _ordenar_nomes_uma(unir_nomes_uma(base))
+    if lista == 'grupo_lve':
+        base = GRUPOS_LVE
+    elif lista == 'coluna_lve':
+        base = COLUNAS_TOTALIZACAO_LVE
+    else:
+        grupos = [g['nome'] for g in list_grupos_dieta(somente_ativos=True)]
+        base = colunas_faturamento_uma(grupos)
+    ativos, ocultos = _opcoes_da_lista(lista)
+    nomes = [nome for nome in unir_nomes_uma(base, ativos) if nome not in ocultos]
+    return _ordenar_nomes_uma(nomes)
+
+
+def _grupo_dieta_por_nome(cid, nome, somente_ativo=False):
+    q = NutGrupoDieta.query.filter(
+        _chave_uma_cliente(NutGrupoDieta, cid),
+        db.func.upper(NutGrupoDieta.nome) == nome,
+    )
+    if somente_ativo:
+        q = q.filter(NutGrupoDieta.ativo.is_(True))
+    return q.first()
+
+
+def _opcao_por_nome(cid, lista, nome):
+    return NutUmaOpcao.query.filter(
+        _chave_uma_cliente(NutUmaOpcao, cid),
+        NutUmaOpcao.lista == lista,
+        db.func.upper(NutUmaOpcao.nome) == nome,
+    ).first()
+
+
+def _marcar_opcao_uma(cid, lista, nome, ativo):
+    row = _opcao_por_nome(cid, lista, nome)
+    if row:
+        row.ativo = ativo
+        row.nome = nome
+        return row
+    row = NutUmaOpcao(cliente_id=cid, lista=lista, nome=nome, ativo=ativo)
+    db.session.add(row)
+    return row
+
+
+def _aplicar_renome_uma(cid, tipo, campo, atual, novo):
+    tipos = _tipos_campo_uma(tipo)
+    coluna = NutUmaItem.grupo if campo == 'grupo' else NutUmaItem.coluna_faturamento
+    itens = NutUmaItem.query.filter(
+        _chave_uma(cid),
+        NutUmaItem.tipo.in_(tipos),
+        db.func.upper(coluna) == atual,
+    ).all()
+    for item in itens:
+        if campo == 'grupo':
+            item.grupo = novo
+        else:
+            item.coluna_faturamento = novo
+    if campo != 'grupo' or 'lve' in tipos:
+        return
+    dietas = NutDieta.query.filter(
+        _chave_uma_cliente(NutDieta, cid),
+        db.func.upper(NutDieta.grupo) == atual,
+    ).all()
+    for dieta in dietas:
+        dieta.grupo = novo
+
+
+def _guardar_grupo_seed_inativo(cid, nome):
+    if nome not in _nomes_seed_grupo_dieta():
+        return
+    row = _grupo_dieta_por_nome(cid, nome)
+    if row:
+        row.ativo = False
+        return
+    db.session.add(NutGrupoDieta(cliente_id=cid, nome=nome, ordem=0, ativo=False))
+
+
 def salvar_opcao_uma(cid, tipo, campo, nome):
     """Grava um grupo ou uma coluna criado pelo botão + do cadastro."""
     nome = _txt_uma(nome, 80)
@@ -2304,10 +2419,7 @@ def salvar_opcao_uma(cid, tipo, campo, nome):
         raise ValueError('Informe o nome')
     lista = _lista_opcao_uma(tipo, campo)
     if lista == 'grupo':
-        row = NutGrupoDieta.query.filter(
-            _chave_uma_cliente(NutGrupoDieta, cid),
-            db.func.upper(NutGrupoDieta.nome) == nome,
-        ).first()
+        row = _grupo_dieta_por_nome(cid, nome)
         if row:
             row.ativo = True
             return row.nome
@@ -2318,17 +2430,62 @@ def salvar_opcao_uma(cid, tipo, campo, nome):
         row = NutGrupoDieta(cliente_id=cid, nome=nome, ordem=ordem, ativo=True)
         db.session.add(row)
         return row.nome
-    row = NutUmaOpcao.query.filter(
-        _chave_uma_cliente(NutUmaOpcao, cid),
-        NutUmaOpcao.lista == lista,
-        db.func.upper(NutUmaOpcao.nome) == nome,
-    ).first()
+    row = _opcao_por_nome(cid, lista, nome)
     if row:
         row.ativo = True
         return row.nome
     row = NutUmaOpcao(cliente_id=cid, lista=lista, nome=nome, ativo=True)
     db.session.add(row)
     return row.nome
+
+
+def renomear_opcao_uma(cid, tipo, campo, nome_atual, nome_novo):
+    """Troca o nome de um grupo ou coluna e atualiza os cadastros que o usam."""
+    atual = _txt_uma(nome_atual, 80)
+    novo = _txt_uma(nome_novo, 80)
+    if not atual or not novo:
+        raise ValueError('Informe o nome')
+    if atual == novo:
+        return novo
+    if atual not in listar_campo_uma(tipo, campo):
+        raise ValueError('Item não encontrado')
+    if novo in listar_campo_uma(tipo, campo):
+        raise ValueError('Já existe um item com este nome')
+    lista = _lista_opcao_uma(tipo, campo)
+    if lista == 'grupo':
+        row = _grupo_dieta_por_nome(cid, atual, somente_ativo=True)
+        if not row:
+            raise ValueError('Item não encontrado')
+        outro = _grupo_dieta_por_nome(cid, novo)
+        if outro and outro.id != row.id:
+            outro.ativo = True
+            row.ativo = False
+        else:
+            row.nome = novo
+            _guardar_grupo_seed_inativo(cid, atual)
+    else:
+        _marcar_opcao_uma(cid, lista, atual, False)
+        _marcar_opcao_uma(cid, lista, novo, True)
+    _aplicar_renome_uma(cid, tipo, campo, atual, novo)
+    return novo
+
+
+def remover_opcao_uma(cid, tipo, campo, nome):
+    """Tira o grupo ou a coluna da lista, sem apagar os cadastros já gravados."""
+    atual = _txt_uma(nome, 80)
+    if not atual:
+        raise ValueError('Informe o nome')
+    if atual not in listar_campo_uma(tipo, campo):
+        raise ValueError('Item não encontrado')
+    lista = _lista_opcao_uma(tipo, campo)
+    if lista == 'grupo':
+        row = _grupo_dieta_por_nome(cid, atual, somente_ativo=True)
+        if not row:
+            raise ValueError('Item não encontrado')
+        row.ativo = False
+        return atual
+    _marcar_opcao_uma(cid, lista, atual, False)
+    return atual
 
 
 def _chave_uma_cliente(model, cid):

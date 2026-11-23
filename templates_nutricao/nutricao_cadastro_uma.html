@@ -151,15 +151,13 @@
           <div class="form-group uma-grow so-grupo">
             <label class="form-label" for="fGrupo">Grupo para totalização</label>
             <div class="uma-combo">
-              <select class="form-control" id="fGrupo"></select>
-              <button type="button" class="btn-bolinha-mais" id="btnAddGrupo" title="Adicionar grupo" aria-label="Adicionar grupo">
+              <div class="uma-busca">
+                <input class="form-control" id="fGrupo" autocomplete="off" placeholder="Digite para filtrar" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="listaGrupo">
+                <div class="uma-busca-lista" id="listaGrupo" hidden role="listbox"></div>
+              </div>
+              <button type="button" class="btn-bolinha-mais" id="btnAddGrupo" title="Grupos cadastrados" aria-label="Grupos cadastrados">
                 <i class="fas fa-plus"></i>
               </button>
-            </div>
-            <div class="uma-nova" id="boxGrupo" hidden>
-              <input class="form-control" id="nomeGrupo" maxlength="80" placeholder="Nome do novo grupo" autocomplete="off">
-              <button type="button" class="btn btn-success btn-sm" id="okGrupo">Adicionar</button>
-              <button type="button" class="btn nc-btn-muted btn-sm" id="cancelGrupo">Cancelar</button>
             </div>
           </div>
         </div>
@@ -168,15 +166,13 @@
           <div class="form-group uma-grow">
             <label class="form-label" for="fColuna">{% if tipo == 'lve' %}Coluna para totalização{% else %}Coluna para totalização no faturamento{% endif %}</label>
             <div class="uma-combo">
-              <select class="form-control" id="fColuna"></select>
-              <button type="button" class="btn-bolinha-mais" id="btnAddColuna" title="Adicionar coluna" aria-label="Adicionar coluna">
+              <div class="uma-busca">
+                <input class="form-control" id="fColuna" autocomplete="off" placeholder="Digite para filtrar" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="listaColuna">
+                <div class="uma-busca-lista" id="listaColuna" hidden role="listbox"></div>
+              </div>
+              <button type="button" class="btn-bolinha-mais" id="btnAddColuna" title="Colunas cadastradas" aria-label="Colunas cadastradas">
                 <i class="fas fa-plus"></i>
               </button>
-            </div>
-            <div class="uma-nova" id="boxColuna" hidden>
-              <input class="form-control" id="nomeColuna" maxlength="80" placeholder="Nome da nova coluna" autocomplete="off">
-              <button type="button" class="btn btn-success btn-sm" id="okColuna">Adicionar</button>
-              <button type="button" class="btn nc-btn-muted btn-sm" id="cancelColuna">Cancelar</button>
             </div>
           </div>
           <label class="uma-check so-fechado"><input type="checkbox" id="fFechado"> Sistema fechado</label>
@@ -255,6 +251,22 @@
         </button>
       </div>
     </form>
+  </div>
+</div>
+
+<div id="modalOpcao" class="modal-overlay nc-modal" hidden>
+  <div class="modal-dialog uma-opcao-dialog" role="dialog" aria-modal="true" aria-labelledby="opcaoTitulo">
+    <div class="modal-header">
+      <h2 id="opcaoTitulo">Itens cadastrados</h2>
+      <button type="button" class="modal-close" id="btnFecharOpcao" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="uma-opcao-nova">
+        <input class="form-control" id="opcaoNovo" maxlength="80" placeholder="Novo item" autocomplete="off">
+        <button type="button" class="btn btn-success btn-sm" id="opcaoAdicionar">Adicionar</button>
+      </div>
+      <div class="uma-opcao-lista" id="opcaoLista"></div>
+    </div>
   </div>
 </div>
 
@@ -372,6 +384,49 @@
 .uma-check { display: flex; align-items: center; gap: 0.36rem; font-size: 0.76rem; color: #334155; margin: 0 0 0.35rem; }
 .uma-combo { display: flex; gap: 0.3rem; align-items: center; }
 .uma-combo .form-control { flex: 1; }
+.uma-busca { position: relative; flex: 1; min-width: 0; }
+.uma-busca-lista {
+  position: fixed;
+  z-index: 1300;
+  max-height: 220px;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #dbe3ee;
+  border-radius: 0.3rem;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+}
+.uma-busca-lista[hidden] { display: none !important; }
+.uma-busca-lista button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  border: 0;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  color: #1e293b;
+}
+.uma-busca-lista button:hover,
+.uma-busca-lista button.ativo { background: #e8eef8; }
+.uma-busca-vazio { padding: 0.45rem 0.55rem; color: #64748b; font-size: 0.75rem; }
+#modalOpcao { z-index: 1400; }
+.uma-opcao-dialog { max-width: 480px; }
+.uma-opcao-nova { display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.7rem; }
+.uma-opcao-nova .form-control { flex: 1; }
+.uma-opcao-lista { display: flex; flex-direction: column; gap: 0.35rem; max-height: 320px; overflow: auto; }
+.uma-opcao-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.35rem;
+  background: #fff;
+}
+.uma-opcao-item span { flex: 1; font-size: 0.8rem; color: #1e293b; }
+.uma-opcao-item .form-control { flex: 1; }
+.uma-opcao-vazio { margin: 0.2rem 0; color: #64748b; font-size: 0.78rem; }
 .btn-bolinha-mais {
   flex-shrink: 0;
   width: 1.7rem;
@@ -389,9 +444,6 @@
 }
 .btn-bolinha-mais:hover { background: #163f7c; border-color: #163f7c; }
 .btn-bolinha-mais i { font-size: 0.68rem; }
-.uma-nova { display: flex; gap: 0.35rem; align-items: center; margin-top: 0.35rem; }
-.uma-nova[hidden] { display: none !important; }
-.uma-nova .form-control { flex: 1; }
 .uma-box {
   border: 1px solid #dbe3ee; border-radius: 6px; padding: 0.55rem 0.7rem 0.7rem;
   margin: 0 0 0.75rem; background: #f8fafc;
@@ -438,10 +490,15 @@ const POR_ID = {};
 ITENS.forEach(function (item) { POR_ID[String(item.id)] = item; });
 
 const overlay = document.getElementById('modalUma');
+const overlayOpcao = document.getElementById('modalOpcao');
 const form = document.getElementById('formUma');
 const btnGravar = document.getElementById('btnGravarUma');
 const fNome = document.getElementById('fNome');
 let ultimoNomeVerificado = '';
+let buscaGrupo = null;
+let buscaColuna = null;
+let opcaoCampo = 'grupo';
+let opcaoEditando = '';
 
 function escHtml(s){
   return String(s == null ? '' : s)
@@ -507,8 +564,8 @@ function render(p){
   preencherSelect('fProduto', PRODUTOS.map(function (pr) {
     return { valor: pr.descricao, rotulo: pr.codigo ? (pr.codigo + ' — ' + pr.descricao) : pr.descricao };
   }), p.produto_principal || '');
-  preencherSelect('fGrupo', GRUPOS.map(function (g) { return { valor: g, rotulo: g }; }), p.grupo || '');
-  preencherSelect('fColuna', COLUNAS.map(function (g) { return { valor: g, rotulo: g }; }), p.coluna_faturamento || '');
+  if (buscaGrupo) buscaGrupo.set(p.grupo || '');
+  if (buscaColuna) buscaColuna.set(p.coluna_faturamento || '');
   document.getElementById('fFechado').checked = !!(p.sistema_fechado || p.sistema === 'fechado');
   document.getElementById('fManipulado').checked = !!p.manipulado;
   const cobranca = p.cobranca || 'espelho_1';
@@ -556,8 +613,8 @@ function collect(){
     produto_disponivel: !!document.getElementById('fDisponivel').checked,
     ativo: !!document.getElementById('fAtivo').checked,
     produto_principal: document.getElementById('fProduto').value || '',
-    grupo: document.getElementById('fGrupo').value || '',
-    coluna_faturamento: document.getElementById('fColuna').value || '',
+    grupo: buscaGrupo ? buscaGrupo.get() : '',
+    coluna_faturamento: buscaColuna ? buscaColuna.get() : '',
     sistema_fechado: !!document.getElementById('fFechado').checked,
     manipulado: !!document.getElementById('fManipulado').checked,
     cobranca: cobranca ? cobranca.value : 'espelho_1',
@@ -643,8 +700,12 @@ function abrirModal(){
 function fecharModal(){
   overlay.hidden = true;
   document.body.classList.remove('modal-open');
-  document.querySelectorAll('.uma-nova').forEach(function (el) { el.hidden = true; });
+  fecharOpcao();
+  if (buscaGrupo) buscaGrupo.fechar();
+  if (buscaColuna) buscaColuna.fechar();
   form.reset();
+  if (buscaGrupo) buscaGrupo.set('');
+  if (buscaColuna) buscaColuna.set('');
   document.getElementById('uma_id').value = '';
   fNome.classList.remove('uma-campo-erro');
   ultimoNomeVerificado = '';
@@ -777,80 +838,303 @@ overlay.addEventListener('click', function (ev) {
   if (ev.target === overlay) fecharModal();
 });
 document.addEventListener('keydown', function (ev) {
-  if (ev.key !== 'Escape' || overlay.hidden) return;
-  const aberta = document.querySelector('.uma-nova:not([hidden])');
-  if (aberta) {
-    aberta.hidden = true;
+  if (ev.key !== 'Escape') return;
+  if (!overlayOpcao.hidden) {
+    fecharOpcao();
+    return;
+  }
+  if (overlay.hidden) return;
+  const listaAberta = document.querySelector('.uma-busca-lista:not([hidden])');
+  if (listaAberta) {
+    if (buscaGrupo) buscaGrupo.fechar();
+    if (buscaColuna) buscaColuna.fechar();
     return;
   }
   fecharModal();
 });
-function ligarNovaOpcao(cfg) {
-  const box = document.getElementById(cfg.box);
-  const input = document.getElementById(cfg.input);
-  const ok = document.getElementById(cfg.ok);
-  function fechar() {
-    box.hidden = true;
-    input.value = '';
-    ok.disabled = false;
-  }
-  document.getElementById(cfg.btn).addEventListener('click', function () {
-    document.querySelectorAll('.uma-nova').forEach(function (el) { el.hidden = true; });
-    box.hidden = false;
-    input.value = '';
-    ok.disabled = false;
-    input.focus();
-  });
-  document.getElementById(cfg.cancel).addEventListener('click', fechar);
-  input.addEventListener('keydown', function (ev) {
-    if (ev.key === 'Enter') {
-      ev.preventDefault();
-      ok.click();
-    } else if (ev.key === 'Escape') {
-      ev.preventDefault();
-      ev.stopPropagation();
-      fechar();
-    }
-  });
-  ok.addEventListener('click', async function () {
-    const nome = (input.value || '').trim().toUpperCase();
-    if (!nome) {
-      input.focus();
-      return;
-    }
-    ok.disabled = true;
-    try {
-      const r = await fetch('/nutricao/api/cadastro-uma/opcao', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ tipo: TIPO, campo: cfg.campo, nome: nome })
-      });
-      const j = await r.json();
-      if (!r.ok || j.ok === false) {
-        showToast((j && j.error) || 'Falha ao adicionar', 'error');
-        ok.disabled = false;
-        return;
-      }
-      const gravado = (j.nome || nome).toUpperCase();
-      const lista = cfg.campo === 'grupo' ? GRUPOS : COLUNAS;
-      if (lista.indexOf(gravado) < 0) lista.push(gravado);
-      preencherSelect(cfg.select, lista.map(function (g) { return { valor: g, rotulo: g }; }), gravado);
-      fechar();
-      showToast(cfg.campo === 'grupo' ? 'Grupo adicionado' : 'Coluna adicionada', 'success');
-    } catch (err) {
-      showToast('Falha ao adicionar', 'error');
-      ok.disabled = false;
-    }
+
+function ordenarNomes(lista) {
+  return (lista || []).slice().sort(function (a, b) {
+    return String(a).localeCompare(String(b), 'pt', { sensitivity: 'base' });
   });
 }
-ligarNovaOpcao({
-  btn: 'btnAddGrupo', box: 'boxGrupo', input: 'nomeGrupo', ok: 'okGrupo',
-  cancel: 'cancelGrupo', campo: 'grupo', select: 'fGrupo'
+
+function ligarBusca(inputId, listaId, obter) {
+  const input = document.getElementById(inputId);
+  const lista = document.getElementById(listaId);
+  let selecionado = '';
+  let indice = -1;
+
+  function nomes() {
+    return ordenarNomes(obter());
+  }
+  function semAcento(valor) {
+    return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  }
+  function consulta() {
+    return semAcento(input.value).trim();
+  }
+  function filtrados() {
+    const q = consulta();
+    return nomes().filter(function (nome) {
+      return !q || semAcento(nome).indexOf(q) >= 0;
+    });
+  }
+  function fechar() {
+    lista.hidden = true;
+    input.setAttribute('aria-expanded', 'false');
+    indice = -1;
+  }
+  function desenhar() {
+    const rows = filtrados();
+    if (!rows.length) {
+      lista.innerHTML = '<div class="uma-busca-vazio">Nenhum item cadastrado</div>';
+    } else {
+      lista.innerHTML = rows.map(function (nome, i) {
+        return '<button type="button" class="' + (i === indice ? 'ativo' : '') + '" data-nome="' + escHtml(nome) + '">' + escHtml(nome) + '</button>';
+      }).join('');
+    }
+    const rect = input.getBoundingClientRect();
+    lista.style.left = rect.left + 'px';
+    lista.style.top = (rect.bottom + 2) + 'px';
+    lista.style.width = rect.width + 'px';
+    lista.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+  }
+  function escolher(nome) {
+    selecionado = nome;
+    input.value = nome;
+    fechar();
+  }
+  input.addEventListener('focus', function () {
+    indice = 0;
+    desenhar();
+  });
+  input.addEventListener('input', function () {
+    indice = 0;
+    desenhar();
+  });
+  input.addEventListener('keydown', function (ev) {
+    const rows = filtrados();
+    if (ev.key === 'ArrowDown') {
+      ev.preventDefault();
+      indice = Math.min(rows.length - 1, Math.max(0, indice + 1));
+      desenhar();
+    } else if (ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      indice = Math.max(0, indice - 1);
+      desenhar();
+    } else if (ev.key === 'Enter' && !lista.hidden && rows[indice]) {
+      ev.preventDefault();
+      escolher(rows[indice]);
+    } else if (ev.key === 'Escape' && !lista.hidden) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      input.value = selecionado;
+      fechar();
+    }
+  });
+  lista.addEventListener('mousedown', function (ev) {
+    const btn = ev.target.closest('button[data-nome]');
+    if (!btn) return;
+    ev.preventDefault();
+    escolher(btn.getAttribute('data-nome'));
+  });
+  input.addEventListener('blur', function () {
+    const exato = nomes().find(function (nome) {
+      return semAcento(nome) === consulta();
+    });
+    if (exato) selecionado = exato;
+    else input.value = selecionado;
+    setTimeout(fechar, 150);
+  });
+  return {
+    set: function (valor) {
+      const nome = (valor || '').trim().toUpperCase();
+      const exato = nomes().find(function (item) { return item.toUpperCase() === nome; });
+      selecionado = exato || nome;
+      input.value = selecionado;
+    },
+    get: function () { return selecionado; },
+    fechar: fechar
+  };
+}
+
+function nomesDoCampo() {
+  return opcaoCampo === 'grupo' ? GRUPOS : COLUNAS;
+}
+
+function aplicarNomes(campo, nomes, antigo, novo) {
+  const dest = campo === 'grupo' ? GRUPOS : COLUNAS;
+  const ordenados = ordenarNomes(nomes || []);
+  dest.splice(0, dest.length);
+  ordenados.forEach(function (nome) { dest.push(nome); });
+  const busca = campo === 'grupo' ? buscaGrupo : buscaColuna;
+  if (busca && antigo && busca.get() === antigo) busca.set(novo || '');
+  if (opcaoCampo === campo && !overlayOpcao.hidden) renderOpcoes();
+}
+
+async function apiOpcao(method, body) {
+  const r = await fetch('/nutricao/api/cadastro-uma/opcao', {
+    method: method,
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(Object.assign({ tipo: TIPO, campo: opcaoCampo }, body || {}))
+  });
+  const j = await r.json();
+  if (!r.ok || j.ok === false) throw new Error((j && j.error) || 'Falha ao salvar');
+  return j;
+}
+
+function renderOpcoes() {
+  const box = document.getElementById('opcaoLista');
+  const nomes = ordenarNomes(nomesDoCampo());
+  if (!nomes.length) {
+    box.innerHTML = '<p class="uma-opcao-vazio">Nenhum item cadastrado.</p>';
+    return;
+  }
+  box.innerHTML = nomes.map(function (nome) {
+    if (opcaoEditando === nome) {
+      return '<div class="uma-opcao-item">' +
+        '<input class="form-control" id="opcaoEditInput" maxlength="80" value="' + escHtml(nome) + '">' +
+        '<button type="button" class="btn btn-success btn-sm" data-salvar="' + escHtml(nome) + '">Salvar</button>' +
+        '<button type="button" class="btn nc-btn-muted btn-sm" data-cancelar-edit>Cancelar</button>' +
+        '</div>';
+    }
+    return '<div class="uma-opcao-item">' +
+      '<span>' + escHtml(nome) + '</span>' +
+      '<button type="button" class="btn btn-ghost btn-sm" data-editar="' + escHtml(nome) + '" title="Editar"><i class="fas fa-pen"></i></button>' +
+      '<button type="button" class="btn btn-ghost btn-sm" data-remover-opcao="' + escHtml(nome) + '" title="Remover"><i class="fas fa-trash"></i></button>' +
+      '</div>';
+  }).join('');
+  const edit = document.getElementById('opcaoEditInput');
+  if (edit) {
+    edit.focus();
+    edit.select();
+  }
+}
+
+function fecharOpcao() {
+  overlayOpcao.hidden = true;
+  opcaoEditando = '';
+  document.getElementById('opcaoNovo').value = '';
+  document.getElementById('opcaoAdicionar').disabled = false;
+}
+
+async function abrirOpcao(campo) {
+  opcaoCampo = campo;
+  opcaoEditando = '';
+  if (buscaGrupo) buscaGrupo.fechar();
+  if (buscaColuna) buscaColuna.fechar();
+  document.getElementById('opcaoTitulo').textContent = campo === 'grupo'
+    ? 'Grupos para totalização'
+    : 'Colunas para totalização';
+  document.getElementById('opcaoNovo').value = '';
+  overlayOpcao.hidden = false;
+  try {
+    const r = await fetch('/nutricao/api/cadastro-uma/opcao?tipo=' + encodeURIComponent(TIPO) + '&campo=' + encodeURIComponent(campo), {
+      headers: { 'Accept': 'application/json' }
+    });
+    const j = await r.json();
+    if (r.ok && j.ok !== false && Array.isArray(j.nomes)) aplicarNomes(campo, j.nomes);
+  } catch (err) {
+    showToast('Falha ao carregar os itens', 'error');
+  }
+  renderOpcoes();
+  setTimeout(function () { document.getElementById('opcaoNovo').focus(); }, 30);
+}
+
+document.getElementById('btnAddGrupo').addEventListener('click', function () { abrirOpcao('grupo'); });
+document.getElementById('btnAddColuna').addEventListener('click', function () { abrirOpcao('coluna'); });
+document.getElementById('btnFecharOpcao').addEventListener('click', fecharOpcao);
+overlayOpcao.addEventListener('click', function (ev) {
+  if (ev.target === overlayOpcao) fecharOpcao();
 });
-ligarNovaOpcao({
-  btn: 'btnAddColuna', box: 'boxColuna', input: 'nomeColuna', ok: 'okColuna',
-  cancel: 'cancelColuna', campo: 'coluna', select: 'fColuna'
+document.getElementById('opcaoNovo').addEventListener('keydown', function (ev) {
+  if (ev.key === 'Enter') {
+    ev.preventDefault();
+    document.getElementById('opcaoAdicionar').click();
+  }
 });
+document.getElementById('opcaoAdicionar').addEventListener('click', async function () {
+  const input = document.getElementById('opcaoNovo');
+  const btn = this;
+  const nome = (input.value || '').trim().toUpperCase();
+  if (!nome) {
+    input.focus();
+    return;
+  }
+  btn.disabled = true;
+  try {
+    const j = await apiOpcao('POST', { nome: nome });
+    aplicarNomes(opcaoCampo, j.nomes, '', j.nome || nome);
+    const busca = opcaoCampo === 'grupo' ? buscaGrupo : buscaColuna;
+    if (busca) busca.set(j.nome || nome);
+    input.value = '';
+    renderOpcoes();
+    showToast(opcaoCampo === 'grupo' ? 'Grupo adicionado' : 'Coluna adicionada', 'success');
+  } catch (err) {
+    showToast(err.message || 'Falha ao adicionar', 'error');
+  }
+  btn.disabled = false;
+  input.focus();
+});
+document.getElementById('opcaoLista').addEventListener('click', async function (ev) {
+  const editar = ev.target.closest('[data-editar]');
+  const remover = ev.target.closest('[data-remover-opcao]');
+  const salvar = ev.target.closest('[data-salvar]');
+  const cancelar = ev.target.closest('[data-cancelar-edit]');
+  if (editar) {
+    opcaoEditando = editar.getAttribute('data-editar');
+    renderOpcoes();
+    return;
+  }
+  if (cancelar) {
+    opcaoEditando = '';
+    renderOpcoes();
+    return;
+  }
+  if (salvar) {
+    const antigo = salvar.getAttribute('data-salvar');
+    const novo = (document.getElementById('opcaoEditInput').value || '').trim().toUpperCase();
+    if (!novo || novo === antigo) {
+      opcaoEditando = '';
+      renderOpcoes();
+      return;
+    }
+    try {
+      const j = await apiOpcao('PUT', { nome: antigo, nome_novo: novo });
+      opcaoEditando = '';
+      aplicarNomes(opcaoCampo, j.nomes, antigo, j.nome || novo);
+      renderOpcoes();
+      showToast('Item atualizado', 'success');
+    } catch (err) {
+      showToast(err.message || 'Falha ao editar', 'error');
+    }
+    return;
+  }
+  if (remover) {
+    const nome = remover.getAttribute('data-remover-opcao');
+    if (!confirm('Remover "' + nome + '" da lista?')) return;
+    try {
+      const j = await apiOpcao('DELETE', { nome: nome });
+      opcaoEditando = '';
+      aplicarNomes(opcaoCampo, j.nomes, nome, '');
+      renderOpcoes();
+      showToast('Item removido', 'success');
+    } catch (err) {
+      showToast(err.message || 'Falha ao remover', 'error');
+    }
+  }
+});
+document.getElementById('opcaoLista').addEventListener('keydown', function (ev) {
+  if (ev.key !== 'Enter' || !ev.target || ev.target.id !== 'opcaoEditInput') return;
+  ev.preventDefault();
+  const btn = document.querySelector('#opcaoLista [data-salvar]');
+  if (btn) btn.click();
+});
+
+buscaGrupo = ligarBusca('fGrupo', 'listaGrupo', function () { return GRUPOS; });
+buscaColuna = ligarBusca('fColuna', 'listaColuna', function () { return COLUNAS; });
 form.addEventListener('submit', function (ev) {
   ev.preventDefault();
   salvar();

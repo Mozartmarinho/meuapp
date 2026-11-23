@@ -77,11 +77,9 @@ from nutricao_service import (
     gravar_uma_item,
     salvar_cadastro_uma,
     salvar_opcao_uma,
-    list_opcoes_uma,
-    unir_nomes_uma,
-    colunas_faturamento_uma,
-    GRUPOS_LVE,
-    COLUNAS_TOTALIZACAO_LVE,
+    listar_campo_uma,
+    renomear_opcao_uma,
+    remover_opcao_uma,
     list_estoques,
     list_unidades,
     list_grupos_produto,
@@ -2913,12 +2911,8 @@ def cadastro_uma():
     seed_nutricao()
     tipo = _tipo_cadastro_uma(request.args.get('tipo'))
     titulo, page = _CADASTRO_UMA[tipo]
-    if tipo == 'lve':
-        grupos = unir_nomes_uma(GRUPOS_LVE, list_opcoes_uma('grupo_lve'))
-        colunas = unir_nomes_uma(COLUNAS_TOTALIZACAO_LVE, list_opcoes_uma('coluna_lve'))
-    else:
-        grupos = unir_nomes_uma(g['nome'] for g in list_grupos_dieta(somente_ativos=True))
-        colunas = unir_nomes_uma(colunas_faturamento_uma(grupos), list_opcoes_uma('coluna'))
+    grupos = listar_campo_uma(tipo, 'grupo')
+    colunas = listar_campo_uma(tipo, 'coluna')
     unidades = [
         u for u in list_unidades(somente_ativas=True)
         if u.get('flag_uma', True)
@@ -2950,13 +2944,35 @@ def _payload_cadastro_uma(d, tipo):
     return d
 
 
-@nutricao.route('/nutricao/api/cadastro-uma/opcao', methods=['POST'])
+def _resposta_opcao_uma(tipo, campo, nome=None):
+    return jsonify({
+        'ok': True,
+        'nome': nome,
+        'campo': campo,
+        'nomes': listar_campo_uma(tipo, campo),
+    })
+
+
+@nutricao.route('/nutricao/api/cadastro-uma/opcao', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def api_cadastro_uma_opcao():
     seed_nutricao()
-    d = request.get_json(force=True) or {}
-    tipo = _tipo_cadastro_uma(d.get('tipo'))
+    if request.method == 'GET':
+        tipo = _tipo_cadastro_uma(request.args.get('tipo'))
+        campo = (request.args.get('campo') or '').strip().lower()
+    else:
+        d = request.get_json(force=True) or {}
+        tipo = _tipo_cadastro_uma(d.get('tipo'))
+        campo = (d.get('campo') or '').strip().lower()
     try:
-        nome = salvar_opcao_uma(write_cliente_id(), tipo, d.get('campo'), d.get('nome'))
+        if request.method == 'GET':
+            return _resposta_opcao_uma(tipo, campo)
+        cid = write_cliente_id()
+        if request.method == 'POST':
+            nome = salvar_opcao_uma(cid, tipo, campo, d.get('nome'))
+        elif request.method == 'PUT':
+            nome = renomear_opcao_uma(cid, tipo, campo, d.get('nome'), d.get('nome_novo'))
+        else:
+            nome = remover_opcao_uma(cid, tipo, campo, d.get('nome'))
         db.session.commit()
     except ValueError as exc:
         db.session.rollback()
@@ -2964,7 +2980,7 @@ def api_cadastro_uma_opcao():
     except IntegrityError:
         db.session.rollback()
         return jsonify({'ok': False, 'error': 'Já existe um item com este nome'}), 400
-    return jsonify({'ok': True, 'nome': nome, 'campo': (d.get('campo') or '').strip().lower()})
+    return _resposta_opcao_uma(tipo, campo, nome)
 
 
 @nutricao.route('/nutricao/api/cadastro-uma', methods=['POST'])
