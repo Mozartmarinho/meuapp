@@ -287,19 +287,19 @@
                 </div>
                 <div class="at-encaminhar">
                     <p class="at-enc-title" id="atEncTitle"
-                       data-titulo="{{ 'Encaminhar para setor ou técnico' if encaminhar_tecnico else 'Encaminhar para outro setor' }}">
-                        {{ 'Encaminhar para setor ou técnico' if encaminhar_tecnico else 'Encaminhar para outro setor' }}
+                       data-titulo="{{ 'Atribuir a um técnico ou encaminhar para outro setor' if encaminhar_tecnico else 'Encaminhar para outro setor' }}">
+                        {{ 'Atribuir a um técnico ou encaminhar para outro setor' if encaminhar_tecnico else 'Encaminhar para outro setor' }}
                     </p>
                     {% if encaminhar_tecnico %}
                     <div class="form-group" id="atTecBox">
-                        <label for="at_tecnico">Técnico</label>
+                        <label for="at_tecnico">Atribuir para o técnico</label>
                         <select id="at_tecnico" name="tecnico_destino_id">
                             <option value="">Selecione...</option>
                             {% for t in tecnicos_destino %}
                             <option value="{{ t.id }}">{{ t.nome }}{% if t.funcao_label %} — {{ t.funcao_label }}{% endif %}</option>
                             {% endfor %}
                         </select>
-                        <span class="at-hint">Se escolher um técnico, o chamado sai da fila dos outros e fica só com ele.</span>
+                        <span class="at-hint">O chamado sai da fila dos outros e fica só com o técnico escolhido.</span>
                     </div>
                     {% endif %}
                     <div class="form-group">

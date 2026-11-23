@@ -20,7 +20,6 @@ from models import (
     EquipamentoPreventiva,
     EquipamentoTermo,
     RecursoGrupo,
-    ChamadoConfig,
     ChamadoSetor,
     ChamadoTecnico,
     ConfiguracaoEmail,
@@ -64,6 +63,7 @@ from models import (
     FUNCOES_TECNICO,
     FUNCOES_TECNICO_KEYS,
     FUNCOES_MESA_MULTIPLA,
+    FUNCOES_PODE_ATRIBUIR,
     CANAIS_MENSAGEM,
     CANAIS_ENVIO_LIVE,
     PASTA_CONHECIMENTO_PADRAO,
@@ -617,24 +617,18 @@ def _ve_todos_tickets(usuario):
     return False
 
 
-def _config_chamados():
-    """Linha única de ajustes do módulo. Cria se ainda não existir."""
-    cfg = ChamadoConfig.query.order_by(ChamadoConfig.id.asc()).first()
-    if cfg:
-        return cfg
-    cfg = ChamadoConfig(encaminhar_ativo=False)
-    db.session.add(cfg)
-    db.session.commit()
-    return cfg
-
-
-def encaminhar_tecnico_ativo():
-    """Encaminhar para técnico ligado na tela de Técnicos."""
+def usuario_pode_atribuir_chamado(usuario):
+    """Técnico, gestor ou assistente com a permissão marcada no cadastro."""
+    if not usuario:
+        return False
     try:
-        return bool(_config_chamados().encaminhar_ativo)
+        for tec in _registros_tecnico_usuario(usuario):
+            funcao = (getattr(tec, 'funcao', None) or '').strip().lower()
+            if funcao in FUNCOES_PODE_ATRIBUIR and bool(getattr(tec, 'pode_atribuir', False)):
+                return True
     except Exception:
         db.session.rollback()
-        return False
+    return False
 
 
 def _restricao_atribuicao(user):
@@ -2714,7 +2708,7 @@ def listar_chamados():
         i.to_dict()
         for i in ChamadoEstoque.query.order_by(ChamadoEstoque.produto.asc()).all()
     ]
-    encaminhar_on = encaminhar_tecnico_ativo()
+    pode_atribuir = usuario_pode_atribuir_chamado(user)
     return render_template(
         'chamados.html',
         chamados=chamados,
@@ -2731,8 +2725,8 @@ def listar_chamados():
         tickets_index=[{'id': c.id, 'numero': c.numero_chamado} for c in chamados],
         mesas=mesas_ativas(),
         estoque_itens=estoque_itens,
-        encaminhar_tecnico=encaminhar_on,
-        tecnicos_destino=_tecnicos_para_atribuir() if encaminhar_on else [],
+        encaminhar_tecnico=pode_atribuir,
+        tecnicos_destino=_tecnicos_para_atribuir() if pode_atribuir else [],
     )
 
 
@@ -3624,7 +3618,7 @@ def tecnicos():
         tecnicos=tecnicos_list,
         funcoes=FUNCOES_TECNICO,
         funcoes_mesa_multipla=sorted(FUNCOES_MESA_MULTIPLA),
-        encaminhar_ativo=encaminhar_tecnico_ativo(),
+        funcoes_pode_atribuir=sorted(FUNCOES_PODE_ATRIBUIR),
     )
 
 
@@ -3642,9 +3636,12 @@ def _tecnicos_para_atribuir():
 
 
 def _atribuir_chamado_a_tecnico(chamado, user, tecnico_id_raw, instrucoes):
-    """Encaminha o chamado para um técnico cadastrado e tira da fila dos outros."""
-    if not encaminhar_tecnico_ativo():
-        raise ValueError('Encaminhar para técnico está desativado. Ative em Técnicos.')
+    """Atribui o chamado a qualquer técnico cadastrado e tira da fila dos outros."""
+    if not usuario_pode_atribuir_chamado(user):
+        raise ValueError(
+            'Você não tem permissão para atribuir chamado. '
+            'Marque a permissão no cadastro do técnico, gestor ou assistente.'
+        )
     raw = str(tecnico_id_raw or '').strip()
     if not raw.isdigit():
         raise ValueError('Selecione o técnico para atribuir.')
@@ -3667,16 +3664,27 @@ def _atribuir_chamado_a_tecnico(chamado, user, tecnico_id_raw, instrucoes):
     return de_setor, (tec.nome or 'Técnico')
 
 
-@main.route('/tecnicos/encaminhar/toggle', methods=['POST'])
+@main.route('/tecnicos/tecnico/<int:tid>/atribuir', methods=['POST'])
 @login_required
-def toggle_encaminhar_tecnico():
+def alternar_atribuir_tecnico(tid):
+    """Liga ou desliga a permissão de atribuir chamado no cadastro."""
     user = Usuario.query.get(session['user_id'])
     if not user or not user.tem_menu('chamados', 'tecnicos'):
         return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
-    cfg = _config_chamados()
-    cfg.encaminhar_ativo = not bool(cfg.encaminhar_ativo)
+    t = ChamadoTecnico.query.get_or_404(tid)
+    funcao = (t.funcao or '').strip().lower()
+    if funcao not in FUNCOES_PODE_ATRIBUIR:
+        return jsonify({
+            'ok': False,
+            'error': 'Só técnico, gestor ou assistente pode receber esta permissão.',
+        }), 400
+    data = request.get_json(silent=True) or {}
+    if 'pode_atribuir' in data:
+        t.pode_atribuir = _parse_pode_atribuir(data, funcao)
+    else:
+        t.pode_atribuir = not bool(t.pode_atribuir)
     db.session.commit()
-    return jsonify({'ok': True, 'ativo': cfg.encaminhar_ativo})
+    return jsonify(_tecnico_json(t))
 
 
 def _pode_gerenciar_chamado_setor(user):
@@ -3817,9 +3825,20 @@ def _tecnico_json(t):
         'mesa_ids': [m.id for m in mesas],
         'mesas_label': t.mesas_label or '',
         'ativo': t.ativo,
+        'pode_atribuir': bool(t.pode_atribuir),
         'usuario_id': t.usuario_id,
         'vinculado': bool(t.usuario_id),
     }
+
+
+def _parse_pode_atribuir(data, funcao):
+    """Só técnico, gestor e assistente guardam a permissão de atribuir."""
+    if (funcao or '') not in FUNCOES_PODE_ATRIBUIR:
+        return False
+    raw = data.get('pode_atribuir')
+    if isinstance(raw, bool):
+        return raw
+    return str(raw or '').strip().lower() in ('1', 'true', 'on', 'sim', 'yes')
 
 
 def _parse_funcao_tecnico(data):
@@ -3897,6 +3916,7 @@ def adicionar_chamado_tecnico():
         setor_id=setor_id,
         usuario_id=usuario_vinculado.id if usuario_vinculado else None,
         ativo=True,
+        pode_atribuir=_parse_pode_atribuir(data, funcao),
     )
     t.mesas = mesas or []
     db.session.add(t)
@@ -3932,6 +3952,7 @@ def editar_chamado_tecnico(tid):
     t.whatsapp = whatsapp or None
     t.funcao = funcao
     t.setor_id = setor_id
+    t.pode_atribuir = _parse_pode_atribuir(data, funcao)
     t.mesas = mesas or []
     u = _usuario_por_email(email)
     t.usuario_id = u.id if u else None

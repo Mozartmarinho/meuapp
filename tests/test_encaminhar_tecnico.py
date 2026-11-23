@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Encaminhar ativo atribui o chamado a um técnico e tira da fila dos outros."""
+"""Permissão no cadastro atribui o chamado a um técnico e tira da fila dos outros."""
 import os
 import sys
 import unittest
@@ -9,13 +9,13 @@ sys.path.insert(0, ROOT)
 os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
 
 from app import create_app  # noqa: E402
-from models import Chamado, ChamadoConfig, ChamadoTecnico, Cliente, Usuario, db  # noqa: E402
+from models import Chamado, ChamadoTecnico, Cliente, Usuario, db  # noqa: E402
 from password_utils import generate_password_hash  # noqa: E402
 from routes import (  # noqa: E402
     _pendencias_chamados,
     _query_chamados_usuario,
     _usuario_toca_mesa,
-    encaminhar_tecnico_ativo,
+    usuario_pode_atribuir_chamado,
 )
 
 
@@ -38,7 +38,6 @@ class EncaminharTecnicoTest(unittest.TestCase):
     def setUp(self):
         Chamado.query.delete()
         ChamadoTecnico.query.delete()
-        ChamadoConfig.query.delete()
         Usuario.query.delete()
         Cliente.query.delete()
         db.session.commit()
@@ -87,10 +86,6 @@ class EncaminharTecnicoTest(unittest.TestCase):
             sess['user_id'] = user.id
             sess['user_name'] = user.nome
         return client
-
-    def _ligar_encaminhar(self):
-        db.session.add(ChamadoConfig(encaminhar_ativo=True))
-        db.session.commit()
 
     def test_atribuido_some_da_fila_dos_outros(self):
         opener = self._usuario('Solicitante', 'abre@example.com')
@@ -146,18 +141,31 @@ class EncaminharTecnicoTest(unittest.TestCase):
         bloqueio = self._login(bruno).get('/api/chamados/%s/atender' % chamado.id)
         self.assertEqual(bloqueio.status_code, 409)
 
-    def test_toggle_e_atribuicao_pelo_atendimento(self):
-        self.assertFalse(encaminhar_tecnico_ativo())
+    def test_permissao_no_cadastro_libera_atribuicao(self):
         admin = self._usuario('Admin', 'admin@example.com', tipo='admin', is_master=True)
         opener = self._usuario('Solicitante', 'abre4@example.com')
         ana = self._tecnico('Ana Técnica', 'ana4@example.com')
         bruno = self._tecnico('Bruno Técnico', 'bruno4@example.com')
+        tec_ana = ChamadoTecnico.query.filter_by(usuario_id=ana.id).one()
         tec_bruno = ChamadoTecnico.query.filter_by(usuario_id=bruno.id).one()
         chamado = self._chamado(opener, 'OS000013')
 
         pagina = self._login(admin).get('/tecnicos')
         self.assertEqual(pagina.status_code, 200)
-        self.assertIn('Encaminhar:', pagina.get_data(as_text=True))
+        html_tec = pagina.get_data(as_text=True)
+        self.assertIn('Pode atribuir chamado', html_tec)
+        self.assertIn('Ativar dá permissão para atribuir o chamado', html_tec)
+        self.assertIn('alternarAtribuir(%s)' % tec_ana.id, html_tec)
+        self.assertNotIn('Encaminhar:', html_tec)
+        ligado = self._login(admin).post('/tecnicos/tecnico/%s/atribuir' % tec_ana.id)
+        self.assertEqual(ligado.status_code, 200, ligado.get_json())
+        self.assertTrue(ligado.get_json()['pode_atribuir'])
+        self.assertTrue(usuario_pode_atribuir_chamado(ana))
+        desligado = self._login(admin).post('/tecnicos/tecnico/%s/atribuir' % tec_ana.id)
+        self.assertFalse(desligado.get_json()['pode_atribuir'])
+        self.assertFalse(usuario_pode_atribuir_chamado(ana))
+        self.assertFalse(usuario_pode_atribuir_chamado(ana))
+
         off = self._login(ana).post(
             '/api/chamados/%s/atender' % chamado.id,
             data={
@@ -167,17 +175,40 @@ class EncaminharTecnicoTest(unittest.TestCase):
             },
         )
         self.assertEqual(off.status_code, 400)
-        self.assertIn('desativado', (off.get_json() or {}).get('message', ''))
+        self.assertIn('permissão', (off.get_json() or {}).get('message', ''))
+        lista_off = self._login(ana).get('/chamados')
+        self.assertNotIn('id="at_tecnico"', lista_off.get_data(as_text=True))
 
-        ligado = self._login(admin).post('/tecnicos/encaminhar/toggle')
-        self.assertEqual(ligado.status_code, 200)
-        self.assertTrue(ligado.get_json()['ativo'])
-        self.assertTrue(encaminhar_tecnico_ativo())
+        for funcao in ('tecnico', 'gestor', 'assistente'):
+            marcavel = self._login(admin).post('/tecnicos/tecnico/%s/editar' % tec_ana.id, json={
+                'nome': 'Ana Técnica',
+                'email': 'ana4@example.com',
+                'funcao': funcao,
+                'pode_atribuir': True,
+            })
+            self.assertEqual(marcavel.status_code, 200, marcavel.get_json())
+            self.assertTrue(marcavel.get_json()['pode_atribuir'], funcao)
+            self.assertTrue(usuario_pode_atribuir_chamado(ana))
+        supervisor = self._login(admin).post('/tecnicos/tecnico/%s/editar' % tec_ana.id, json={
+            'nome': 'Ana Técnica',
+            'email': 'ana4@example.com',
+            'funcao': 'supervisor',
+            'pode_atribuir': True,
+        })
+        self.assertFalse(supervisor.get_json()['pode_atribuir'])
+        self.assertFalse(usuario_pode_atribuir_chamado(ana))
+        self._login(admin).post('/tecnicos/tecnico/%s/editar' % tec_ana.id, json={
+            'nome': 'Ana Técnica',
+            'email': 'ana4@example.com',
+            'funcao': 'tecnico',
+            'pode_atribuir': True,
+        })
 
         lista = self._login(ana).get('/chamados')
         html = lista.get_data(as_text=True)
         self.assertIn('at_tecnico', html)
         self.assertIn('Bruno Técnico', html)
+        self.assertIn('Atribuir para o técnico', html)
 
         ok = self._login(ana).post(
             '/api/chamados/%s/atender' % chamado.id,

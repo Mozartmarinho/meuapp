@@ -472,6 +472,7 @@ FUNCOES_TECNICO = (
 FUNCOES_TECNICO_KEYS = {k for k, _ in FUNCOES_TECNICO}
 FUNCOES_TECNICO_LABEL = dict(FUNCOES_TECNICO)
 FUNCOES_MESA_MULTIPLA = frozenset({'supervisor', 'gestor'})
+FUNCOES_PODE_ATRIBUIR = frozenset({'assistente', 'tecnico', 'gestor'})
 
 
 class ChamadoTecnico(db.Model):
@@ -486,6 +487,7 @@ class ChamadoTecnico(db.Model):
     setor_id = db.Column(db.Integer, db.ForeignKey('chamado_setores.id'), nullable=True)
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
     ativo = db.Column(db.Boolean, default=True, nullable=False)
+    pode_atribuir = db.Column(db.Boolean, default=False, nullable=False)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
 
     usuario = db.relationship('Usuario', foreign_keys=[usuario_id])
@@ -523,6 +525,7 @@ class ChamadoTecnico(db.Model):
             'whatsapp': getattr(self, 'whatsapp', None) or '',
             'funcao': self.funcao or '',
             'mesa_ids': list(self.mesas_ids or []),
+            'pode_atribuir': bool(self.pode_atribuir),
         }
 
     def __repr__(self):

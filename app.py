@@ -818,6 +818,11 @@ def ensure_tecnicos_schema():
             if 'whatsapp' not in tec_cols:
                 db.session.execute(text('ALTER TABLE chamado_tecnicos ADD COLUMN whatsapp VARCHAR(20) NULL'))
                 db.session.commit()
+            if 'pode_atribuir' not in tec_cols:
+                db.session.execute(text(
+                    'ALTER TABLE chamado_tecnicos ADD COLUMN pode_atribuir TINYINT(1) NOT NULL DEFAULT 0'
+                ))
+                db.session.commit()
         # Add setor_tecnico_id to chamados if missing
         if 'chamados' in tables:
             cols = {c['name'] for c in insp.get_columns('chamados')}

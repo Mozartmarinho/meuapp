@@ -7,18 +7,15 @@
 
 <div class="tec-header">
     <h1><i class="fas fa-user-cog"></i> Técnicos</h1>
-    <button type="button" id="btnToggleEncaminhar"
-            class="btn tec-btn-sm {{ 'tec-encaminhar-on' if encaminhar_ativo else 'tec-encaminhar-off' }}"
-            title="Quando ativo, o atendimento pode atribuir o chamado a um técnico. Só ele vê o ticket.">
-        <i class="fas fa-share"></i>
-        Encaminhar: <span id="encaminharEstado">{{ 'Ativo' if encaminhar_ativo else 'Inativo' }}</span>
-    </button>
 </div>
 
 <!-- ── TÉCNICOS ──────────────────────────────────────────────── -->
 <section class="tec-section">
     <div class="tec-section-head" style="flex-wrap:wrap;gap:0.5rem;">
-        <h2>Técnicos</h2>
+        <div>
+            <h2>Técnicos</h2>
+            <small class="tec-hint">Técnico, gestor ou assistente: Ativar dá permissão para atribuir o chamado a qualquer técnico. Desativar tira a permissão.</small>
+        </div>
         <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
             <button type="button" class="btn btn-primary tec-btn-sm" id="btnAdicionarSetor">
                 <i class="fas fa-plus"></i> Adicionar setor
@@ -38,6 +35,7 @@
                 <th>E-mail</th>
                 <th>WhatsApp</th>
                 <th>Função</th>
+                <th>Atribuir</th>
                 <th>Mesa de serviço</th>
                 <th>Acesso</th>
                 <th>Situação</th>
@@ -52,12 +50,24 @@
                 'email': t.email or '',
                 'whatsapp': t.whatsapp or '',
                 'funcao': t.funcao or '',
-                'mesa_ids': t.mesas_ids|default([], true)
+                'mesa_ids': t.mesas_ids|default([], true),
+                'pode_atribuir': true if t.pode_atribuir else false
             } | tojson | forceescape }}">
                 <td>{{ t.nome }}</td>
                 <td>{{ t.email or '—' }}</td>
                 <td>{{ t.whatsapp or '—' }}</td>
                 <td>{{ t.funcao_label or '—' }}</td>
+                <td>
+                    {% if t.funcao in funcoes_pode_atribuir %}
+                    <button type="button"
+                            class="btn tec-btn-sm {{ 'tec-atribuir-on' if t.pode_atribuir else 'tec-atribuir-off' }}"
+                            onclick="alternarAtribuir({{ t.id }})">
+                        {{ 'Desativar' if t.pode_atribuir else 'Ativar' }}
+                    </button>
+                    {% else %}
+                    <span class="tec-badge tec-badge-off">—</span>
+                    {% endif %}
+                </td>
                 <td>{{ t.mesas_label or '—' }}</td>
                 <td>
                     {% if t.usuario_id %}
@@ -79,7 +89,7 @@
                 </td>
             </tr>
             {% else %}
-            <tr id="tec-vazio"><td colspan="8" style="text-align:center;color:var(--gray-500)">Nenhum técnico cadastrado.</td></tr>
+            <tr id="tec-vazio"><td colspan="9" style="text-align:center;color:var(--gray-500)">Nenhum técnico cadastrado.</td></tr>
             {% endfor %}
         </tbody>
     </table>
@@ -286,6 +296,13 @@
             </div>
             <small class="tec-hint" id="tecMesaHint">Técnico atende a uma mesa. Supervisor e gestor podem responder por várias.</small>
         </div>
+        <div class="form-group" id="tecPodeAtribuirBox" hidden>
+            <label class="tec-mesa-check" for="tecPodeAtribuir">
+                <input type="checkbox" id="tecPodeAtribuir">
+                <span>Pode atribuir chamado</span>
+            </label>
+            <small class="tec-hint">Técnico, gestor ou assistente com esta permissão marcada pode atribuir o chamado a qualquer técnico.</small>
+        </div>
         <select id="tecSetor" hidden>
             <option value="">Selecione...</option>
             {% for s in setores %}
@@ -305,8 +322,9 @@
 <style>
 .tec-page { font-size: 0.82rem; padding-bottom: 2rem; }
 .tec-header { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; margin-bottom: 1.4rem; flex-wrap: wrap; }
-.tec-encaminhar-on { background: #d1fae5; color: #065f46; }
-.tec-encaminhar-off { background: var(--gray-200); color: var(--gray-700); }
+.tec-atribuir-on { background: #d1fae5; color: #065f46; }
+.tec-atribuir-off { background: var(--gray-200); color: var(--gray-700); }
+#tecPodeAtribuirBox[hidden] { display: none !important; }
 .tec-header h1 { font-size: 1.3rem; font-weight: 700; color: var(--gray-800); margin: 0; }
 .tec-section { background: var(--white); border: 1px solid var(--gray-200); border-radius: 0.5rem; margin-bottom: 1.4rem; padding: 1rem 1.2rem; }
 .tec-section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem; }
@@ -350,6 +368,7 @@
 <script src="{{ url_for('static', filename='js/chamado-setores.js') }}?v=1"></script>
 <script>
 const FUNCOES_MESA_MULTIPLA = {{ funcoes_mesa_multipla|default(['gestor', 'supervisor'], true)|tojson }};
+const FUNCOES_PODE_ATRIBUIR = ['assistente', 'tecnico', 'gestor'];
 
 function abrirModalListaSetores() {
     document.getElementById('modalListaSetoresOverlay').style.display = '';
@@ -404,6 +423,13 @@ function atualizarUiMesa() {
             if (marcados[0] && el !== marcados[0]) el.checked = false;
         });
         sel.value = marcados[0] ? marcados[0].value : '';
+    }
+    const boxAtribuir = document.getElementById('tecPodeAtribuirBox');
+    const pode = FUNCOES_PODE_ATRIBUIR.indexOf(funcao) !== -1;
+    if (boxAtribuir) boxAtribuir.hidden = !pode;
+    if (!pode) {
+        const chk = document.getElementById('tecPodeAtribuir');
+        if (chk) chk.checked = false;
     }
 }
 function mesasSelecionadas() {
@@ -561,6 +587,35 @@ _prenderChecksMesa();
 atualizarUiMesa();
 
 // ── Técnico ───────────────────────────────────────────────────
+function _atribuirCelula(d) {
+    if (FUNCOES_PODE_ATRIBUIR.indexOf(d.funcao || '') === -1) {
+        return '<span class="tec-badge tec-badge-off">—</span>';
+    }
+    var ligado = !!d.pode_atribuir;
+    return '<button type="button" class="btn tec-btn-sm ' +
+        (ligado ? 'tec-atribuir-on' : 'tec-atribuir-off') +
+        '" onclick="alternarAtribuir(' + d.id + ')">' +
+        (ligado ? 'Desativar' : 'Ativar') + '</button>';
+}
+function alternarAtribuir(id) {
+    fetch('/tecnicos/tecnico/' + id + '/atribuir', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' },
+    })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (!d.ok) {
+                alert(d.error || 'Não foi possível alterar a permissão.');
+                return;
+            }
+            var row = document.getElementById('tec-row-' + id);
+            if (row) _preencherLinhaTecnico(row, d);
+        })
+        .catch(function () {
+            alert('Não foi possível alterar a permissão.');
+        });
+}
 function _acessoBadgeHtml(vinculado) {
     return vinculado
         ? '<span class="tec-badge tec-badge-ok">Vinculado</span>'
@@ -573,7 +628,8 @@ function _tecData(d) {
         email: d.email || '',
         whatsapp: d.whatsapp || '',
         funcao: d.funcao || '',
-        mesa_ids: d.mesa_ids || []
+        mesa_ids: d.mesa_ids || [],
+        pode_atribuir: !!d.pode_atribuir
     };
 }
 function _preencherLinhaTecnico(tr, d) {
@@ -586,6 +642,7 @@ function _tecRowHtml(d) {
         '<td>' + (d.email || '—') + '</td>' +
         '<td>' + (d.whatsapp || '—') + '</td>' +
         '<td>' + (d.funcao_label || '—') + '</td>' +
+        '<td>' + _atribuirCelula(d) + '</td>' +
         '<td>' + (d.mesas_label || '—') + '</td>' +
         '<td>' + _acessoBadgeHtml(d.vinculado) + '</td>' +
         '<td><span class="tec-badge tec-badge-ok">Ativo</span></td>' +
@@ -600,6 +657,7 @@ function abrirModalTecnico() {
     document.getElementById('tecEmail').value = '';
     document.getElementById('tecWhatsapp').value = '';
     document.getElementById('tecFuncao').value = '';
+    document.getElementById('tecPodeAtribuir').checked = false;
     marcarMesas([]);
     atualizarUiMesa();
     document.getElementById('tecErro').style.display = 'none';
@@ -610,13 +668,13 @@ function abrirModalTecnico() {
 }
 function _dadosTecnico(id) {
     const row = document.getElementById('tec-row-' + id);
-    if (!row) return { id: id, nome: '', email: '', whatsapp: '', funcao: '', mesa_ids: [] };
+    if (!row) return { id: id, nome: '', email: '', whatsapp: '', funcao: '', mesa_ids: [], pode_atribuir: false };
     try {
         var d = JSON.parse(row.getAttribute('data-tec') || '{}');
         if (!Array.isArray(d.mesa_ids)) d.mesa_ids = [];
         return d;
     } catch (e) {
-        return { id: id, nome: '', email: '', whatsapp: '', funcao: '', mesa_ids: [] };
+        return { id: id, nome: '', email: '', whatsapp: '', funcao: '', mesa_ids: [], pode_atribuir: false };
     }
 }
 function abrirEditarTecnico(id) {
@@ -626,6 +684,7 @@ function abrirEditarTecnico(id) {
     document.getElementById('tecEmail').value = d.email || '';
     document.getElementById('tecWhatsapp').value = d.whatsapp || '';
     document.getElementById('tecFuncao').value = d.funcao || '';
+    document.getElementById('tecPodeAtribuir').checked = !!d.pode_atribuir;
     marcarMesas(d.mesa_ids || []);
     atualizarUiMesa();
     document.getElementById('tecErro').style.display = 'none';
@@ -644,6 +703,7 @@ function salvarTecnico() {
     const email = document.getElementById('tecEmail').value.trim();
     const whatsapp = document.getElementById('tecWhatsapp').value.trim();
     const funcao = document.getElementById('tecFuncao').value;
+    const podeAtribuir = !!document.getElementById('tecPodeAtribuir').checked;
     const mesaIds = mesasSelecionadas();
     const erro = document.getElementById('tecErro');
     if (!nome) { erro.textContent = 'Informe o nome do técnico.'; erro.style.display = ''; return; }
@@ -653,7 +713,7 @@ function salvarTecnico() {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({ nome, email, whatsapp, funcao, mesa_ids: mesaIds }),
+        body: JSON.stringify({ nome, email, whatsapp, funcao, mesa_ids: mesaIds, pode_atribuir: podeAtribuir }),
     })
         .then(function (r) { return r.json().then(function (d) { d._status = r.status; return d; }); })
         .then(function (d) {
@@ -685,31 +745,6 @@ function excluirTecnico(tid) {
             const row = document.getElementById('tec-row-' + tid);
             if (row) row.remove();
         });
-}
-const btnToggleEncaminhar = document.getElementById('btnToggleEncaminhar');
-if (btnToggleEncaminhar) {
-    btnToggleEncaminhar.addEventListener('click', function () {
-        const btn = this;
-        fetch('/tecnicos/encaminhar/toggle', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Accept': 'application/json' },
-        })
-            .then(function (r) { return r.json(); })
-            .then(function (d) {
-                if (!d.ok) {
-                    alert(d.error || 'Não foi possível alterar.');
-                    return;
-                }
-                const estado = document.getElementById('encaminharEstado');
-                if (estado) estado.textContent = d.ativo ? 'Ativo' : 'Inativo';
-                btn.classList.toggle('tec-encaminhar-on', !!d.ativo);
-                btn.classList.toggle('tec-encaminhar-off', !d.ativo);
-            })
-            .catch(function () {
-                alert('Não foi possível alterar o encaminhamento.');
-            });
-    });
 }
 </script>
 {% endblock %}
