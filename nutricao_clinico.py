@@ -435,7 +435,9 @@ def salvar_totalizacao_direta(dados, data_ref):
     if not clinica and dados.get('clinica_id'):
         from models_nutricao import NutClinica
         try:
-            cad = NutClinica.query.get(int(dados.get('clinica_id')))
+            cad = apply_cliente_filter(NutClinica.query, NutClinica).filter_by(
+                id=int(dados.get('clinica_id'))
+            ).first()
         except (TypeError, ValueError):
             cad = None
         clinica = (cad.nome if cad else '') or ''
@@ -443,7 +445,9 @@ def salvar_totalizacao_direta(dados, data_ref):
     dieta_id = dados.get('dieta_id')
     if tipo == 'dieta' and dieta_id and not item:
         try:
-            dieta = NutDieta.query.get(int(dieta_id))
+            dieta = apply_cliente_filter(NutDieta.query, NutDieta).filter_by(
+                id=int(dieta_id)
+            ).first()
         except (TypeError, ValueError):
             dieta = None
         item = (dieta.nome if dieta else '') or ''

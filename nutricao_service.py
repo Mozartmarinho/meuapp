@@ -254,12 +254,13 @@ def codigo_categoria_unico(base, exclude_id=None):
 
 
 def _seed_categorias_dieta():
-    """Garante categorias padrão + valores já usados em NutDieta.categoria."""
+    """Garante categorias padrão do Bonsucesso + valores já usados nas dietas dele."""
     try:
         NutCategoriaDieta.__table__.create(db.engine, checkfirst=True)
     except Exception:
         db.session.rollback()
 
+    cid = ensure_cliente_hfb().id
     for item in CATEGORIAS_DIETA_SEED:
         if isinstance(item, (list, tuple)):
             codigo = (item[0] or '').strip().lower()
@@ -275,15 +276,17 @@ def _seed_categorias_dieta():
         if not codigo or not nome:
             continue
         row = NutCategoriaDieta.query.filter(
-            db.func.lower(NutCategoriaDieta.codigo) == codigo
+            NutCategoriaDieta.cliente_id == cid,
+            db.func.lower(NutCategoriaDieta.codigo) == codigo,
         ).first()
         if not row:
             row = NutCategoriaDieta.query.filter(
-                db.func.upper(NutCategoriaDieta.nome) == nome.upper()
+                NutCategoriaDieta.cliente_id == cid,
+                db.func.upper(NutCategoriaDieta.nome) == nome.upper(),
             ).first()
         if not row:
             db.session.add(NutCategoriaDieta(
-                codigo=codigo, nome=nome, ordem=ordem or 0, ativo=True,
+                cliente_id=cid, codigo=codigo, nome=nome, ordem=ordem or 0, ativo=True,
             ))
         else:
             if not (row.codigo or '').strip():
@@ -295,26 +298,35 @@ def _seed_categorias_dieta():
 
     existentes = (
         db.session.query(NutDieta.categoria)
-        .filter(NutDieta.categoria.isnot(None), NutDieta.categoria != '')
+        .filter(
+            NutDieta.cliente_id == cid,
+            NutDieta.categoria.isnot(None),
+            NutDieta.categoria != '',
+        )
         .distinct()
         .all()
     )
-    last = NutCategoriaDieta.query.order_by(NutCategoriaDieta.ordem.desc()).first()
+    last = NutCategoriaDieta.query.filter_by(cliente_id=cid).order_by(NutCategoriaDieta.ordem.desc()).first()
     next_ordem = ((last.ordem or 0) + 10) if last else 60
     for (cat,) in existentes:
         codigo = slug_categoria_dieta(cat)
         if not codigo:
             continue
-        if NutCategoriaDieta.query.filter(db.func.lower(NutCategoriaDieta.codigo) == codigo).first():
+        if NutCategoriaDieta.query.filter(
+            NutCategoriaDieta.cliente_id == cid,
+            db.func.lower(NutCategoriaDieta.codigo) == codigo,
+        ).first():
             continue
         nome = (cat or '').strip() or codigo
-        db.session.add(NutCategoriaDieta(codigo=codigo, nome=nome, ordem=next_ordem, ativo=True))
+        db.session.add(NutCategoriaDieta(
+            cliente_id=cid, codigo=codigo, nome=nome, ordem=next_ordem, ativo=True,
+        ))
         next_ordem += 10
     db.session.flush()
 
 
 def _seed_grupos_dieta():
-    """Garante grupos de dieta padrão + valores já usados em NutDieta.grupo."""
+    """Garante grupos de dieta do Bonsucesso + valores já usados nas dietas dele."""
     nomes_seed = []
     for item in GRUPOS_DIETA_SEED:
         if isinstance(item, (list, tuple)):
@@ -329,31 +341,39 @@ def _seed_grupos_dieta():
         if nome:
             nomes_seed.append((nome, ordem))
 
+    cid = ensure_cliente_hfb().id
     for nome, ordem in nomes_seed:
         row = NutGrupoDieta.query.filter(
-            db.func.upper(NutGrupoDieta.nome) == nome
+            NutGrupoDieta.cliente_id == cid,
+            db.func.upper(NutGrupoDieta.nome) == nome,
         ).first()
         if not row:
-            db.session.add(NutGrupoDieta(nome=nome, ordem=ordem or 0, ativo=True))
+            db.session.add(NutGrupoDieta(nome=nome, ordem=ordem or 0, ativo=True, cliente_id=cid))
         elif ordem and not (row.ordem or 0):
             row.ordem = ordem
 
-    # Absorve grupos já gravados nas dietas (idempotente)
     existentes = (
         db.session.query(NutDieta.grupo)
-        .filter(NutDieta.grupo.isnot(None), NutDieta.grupo != '')
+        .filter(
+            NutDieta.cliente_id == cid,
+            NutDieta.grupo.isnot(None),
+            NutDieta.grupo != '',
+        )
         .distinct()
         .all()
     )
-    last = NutGrupoDieta.query.order_by(NutGrupoDieta.ordem.desc()).first()
+    last = NutGrupoDieta.query.filter_by(cliente_id=cid).order_by(NutGrupoDieta.ordem.desc()).first()
     next_ordem = ((last.ordem or 0) + 10) if last else 110
     for (grupo,) in existentes:
         nome = (grupo or '').strip().upper()
         if not nome:
             continue
-        if NutGrupoDieta.query.filter(db.func.upper(NutGrupoDieta.nome) == nome).first():
+        if NutGrupoDieta.query.filter(
+            NutGrupoDieta.cliente_id == cid,
+            db.func.upper(NutGrupoDieta.nome) == nome,
+        ).first():
             continue
-        db.session.add(NutGrupoDieta(nome=nome, ordem=next_ordem, ativo=True))
+        db.session.add(NutGrupoDieta(nome=nome, ordem=next_ordem, ativo=True, cliente_id=cid))
         next_ordem += 10
     db.session.flush()
 
@@ -457,16 +477,16 @@ def list_enfermarias(somente_ativas=False):
 
 def list_leitos(enfermaria_id=None, somente_ativos=False):
     q = NutLeito.query
+    cid = current_cliente_id()
     if enfermaria_id:
+        if cid is not None and not _q(NutEnfermaria).filter_by(id=enfermaria_id).first():
+            return []
         q = q.filter_by(enfermaria_id=enfermaria_id)
-    else:
-        # Scope via enfermarias do cliente atual
-        cid = current_cliente_id()
-        if cid is not None:
-            enf_ids = [e.id for e in _q(NutEnfermaria).with_entities(NutEnfermaria.id).all()]
-            if not enf_ids:
-                return []
-            q = q.filter(NutLeito.enfermaria_id.in_(enf_ids))
+    elif cid is not None:
+        enf_ids = [e.id for e in _q(NutEnfermaria).with_entities(NutEnfermaria.id).all()]
+        if not enf_ids:
+            return []
+        q = q.filter(NutLeito.enfermaria_id.in_(enf_ids))
     if somente_ativos:
         q = q.filter_by(ativo=True)
     return [l.to_dict() for l in q.order_by(NutLeito.numero, NutLeito.nome).all()]
@@ -822,7 +842,11 @@ def _backfill_cardapio_dieta_id():
         cols = {c['name'] for c in insp.get_columns('nut_cardapios')}
         if 'dieta_id' not in cols:
             return
-        dietas = { _n(d.nome): d.id for d in NutDieta.query.all() if d.nome }
+        dietas = {}
+        for d in NutDieta.query.all():
+            if not d.nome:
+                continue
+            dietas.setdefault(d.cliente_id, {})[_n(d.nome)] = d.id
         if not dietas:
             return
         changed = False
@@ -830,7 +854,7 @@ def _backfill_cardapio_dieta_id():
             NutCardapio.dieta_id.is_(None),
             NutCardapio.dieta.isnot(None),
         ).all():
-            did = dietas.get(_n(row.dieta))
+            did = (dietas.get(row.cliente_id) or {}).get(_n(row.dieta))
             if did:
                 row.dieta_id = did
                 changed = True
@@ -870,23 +894,24 @@ def _backfill_cardapio_itens_colunas():
 
 
 def _seed_enfermarias():
+    cid = ensure_cliente_hfb().id
     for nome in ENFERMARIAS_SEED:
         nome = (nome or '').strip()
         if not nome:
             continue
-        if not NutEnfermaria.query.filter_by(nome=nome).first():
-            db.session.add(NutEnfermaria(nome=nome, ativo=True, nutriz=False))
+        if not NutEnfermaria.query.filter_by(nome=nome, cliente_id=cid).first():
+            db.session.add(NutEnfermaria(nome=nome, ativo=True, nutriz=False, cliente_id=cid))
     db.session.flush()
 
-    # vínculos iniciais só se a clínica ainda não tiver nenhuma enfermaria
+    # vínculos iniciais só na base do Bonsucesso, se a clínica ainda não tiver enfermaria
     for clinica_nome, nomes in VINCULOS_CLINICA_ENFERMARIA_SEED.items():
-        clinica = NutClinica.query.filter_by(nome=clinica_nome).first()
+        clinica = NutClinica.query.filter_by(nome=clinica_nome, cliente_id=cid).first()
         if not clinica:
             continue
         if clinica.enfermarias:
             continue
         for nome_enf in nomes:
-            enf = NutEnfermaria.query.filter_by(nome=nome_enf).first()
+            enf = NutEnfermaria.query.filter_by(nome=nome_enf, cliente_id=cid).first()
             if enf and enf not in clinica.enfermarias:
                 clinica.enfermarias.append(enf)
 
@@ -898,7 +923,7 @@ def list_cardapios(tipo=None, dieta_id=None):
     dieta = None
     if dieta_id:
         dieta_id = int(dieta_id)
-        dieta = NutDieta.query.get(dieta_id)
+        dieta = _q(NutDieta).filter_by(id=dieta_id).first()
         nome = (dieta.nome or '').strip().upper() if dieta else ''
         cond = NutCardapio.dieta_id == dieta_id
         if nome:
@@ -943,10 +968,7 @@ def dieta_foi_excluida(nome, cliente_id=None):
     _ensure_dietas_excluidas_table()
     q = NutDietaExcluida.query.filter(db.func.upper(NutDietaExcluida.nome) == nome)
     if cliente_id is not None:
-        q = q.filter(db.or_(
-            NutDietaExcluida.cliente_id == cliente_id,
-            NutDietaExcluida.cliente_id.is_(None),
-        ))
+        q = q.filter(NutDietaExcluida.cliente_id == cliente_id)
     return q.first() is not None
 
 
@@ -957,10 +979,7 @@ def marcar_dieta_excluida(nome, cliente_id=None):
     _ensure_dietas_excluidas_table()
     q = NutDietaExcluida.query.filter(db.func.upper(NutDietaExcluida.nome) == nome)
     if cliente_id is not None:
-        q = q.filter(db.or_(
-            NutDietaExcluida.cliente_id == cliente_id,
-            NutDietaExcluida.cliente_id.is_(None),
-        ))
+        q = q.filter(NutDietaExcluida.cliente_id == cliente_id)
     if q.first():
         return
     db.session.add(NutDietaExcluida(nome=nome, cliente_id=cliente_id))
@@ -974,10 +993,7 @@ def liberar_dieta_excluida(nome, cliente_id=None):
     _ensure_dietas_excluidas_table()
     q = NutDietaExcluida.query.filter(db.func.upper(NutDietaExcluida.nome) == nome)
     if cliente_id is not None:
-        q = q.filter(db.or_(
-            NutDietaExcluida.cliente_id == cliente_id,
-            NutDietaExcluida.cliente_id.is_(None),
-        ))
+        q = q.filter(NutDietaExcluida.cliente_id == cliente_id)
     q.delete(synchronize_session=False)
 
 
@@ -1181,6 +1197,12 @@ def info_lancamento_refeicoes(data_mapa, agora=None):
     return out
 
 
+def _filtro_mesmo_cliente(query, model, cliente_id):
+    if cliente_id is None:
+        return query.filter(model.cliente_id.is_(None))
+    return query.filter(model.cliente_id == cliente_id)
+
+
 def _candidatos_mapa_sem_paciente(data_alvo, src, somente_ativos=True):
     """Linhas sem paciente_id na data, já filtradas no banco pela chave disponível."""
     if not src or not data_alvo:
@@ -1189,6 +1211,7 @@ def _candidatos_mapa_sem_paciente(data_alvo, src, somente_ativos=True):
         NutMapaRefeicao.data_refeicao == data_alvo,
         NutMapaRefeicao.paciente_id.is_(None),
     )
+    q = _filtro_mesmo_cliente(q, NutMapaRefeicao, getattr(src, 'cliente_id', None))
     if somente_ativos:
         q = q.filter(NutMapaRefeicao.ativo.is_(True))
     pront = (getattr(src, 'prontuario', None) or '').strip()
@@ -1216,8 +1239,13 @@ def buscar_linha_mapa_dia(src, data_alvo):
     gid = getattr(src, 'lancamento_grupo_id', None)
     if gid:
         row = (
-            NutMapaRefeicao.query
-            .filter_by(data_refeicao=data_alvo, lancamento_grupo_id=gid, ativo=True)
+            _filtro_mesmo_cliente(
+                NutMapaRefeicao.query.filter_by(
+                    data_refeicao=data_alvo, lancamento_grupo_id=gid, ativo=True,
+                ),
+                NutMapaRefeicao,
+                getattr(src, 'cliente_id', None),
+            )
             .order_by(NutMapaRefeicao.id.desc())
             .first()
         )
@@ -1227,8 +1255,13 @@ def buscar_linha_mapa_dia(src, data_alvo):
         tipo = normalizar_tipo_lancamento(getattr(src, 'tipo_lancamento', None))
         dieta = (src.dieta or '').strip().upper()
         q = (
-            NutMapaRefeicao.query
-            .filter_by(data_refeicao=data_alvo, paciente_id=src.paciente_id, ativo=True)
+            _filtro_mesmo_cliente(
+                NutMapaRefeicao.query.filter_by(
+                    data_refeicao=data_alvo, paciente_id=src.paciente_id, ativo=True,
+                ),
+                NutMapaRefeicao,
+                getattr(src, 'cliente_id', None),
+            )
             .order_by(NutMapaRefeicao.id.desc())
         )
         candidatos = q.all()
@@ -1438,15 +1471,15 @@ class _CardapioResolvido:
         self.itens = entry[7] if len(entry) > 7 else None
 
 
-# Índice em memória: uma leitura de nut_cardapios por processo, não 6 por abertura.
-_CARDAPIO_POR_REFEICAO = None
+# Índice em memória por cliente: uma leitura de nut_cardapios, não 6 por abertura.
+_CARDAPIO_POR_REFEICAO = {}
 # Recorte por dieta: abrir o editor não lê a tabela inteira.
 _CARDAPIO_POR_DIETA = {}
 
 
 def invalidar_cache_cardapios():
     global _CARDAPIO_POR_REFEICAO
-    _CARDAPIO_POR_REFEICAO = None
+    _CARDAPIO_POR_REFEICAO = {}
     _CARDAPIO_POR_DIETA.clear()
 
 
@@ -1473,13 +1506,16 @@ def _entries_cardapio(rows, guardar_itens=False):
 
 
 def cardapios_por_refeicao():
-    """Lista leve de cardápios ativos, agrupada pelo horário (hr_*)."""
+    """Lista leve de cardápios ativos do cliente atual, agrupada pelo horário (hr_*)."""
     global _CARDAPIO_POR_REFEICAO
-    if _CARDAPIO_POR_REFEICAO is not None:
-        return _CARDAPIO_POR_REFEICAO
-    rows = NutCardapio.query.filter_by(ativo=True).all()
-    _CARDAPIO_POR_REFEICAO = _entries_cardapio(rows, guardar_itens=False)
-    return _CARDAPIO_POR_REFEICAO
+    key = current_cliente_id()
+    cached = _CARDAPIO_POR_REFEICAO.get(key)
+    if cached is not None:
+        return cached
+    rows = _q(NutCardapio).filter_by(ativo=True).all()
+    built = _entries_cardapio(rows, guardar_itens=False)
+    _CARDAPIO_POR_REFEICAO[key] = built
+    return built
 
 
 def _indice_cardapios_dieta(dieta, dieta_id):
@@ -1491,7 +1527,7 @@ def _indice_cardapios_dieta(dieta, dieta_id):
         except (TypeError, ValueError):
             dieta_id_int = None
     nome = _norm_txt(dieta)
-    key = (dieta_id_int or 0, nome)
+    key = (current_cliente_id(), dieta_id_int or 0, nome)
     cached = _CARDAPIO_POR_DIETA.get(key)
     if cached is not None:
         return cached
@@ -1504,7 +1540,7 @@ def _indice_cardapios_dieta(dieta, dieta_id):
         _CARDAPIO_POR_DIETA[key] = {m: [] for m in MEALS_SUBST}
         return _CARDAPIO_POR_DIETA[key]
     rows = (
-        NutCardapio.query
+        _q(NutCardapio)
         .filter(NutCardapio.ativo.is_(True))
         .filter(db.or_(*conds))
         .all()
@@ -1926,7 +1962,12 @@ def _cardapio_seed_signature(item):
 
 
 def _seed_cardapios():
-    dietas_by_nome = { _norm_txt(d.nome): d.id for d in NutDieta.query.all() if d.nome }
+    cid = ensure_cliente_hfb().id
+    dietas_by_nome = {
+        _norm_txt(d.nome): d.id
+        for d in NutDieta.query.filter_by(cliente_id=cid).all()
+        if d.nome
+    }
     existentes = {
         (
             (c.tipo or '').strip().lower(),
@@ -1934,7 +1975,7 @@ def _seed_cardapios():
             int(c.dia_mes or 1),
             tuple(bool(getattr(c, f'hr_{m}')) for m in MEALS_SUBST),
         )
-        for c in NutCardapio.query.all()
+        for c in NutCardapio.query.filter_by(cliente_id=cid).all()
     }
     for item in CARDAPIOS_SEED:
         sig = _cardapio_seed_signature(item)
@@ -1942,6 +1983,7 @@ def _seed_cardapios():
             continue
         dieta_nome = item.get('dieta', '') or ''
         row = NutCardapio(
+            cliente_id=cid,
             tipo=item['tipo'],
             grupo_cardapio=item.get('grupo_cardapio', 'PRINCIPAL'),
             dia_mes=item.get('dia_mes', 1),
@@ -1975,9 +2017,12 @@ def list_tabelas_nutrientes(somente_ativas=True):
 
 
 def list_alimentos(tabela_id=None, somente_ativas=True, include_nutrientes=True):
-    q = NutAlimento.query
+    q = NutAlimento.query.join(NutTabelaNutrientes)
+    cid = current_cliente_id()
+    if cid is not None:
+        q = q.filter(NutTabelaNutrientes.cliente_id == cid)
     if tabela_id:
-        q = q.filter_by(tabela_id=tabela_id)
+        q = q.filter(NutAlimento.tabela_id == tabela_id)
     if somente_ativas:
         q = q.filter_by(ativo=True)
     return [
@@ -1993,13 +2038,14 @@ def import_tabela_fdc(source, **kwargs):
 
 
 def _seed_nutricional():
-    if NutTabelaNutrientes.query.count() > 0:
+    cid = ensure_cliente_hfb().id
+    if NutTabelaNutrientes.query.filter_by(cliente_id=cid).count() > 0:
         return
     tabelas = {}
     for item in ALIMENTOS_SEED:
         nome_tab = (item.get('tabela') or 'Tabela Padrão').strip()
         if nome_tab not in tabelas:
-            tab = NutTabelaNutrientes(nome=nome_tab, ativo=True)
+            tab = NutTabelaNutrientes(nome=nome_tab, ativo=True, cliente_id=cid)
             db.session.add(tab)
             db.session.flush()
             tabelas[nome_tab] = tab
@@ -2043,12 +2089,14 @@ def list_pratos_liquidos(somente_ativos=True):
 
 
 def _seed_pratos_liquidos():
-    if NutPratoLiquido.query.count() > 0:
+    cid = ensure_cliente_hfb().id
+    if NutPratoLiquido.query.filter_by(cliente_id=cid).count() > 0:
         return
     for (
         nome, principal, sobremesa, outros, bebida, gelado, extra, fator, ativo
     ) in PRATOS_LIQUIDOS_SEED:
         db.session.add(NutPratoLiquido(
+            cliente_id=cid,
             nome=(nome or '').strip().upper(),
             grupo_principal=bool(principal),
             grupo_sobremesa=bool(sobremesa),
@@ -2475,20 +2523,22 @@ def _codigo_produto_unico(estoque_id, nome):
     return codigo
 
 
-# Catálogo de itens do cardápio: 2 consultas por processo, não uma por setor.
-_CATALOGO_PRODUTOS_CARDAPIO = None
+# Catálogo de itens do cardápio por cliente.
+_CATALOGO_PRODUTOS_CARDAPIO = {}
 
 
 def invalidar_cache_produtos_cardapio():
     global _CATALOGO_PRODUTOS_CARDAPIO
-    _CATALOGO_PRODUTOS_CARDAPIO = None
+    _CATALOGO_PRODUTOS_CARDAPIO = {}
 
 
 def _catalogo_produtos_cardapio():
-    """Produtos ativos agrupados pelo nome normalizado do grupo."""
+    """Produtos ativos do cliente atual, agrupados pelo nome do grupo."""
     global _CATALOGO_PRODUTOS_CARDAPIO
-    if _CATALOGO_PRODUTOS_CARDAPIO is not None:
-        return _CATALOGO_PRODUTOS_CARDAPIO
+    key = current_cliente_id()
+    cached = _CATALOGO_PRODUTOS_CARDAPIO.get(key)
+    if cached is not None:
+        return cached
     grupos = _q(NutGrupoProduto).all()
     id_nome = {g.id: _norm_txt(g.nome) for g in grupos}
     por_nome = {}
@@ -2516,7 +2566,7 @@ def _catalogo_produtos_cardapio():
                 'nome': nome,
                 'grupo': nome_grupo,
             })
-    _CATALOGO_PRODUTOS_CARDAPIO = por_nome
+    _CATALOGO_PRODUTOS_CARDAPIO[key] = por_nome
     return por_nome
 
 
@@ -2593,9 +2643,10 @@ def criar_produto_tema_cardapio(nome, tema):
 
 
 def _seed_produtos():
+    cid = ensure_cliente_hfb().id
     for nome in ESTOQUES_SEED:
-        if not NutEstoqueLocal.query.filter_by(nome=nome).first():
-            db.session.add(NutEstoqueLocal(nome=nome, ativo=True))
+        if not NutEstoqueLocal.query.filter_by(nome=nome, cliente_id=cid).first():
+            db.session.add(NutEstoqueLocal(nome=nome, ativo=True, cliente_id=cid))
     for item in UNIDADES_SEED:
         codigo = (item[0] or '').strip().upper()
         if not codigo:
@@ -2606,9 +2657,10 @@ def _seed_produtos():
         fnut, fuma, fest, fprat, ativo = (
             bool(item[4]), bool(item[5]), bool(item[6]), bool(item[7]), bool(item[8]),
         )
-        row = NutUnidadeMedida.query.filter_by(codigo=codigo).first()
+        row = NutUnidadeMedida.query.filter_by(codigo=codigo, cliente_id=cid).first()
         if not row:
             db.session.add(NutUnidadeMedida(
+                cliente_id=cid,
                 codigo=codigo,
                 descricao=descricao,
                 unid_conversao=unid_conv,
@@ -2626,21 +2678,22 @@ def _seed_produtos():
                 row.unid_conversao = unid_conv
                 row.valor_conversao = valor_conv
     for nome in GRUPOS_PRODUTO_SEED:
-        if not NutGrupoProduto.query.filter_by(nome=nome).first():
-            db.session.add(NutGrupoProduto(nome=nome, ativo=True))
+        if not NutGrupoProduto.query.filter_by(nome=nome, cliente_id=cid).first():
+            db.session.add(NutGrupoProduto(nome=nome, ativo=True, cliente_id=cid))
     db.session.flush()
 
-    if NutProduto.query.count() > 0:
+    if NutProduto.query.filter_by(cliente_id=cid).count() > 0:
         return
     for (
         estoque_nome, grupo_nome, codigo, descricao, qtd, un,
         preco_med, ult_preco, qmin, qmax, qliq, un_liq, fc
     ) in PRODUTOS_SEED:
-        est = NutEstoqueLocal.query.filter_by(nome=estoque_nome).first()
-        grp = NutGrupoProduto.query.filter_by(nome=grupo_nome).first()
+        est = NutEstoqueLocal.query.filter_by(nome=estoque_nome, cliente_id=cid).first()
+        grp = NutGrupoProduto.query.filter_by(nome=grupo_nome, cliente_id=cid).first()
         if not est or not grp:
             continue
         db.session.add(NutProduto(
+            cliente_id=cid,
             estoque_id=est.id,
             grupo_id=grp.id,
             codigo=(codigo or '').strip().upper(),
@@ -2666,10 +2719,12 @@ def list_fornecedores(somente_ativos=True):
 
 
 def _seed_fornecedores():
-    if NutFornecedor.query.count() > 0:
+    cid = ensure_cliente_hfb().id
+    if NutFornecedor.query.filter_by(cliente_id=cid).count() > 0:
         return
     for item in FORNECEDORES_SEED:
         db.session.add(NutFornecedor(
+            cliente_id=cid,
             nome=(item.get('nome') or '').strip().upper(),
             endereco=(item.get('endereco') or '').strip().upper() or None,
             bairro=(item.get('bairro') or '').strip().upper() or None,
@@ -2695,10 +2750,12 @@ def list_etiquetas(somente_ativas=False):
 
 
 def _seed_etiquetas():
-    if NutEtiqueta.query.count() > 0:
+    cid = ensure_cliente_hfb().id
+    if NutEtiqueta.query.filter_by(cliente_id=cid).count() > 0:
         return
     for item in ETIQUETAS_SEED:
         row = NutEtiqueta(
+            cliente_id=cid,
             nome=(item.get('nome') or '').strip(),
             ativa=bool(item.get('ativa', True)),
             tamanho_folha=(item.get('tamanho_folha') or 'carta').strip().lower(),
@@ -2946,9 +3003,10 @@ def _seed_tipos_refeicao():
         NutTipoRefeicao.__table__.create(db.engine, checkfirst=True)
     except Exception:
         pass
+    cid = ensure_cliente_hfb().id
     existentes = {
         (t.nome or '').strip().upper(): t
-        for t in NutTipoRefeicao.query.all()
+        for t in NutTipoRefeicao.query.filter_by(cliente_id=cid).all()
     }
     for nome, sigla, ordem, hora_limite in TIPOS_REFEICAO_SEED:
         key = nome.strip().upper()
@@ -2960,9 +3018,9 @@ def _seed_tipos_refeicao():
             if not (row.hora_limite or '').strip():
                 row.hora_limite = hora_limite
             continue
-        # sigla pode já existir com outro nome
         by_sigla = NutTipoRefeicao.query.filter(
-            db.func.upper(NutTipoRefeicao.sigla) == sigla.upper()
+            NutTipoRefeicao.cliente_id == cid,
+            db.func.upper(NutTipoRefeicao.sigla) == sigla.upper(),
         ).first()
         if by_sigla:
             by_sigla.nome = nome
@@ -2972,7 +3030,8 @@ def _seed_tipos_refeicao():
                 by_sigla.hora_limite = hora_limite
             continue
         db.session.add(NutTipoRefeicao(
-            nome=nome, sigla=sigla, ordem=ordem, hora_limite=hora_limite, ativo=True
+            cliente_id=cid,
+            nome=nome, sigla=sigla, ordem=ordem, hora_limite=hora_limite, ativo=True,
         ))
     db.session.flush()
 
@@ -3034,7 +3093,11 @@ def ensure_precos_para_dieta(
     - tipos_ids: se informado, só esses tipos de refeição
     - aplicar_default: usa PRECOS_POR_TIPO_DEFAULT quando valor ausente/zerado
     """
+    dieta = NutDieta.query.get(dieta_id) if dieta_id else None
+    cid_dieta = getattr(dieta, 'cliente_id', None) if dieta else None
     tipos_q = NutTipoRefeicao.query.filter_by(ativo=True)
+    if cid_dieta is not None:
+        tipos_q = tipos_q.filter(NutTipoRefeicao.cliente_id == cid_dieta)
     if tipos_ids:
         ids = [int(x) for x in tipos_ids]
         tipos_q = tipos_q.filter(NutTipoRefeicao.id.in_(ids))
@@ -3084,14 +3147,17 @@ def ensure_precos_para_dieta(
 
 
 def _upsert_dieta_catalogo(nome, cat, grupo, ativo, precos, payers=None):
-    """Upsert uma dieta do catálogo e força preços nas colunas indicadas."""
+    """Upsert uma dieta do catálogo do Bonsucesso e força preços nas colunas indicadas."""
+    cid = ensure_cliente_hfb().id
     row = NutDieta.query.filter(
-        db.func.upper(NutDieta.nome) == nome.upper()
+        NutDieta.cliente_id == cid,
+        db.func.upper(NutDieta.nome) == nome.upper(),
     ).first()
     if not row:
-        if dieta_foi_excluida(nome):
+        if dieta_foi_excluida(nome, cid):
             return None
         row = NutDieta(
+            cliente_id=cid,
             nome=nome,
             categoria=cat,
             grupo=grupo,
@@ -3123,12 +3189,15 @@ def _upsert_dieta_catalogo(nome, cat, grupo, ativo, precos, payers=None):
 def _seed_catalogo_dietas_foto():
     """Upsert dietas + preços do catálogo da foto (idempotente por nome)."""
     # Migra aliases curtos antigos → nomes da foto (só se o destino ainda não existir)
+    cid = ensure_cliente_hfb().id
     for antigo, novo in DIETAS_ALIAS_PARA_FOTO.items():
         src = NutDieta.query.filter(
-            db.func.upper(NutDieta.nome) == antigo.upper()
+            NutDieta.cliente_id == cid,
+            db.func.upper(NutDieta.nome) == antigo.upper(),
         ).first()
         dst = NutDieta.query.filter(
-            db.func.upper(NutDieta.nome) == novo.upper()
+            NutDieta.cliente_id == cid,
+            db.func.upper(NutDieta.nome) == novo.upper(),
         ).first()
         if src and not dst:
             src.nome = novo
@@ -3164,16 +3233,19 @@ def _seed_precos_dieta_tipo():
     _seed_catalogo_lactario()
 
     # Demais dietas com preço já existente ou do mapa: só preenche células faltantes
+    cid = ensure_cliente_hfb().id
     ids_catalogo = {
         d.id for d in NutDieta.query.filter(
-            db.func.upper(NutDieta.nome).in_(list(DIETAS_PRECO_MATRIX_NOMES))
+            NutDieta.cliente_id == cid,
+            db.func.upper(NutDieta.nome).in_(list(DIETAS_PRECO_MATRIX_NOMES)),
         ).all()
     }
     ids_com_preco = {
         r[0] for r in db.session.query(NutPrecoDietaTipo.dieta_id).distinct().all()
     }
     outras = NutDieta.query.filter(
-        NutDieta.id.in_(list(ids_com_preco - ids_catalogo) or [-1])
+        NutDieta.cliente_id == cid,
+        NutDieta.id.in_(list(ids_com_preco - ids_catalogo) or [-1]),
     ).all()
     for dieta in outras:
         # Dietas do mapa operacional usam padrão oral se ainda zeradas
@@ -3187,7 +3259,8 @@ def _seed_precos_refeicoes():
     except Exception:
         pass
     # Mantém dados no banco, mas oculta da UI antiga (update em lote)
-    NutPrecoRefeicao.query.filter_by(ativo=True).update(
+    cid = ensure_cliente_hfb().id
+    NutPrecoRefeicao.query.filter_by(ativo=True, cliente_id=cid).update(
         {NutPrecoRefeicao.ativo: False}, synchronize_session=False
     )
 
@@ -3635,7 +3708,7 @@ def _indices_linhas_mapa(existentes):
 
 
 _MAPA_COLS_LEVES = (
-    'id', 'data_refeicao', 'lancamento_grupo_id', 'paciente_id', 'tipo_lancamento',
+    'id', 'cliente_id', 'data_refeicao', 'lancamento_grupo_id', 'paciente_id', 'tipo_lancamento',
     'dieta', 'prontuario', 'nome', 'leito', 'motivo_saida', 'ativo',
 )
 
@@ -3699,19 +3772,27 @@ def _copiar_fontes_para_o_dia(fontes, data_ref, by_grupo, by_chave):
     return alteradas
 
 
+def _linhas_mapa_por_cliente(rows):
+    grupos = {}
+    for row in rows:
+        grupos.setdefault(getattr(row, 'cliente_id', None), []).append(row)
+    return grupos
+
+
 def _copiar_ativos_dia_anterior(data_ref):
     """Merge: cada lançamento ativo (sem baixa com motivo) de data_ref-1 passa a existir em data_ref.
 
     Não pula o dia só porque já há algumas linhas (ex.: Ana em 09/08 não bloqueia os demais).
+    A cópia não cruza clientes: o mapa de um hospital não entra no do outro.
     """
     data_origem = data_ref - timedelta(days=1)
     alteradas = _sanear_baixas_incompletas(data_ref)
     alteradas += _sanear_baixas_incompletas(data_origem)
 
-    existentes = _query_linhas_mapa_leves().filter_by(data_refeicao=data_ref).all()
-    by_grupo, by_chave = _indices_linhas_mapa(existentes)
-
-    fontes = (
+    existentes = _linhas_mapa_por_cliente(
+        _query_linhas_mapa_leves().filter_by(data_refeicao=data_ref).all()
+    )
+    fontes = _linhas_mapa_por_cliente(
         _query_linhas_mapa_leves()
         .filter_by(data_refeicao=data_origem)
         .order_by(NutMapaRefeicao.id)
@@ -3719,7 +3800,11 @@ def _copiar_ativos_dia_anterior(data_ref):
     )
     if not fontes:
         return alteradas
-    return alteradas + _copiar_fontes_para_o_dia(fontes, data_ref, by_grupo, by_chave)
+
+    for _cid, fontes_cli in fontes.items():
+        by_grupo, by_chave = _indices_linhas_mapa(existentes.get(_cid) or [])
+        alteradas += _copiar_fontes_para_o_dia(fontes_cli, data_ref, by_grupo, by_chave)
+    return alteradas
 
 
 def _garantir_ausentes_desde_historico(data_ref):
@@ -3727,9 +3812,11 @@ def _garantir_ausentes_desde_historico(data_ref):
 
     Cobre buracos se um dia intermediário nunca recebeu a linha.
     Limita o lookback para não carregar o histórico inteiro do banco.
+    A cópia permanece dentro do mesmo cliente.
     """
-    existentes = _query_linhas_mapa_leves().filter_by(data_refeicao=data_ref).all()
-    by_grupo, by_chave = _indices_linhas_mapa(existentes)
+    existentes = _linhas_mapa_por_cliente(
+        _query_linhas_mapa_leves().filter_by(data_refeicao=data_ref).all()
+    )
 
     since = data_ref - timedelta(days=_MAPA_LOOKBACK_DIAS)
     priors = (
@@ -3741,25 +3828,28 @@ def _garantir_ausentes_desde_historico(data_ref):
         .order_by(NutMapaRefeicao.data_refeicao.desc(), NutMapaRefeicao.id.desc())
         .all()
     )
-    seen_grupos = set()
-    seen_chaves = set()
-    fontes = []
-    for src in priors:
-        gid = getattr(src, 'lancamento_grupo_id', None)
-        if gid:
-            if int(gid) in seen_grupos:
+    alteradas = 0
+    for cid, rows in _linhas_mapa_por_cliente(priors).items():
+        by_grupo, by_chave = _indices_linhas_mapa(existentes.get(cid) or [])
+        seen_grupos = set()
+        seen_chaves = set()
+        fontes = []
+        for src in rows:
+            gid = getattr(src, 'lancamento_grupo_id', None)
+            if gid:
+                if int(gid) in seen_grupos:
+                    continue
+                seen_grupos.add(int(gid))
+            else:
+                chave = _chave_grupo_lancamento(src)
+                if chave in seen_chaves:
+                    continue
+                seen_chaves.add(chave)
+            if _linha_com_baixa(src):
                 continue
-            seen_grupos.add(int(gid))
-        else:
-            chave = _chave_grupo_lancamento(src)
-            if chave in seen_chaves:
-                continue
-            seen_chaves.add(chave)
-        # Último estado anterior: se foi baixa com motivo, não ressuscita
-        if _linha_com_baixa(src):
-            continue
-        fontes.append(src)
-    return _copiar_fontes_para_o_dia(fontes, data_ref, by_grupo, by_chave)
+            fontes.append(src)
+        alteradas += _copiar_fontes_para_o_dia(fontes, data_ref, by_grupo, by_chave)
+    return alteradas
 
 
 def _stamp_parte(valor):
@@ -3795,6 +3885,7 @@ def _stamp_historico_mapa(data_ref):
         )
     ).one()
     return tuple(_stamp_parte(v) for v in (tuple(mapa) + tuple(ac)))
+
 
 
 def garantir_mapa_do_dia(data_ref=None):
