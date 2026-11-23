@@ -286,7 +286,22 @@
                     <span class="at-hint">O toque para até esse dia. Quem abriu o chamado recebe o aviso agora.</span>
                 </div>
                 <div class="at-encaminhar">
-                    <p class="at-enc-title" id="atEncTitle">Encaminhar para outro setor</p>
+                    <p class="at-enc-title" id="atEncTitle"
+                       data-titulo="{{ 'Encaminhar para setor ou técnico' if encaminhar_tecnico else 'Encaminhar para outro setor' }}">
+                        {{ 'Encaminhar para setor ou técnico' if encaminhar_tecnico else 'Encaminhar para outro setor' }}
+                    </p>
+                    {% if encaminhar_tecnico %}
+                    <div class="form-group" id="atTecBox">
+                        <label for="at_tecnico">Técnico</label>
+                        <select id="at_tecnico" name="tecnico_destino_id">
+                            <option value="">Selecione...</option>
+                            {% for t in tecnicos_destino %}
+                            <option value="{{ t.id }}">{{ t.nome }}{% if t.funcao_label %} — {{ t.funcao_label }}{% endif %}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="at-hint">Se escolher um técnico, o chamado sai da fila dos outros e fica só com ele.</span>
+                    </div>
+                    {% endif %}
                     <div class="form-group">
                         <label for="at_setor">Setor</label>
                         <select id="at_setor" name="setor_destino">
@@ -1338,7 +1353,9 @@ body.modal-open { overflow: hidden; }
             }
         } else {
             btnEncaminhar.innerHTML = '<i class="fas fa-share"></i> Encaminhar';
-            if (encTitle) encTitle.textContent = 'Encaminhar para outro setor';
+            if (encTitle) {
+                encTitle.textContent = encTitle.getAttribute('data-titulo') || 'Encaminhar para outro setor';
+            }
             if (podeDevolver && document.getElementById('at_setor').value === 'Compras') {
                 document.getElementById('at_setor').value = '';
             }
@@ -1393,17 +1410,20 @@ body.modal-open { overflow: hidden; }
         if (origemBox) {
             const deQuem = data.encaminhado_por || '';
             const deSetor = data.encaminhado_por_setor || data.setor_origem || '';
-            if (podeDevolver && (deQuem || deSetor || instrucoesOrigem)) {
+            const atribuido = data.atribuido_nome || '';
+            if (atribuido || (podeDevolver && (deQuem || deSetor || instrucoesOrigem))) {
                 origemBox.hidden = false;
-                let linha = 'Encaminhado';
+                let linha = atribuido ? ('Atribuído para ' + atribuido) : 'Encaminhado';
                 if (deQuem) linha += ' por ' + deQuem;
-                if (deSetor) linha += ' (' + deSetor + ')';
+                if (!atribuido && deSetor) linha += ' (' + deSetor + ')';
                 origemTxt.textContent = linha;
                 origemInst.textContent = instrucoesOrigem || '—';
             } else {
                 origemBox.hidden = true;
             }
         }
+        const selTec = document.getElementById('at_tecnico');
+        if (selTec) selTec.value = '';
         document.getElementById('at_notas').value = data.atendimento_notas || '';
         document.getElementById('at_status').value = data.status || 'Em Andamento';
         document.getElementById('at_aguardar_peca').checked = data.status === 'Aguardar peça';
@@ -1590,8 +1610,12 @@ body.modal-open { overflow: hidden; }
             document.getElementById('at_setor').value = 'Compras';
         }
         if (acao === 'encaminhar') {
-            if (!document.getElementById('at_setor').value) {
-                alert('Selecione o setor para encaminhar.');
+            const selTec = document.getElementById('at_tecnico');
+            const temTec = !!(selTec && selTec.value);
+            if (!temTec && !document.getElementById('at_setor').value) {
+                alert(selTec
+                    ? 'Selecione o técnico ou o setor para encaminhar.'
+                    : 'Selecione o setor para encaminhar.');
                 return;
             }
             if (!(document.getElementById('at_instrucoes').value || '').trim()) {

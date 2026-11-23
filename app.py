@@ -340,10 +340,13 @@ def ensure_chamados_schema():
             'contrato_id': 'INT NULL',
             'atendente_id': 'INT NULL',
             'atendendo_em': 'DATETIME NULL',
+            'retomar_toque_em': 'DATETIME NULL',
+            'abertura_atendimento_id': 'INT NULL',
             'data_inicio_atendimento': 'DATETIME NULL',
             'data_reagendamento': 'DATE NULL',
             'canal_abertura': 'VARCHAR(20) NULL',
             'contato_abertura': 'VARCHAR(120) NULL',
+            'atribuido_usuario_id': 'INT NULL',
         }
         for col, ddl in extras.items():
             if col not in cols:
@@ -779,7 +782,7 @@ def ensure_setores_funcao_schema():
 def ensure_tecnicos_schema():
     """Cria tabelas chamado_setores e chamado_tecnicos e semeia setores padrão."""
     from sqlalchemy import inspect, text
-    from models import ChamadoSetor, ChamadoTecnico, ChamadoTecnicoMesa, MesaServico
+    from models import ChamadoConfig, ChamadoSetor, ChamadoTecnico, ChamadoTecnicoMesa, MesaServico
     SETORES_PADRAO = ['Informática', 'Edificação', 'Elétrica', 'Máquinas', 'Compras']
     try:
         insp = inspect(db.engine)
@@ -792,6 +795,8 @@ def ensure_tecnicos_schema():
             ChamadoTecnico.__table__.create(db.engine, checkfirst=True)
         if 'chamado_tecnico_mesas' not in tables:
             ChamadoTecnicoMesa.__table__.create(db.engine, checkfirst=True)
+        if 'chamado_config' not in tables:
+            ChamadoConfig.__table__.create(db.engine, checkfirst=True)
         insp = inspect(db.engine)
         tables = set(insp.get_table_names())
         if 'chamado_tecnicos' in tables:
@@ -831,6 +836,8 @@ def ensure_tecnicos_schema():
         for nome in SETORES_PADRAO:
             if not ChamadoSetor.query.filter_by(nome=nome).first():
                 db.session.add(ChamadoSetor(nome=nome, ativo=True))
+        if not ChamadoConfig.query.first():
+            db.session.add(ChamadoConfig(encaminhar_ativo=False))
         db.session.commit()
     except Exception as exc:
         db.session.rollback()

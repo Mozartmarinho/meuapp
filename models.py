@@ -296,6 +296,11 @@ class Chamado(db.Model):
     atendente_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
     atendente = db.relationship('Usuario', foreign_keys=[atendente_id], backref='chamados_atendente')
     atendendo_em = db.Column(db.DateTime, nullable=True)
+    # Preenchido quando o técnico devolve o chamado à mesa sem gravar nada.
+    retomar_toque_em = db.Column(db.DateTime, nullable=True)
+    # Último atendimento existente no momento em que o chamado saiu da mesa.
+    # 0 = ainda não havia gravação. NULL = esta abertura não veio da mesa.
+    abertura_atendimento_id = db.Column(db.Integer, nullable=True)
     atendimento_notas = db.Column(db.Text)
     setor_destino = db.Column(db.String(80))
     setor_origem = db.Column(db.String(80))
@@ -305,6 +310,9 @@ class Chamado(db.Model):
     encaminhado_por_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
     encaminhado_em = db.Column(db.DateTime)
     encaminhado_por = db.relationship('Usuario', foreign_keys=[encaminhado_por_id])
+    # Atribuição exclusiva: só este usuário vê o chamado na fila dos técnicos
+    atribuido_usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
+    atribuido = db.relationship('Usuario', foreign_keys=[atribuido_usuario_id])
     canal_abertura = db.Column(db.String(20))
     contato_abertura = db.Column(db.String(120))
     atendimentos = db.relationship(
@@ -519,6 +527,14 @@ class ChamadoTecnico(db.Model):
 
     def __repr__(self):
         return f'<ChamadoTecnico {self.nome}>'
+
+
+class ChamadoConfig(db.Model):
+    """Ajustes do módulo de chamados. Uma linha."""
+    __tablename__ = 'chamado_config'
+
+    id = db.Column(db.Integer, primary_key=True)
+    encaminhar_ativo = db.Column(db.Boolean, default=False, nullable=False)
 
 
 class PermissaoMenu(db.Model):

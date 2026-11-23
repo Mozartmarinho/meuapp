@@ -7,6 +7,12 @@
 
 <div class="tec-header">
     <h1><i class="fas fa-user-cog"></i> Técnicos</h1>
+    <button type="button" id="btnToggleEncaminhar"
+            class="btn tec-btn-sm {{ 'tec-encaminhar-on' if encaminhar_ativo else 'tec-encaminhar-off' }}"
+            title="Quando ativo, o atendimento pode atribuir o chamado a um técnico. Só ele vê o ticket.">
+        <i class="fas fa-share"></i>
+        Encaminhar: <span id="encaminharEstado">{{ 'Ativo' if encaminhar_ativo else 'Inativo' }}</span>
+    </button>
 </div>
 
 <!-- ── TÉCNICOS ──────────────────────────────────────────────── -->
@@ -298,7 +304,9 @@
 
 <style>
 .tec-page { font-size: 0.82rem; padding-bottom: 2rem; }
-.tec-header { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.4rem; }
+.tec-header { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; margin-bottom: 1.4rem; flex-wrap: wrap; }
+.tec-encaminhar-on { background: #d1fae5; color: #065f46; }
+.tec-encaminhar-off { background: var(--gray-200); color: var(--gray-700); }
 .tec-header h1 { font-size: 1.3rem; font-weight: 700; color: var(--gray-800); margin: 0; }
 .tec-section { background: var(--white); border: 1px solid var(--gray-200); border-radius: 0.5rem; margin-bottom: 1.4rem; padding: 1rem 1.2rem; }
 .tec-section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem; }
@@ -677,6 +685,31 @@ function excluirTecnico(tid) {
             const row = document.getElementById('tec-row-' + tid);
             if (row) row.remove();
         });
+}
+const btnToggleEncaminhar = document.getElementById('btnToggleEncaminhar');
+if (btnToggleEncaminhar) {
+    btnToggleEncaminhar.addEventListener('click', function () {
+        const btn = this;
+        fetch('/tecnicos/encaminhar/toggle', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json' },
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (!d.ok) {
+                    alert(d.error || 'Não foi possível alterar.');
+                    return;
+                }
+                const estado = document.getElementById('encaminharEstado');
+                if (estado) estado.textContent = d.ativo ? 'Ativo' : 'Inativo';
+                btn.classList.toggle('tec-encaminhar-on', !!d.ativo);
+                btn.classList.toggle('tec-encaminhar-off', !d.ativo);
+            })
+            .catch(function () {
+                alert('Não foi possível alterar o encaminhamento.');
+            });
+    });
 }
 </script>
 {% endblock %}

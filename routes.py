@@ -20,6 +20,7 @@ from models import (
     EquipamentoPreventiva,
     EquipamentoTermo,
     RecursoGrupo,
+    ChamadoConfig,
     ChamadoSetor,
     ChamadoTecnico,
     ConfiguracaoEmail,
@@ -448,10 +449,16 @@ def _usuario_toca_mesa(usuario, mesa_id, chamado=None):
 
     Ticket comum: técnico, supervisor e gestor.
     Preventiva: também o assistente da mesa do tipo do equipamento.
+    Atribuído a um técnico: o toque fica só com esse técnico.
     """
+    if not usuario:
+        return False
     if chamado is not None:
+        atribuido = getattr(chamado, 'atribuido_usuario_id', None)
+        if atribuido:
+            return atribuido == usuario.id
         mesa_id = _mesa_id_toque(chamado)
-    if not usuario or not mesa_id:
+    if not mesa_id:
         return False
     for tec in _registros_tecnico_usuario(usuario):
         if not _funcao_campanha(tec, chamado):
@@ -475,6 +482,9 @@ def _nome_atendente(chamado):
 def _pode_tomar_chamado(chamado, user):
     """Só o técnico que já atendeu (ou admin) assume o ticket."""
     if not user:
+        return False
+    atribuido = getattr(chamado, 'atribuido_usuario_id', None)
+    if atribuido and atribuido != user.id and not _eh_gestor(user):
         return False
     atendente_id = getattr(chamado, 'atendente_id', None)
     if not atendente_id:
@@ -503,23 +513,66 @@ def _marcar_conclusao(chamado):
         chamado.data_conclusao = now_brasilia()
 
 
+def _ultimo_atendimento_id(chamado):
+    ultimo = (
+        db.session.query(func.max(ChamadoAtendimento.id))
+        .filter(ChamadoAtendimento.chamado_id == chamado.id)
+        .scalar()
+    )
+    return int(ultimo or 0)
+
+
 def _assumir_chamado(chamado, user):
     """Atribui o chamado ao técnico e entra em atendimento (o toque para)."""
+    veio_da_mesa = (
+        not getattr(chamado, 'atendente_id', None)
+        and not getattr(chamado, 'atribuido_usuario_id', None)
+    )
     chamado.atendente_id = user.id
     chamado.atendendo_em = now_brasilia()
+    chamado.retomar_toque_em = None
+    chamado.abertura_atendimento_id = (
+        _ultimo_atendimento_id(chamado) if veio_da_mesa else None
+    )
     _marcar_inicio_atendimento(chamado)
     if (chamado.status or '') == STATUS_CAMPANHA_AGUARDANDO:
         chamado.status = STATUS_EM_ANDAMENTO
     db.session.commit()
 
 
+def _deve_devolver_a_mesa(chamado):
+    """Aberto da mesa e fechado sem gravar atendimento."""
+    base = getattr(chamado, 'abertura_atendimento_id', None)
+    if base is None or getattr(chamado, 'atribuido_usuario_id', None):
+        return False
+    if status_fechado(chamado.status):
+        return False
+    if (chamado.status or '') not in (STATUS_EM_ANDAMENTO, STATUS_CAMPANHA_AGUARDANDO):
+        return False
+    return _ultimo_atendimento_id(chamado) == int(base or 0)
+
+
 def _liberar_sessao_atendimento(chamado, user):
-    """Sai sem finalizar: permanece atribuído e o toque volta."""
+    """Sai sem finalizar.
+
+    Puxou da mesa e não gravou nada: o chamado volta para a mesa e o toque
+    recomeça para os técnicos dela. Se já alterou, ou o chamado já era dele,
+    permanece com quem atendeu.
+    """
     if not user or not getattr(chamado, 'atendente_id', None):
         return True
     if chamado.atendente_id != user.id:
         return False
     chamado.atendendo_em = None
+    devolver = _deve_devolver_a_mesa(chamado)
+    chamado.abertura_atendimento_id = None
+    if devolver:
+        chamado.atendente_id = None
+        if not status_fechado(chamado.status):
+            chamado.status = STATUS_CAMPANHA_AGUARDANDO
+        chamado.retomar_toque_em = now_brasilia()
+        db.session.commit()
+        return True
     if not status_fechado(chamado.status) and (chamado.status or '') == STATUS_EM_ANDAMENTO:
         chamado.status = STATUS_CAMPANHA_AGUARDANDO
     db.session.commit()
@@ -564,16 +617,52 @@ def _ve_todos_tickets(usuario):
     return False
 
 
+def _config_chamados():
+    """Linha única de ajustes do módulo. Cria se ainda não existir."""
+    cfg = ChamadoConfig.query.order_by(ChamadoConfig.id.asc()).first()
+    if cfg:
+        return cfg
+    cfg = ChamadoConfig(encaminhar_ativo=False)
+    db.session.add(cfg)
+    db.session.commit()
+    return cfg
+
+
+def encaminhar_tecnico_ativo():
+    """Encaminhar para técnico ligado na tela de Técnicos."""
+    try:
+        return bool(_config_chamados().encaminhar_ativo)
+    except Exception:
+        db.session.rollback()
+        return False
+
+
+def _restricao_atribuicao(user):
+    """Chamado atribuído sai da fila de quem não é o técnico escolhido."""
+    return or_(
+        Chamado.atribuido_usuario_id.is_(None),
+        Chamado.atribuido_usuario_id == user.id,
+    )
+
+
 def _filtro_chamados_usuario(user):
     """Tickets visíveis: os que o usuário abriu e os abertos das mesas dele.
 
     Supervisor e gestor veem todos. Quem tem mesa cadastrada não vê
     pendências das outras mesas, mesmo sendo admin.
+    Chamado atribuído a um técnico só permanece na fila desse técnico
+    (quem abriu o chamado continua vendo o próprio ticket).
     """
+    restricao = _restricao_atribuicao(user)
     conds = [Chamado.tecnico_id == user.id]
+    conds.append(Chamado.atribuido_usuario_id == user.id)
     setor = _setor_usuario(user)
     if setor:
-        conds.append(and_(Chamado.setor_destino == setor, ~Chamado.status.in_(STATUS_FECHADOS)))
+        conds.append(and_(
+            Chamado.setor_destino == setor,
+            ~Chamado.status.in_(STATUS_FECHADOS),
+            restricao,
+        ))
     if _eh_tecnico_do_sistema(user):
         abertos = ~Chamado.status.in_(STATUS_FECHADOS)
         mesas = _mesas_tecnico_usuario(user)
@@ -581,9 +670,10 @@ def _filtro_chamados_usuario(user):
             conds.append(and_(
                 abertos,
                 or_(Chamado.mesa_id.in_(list(mesas)), Chamado.mesa_id.is_(None)),
+                restricao,
             ))
         else:
-            conds.append(abertos)
+            conds.append(and_(abertos, restricao))
     return or_(*conds)
 
 
@@ -1213,7 +1303,11 @@ def _pendencias_chamados(usuario):
     )
     ver_todos = _ve_todos_tickets(usuario)
     for chamado in rows:
-        if mesas and not ver_todos and chamado.mesa_id not in mesas:
+        atribuido_id = getattr(chamado, 'atribuido_usuario_id', None)
+        atribuido_para_mim = bool(atribuido_id) and atribuido_id == usuario.id
+        if atribuido_id and not atribuido_para_mim and not ver_todos:
+            continue
+        if mesas and not ver_todos and chamado.mesa_id not in mesas and not atribuido_para_mim:
             continue
         dest = normalizar_setor_chamado(chamado.setor_destino)
         encaminhado_para_mim = bool(dest) and (dest == setor or (gestor and not mesas))
@@ -1228,7 +1322,13 @@ def _pendencias_chamados(usuario):
             and chamado.status == 'Pendente'
             and _chamado_da_equipe(usuario, chamado)
         )
-        if not encaminhado_para_mim and not aguardar_peca and not ticket_do_meu_setor and not ticket_aberto:
+        if (
+            not encaminhado_para_mim
+            and not aguardar_peca
+            and not ticket_do_meu_setor
+            and not ticket_aberto
+            and not atribuido_para_mim
+        ):
             continue
         if chamado.id in seen:
             continue
@@ -1236,6 +1336,8 @@ def _pendencias_chamados(usuario):
         origem = _setor_origem_atual(chamado)
         if chamado.status == STATUS_DEVOLVIDO:
             tipo = f'{origem or "Setor"} devolveu {chamado.numero_chamado}'
+        elif atribuido_para_mim:
+            tipo = 'Atribuído para você'
         elif encaminhado_para_mim and aguardar_peca:
             tipo = 'Aguardar peça / Encaminhado'
         elif encaminhado_para_mim:
@@ -1440,6 +1542,8 @@ def _chamado_atender_payload(chamado, usuario=None):
         'setores': listar_setores(TIPO_SETOR_CHAMADOS),
         'atendente_id': getattr(chamado, 'atendente_id', None),
         'atendente_nome': _nome_atendente(chamado),
+        'atribuido_usuario_id': getattr(chamado, 'atribuido_usuario_id', None),
+        'atribuido_nome': chamado.atribuido.nome if getattr(chamado, 'atribuido', None) else '',
         'data_inicio_atendimento': fmt_brasilia(getattr(chamado, 'data_inicio_atendimento', None)),
         'data_conclusao': fmt_brasilia(getattr(chamado, 'data_conclusao', None)),
         'data_reagendamento': (
@@ -2610,6 +2714,7 @@ def listar_chamados():
         i.to_dict()
         for i in ChamadoEstoque.query.order_by(ChamadoEstoque.produto.asc()).all()
     ]
+    encaminhar_on = encaminhar_tecnico_ativo()
     return render_template(
         'chamados.html',
         chamados=chamados,
@@ -2626,6 +2731,8 @@ def listar_chamados():
         tickets_index=[{'id': c.id, 'numero': c.numero_chamado} for c in chamados],
         mesas=mesas_ativas(),
         estoque_itens=estoque_itens,
+        encaminhar_tecnico=encaminhar_on,
+        tecnicos_destino=_tecnicos_para_atribuir() if encaminhar_on else [],
     )
 
 
@@ -2641,7 +2748,7 @@ def ver_chamado(id):
         joinedload(Chamado.contrato),
     ).get_or_404(id)
     visivel = Chamado.query.filter(_filtro_chamados_usuario(user), Chamado.id == id).first()
-    if not visivel and not _eh_gestor(user):
+    if not visivel and not _eh_gestor(user) and not _ve_todos_tickets(user):
         flash('Você não tem acesso a este ticket.', 'error')
         return redirect(url_for('main.listar_chamados'))
     solicitante = Usuario.query.get(chamado.tecnico_id)
@@ -3075,8 +3182,13 @@ def api_campanha_ticket():
         Chamado.query.options(joinedload(Chamado.cliente), joinedload(Chamado.atendente))
         .filter(
             Chamado.status == STATUS_CAMPANHA_AGUARDANDO,
-            Chamado.atendente_id.isnot(None),
-            Chamado.atendendo_em.is_(None),
+            or_(
+                and_(
+                    Chamado.atendente_id.isnot(None),
+                    Chamado.atendendo_em.is_(None),
+                ),
+                Chamado.retomar_toque_em.isnot(None),
+            ),
         )
         .order_by(Chamado.id.desc())
         .limit(24)
@@ -3140,6 +3252,7 @@ def atender_chamado(id):
         joinedload(Chamado.cliente),
         joinedload(Chamado.encaminhado_por),
         joinedload(Chamado.atendente),
+        joinedload(Chamado.atribuido),
     ).get_or_404(id)
     user = Usuario.query.get(session['user_id'])
     if request.method == 'GET':
@@ -3166,6 +3279,7 @@ def atender_chamado(id):
     if not chamado.atendente_id:
         chamado.atendente_id = user.id
         chamado.atendendo_em = now_brasilia()
+    chamado.retomar_toque_em = None
     _marcar_inicio_atendimento(chamado)
 
     troca = None
@@ -3184,6 +3298,7 @@ def atender_chamado(id):
     hop_de = ''
     hop_para = ''
     atendimento_status = None
+    nome_tecnico_destino = ''
 
     if aguardar_peca:
         setor = SETOR_COMPRAS
@@ -3198,7 +3313,19 @@ def atender_chamado(id):
             return 'Anexe a foto do serviço realizado.'
         return None
 
-    if acao == 'encaminhar':
+    tecnico_dest = (request.form.get('tecnico_destino_id') or '').strip()
+    if acao == 'encaminhar' and tecnico_dest and not aguardar_peca:
+        try:
+            de_setor, nome_tecnico_destino = _atribuir_chamado_a_tecnico(
+                chamado, user, tecnico_dest, instrucoes,
+            )
+        except ValueError as exc:
+            db.session.rollback()
+            return jsonify({'ok': False, 'message': str(exc)}), 400
+        hop_tipo = TIPO_HOP_ENCAMINHAR
+        hop_de, hop_para = de_setor, (nome_tecnico_destino or 'Técnico')[:40]
+        instrucoes = chamado.encaminhamento_instrucoes or instrucoes
+    elif acao == 'encaminhar':
         if aguardar_peca:
             setor = SETOR_COMPRAS
         if not setor:
@@ -3331,7 +3458,9 @@ def atender_chamado(id):
         db.session.rollback()
         return jsonify({'ok': False, 'message': f'Erro ao gravar atendimento: {exc}'}), 400
 
-    if acao == 'encaminhar':
+    if acao == 'encaminhar' and nome_tecnico_destino:
+        msg = 'Atribuído para %s. O chamado fica só com esse técnico.' % nome_tecnico_destino
+    elif acao == 'encaminhar':
         msg = f'Encaminhado para {chamado.setor_destino}.'
     elif acao == 'finalizar' and hop_tipo == TIPO_HOP_DEVOLVER:
         msg = f'Atendido e devolvido para {chamado.setor_destino}.'
@@ -3367,7 +3496,11 @@ def atender_chamado(id):
 @main.route('/api/chamados/<int:id>/liberar-atendimento', methods=['POST'])
 @login_required
 def liberar_atendimento_chamado(id):
-    """Fecha o modal sem finalizar: o chamado continua do técnico e o toque volta."""
+    """Fecha o modal sem finalizar.
+
+    Sem gravação, o chamado volta para a mesa e o toque recomeça.
+    Com gravação, continua com o técnico e o toque volta para ele.
+    """
     chamado = Chamado.query.get_or_404(id)
     user = Usuario.query.get(session['user_id'])
     if not user:
@@ -3491,7 +3624,59 @@ def tecnicos():
         tecnicos=tecnicos_list,
         funcoes=FUNCOES_TECNICO,
         funcoes_mesa_multipla=sorted(FUNCOES_MESA_MULTIPLA),
+        encaminhar_ativo=encaminhar_tecnico_ativo(),
     )
+
+
+def _tecnicos_para_atribuir():
+    """Técnicos ativos com login, para o select de atribuição."""
+    return (
+        ChamadoTecnico.query
+        .filter(
+            ChamadoTecnico.ativo == True,  # noqa: E712
+            ChamadoTecnico.usuario_id.isnot(None),
+        )
+        .order_by(ChamadoTecnico.nome.asc())
+        .all()
+    )
+
+
+def _atribuir_chamado_a_tecnico(chamado, user, tecnico_id_raw, instrucoes):
+    """Encaminha o chamado para um técnico cadastrado e tira da fila dos outros."""
+    if not encaminhar_tecnico_ativo():
+        raise ValueError('Encaminhar para técnico está desativado. Ative em Técnicos.')
+    raw = str(tecnico_id_raw or '').strip()
+    if not raw.isdigit():
+        raise ValueError('Selecione o técnico para atribuir.')
+    tec = ChamadoTecnico.query.get(int(raw))
+    if not tec or not tec.ativo or not tec.usuario_id:
+        raise ValueError('Selecione um técnico cadastrado com acesso ao sistema.')
+    texto = (instrucoes or '').strip()
+    if not texto:
+        raise ValueError('Informe o que precisa fazer.')
+    de_setor = _setor_atuacao(user, chamado)
+    chamado.setor_origem = de_setor or chamado.setor_origem
+    chamado.setor_destino = None
+    chamado.encaminhamento_instrucoes = texto
+    chamado.encaminhado_por_id = user.id
+    chamado.encaminhado_em = datetime.utcnow()
+    chamado.atribuido_usuario_id = tec.usuario_id
+    chamado.atendente_id = tec.usuario_id
+    chamado.atendendo_em = None
+    chamado.status = STATUS_ENCAMINHADO
+    return de_setor, (tec.nome or 'Técnico')
+
+
+@main.route('/tecnicos/encaminhar/toggle', methods=['POST'])
+@login_required
+def toggle_encaminhar_tecnico():
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.tem_menu('chamados', 'tecnicos'):
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+    cfg = _config_chamados()
+    cfg.encaminhar_ativo = not bool(cfg.encaminhar_ativo)
+    db.session.commit()
+    return jsonify({'ok': True, 'ativo': cfg.encaminhar_ativo})
 
 
 def _pode_gerenciar_chamado_setor(user):
