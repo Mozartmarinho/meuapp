@@ -149,10 +149,17 @@
             </div>
           </div>
           <div class="form-group uma-grow so-grupo">
-            <label class="form-label" for="fGrupo">{% if tipo == 'suplemento' %}Grupo para totalização{% else %}Grupo{% endif %}</label>
+            <label class="form-label" for="fGrupo">Grupo para totalização</label>
             <div class="uma-combo">
               <select class="form-control" id="fGrupo"></select>
-              <a class="btn btn-ghost btn-sm so-atalho-dieta" href="{{ url_for('nutricao.grupos_dietas') }}" title="Grupos de dietas">...</a>
+              <button type="button" class="btn-bolinha-mais" id="btnAddGrupo" title="Adicionar grupo" aria-label="Adicionar grupo">
+                <i class="fas fa-plus"></i>
+              </button>
+            </div>
+            <div class="uma-nova" id="boxGrupo" hidden>
+              <input class="form-control" id="nomeGrupo" maxlength="80" placeholder="Nome do novo grupo" autocomplete="off">
+              <button type="button" class="btn btn-success btn-sm" id="okGrupo">Adicionar</button>
+              <button type="button" class="btn nc-btn-muted btn-sm" id="cancelGrupo">Cancelar</button>
             </div>
           </div>
         </div>
@@ -160,7 +167,17 @@
         <div class="uma-linha">
           <div class="form-group uma-grow">
             <label class="form-label" for="fColuna">{% if tipo == 'lve' %}Coluna para totalização{% else %}Coluna para totalização no faturamento{% endif %}</label>
-            <select class="form-control" id="fColuna"></select>
+            <div class="uma-combo">
+              <select class="form-control" id="fColuna"></select>
+              <button type="button" class="btn-bolinha-mais" id="btnAddColuna" title="Adicionar coluna" aria-label="Adicionar coluna">
+                <i class="fas fa-plus"></i>
+              </button>
+            </div>
+            <div class="uma-nova" id="boxColuna" hidden>
+              <input class="form-control" id="nomeColuna" maxlength="80" placeholder="Nome da nova coluna" autocomplete="off">
+              <button type="button" class="btn btn-success btn-sm" id="okColuna">Adicionar</button>
+              <button type="button" class="btn nc-btn-muted btn-sm" id="cancelColuna">Cancelar</button>
+            </div>
           </div>
           <label class="uma-check so-fechado"><input type="checkbox" id="fFechado"> Sistema fechado</label>
           <label class="uma-check so-suplemento"><input type="checkbox" id="fManipulado"> Suplemento manipulado</label>
@@ -355,6 +372,26 @@
 .uma-check { display: flex; align-items: center; gap: 0.36rem; font-size: 0.76rem; color: #334155; margin: 0 0 0.35rem; }
 .uma-combo { display: flex; gap: 0.3rem; align-items: center; }
 .uma-combo .form-control { flex: 1; }
+.btn-bolinha-mais {
+  flex-shrink: 0;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 50%;
+  border: 1px solid #1b4f9c;
+  background: #1b4f9c;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+.btn-bolinha-mais:hover { background: #163f7c; border-color: #163f7c; }
+.btn-bolinha-mais i { font-size: 0.68rem; }
+.uma-nova { display: flex; gap: 0.35rem; align-items: center; margin-top: 0.35rem; }
+.uma-nova[hidden] { display: none !important; }
+.uma-nova .form-control { flex: 1; }
 .uma-box {
   border: 1px solid #dbe3ee; border-radius: 6px; padding: 0.55rem 0.7rem 0.7rem;
   margin: 0 0 0.75rem; background: #f8fafc;
@@ -371,10 +408,10 @@
   width: 100%; border: 1px solid #dbe3ee; border-radius: 4px; padding: 0.28rem 0.35rem; font-size: 0.72rem;
 }
 .uma-flag { width: 42px; text-align: center; }
-.tipo-formula .so-suplemento, .tipo-formula .so-lve, .tipo-formula .so-grupo,
+.tipo-formula .so-suplemento, .tipo-formula .so-lve,
 .tipo-enteral .so-formula, .tipo-enteral .so-suplemento, .tipo-enteral .so-lve,
 .tipo-suplemento .so-formula, .tipo-suplemento .so-produto, .tipo-suplemento .so-fechado, .tipo-suplemento .so-lve,
-.tipo-lve .so-formula, .tipo-lve .so-produto, .tipo-lve .so-fechado, .tipo-lve .so-suplemento, .tipo-lve .so-disponivel, .tipo-lve .so-composicao, .tipo-lve .so-atalho-dieta { display: none; }
+.tipo-lve .so-formula, .tipo-lve .so-produto, .tipo-lve .so-fechado, .tipo-lve .so-suplemento, .tipo-lve .so-disponivel, .tipo-lve .so-composicao { display: none; }
 body.modal-open { overflow: hidden; }
 @media print {
   .sidebar, .sidebar-overlay, .app-topbar, .eq-filters, .uma-abas,
@@ -606,6 +643,7 @@ function abrirModal(){
 function fecharModal(){
   overlay.hidden = true;
   document.body.classList.remove('modal-open');
+  document.querySelectorAll('.uma-nova').forEach(function (el) { el.hidden = true; });
   form.reset();
   document.getElementById('uma_id').value = '';
   fNome.classList.remove('uma-campo-erro');
@@ -739,7 +777,79 @@ overlay.addEventListener('click', function (ev) {
   if (ev.target === overlay) fecharModal();
 });
 document.addEventListener('keydown', function (ev) {
-  if (ev.key === 'Escape' && !overlay.hidden) fecharModal();
+  if (ev.key !== 'Escape' || overlay.hidden) return;
+  const aberta = document.querySelector('.uma-nova:not([hidden])');
+  if (aberta) {
+    aberta.hidden = true;
+    return;
+  }
+  fecharModal();
+});
+function ligarNovaOpcao(cfg) {
+  const box = document.getElementById(cfg.box);
+  const input = document.getElementById(cfg.input);
+  const ok = document.getElementById(cfg.ok);
+  function fechar() {
+    box.hidden = true;
+    input.value = '';
+    ok.disabled = false;
+  }
+  document.getElementById(cfg.btn).addEventListener('click', function () {
+    document.querySelectorAll('.uma-nova').forEach(function (el) { el.hidden = true; });
+    box.hidden = false;
+    input.value = '';
+    ok.disabled = false;
+    input.focus();
+  });
+  document.getElementById(cfg.cancel).addEventListener('click', fechar);
+  input.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      ok.click();
+    } else if (ev.key === 'Escape') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      fechar();
+    }
+  });
+  ok.addEventListener('click', async function () {
+    const nome = (input.value || '').trim().toUpperCase();
+    if (!nome) {
+      input.focus();
+      return;
+    }
+    ok.disabled = true;
+    try {
+      const r = await fetch('/nutricao/api/cadastro-uma/opcao', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ tipo: TIPO, campo: cfg.campo, nome: nome })
+      });
+      const j = await r.json();
+      if (!r.ok || j.ok === false) {
+        showToast((j && j.error) || 'Falha ao adicionar', 'error');
+        ok.disabled = false;
+        return;
+      }
+      const gravado = (j.nome || nome).toUpperCase();
+      const lista = cfg.campo === 'grupo' ? GRUPOS : COLUNAS;
+      if (lista.indexOf(gravado) < 0) lista.push(gravado);
+      preencherSelect(cfg.select, lista.map(function (g) { return { valor: g, rotulo: g }; }), gravado);
+      fechar();
+      showToast(cfg.campo === 'grupo' ? 'Grupo adicionado' : 'Coluna adicionada', 'success');
+    } catch (err) {
+      showToast('Falha ao adicionar', 'error');
+      ok.disabled = false;
+    }
+  });
+}
+ligarNovaOpcao({
+  btn: 'btnAddGrupo', box: 'boxGrupo', input: 'nomeGrupo', ok: 'okGrupo',
+  cancel: 'cancelGrupo', campo: 'grupo', select: 'fGrupo'
+});
+ligarNovaOpcao({
+  btn: 'btnAddColuna', box: 'boxColuna', input: 'nomeColuna', ok: 'okColuna',
+  cancel: 'cancelColuna', campo: 'coluna', select: 'fColuna'
 });
 form.addEventListener('submit', function (ev) {
   ev.preventDefault();

@@ -11,7 +11,7 @@ from models_nutricao import (
     NutEstoqueLocal, NutUnidadeMedida, NutGrupoProduto, NutProduto, NutFornecedor,
     NutEtiqueta, NutEtiquetaCampo, NutPrecoRefeicao, NutTipoRefeicao, NutPrecoDietaTipo,
     NutRefeicaoAcompanhante, NutRefeicaoFuncionario,
-    NutViaAdministracao, NutUmaItem,
+    NutViaAdministracao, NutUmaItem, NutUmaOpcao,
 )
 from nutricao_seed_enfermarias import ENFERMARIAS_SEED, VINCULOS_CLINICA_ENFERMARIA_SEED
 from nutricao_seed_dietas import (
@@ -2262,12 +2262,79 @@ COLUNAS_TOTALIZACAO_LVE = (
 
 
 def colunas_faturamento_uma(grupos=None):
+    return unir_nomes_uma(list(COLUNAS_FATURAMENTO_UMA) + list(grupos or []))
+
+
+def unir_nomes_uma(*listas):
     vistos = []
-    for nome in list(COLUNAS_FATURAMENTO_UMA) + list(grupos or []):
-        nome = (nome or '').strip().upper()
-        if nome and nome not in vistos:
-            vistos.append(nome)
+    for lista in listas:
+        for nome in lista or []:
+            nome = (nome or '').strip().upper()
+            if nome and nome not in vistos:
+                vistos.append(nome)
     return vistos
+
+
+def _lista_opcao_uma(tipo, campo):
+    tipo = (tipo or '').strip().lower()
+    campo = (campo or '').strip().lower()
+    if tipo not in TIPOS_CADASTRO_UMA:
+        raise ValueError('Tipo de cadastro inválido')
+    if campo not in ('grupo', 'coluna'):
+        raise ValueError('Campo inválido')
+    if tipo == 'lve':
+        return 'grupo_lve' if campo == 'grupo' else 'coluna_lve'
+    if campo == 'grupo':
+        return 'grupo'
+    return 'coluna'
+
+
+def list_opcoes_uma(lista):
+    q = _q(NutUmaOpcao).filter(
+        NutUmaOpcao.lista == lista,
+        NutUmaOpcao.ativo.is_(True),
+    )
+    return [row.nome for row in q.order_by(NutUmaOpcao.nome, NutUmaOpcao.id).all()]
+
+
+def salvar_opcao_uma(cid, tipo, campo, nome):
+    """Grava um grupo ou uma coluna criado pelo botão + do cadastro."""
+    nome = _txt_uma(nome, 80)
+    if not nome:
+        raise ValueError('Informe o nome')
+    lista = _lista_opcao_uma(tipo, campo)
+    if lista == 'grupo':
+        row = NutGrupoDieta.query.filter(
+            _chave_uma_cliente(NutGrupoDieta, cid),
+            db.func.upper(NutGrupoDieta.nome) == nome,
+        ).first()
+        if row:
+            row.ativo = True
+            return row.nome
+        last = NutGrupoDieta.query.filter(
+            _chave_uma_cliente(NutGrupoDieta, cid),
+        ).order_by(NutGrupoDieta.ordem.desc()).first()
+        ordem = (int(last.ordem or 0) + 10) if last else 10
+        row = NutGrupoDieta(cliente_id=cid, nome=nome, ordem=ordem, ativo=True)
+        db.session.add(row)
+        return row.nome
+    row = NutUmaOpcao.query.filter(
+        _chave_uma_cliente(NutUmaOpcao, cid),
+        NutUmaOpcao.lista == lista,
+        db.func.upper(NutUmaOpcao.nome) == nome,
+    ).first()
+    if row:
+        row.ativo = True
+        return row.nome
+    row = NutUmaOpcao(cliente_id=cid, lista=lista, nome=nome, ativo=True)
+    db.session.add(row)
+    return row.nome
+
+
+def _chave_uma_cliente(model, cid):
+    if cid is None:
+        return model.cliente_id.is_(None)
+    return model.cliente_id == cid
 
 
 def _txt_uma(v, limite):
@@ -2386,7 +2453,7 @@ def salvar_cadastro_uma(cid, d, row=None):
         row.produto_principal = _txt_uma(d.get('produto_principal'), 200)
         if row.produto_principal:
             row.produto = row.produto_principal[:200]
-    if tipo in ('enteral', 'suplemento', 'lve'):
+    if tipo in TIPOS_CADASTRO_UMA:
         row.grupo = _txt_uma(d.get('grupo'), 80)
     if tipo == 'suplemento':
         row.quant_padrao = _txt_uma(d.get('quant_padrao'), 40)

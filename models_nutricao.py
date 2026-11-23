@@ -1348,3 +1348,18 @@ class NutUmaItem(db.Model):
             'componentes': comps,
             'cobranca': self.cobranca or '',
         }
+
+
+class NutUmaOpcao(db.Model):
+    """Grupo ou coluna extra criado pelo + do cadastro de fórmula, enteral, suplemento e LVE."""
+    __tablename__ = 'nut_uma_opcoes'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'lista', 'nome', name='uq_nut_uma_opcao'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    lista = db.Column(db.String(20), nullable=False)
+    nome = db.Column(db.String(80), nullable=False)
+    ativo = db.Column(db.Boolean, default=True)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)

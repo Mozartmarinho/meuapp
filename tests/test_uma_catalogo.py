@@ -177,6 +177,52 @@ class UmaCatalogoTest(unittest.TestCase):
         self.assertIn('PREMATUROS E RECEM - NATOS DE BAIXO PESO', pagina)
         self.assertNotIn('BÁSICAS', pagina)
         self.assertNotIn('LACTÁRIO', pagina)
+        self.assertIn('btnAddGrupo', pagina)
+        self.assertIn('btnAddColuna', pagina)
+        self.assertIn('Grupo para totalização', pagina)
+
+    def test_mais_adiciona_grupo_e_coluna_nos_quatro_cadastros(self):
+        client = self.app.test_client()
+        casos = (
+            ('suplemento', 'grupo', 'GRUPO TOTAL TESTE'),
+            ('suplemento', 'coluna', 'COLUNA TOTAL TESTE'),
+            ('lve', 'grupo', 'GRUPO LVE TESTE'),
+            ('lve', 'coluna', 'COLUNA LVE TESTE'),
+            ('formula', 'grupo', 'GRUPO FORMULA TESTE'),
+            ('enteral', 'coluna', 'COLUNA ENTERAL TESTE'),
+        )
+        for tipo, campo, nome in casos:
+            resp = client.post(
+                '/nutricao/api/cadastro-uma/opcao',
+                json={'tipo': tipo, 'campo': campo, 'nome': nome.lower()},
+            )
+            self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
+            self.assertEqual(resp.get_json()['nome'], nome)
+
+        suplemento = client.get('/nutricao/cadastro-uma?tipo=suplemento').get_data(as_text=True)
+        enteral = client.get('/nutricao/cadastro-uma?tipo=enteral').get_data(as_text=True)
+        formula = client.get('/nutricao/cadastro-uma?tipo=formula').get_data(as_text=True)
+        lve = client.get('/nutricao/cadastro-uma?tipo=lve').get_data(as_text=True)
+        for pagina in (suplemento, enteral, formula):
+            self.assertIn('btnAddGrupo', pagina)
+            self.assertIn('btnAddColuna', pagina)
+            self.assertIn('GRUPO TOTAL TESTE', pagina)
+            self.assertIn('GRUPO FORMULA TESTE', pagina)
+            self.assertIn('COLUNA TOTAL TESTE', pagina)
+            self.assertIn('COLUNA ENTERAL TESTE', pagina)
+            self.assertNotIn('GRUPO LVE TESTE', pagina)
+            self.assertNotIn('COLUNA LVE TESTE', pagina)
+        self.assertIn('GRUPO LVE TESTE', lve)
+        self.assertIn('COLUNA LVE TESTE', lve)
+        self.assertIn('MISTURA NUTRITIVA S/LACTOSE', lve)
+        self.assertNotIn('COLUNA TOTAL TESTE', lve)
+        self.assertNotIn('GRUPO TOTAL TESTE', lve)
+
+        vazio = client.post(
+            '/nutricao/api/cadastro-uma/opcao',
+            json={'tipo': 'suplemento', 'campo': 'coluna', 'nome': '   '},
+        )
+        self.assertEqual(vazio.status_code, 400)
 
 
 if __name__ == '__main__':

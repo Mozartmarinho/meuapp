@@ -76,6 +76,9 @@ from nutricao_service import (
     list_uma_itens,
     gravar_uma_item,
     salvar_cadastro_uma,
+    salvar_opcao_uma,
+    list_opcoes_uma,
+    unir_nomes_uma,
     colunas_faturamento_uma,
     GRUPOS_LVE,
     COLUNAS_TOTALIZACAO_LVE,
@@ -2911,11 +2914,11 @@ def cadastro_uma():
     tipo = _tipo_cadastro_uma(request.args.get('tipo'))
     titulo, page = _CADASTRO_UMA[tipo]
     if tipo == 'lve':
-        grupos = list(GRUPOS_LVE)
-        colunas = list(COLUNAS_TOTALIZACAO_LVE)
+        grupos = unir_nomes_uma(GRUPOS_LVE, list_opcoes_uma('grupo_lve'))
+        colunas = unir_nomes_uma(COLUNAS_TOTALIZACAO_LVE, list_opcoes_uma('coluna_lve'))
     else:
-        grupos = [g['nome'] for g in list_grupos_dieta(somente_ativos=True)]
-        colunas = colunas_faturamento_uma(grupos)
+        grupos = unir_nomes_uma(g['nome'] for g in list_grupos_dieta(somente_ativos=True))
+        colunas = unir_nomes_uma(colunas_faturamento_uma(grupos), list_opcoes_uma('coluna'))
     unidades = [
         u for u in list_unidades(somente_ativas=True)
         if u.get('flag_uma', True)
@@ -2945,6 +2948,23 @@ def _payload_cadastro_uma(d, tipo):
     d = dict(d or {})
     d['tipo'] = tipo
     return d
+
+
+@nutricao.route('/nutricao/api/cadastro-uma/opcao', methods=['POST'])
+def api_cadastro_uma_opcao():
+    seed_nutricao()
+    d = request.get_json(force=True) or {}
+    tipo = _tipo_cadastro_uma(d.get('tipo'))
+    try:
+        nome = salvar_opcao_uma(write_cliente_id(), tipo, d.get('campo'), d.get('nome'))
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': 'Já existe um item com este nome'}), 400
+    return jsonify({'ok': True, 'nome': nome, 'campo': (d.get('campo') or '').strip().lower()})
 
 
 @nutricao.route('/nutricao/api/cadastro-uma', methods=['POST'])
