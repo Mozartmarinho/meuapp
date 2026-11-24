@@ -13,6 +13,7 @@ os.environ['PESAGEM_WA_DISABLE'] = '1'
 from app import create_app  # noqa: E402
 from models import (  # noqa: E402
     Chamado,
+    ChamadoAvaliacao,
     ChamadoMensagem,
     ChamadoTecnico,
     Cliente,
@@ -45,6 +46,7 @@ class FinalizacaoAvisoTest(unittest.TestCase):
 
     def setUp(self):
         ChamadoMensagem.query.delete()
+        ChamadoAvaliacao.query.delete()
         WhatsAppChamadoLog.query.delete()
         Chamado.query.delete()
         ChamadoTecnico.query.delete()

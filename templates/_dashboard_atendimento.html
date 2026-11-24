@@ -1,0 +1,108 @@
+<section class="mdk-dia">
+    <div class="mdk-dia-head">
+        <div>
+            <h2>Atendimento do dia</h2>
+            <p>Hora de abertura, hora em que o técnico começou e hora da finalização. Clique num dia do calendário para ver aquele atendimento.</p>
+        </div>
+        <div class="mdk-dia-nav">
+            <a class="mdk-btn" href="{{ atendimento.href_anterior }}" title="Dia anterior"><i class="fas fa-chevron-left"></i></a>
+            <strong>{{ atendimento.label }}</strong>
+            <a class="mdk-btn" href="{{ atendimento.href_seguinte }}" title="Próximo dia"><i class="fas fa-chevron-right"></i></a>
+            <a class="mdk-btn mdk-btn-teal" href="{{ atendimento.href_hoje }}">Hoje</a>
+        </div>
+    </div>
+
+    <div class="mdk-dia-layout">
+        <div class="mdk-card mdk-cal">
+            <div class="mdk-cal-head">
+                <a href="{{ calendario.href_anterior }}" aria-label="Mês anterior"><i class="fas fa-chevron-left"></i></a>
+                <strong>{{ calendario.mes_label }}</strong>
+                <a href="{{ calendario.href_seguinte }}" aria-label="Próximo mês"><i class="fas fa-chevron-right"></i></a>
+            </div>
+            <div class="mdk-cal-week">
+                <span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span><span>D</span>
+            </div>
+            {% for semana in calendario.semanas %}
+            <div class="mdk-cal-week">
+                {% for cell in semana %}
+                <a class="mdk-cal-day{% if cell.fora %} is-out{% endif %}{% if cell.sel %} is-sel{% endif %}{% if cell.hoje %} is-hoje{% endif %}"
+                   href="{{ cell.href }}">
+                    {{ cell.num }}
+                    {% if cell.qtd and not cell.fora %}<i>{{ cell.qtd }}</i>{% endif %}
+                </a>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="mdk-dia-main">
+            <div class="mdk-dia-cards">
+                <article>
+                    <b>{{ atendimento.abertos }}</b>
+                    <span>Abertos</span>
+                    <small>hora de abertura neste dia</small>
+                </article>
+                <article>
+                    <b>{{ atendimento.em_atendimento }}</b>
+                    <span>Em atendimento</span>
+                    <small>técnico começou neste dia</small>
+                </article>
+                <article>
+                    <b>{{ atendimento.finalizados }}</b>
+                    <span>Finalizados</span>
+                    <small>hora de finalização neste dia</small>
+                </article>
+                <article>
+                    <b>{{ atendimento.pendentes }}</b>
+                    <span>Pendentes</span>
+                    <small>ainda não encerrados</small>
+                </article>
+            </div>
+
+            <div class="mdk-card">
+                <h3>Execução acumulada ao longo do dia</h3>
+                <p class="mdk-ind-sub">Cada linha só sobe: abertura, início do atendimento e finalização.</p>
+                <div class="mdk-dia-chart">
+                    <canvas id="chartAtendimentoDia"></canvas>
+                </div>
+                <script type="application/json" id="atendDiaDados">{{ atendimento.chart|tojson }}</script>
+            </div>
+        </div>
+    </div>
+
+    <div class="mdk-card">
+        <h3>Chamados deste dia</h3>
+        {% if atendimento.linhas %}
+        <div class="mdk-ind-scroll">
+            <table class="mdk-table">
+                <thead>
+                    <tr>
+                        <th>Chamado</th>
+                        <th>Unidade</th>
+                        <th>Técnico</th>
+                        <th>Hora de abertura</th>
+                        <th>Hora de atendimento</th>
+                        <th>Hora de finalização</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for linha in atendimento.linhas %}
+                    <tr>
+                        <td><a href="{{ url_for('main.ver_chamado', id=linha.id) }}">{{ linha.numero }}</a><small>{{ linha.tipo }}</small></td>
+                        <td>{{ linha.unidade }}</td>
+                        <td>{{ linha.tecnico }}</td>
+                        <td>{{ linha.abertura }}</td>
+                        <td>{{ linha.atendimento }}</td>
+                        <td>{{ linha.finalizacao }}</td>
+                        <td>{{ linha.status }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="mdk-empty">Nenhum chamado neste dia.</p>
+        {% endif %}
+    </div>
+</section>

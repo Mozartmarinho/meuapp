@@ -1,0 +1,79 @@
+<section class="mdk-av">
+    <div class="mdk-dia-head">
+        <div>
+            <h2>Avaliações de atendimento</h2>
+            <p>Notas de quem abriu o chamado, depois do encerramento: péssimo, ruim, bom, muito bom ou excelente.</p>
+        </div>
+    </div>
+    <form method="get" action="{{ url_for('main.dashboard') }}#avaliacoes" class="mdk-graf-filtros">
+        {% for chave, valor in qs_av.items() %}
+        <input type="hidden" name="{{ chave }}" value="{{ valor }}">
+        {% endfor %}
+        <label>Período
+            <span class="mdk-ind-periodo">
+                <input class="mdk-select" type="date" name="av_de" value="{{ avaliacoes.de }}" aria-label="De">
+                <input class="mdk-select" type="date" name="av_ate" value="{{ avaliacoes.ate }}" aria-label="Até">
+            </span>
+        </label>
+        <label>Técnico
+            <select class="mdk-select" name="av_tecnico">
+                <option value="">Todos</option>
+                {% for t in tecnicos_graf %}
+                <option value="{{ t.id }}" {% if avaliacoes.tecnico_id == t.id %}selected{% endif %}>{{ t.nome }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Unidade
+            <select class="mdk-select" name="av_unidade">
+                <option value="">Todas</option>
+                {% for u in unidades_av %}
+                <option value="{{ u.id }}" {% if avaliacoes.cliente_id == u.id %}selected{% endif %}>{{ u.nome }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <button type="submit" class="mdk-btn mdk-btn-teal">Filtrar</button>
+        <span class="mdk-graf-total">{{ avaliacoes.total }} avaliaç{{ 'ões' if avaliacoes.total != 1 else 'ão' }} · média {{ avaliacoes.media_txt }}</span>
+    </form>
+
+    <div class="mdk-av-faixas">
+        {% for faixa in avaliacoes.faixas %}
+        <article class="mdk-av-nota mdk-av-{{ faixa.nota }}">
+            <b>{{ faixa.total }}</b>
+            <span>{{ faixa.rotulo }}</span>
+            <small>{{ faixa.pct }}%</small>
+        </article>
+        {% endfor %}
+    </div>
+
+    <div class="mdk-card">
+        <h3>Avaliações do período</h3>
+        {% if avaliacoes.linhas %}
+        <div class="mdk-ind-scroll">
+            <table class="mdk-table">
+                <thead>
+                    <tr>
+                        <th>Quando</th>
+                        <th>Chamado</th>
+                        <th>Unidade</th>
+                        <th>Técnico</th>
+                        <th>Nota</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for linha in avaliacoes.linhas %}
+                    <tr>
+                        <td>{{ linha.quando }}</td>
+                        <td><a href="{{ url_for('main.ver_chamado', id=linha.chamado_id) }}">{{ linha.numero }}</a></td>
+                        <td>{{ linha.unidade }}</td>
+                        <td>{{ linha.tecnico }}</td>
+                        <td><span class="mdk-av-pill mdk-av-{{ linha.nota }}">{{ linha.rotulo }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="mdk-empty">Nenhuma avaliação neste filtro.</p>
+        {% endif %}
+    </div>
+</section>

@@ -26,6 +26,7 @@ from models import (
     db,
     mesa_padrao,
     mesas_ativas,
+    now_brasilia,
 )
 from whatsapp_pesagem import normalizar_telefone, telefone_valido
 
@@ -45,6 +46,7 @@ ETAPA_ITEM = 'wait_item'
 ETAPA_PATRIMONIO = 'wait_patrimonio'
 ETAPA_DEFEITO = 'wait_defeito'
 ETAPA_IDLE = 'idle'
+ETAPA_AVALIACAO = 'avaliacao'
 FUNCOES_AVISO_ABERTURA = ('supervisor', 'gestor')
 MAX_DEFEITO_WHATSAPP = 400
 TIPOS_TICKET = (
@@ -307,6 +309,7 @@ def _criar_chamado_whatsapp(
         patrimonio=patrimonio,
         equipamento_id=equipamento_id,
         equipamento=equipamento,
+        data_criacao=now_brasilia(),
     )
     vig = contrato_vigente(usuario.cliente_id)
     if vig:
@@ -744,6 +747,14 @@ def process_inbound(telefone, texto, sender=None, agora=None, jid=None):
         return {'ok': True, 'replies': replies}
 
     etapa = usuario.etapa or ETAPA_NOVO
+    from chamados_avaliacao import tratar_resposta_avaliacao
+    tratado, resposta, nova_etapa = tratar_resposta_avaliacao(usuario.telefone, texto, etapa)
+    if tratado:
+        if nova_etapa:
+            usuario.etapa = nova_etapa
+        send(resposta)
+        db.session.commit()
+        return {'ok': True, 'replies': replies, 'avaliacao': True}
 
     if not usuario.completo() and etapa in (ETAPA_NOVO, ETAPA_IDLE, ETAPA_CONFIRM, ''):
         usuario.etapa = ETAPA_NOME

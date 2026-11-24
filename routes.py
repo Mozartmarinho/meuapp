@@ -14,6 +14,7 @@ from password_utils import generate_password_hash, check_password_hash
 from models import (
     db,
     Chamado,
+    ChamadoAvaliacao,
     Usuario,
     Cliente,
     Equipamento,
@@ -890,11 +891,30 @@ def _avisar_finalizacao_ticket(chamado, tecnico, o_que_foi_feito, enviar_wa=None
     hora = fmt_brasilia(agora or now_brasilia(), '%d/%m/%Y %H:%M')
     nome = _nome_tecnico_aviso(tecnico)
     texto = montar_texto_finalizacao(chamado, nome, hora, o_que_foi_feito)
+    from chamados_avaliacao import (
+        garantir_avaliacao,
+        pedido_avaliacao_texto,
+        preparar_etapa_whatsapp,
+        telefone_do_chamado,
+    )
+    canal = _canal_abertura_chamado(chamado)
+    contato = _contato_abertura_chamado(chamado, canal)
+    fone = telefone_do_chamado(chamado, canal, contato)
+    avaliacao = garantir_avaliacao(
+        chamado,
+        fone,
+        tecnico_id=getattr(chamado, 'atendente_id', None) or getattr(tecnico, 'id', None),
+    )
+    link = _link_avaliacao(avaliacao.token) if avaliacao else ''
+    extra = pedido_avaliacao_texto(link)
+    texto = texto + '\n' + extra
     html = (
         '<p>Chamado <strong>%s</strong> foi finalizado.</p>'
         '<p><strong>Técnico:</strong> %s<br>'
         '<strong>Horário:</strong> %s</p>'
         '<p><strong>O que foi feito:</strong><br>%s</p>'
+        '<p>O chamado está sendo encerrado. Avalie o atendimento:</p>'
+        '<p>1 Péssimo · 2 Ruim · 3 Bom · 4 Muito bom · 5 Excelente</p>'
         % (
             _html_texto(chamado.numero_chamado or ''),
             _html_texto(nome),
@@ -902,7 +922,9 @@ def _avisar_finalizacao_ticket(chamado, tecnico, o_que_foi_feito, enviar_wa=None
             _html_texto(o_que_foi_feito or 'Não informado.'),
         )
     )
-    return _enviar_aviso_solicitante(
+    if link:
+        html += '<p><a href="%s">Avaliar atendimento</a></p>' % _html_texto(link)
+    resultado = _enviar_aviso_solicitante(
         chamado,
         tecnico,
         texto,
@@ -911,6 +933,30 @@ def _avisar_finalizacao_ticket(chamado, tecnico, o_que_foi_feito, enviar_wa=None
         enviar_wa=enviar_wa,
         enviar_mail=enviar_mail,
     )
+    if fone and canal != 'WhatsApp':
+        try:
+            sender = enviar_wa
+            if sender is None:
+                from whatsapp_pesagem import send_whatsapp
+                sender = send_whatsapp
+            sender(fone, texto)
+        except Exception as exc:
+            print(f'Falha ao enviar avaliação por WhatsApp: {exc}')
+    if fone:
+        try:
+            preparar_etapa_whatsapp(fone)
+        except Exception as exc:
+            print(f'Falha ao preparar resposta de avaliação: {exc}')
+    return resultado
+
+
+def _link_avaliacao(token):
+    if not token:
+        return ''
+    try:
+        return url_for('main.avaliar_atendimento', token=token, _external=True)
+    except Exception:
+        return '/avaliar/%s' % token
 
 
 def _avisar_reagendamento_ticket(chamado, tecnico, observacao=None, enviar_wa=None, enviar_mail=None, agora=None):
@@ -2619,6 +2665,36 @@ def _grafico_finalizados_dashboard(args, mesa_filtro):
     }, opcoes
 
 
+def _preservar_dashboard(excluir):
+    chaves = (
+        'mesa', 'de', 'ate', 'tecnico',
+        'ind_de', 'ind_ate', 'ind_unidade', 'ind_servico', 'ind_tipo',
+        'av_de', 'av_ate', 'av_tecnico', 'av_unidade', 'dia',
+    )
+    fora = set(excluir or ())
+    return {
+        chave: request.args.get(chave)
+        for chave in chaves
+        if request.args.get(chave) and chave not in fora
+    }
+
+
+def _parse_dia_painel(raw):
+    hoje = now_brasilia().date()
+    return _parse_data_filtro(raw, hoje)
+
+
+def _filtros_avaliacao(args):
+    hoje = now_brasilia().date()
+    inicio = _parse_data_filtro(args.get('av_de'), hoje - timedelta(days=29))
+    fim = _parse_data_filtro(args.get('av_ate'), hoje)
+    if inicio > fim:
+        inicio, fim = fim, inicio
+    tecnico = args.get('av_tecnico', type=int)
+    unidade = args.get('av_unidade', type=int)
+    return inicio, fim, tecnico, unidade
+
+
 @main.route('/dashboard')
 @login_required
 def dashboard():
@@ -2700,6 +2776,35 @@ def dashboard():
             })
     tickets_index = [{'id': c.id, 'numero': c.numero_chamado} for c in visiveis]
     graf, tecnicos_graf = _grafico_finalizados_dashboard(request.args, mesa_filtro)
+    dia_painel = _parse_dia_painel(request.args.get('dia'))
+    from chamados_avaliacao import montar_atendimento_dia, montar_calendario, relatorio_avaliacoes
+    av_de, av_ate, av_tec, av_uni = _filtros_avaliacao(request.args)
+    ids_visiveis = [c.id for c in visiveis]
+    hoje_av = now_brasilia().date()
+    unidades_av = []
+    vistos_un = set()
+    for c in visiveis:
+        if c.cliente_id and c.cliente and c.cliente_id not in vistos_un:
+            vistos_un.add(c.cliente_id)
+            unidades_av.append({'id': c.cliente_id, 'nome': c.cliente.nome})
+    unidades_av.sort(key=lambda item: (item['nome'] or '').lower())
+    atendimento = montar_atendimento_dia(visiveis, dia_painel)
+    calendario = montar_calendario(dia_painel, visiveis)
+    qs_dia = _preservar_dashboard(('dia',))
+    qs_av = _preservar_dashboard(('av_de', 'av_ate', 'av_tecnico', 'av_unidade'))
+
+    def _href_dia(dia_iso):
+        return url_for('main.dashboard', dia=dia_iso, **qs_dia) + '#atendimento'
+
+    atendimento['href_anterior'] = _href_dia(atendimento['anterior'])
+    atendimento['href_seguinte'] = _href_dia(atendimento['seguinte'])
+    atendimento['href_hoje'] = _href_dia(calendario['hoje'])
+    calendario['href_anterior'] = _href_dia(calendario['anterior'])
+    calendario['href_seguinte'] = _href_dia(calendario['seguinte'])
+    for semana in calendario['semanas']:
+        for cell in semana:
+            cell['href'] = _href_dia(cell['iso'])
+    avaliacoes = relatorio_avaliacoes(ids_visiveis, av_de, av_ate, av_tec, av_uni)
     dash = {
         'todos': len(visiveis),
         'meus': len(meus),
@@ -2710,7 +2815,6 @@ def dashboard():
         'venc_at': venc_at,
         'venc_sol': venc_sol,
         'sem_respostas': len(sem_resp),
-        'avaliacao': None,
         'pie': pie,
         'pie_total': pie_total,
         'horas': '00:00',
@@ -2731,6 +2835,38 @@ def dashboard():
         graf=graf,
         tecnicos_graf=tecnicos_graf,
         indicadores=_indicadores_dashboard(visiveis, request.args),
+        atendimento=atendimento,
+        calendario=calendario,
+        avaliacoes=avaliacoes,
+        avaliacao_30=relatorio_avaliacoes(
+            ids_visiveis, hoje_av - timedelta(days=29), hoje_av,
+        ),
+        unidades_av=unidades_av,
+        dia_painel=dia_painel.isoformat(),
+        qs_dia=qs_dia,
+        qs_av=qs_av,
+    )
+
+
+@main.route('/avaliar/<token>', methods=['GET', 'POST'])
+def avaliar_atendimento(token):
+    """Página pública em que quem abriu o chamado dá a nota."""
+    from chamados_avaliacao import NOTAS_AVALIACAO, registrar_por_token
+    row = ChamadoAvaliacao.query.filter_by(token=token).first()
+    if not row:
+        return render_template('avaliar_chamado.html', invalido=True), 404
+    mensagem = None
+    if request.method == 'POST' and not row.nota:
+        _row, mensagem = registrar_por_token(token, request.form.get('nota'))
+        row = _row or row
+    chamado = Chamado.query.get(row.chamado_id) if row else None
+    return render_template(
+        'avaliar_chamado.html',
+        invalido=False,
+        avaliacao=row,
+        chamado=chamado,
+        notas=NOTAS_AVALIACAO,
+        mensagem=mensagem,
     )
 
 
@@ -2850,6 +2986,7 @@ def ver_chamado(id):
     historico.sort(key=lambda x: x['quando'] or datetime.min)
     sla = sla_do_chamado(chamado)
     from email_service import smtp_configurado
+    from chamados_avaliacao import avaliacao_do_chamado
     return render_template(
         'chamado_detalhe.html',
         chamado=chamado,
@@ -2871,6 +3008,7 @@ def ver_chamado(id):
         canais=CANAIS_MENSAGEM,
         smtp_ok=smtp_configurado(),
         tab=request.args.get('tab') or '',
+        avaliacao=avaliacao_do_chamado(chamado.id),
     )
 
 @main.route('/novo_chamado', methods=['GET', 'POST'])
@@ -2905,6 +3043,7 @@ def novo_chamado():
                 tecnico_id=session['user_id'],
                 mesa_id=resolver_mesa_id(request.form.get('mesa_id')),
                 setor_tecnico_id=setor_tecnico_id,
+                data_criacao=now_brasilia(),
                 canal_abertura='E-mail',
                 contato_abertura=(getattr(user, 'email', None) or '').strip() or None,
             )

@@ -236,6 +236,7 @@ def garantir_chamado_ocorrencia(eq, prev, dia, hoje=None):
         patrimonio=eq.patrimonio,
         equipamento=eq.nome_equipamento,
         data_reagendamento=dia if futuro else None,
+        data_criacao=now_brasilia(),
     )
     db.session.add(chamado)
     db.session.flush()

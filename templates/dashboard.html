@@ -67,6 +67,8 @@
 
     <div class="mdk-tabs" role="tablist">
         <button type="button" class="mdk-tab is-active" data-dash-tab="tickets">Tickets</button>
+        <button type="button" class="mdk-tab" data-dash-tab="atendimento">Atendimento do dia</button>
+        <button type="button" class="mdk-tab" data-dash-tab="avaliacoes">Avaliações</button>
         <button type="button" class="mdk-tab" data-dash-tab="chats">Chats</button>
         <button type="button" class="mdk-tab" data-dash-tab="recursos">Recursos</button>
     </div>
@@ -140,7 +142,17 @@
             </div>
             <div class="mdk-card mdk-span-4">
                 <h3>Avaliação 30 dias</h3>
-                <p class="mdk-empty">Sem avaliações neste sistema.</p>
+                {% if avaliacao_30.total %}
+                <p class="mdk-av-media"><b>{{ avaliacao_30.media_txt }}</b><span>média · {{ avaliacao_30.total }} nota{{ 's' if avaliacao_30.total != 1 else '' }}</span></p>
+                <ul class="mdk-note-list">
+                    {% for faixa in avaliacao_30.faixas %}
+                    <li><strong>{{ faixa.rotulo }}</strong> <small>{{ faixa.total }} · {{ faixa.pct }}%</small></li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="mdk-empty">Nenhuma avaliação nos últimos 30 dias.</p>
+                {% endif %}
+                <p><a href="#avaliacoes">Abrir relatório</a></p>
             </div>
             <div class="mdk-card mdk-span-4">
                 <h3>Últimas notificações</h3>
@@ -323,6 +335,14 @@
         </div>
     </div>
 
+    <div class="mdk-panel" data-panel="atendimento" hidden>
+        {% include '_dashboard_atendimento.html' %}
+    </div>
+
+    <div class="mdk-panel" data-panel="avaliacoes" hidden>
+        {% include '_dashboard_avaliacoes.html' %}
+    </div>
+
     <div class="mdk-panel" data-panel="recursos" hidden>
         <div class="mdk-kpi-row">
             <div><b>0</b><span>Todos</span></div>
@@ -360,18 +380,53 @@
     }
     function tabFromHash() {
         const h = (location.hash || '').replace('#', '').toLowerCase();
-        if (h === 'chats' || h === 'recursos' || h === 'tickets') showTab(h);
+        const known = ['chats', 'recursos', 'tickets', 'atendimento', 'avaliacoes'];
+        if (known.indexOf(h) >= 0) showTab(h);
+        else if (new URLSearchParams(location.search).get('dia')) showTab('atendimento');
         else showTab('tickets');
+        if ((location.hash || '').replace('#', '') === 'atendimento' || (h === '' && new URLSearchParams(location.search).get('dia'))) {
+            renderChartDia();
+        }
     }
     document.querySelectorAll('.mdk-tab').forEach(function (btn) {
         btn.addEventListener('click', function () {
             const name = btn.getAttribute('data-dash-tab');
             history.replaceState(null, '', '#' + name);
             showTab(name);
+            if (name === 'atendimento') renderChartDia();
         });
     });
     window.addEventListener('hashchange', tabFromHash);
     tabFromHash();
+
+    let chartDia = null;
+    function renderChartDia() {
+        const canvas = document.getElementById('chartAtendimentoDia');
+        const raw = document.getElementById('atendDiaDados');
+        if (!canvas || !raw || typeof Chart === 'undefined') return;
+        if (chartDia) {
+            chartDia.resize();
+            return;
+        }
+        const dados = JSON.parse(raw.textContent || '{}');
+        chartDia = new Chart(canvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: dados.labels || [],
+                datasets: [
+                    { label: 'Abertos', data: dados.abertos || [], borderColor: '#1a9e86', backgroundColor: 'rgba(26,158,134,.12)', stepped: true, fill: false, tension: 0, pointRadius: 0, borderWidth: 2 },
+                    { label: 'Em atendimento', data: dados.atendimento || [], borderColor: '#3498db', backgroundColor: 'transparent', stepped: true, fill: false, pointRadius: 0, borderWidth: 2 },
+                    { label: 'Finalizados', data: dados.finalizados || [], borderColor: '#e74c3c', backgroundColor: 'transparent', stepped: true, fill: false, pointRadius: 0, borderWidth: 2 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } },
+                scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+            }
+        });
+    }
 
     document.getElementById('btnModoTv').addEventListener('click', function () {
         document.body.classList.toggle('mdk-tv');

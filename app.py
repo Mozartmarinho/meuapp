@@ -316,6 +316,10 @@ def ensure_chamados_schema():
     try:
         insp = inspect(db.engine)
         tables = set(insp.get_table_names())
+        if 'chamados' in tables and 'chamado_avaliacoes' not in tables:
+            from models import ChamadoAvaliacao
+            ChamadoAvaliacao.__table__.create(db.engine, checkfirst=True)
+            tables.add('chamado_avaliacoes')
         if 'chamados' not in tables:
             return
         cols = {c['name'] for c in insp.get_columns('chamados')}

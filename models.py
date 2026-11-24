@@ -1052,6 +1052,25 @@ class ChamadoMensagem(db.Model):
     usuario = db.relationship('Usuario', foreign_keys=[usuario_id])
 
 
+class ChamadoAvaliacao(db.Model):
+    """Nota do solicitante depois que o chamado é finalizado."""
+    __tablename__ = 'chamado_avaliacoes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    chamado_id = db.Column(db.Integer, db.ForeignKey('chamados.id'), nullable=False, unique=True, index=True)
+    nota = db.Column(db.Integer)
+    rotulo = db.Column(db.String(20))
+    tecnico_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), index=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), index=True)
+    telefone = db.Column(db.String(20), index=True)
+    token = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    criada_em = db.Column(db.DateTime, default=now_brasilia)
+    avaliada_em = db.Column(db.DateTime)
+    chamado = db.relationship('Chamado', backref=db.backref('avaliacao', uselist=False))
+    tecnico = db.relationship('Usuario', foreign_keys=[tecnico_id])
+    cliente = db.relationship('Cliente', foreign_keys=[cliente_id])
+
+
 class ChamadoAutomacao(db.Model):
     """Regras simples: ao criar (prioridade) ou ao mudar status → nota / mesa."""
     __tablename__ = 'chamado_automacoes'
