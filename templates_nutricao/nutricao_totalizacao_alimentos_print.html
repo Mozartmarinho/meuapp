@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ r.titulo }} — {{ r.data_label }}</title>
+  <style>
+    @page { margin: 8mm; size: A4 landscape; }
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      color: #000;
+      margin: 0;
+      padding: 10px 12px 20px;
+      font-size: 10px;
+    }
+    .head-top {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 2px;
+      font-size: 10px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 13px;
+      margin: 2px 0 6px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    h2 {
+      text-align: center;
+      font-size: 12px;
+      margin: 8px 0 4px;
+      letter-spacing: 0.04em;
+    }
+    h3 {
+      font-size: 11px;
+      margin: 8px 0 4px;
+    }
+    .filtros { font-size: 10px; margin-bottom: 6px; line-height: 1.35; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    th, td { border: 1px solid #000; padding: 2px 3px; vertical-align: middle; }
+    th {
+      font-size: 8px;
+      text-align: center;
+      background: #f3f3f3;
+      font-weight: 700;
+    }
+    th.item, td.nome { text-align: left; font-size: 9px; white-space: nowrap; }
+    th.col {
+      font-size: 7px;
+      line-height: 1.05;
+      max-width: 46px;
+      word-break: break-word;
+    }
+    td.num { text-align: center; font-variant-numeric: tabular-nums; font-size: 9px; }
+    tr.geral td { font-weight: 700; background: #eee; }
+    .vazio { text-align: center; padding: 10px; color: #333; }
+    .bloco { page-break-after: always; }
+    .bloco:last-child { page-break-after: auto; }
+    .foot {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 8px;
+      font-size: 9px;
+      color: #333;
+    }
+    .no-print { margin-bottom: 10px; }
+    @media print {
+      .no-print { display: none !important; }
+      body { padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <button onclick="window.print()">Imprimir</button>
+    <button onclick="window.close()" style="margin-left:6px">Fechar</button>
+  </div>
+
+  {% for bloco in r.blocos %}
+  <section class="bloco">
+    <div class="head-top">
+      <span>DATA: {{ r.data_label }}</span>
+      <span>{{ bloco.meal_label }}</span>
+      <span>Data/hora impressão: {{ r.data_hora_relatorio }}</span>
+    </div>
+    <h1>São Geraldo Refeições e Alimentos</h1>
+    <h2>{{ r.titulo }}</h2>
+    <div class="filtros">
+      <strong>{% if r.imprimir_por == 'enfermaria' %}Enfermarias{% else %}Clínicas{% endif %}:</strong>
+      {{ r.filtros_label }}
+      &nbsp;·&nbsp;
+      <strong>Refeição:</strong> {{ bloco.meal_label }}
+    </div>
+
+    {% for tab in bloco.tabelas %}
+      {% if r.modo == 'substituicao' %}<h3>{{ tab.titulo }}</h3>{% endif %}
+      {% if tab.linhas %}
+      <table>
+        <thead>
+          <tr>
+            <th class="item">ITEM</th>
+            {% for c in tab.colunas %}
+            <th class="col">{{ c.label }}</th>
+            {% endfor %}
+            <th class="col">TOTAL</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in tab.linhas %}
+          <tr>
+            <td class="nome">{{ row.nome }}</td>
+            {% for c in tab.colunas %}
+            <td class="num">{% if row[c.key] %}{{ row[c.key] }}{% endif %}</td>
+            {% endfor %}
+            <td class="num">{{ row.total }}</td>
+          </tr>
+          {% endfor %}
+          <tr class="geral">
+            <td class="nome">TOTAL</td>
+            {% for c in tab.colunas %}
+            <td class="num">{% if tab.totais[c.key] %}{{ tab.totais[c.key] }}{% endif %}</td>
+            {% endfor %}
+            <td class="num">{{ tab.totais.total }}</td>
+          </tr>
+        </tbody>
+      </table>
+      {% else %}
+      <p class="vazio">Nenhum item nesta refeição para os filtros selecionados.</p>
+      {% endif %}
+    {% endfor %}
+
+    <div class="foot">
+      <span>
+        {% if r.modo == 'substituicao' %}
+        {{ bloco.trocas }} paciente(s) com substituição
+        {% else %}
+        {{ bloco.porcoes }} porção(ões) de alimento
+        {% endif %}
+      </span>
+      <span>São Geraldo Service — Nutrição Hospitalar</span>
+    </div>
+  </section>
+  {% endfor %}
+
+  <script>
+    window.addEventListener('load', function(){
+      setTimeout(function(){ window.print(); }, 350);
+    });
+  </script>
+</body>
+</html>

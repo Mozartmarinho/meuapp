@@ -24,6 +24,7 @@
     })();
     </script>
     {% set cadastro_pages = active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_categorias','cadastro_grupos_dietas','cadastro_dietas','cadastro_vias','cadastro_uma_formula','cadastro_uma_enteral','cadastro_uma_suplemento','cadastro_uma_lve','cadastro_tipos_refeicao','cadastro_cardapios','cadastro_precos_refeicoes','cadastro_nutricional','cadastro_pratos_liquidos','cadastro_produtos','cadastro_fornecedores','cadastro_etiquetas'] %}
+    {% set financeiro_pages = active_page in ['relatorios','faturamento','faturamento_valores'] %}
     <header class="app-topbar">
         <button type="button" class="menu-toggle" id="menuToggle" aria-label="Recuar menu" aria-expanded="true" aria-controls="appSidebar">
             <i class="fas fa-bars"></i>
@@ -203,12 +204,6 @@
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('nutricao.relatorios') }}" class="{% if active_page == 'relatorios' %}active{% endif %}" title="Análise de Custos">
-                    <i class="fas fa-chart-bar menu-icon"></i>
-                    <span class="menu-label">Análise de Custos</span>
-                </a>
-            </li>
-            <li>
                 <a href="{{ url_for('nutricao.relatorio_mapa_uma') }}" class="{% if active_page == 'relatorio_mapa_uma' %}active{% endif %}" title="Mapa U.M.A.">
                     <i class="fas fa-print menu-icon"></i>
                     <span class="menu-label">Mapa U.M.A.</span>
@@ -224,12 +219,6 @@
                 <a href="{{ url_for('nutricao.evolucao_paciente') }}" class="{% if active_page == 'evolucao' %}active{% endif %}" title="Evolução do paciente">
                     <i class="fas fa-heartbeat menu-icon"></i>
                     <span class="menu-label">Evolução do paciente</span>
-                </a>
-            </li>
-            <li>
-                <a href="{{ url_for('nutricao.totalizacao_direta') }}" class="{% if active_page == 'totalizacao_direta' %}active{% endif %}" title="Totalização direta">
-                    <i class="fas fa-list-ol menu-icon"></i>
-                    <span class="menu-label">Totalização direta</span>
                 </a>
             </li>
             <li>
@@ -251,28 +240,55 @@
                 </a>
             </li>
             <li>
-                <a href="/nutricao/totalizacao-dietas" class="{% if active_page == 'totalizacao_dietas' %}active{% endif %}" title="Totalização de Dietas">
-                    <i class="fas fa-calculator menu-icon"></i>
-                    <span class="menu-label">Totalização de Dietas</span>
-                </a>
-            </li>
-            <li>
                 <a href="{{ url_for('nutricao.totalizacao_dietas_refeicoes') }}" class="{% if active_page == 'totalizacao_dietas_refeicoes' %}active{% endif %}" title="Totalização de dietas e refeições">
                     <i class="fas fa-utensils menu-icon"></i>
                     <span class="menu-label">Totalização de dietas e refeições</span>
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('nutricao.faturamento') }}" class="{% if active_page == 'faturamento' %}active{% endif %}" title="Faturamento">
-                    <i class="fas fa-file-invoice-dollar menu-icon"></i>
-                    <span class="menu-label">Faturamento</span>
+                <a href="{{ url_for('nutricao.totalizacao_substituicoes') }}" class="{% if active_page == 'totalizacao_substituicoes' %}active{% endif %}" title="Totalização de substituição de alimentos">
+                    <i class="fas fa-exchange-alt menu-icon"></i>
+                    <span class="menu-label">Totalização de substituições</span>
                 </a>
             </li>
             <li>
-                <a href="{{ url_for('nutricao.faturamento_valores') }}" class="{% if active_page == 'faturamento_valores' %}active{% endif %}" title="Faturamento com valores">
-                    <i class="fas fa-coins menu-icon"></i>
-                    <span class="menu-label">Faturamento com valores</span>
+                <a href="{{ url_for('nutricao.totalizacao_consumo') }}" class="{% if active_page == 'totalizacao_consumo' %}active{% endif %}" title="Totalização do consumo com substituição">
+                    <i class="fas fa-chart-bar menu-icon"></i>
+                    <span class="menu-label">Totalização do consumo</span>
                 </a>
+            </li>
+            <li>
+                <a href="{{ url_for('nutricao.cardapio_servido') }}" class="{% if active_page == 'cardapio_servido' %}active{% endif %}" title="Impressão do cardápio servido">
+                    <i class="fas fa-book-open menu-icon"></i>
+                    <span class="menu-label">Cardápio servido</span>
+                </a>
+            </li>
+            <li>
+                <a href="javascript:void(0);" onclick="toggleFinanceiroMenu()" class="{% if financeiro_pages %}active{% endif %}" title="Financeiro">
+                    <i class="fas fa-file-invoice-dollar menu-icon"></i>
+                    <span class="menu-label">Financeiro</span>
+                    <i id="financeiro-chevron" class="fas fa-chevron-right chevron {% if financeiro_pages %}open{% endif %}"></i>
+                </a>
+                <ul id="financeiro-submenu" class="sidebar-submenu {% if financeiro_pages %}open{% endif %}">
+                    <li>
+                        <a href="{{ url_for('nutricao.relatorios') }}" class="{% if active_page == 'relatorios' %}active{% endif %}" title="Análise de Custos">
+                            <i class="fas fa-chart-bar menu-icon"></i>
+                            <span class="menu-label">Análise de Custos</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.faturamento') }}" class="{% if active_page == 'faturamento' %}active{% endif %}" title="Faturamento">
+                            <i class="fas fa-file-invoice-dollar menu-icon"></i>
+                            <span class="menu-label">Faturamento</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.faturamento_valores') }}" class="{% if active_page == 'faturamento_valores' %}active{% endif %}" title="Faturamento com valores">
+                            <i class="fas fa-coins menu-icon"></i>
+                            <span class="menu-label">Faturamento com valores</span>
+                        </a>
+                    </li>
+                </ul>
             </li>
             <li>
                 <a href="{{ url_for('nutricao.configuracoes_sistema') }}" class="{% if active_page == 'config_uma' %}active{% endif %}" title="Configurações">
@@ -357,16 +373,22 @@
     function confirmarModal() {
         if (window._cb) { window._cb(); } else { fecharModal(); }
     }
-    function toggleCadastroMenu() {
+    function toggleSidebarSubmenu(submenuId, chevronId) {
         if (document.body.classList.contains('sidebar-collapsed')
             && window.matchMedia('(min-width: 769px)').matches) {
             return;
         }
-        var submenu = document.getElementById('cadastro-submenu');
-        var chevron = document.getElementById('cadastro-chevron');
+        var submenu = document.getElementById(submenuId);
+        var chevron = document.getElementById(chevronId);
         if (!submenu || !chevron) return;
         submenu.classList.toggle('open');
         chevron.classList.toggle('open');
+    }
+    function toggleCadastroMenu() {
+        toggleSidebarSubmenu('cadastro-submenu', 'cadastro-chevron');
+    }
+    function toggleFinanceiroMenu() {
+        toggleSidebarSubmenu('financeiro-submenu', 'financeiro-chevron');
     }
 
     /** Após salvar paciente novo: pergunta se deseja incluir acompanhante. */

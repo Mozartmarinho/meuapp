@@ -101,6 +101,9 @@ from nutricao_service import (
     relatorio_faturamento_valores,
     totalizacao_dietas as gerar_totalizacao_dietas,
     totalizacao_dietas_refeicoes as gerar_totalizacao_dietas_refeicoes,
+    totalizacao_substituicao_alimentos as gerar_totalizacao_substituicoes,
+    totalizacao_consumo_alimentos as gerar_totalizacao_consumo,
+    impressao_cardapio_servido as gerar_cardapio_servido,
     listar_avisos_alta_mapa,
     aplicar_avisos_alta_mapa,
     registrar_saida_mapa,
@@ -4161,6 +4164,114 @@ def totalizacao_dietas_refeicoes_imprimir():
         'nutricao_totalizacao_dietas_refeicoes_print.html',
         r=rel,
         **active('totalizacao_dietas_refeicoes')
+    )
+
+
+def _filtros_alimentos_ctx():
+    return dict(
+        clinicas=_list_clinicas_db(somente_ativas=False),
+        enfermarias=list_enfermarias(somente_ativas=True),
+        data_padrao=date.today().isoformat(),
+    )
+
+
+def _args_totalizacao_alimentos():
+    data_ref = _parse_date(request.args.get('data')) or date.today()
+    imprimir_por = (request.args.get('imprimir_por') or 'clinica').strip()
+    filtros = [x for x in (request.args.get('filtros') or '').split('|') if x.strip()]
+    horarios = [x for x in (request.args.get('horarios') or '').split(',') if x.strip()]
+    return data_ref, imprimir_por, filtros, horarios
+
+
+@nutricao.route('/nutricao/totalizacao-substituicoes')
+def totalizacao_substituicoes():
+    seed_nutricao()
+    return render_template(
+        'nutricao_totalizacao_alimentos.html',
+        titulo='Totalização de substituição de alimentos',
+        subtitulo='Só o que foi trocado no cardápio: o que entrou e o que saiu, por clínica ou enfermaria.',
+        imprimir_url='/nutricao/totalizacao-substituicoes/imprimir',
+        **_filtros_alimentos_ctx(),
+        **active('totalizacao_substituicoes')
+    )
+
+
+@nutricao.route('/nutricao/totalizacao-substituicoes/imprimir')
+def totalizacao_substituicoes_imprimir():
+    seed_nutricao()
+    data_ref, imprimir_por, filtros, horarios = _args_totalizacao_alimentos()
+    rel = gerar_totalizacao_substituicoes(
+        data_ref=data_ref,
+        imprimir_por=imprimir_por,
+        filtros=filtros,
+        horarios=horarios,
+    )
+    return render_template(
+        'nutricao_totalizacao_alimentos_print.html',
+        r=rel,
+        **active('totalizacao_substituicoes')
+    )
+
+
+@nutricao.route('/nutricao/totalizacao-consumo')
+def totalizacao_consumo():
+    seed_nutricao()
+    return render_template(
+        'nutricao_totalizacao_alimentos.html',
+        titulo='Totalização do consumo (com substituição)',
+        subtitulo='Tudo que foi servido ou gasto no dia, já com a substituição aplicada no cardápio.',
+        imprimir_url='/nutricao/totalizacao-consumo/imprimir',
+        **_filtros_alimentos_ctx(),
+        **active('totalizacao_consumo')
+    )
+
+
+@nutricao.route('/nutricao/totalizacao-consumo/imprimir')
+def totalizacao_consumo_imprimir():
+    seed_nutricao()
+    data_ref, imprimir_por, filtros, horarios = _args_totalizacao_alimentos()
+    rel = gerar_totalizacao_consumo(
+        data_ref=data_ref,
+        imprimir_por=imprimir_por,
+        filtros=filtros,
+        horarios=horarios,
+    )
+    return render_template(
+        'nutricao_totalizacao_alimentos_print.html',
+        r=rel,
+        **active('totalizacao_consumo')
+    )
+
+
+@nutricao.route('/nutricao/cardapio-servido')
+def cardapio_servido():
+    seed_nutricao()
+    return render_template(
+        'nutricao_cardapio_servido.html',
+        clinicas=_list_clinicas_db(somente_ativas=False),
+        enfermarias=list_enfermarias(somente_ativas=True),
+        data_padrao=date.today().isoformat(),
+        **active('cardapio_servido')
+    )
+
+
+@nutricao.route('/nutricao/cardapio-servido/imprimir')
+def cardapio_servido_imprimir():
+    seed_nutricao()
+    data_ref = _parse_date(request.args.get('data')) or date.today()
+    clinicas = [x for x in (request.args.get('clinicas') or '').split('|') if x.strip()]
+    enfermarias = [x for x in (request.args.get('enfermarias') or '').split('|') if x.strip()]
+    horarios = [x for x in (request.args.get('horarios') or '').split(',') if x.strip()]
+    rel = gerar_cardapio_servido(
+        data_ref=data_ref,
+        clinicas=clinicas,
+        enfermarias=enfermarias,
+        horarios=horarios,
+    )
+    return render_template(
+        'nutricao_cardapio_servido_print.html',
+        r=rel,
+        **active('cardapio_servido')
     )
 
 

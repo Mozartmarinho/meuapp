@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Cardápio servido — {{ r.data_label }}</title>
+  <style>
+    @page { margin: 10mm; size: A4 portrait; }
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      color: #000;
+      margin: 0;
+      padding: 12px 14px 24px;
+      font-size: 11px;
+    }
+    .head-top {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 2px;
+      font-size: 10px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 14px;
+      margin: 2px 0 4px;
+      text-transform: uppercase;
+    }
+    h2 { text-align: center; font-size: 12px; margin: 0 0 8px; }
+    h3 {
+      font-size: 12px;
+      margin: 12px 0 4px;
+      border-bottom: 1px solid #000;
+      padding-bottom: 2px;
+    }
+    h4 { font-size: 11px; margin: 8px 0 4px; }
+    .filtros { font-size: 10px; margin-bottom: 8px; line-height: 1.4; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+    th, td { border: 1px solid #000; padding: 3px 5px; vertical-align: top; }
+    th { background: #f3f3f3; font-size: 10px; text-align: left; }
+    td.leito { width: 52px; text-align: center; }
+    td.nome { width: 28%; }
+    td.dieta { width: 18%; }
+    .subst { font-weight: 700; }
+    .nota { color: #333; font-size: 10px; }
+    .vazio { text-align: center; padding: 12px; }
+    .bloco { page-break-after: always; }
+    .bloco:last-child { page-break-after: auto; }
+    .foot {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 10px;
+      font-size: 10px;
+    }
+    .no-print { margin-bottom: 10px; }
+    @media print {
+      .no-print { display: none !important; }
+      body { padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <button onclick="window.print()">Imprimir</button>
+    <button onclick="window.close()" style="margin-left:6px">Fechar</button>
+  </div>
+
+  {% for bloco in r.blocos %}
+  <section class="bloco">
+    <div class="head-top">
+      <span>DATA: {{ r.data_label }}</span>
+      <span>{{ bloco.meal_label }}</span>
+      <span>Data/hora impressão: {{ r.data_hora_relatorio }}</span>
+    </div>
+    <h1>São Geraldo Refeições e Alimentos</h1>
+    <h2>CARDÁPIO SERVIDO — {{ bloco.meal_label }}</h2>
+    <div class="filtros">
+      <strong>Clínicas:</strong> {{ r.clinicas_label }}
+      &nbsp;·&nbsp;
+      <strong>Enfermarias:</strong> {{ r.enfermarias_label }}
+      <br>
+      Item em negrito entrou por substituição. O que foi retirado aparece em seguida.
+    </div>
+
+    {% if bloco.grupos %}
+      {% for g in bloco.grupos %}
+      <h3>{{ g.clinica }}</h3>
+        {% for enf in g.enfermarias %}
+        <h4>{{ enf.enfermaria }}</h4>
+        <table>
+          <thead>
+            <tr>
+              <th>Leito</th>
+              <th>Paciente</th>
+              <th>Dieta</th>
+              <th>Cardápio servido</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in enf.linhas %}
+            <tr>
+              <td class="leito">{{ row.leito }}</td>
+              <td class="nome">
+                {{ row.nome }}
+                {% if row.tipo != 'Paciente' %}<div class="nota">{{ row.tipo }}</div>{% endif %}
+              </td>
+              <td class="dieta">{{ row.dieta }}</td>
+              <td>
+                {% if row.pratos %}
+                  {% for p in row.pratos %}
+                    {% if not loop.first %} · {% endif %}
+                    {% if p.substituido %}<span class="subst">{{ p.nome }}</span>{% else %}{{ p.nome }}{% endif %}
+                  {% endfor %}
+                {% else %}
+                  <span class="nota">Sem itens no cardápio desta refeição.</span>
+                {% endif %}
+                {% if row.retirados %}
+                  <div class="nota">Retirado: {{ row.retirados|join(', ') }}</div>
+                {% endif %}
+                {% if row.extras %}
+                  <div class="nota">Extras: {{ row.extras }}</div>
+                {% endif %}
+                {% if row.suplementos %}
+                  <div class="nota">Suplementos: {{ row.suplementos }}</div>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endfor %}
+      {% endfor %}
+    {% else %}
+      <p class="vazio">Nenhum cardápio para esta refeição com os filtros selecionados.</p>
+    {% endif %}
+
+    <div class="foot">
+      <span>{{ bloco.total }} lançamento(s)</span>
+      <span>São Geraldo Service — Nutrição Hospitalar</span>
+    </div>
+  </section>
+  {% endfor %}
+
+  <script>
+    window.addEventListener('load', function(){
+      setTimeout(function(){ window.print(); }, 350);
+    });
+  </script>
+</body>
+</html>

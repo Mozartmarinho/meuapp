@@ -6819,6 +6819,585 @@ def totalizacao_dietas_refeicoes(
     }
 
 
+# ---- Totalização de alimentos (substituição e consumo) e cardápio servido ----
+
+_MEAL_ORDEM_REL = ('desjejum', 'colacao', 'almoco', 'merenda', 'jantar', 'ceia')
+
+
+def _meals_escolhidos(horarios):
+    """Mantém a ordem Desjejum → Ceia. Vazio significa todas as refeições."""
+    vistos = []
+    for h in horarios or []:
+        meal = tipo_refeicao_para_meal(h)
+        if meal and meal not in vistos:
+            vistos.append(meal)
+    if not vistos:
+        vistos = list(_MEAL_ORDEM_REL)
+    escolhidos = set(vistos)
+    return [m for m in _MEAL_ORDEM_REL if m in escolhidos]
+
+
+def _resolver_filtro_local(imprimir_por, filtros):
+    """Traduz o multi-select da tela em clínicas ou enfermarias do mapa."""
+    filtros = [str(f).strip() for f in (filtros or []) if str(f).strip()]
+    filtros_upper = {f.upper() for f in filtros}
+    todos = (not filtros) or ('TODOS' in filtros_upper)
+    ctx = {
+        'todos': todos,
+        'imprimir_por': imprimir_por if imprimir_por in ('clinica', 'enfermaria') else 'clinica',
+        'labels': ['TODOS'] if todos else [],
+        'nomes_clinica': set(),
+        'nomes_enf': set(),
+        'leitos': set(),
+    }
+    if todos:
+        return ctx
+
+    if ctx['imprimir_por'] == 'enfermaria':
+        ids = [int(x) for x in filtros if str(x).isdigit()]
+        enfs = []
+        if ids:
+            enfs.extend(_q(NutEnfermaria).filter(NutEnfermaria.id.in_(ids)).all())
+        nomes_txt = [f for f in filtros if not str(f).isdigit()]
+        if nomes_txt:
+            enfs.extend(
+                _q(NutEnfermaria).filter(
+                    db.func.upper(NutEnfermaria.nome).in_([n.upper() for n in nomes_txt])
+                ).all()
+            )
+        vistos = set()
+        for e in enfs:
+            if e.id in vistos:
+                continue
+            vistos.add(e.id)
+            ctx['labels'].append(e.nome)
+            if e.nome:
+                ctx['nomes_enf'].add(e.nome.strip().upper())
+            for lt in (e.leitos or []):
+                if lt.nome:
+                    ctx['leitos'].add(lt.nome.strip().upper())
+                if lt.numero is not None:
+                    ctx['leitos'].add(str(lt.numero).strip().upper())
+        for n in nomes_txt:
+            if n.upper() not in ctx['nomes_enf']:
+                ctx['nomes_enf'].add(n.upper())
+                ctx['labels'].append(n)
+        return ctx
+
+    ids = [int(x) for x in filtros if str(x).isdigit()]
+    if ids:
+        for c in _q(NutClinica).filter(NutClinica.id.in_(ids)).all():
+            if c.nome:
+                ctx['nomes_clinica'].add(c.nome.strip().upper())
+                ctx['labels'].append(c.nome)
+    for f in filtros:
+        if not str(f).isdigit():
+            ctx['nomes_clinica'].add(f.upper())
+            if f not in ctx['labels']:
+                ctx['labels'].append(f)
+    return ctx
+
+
+def _linha_no_filtro(linha, ctx):
+    if ctx['todos']:
+        return True
+    clinica = (linha.clinica or '').strip().upper()
+    enfermaria = (getattr(linha, 'enfermaria', None) or '').strip().upper()
+    leito = (linha.leito or '').strip().upper()
+    if ctx['imprimir_por'] == 'enfermaria':
+        if enfermaria in ctx['nomes_enf'] or leito in ctx['leitos'] or clinica in ctx['nomes_enf']:
+            return True
+        return any(n and (n in clinica or n in enfermaria) for n in ctx['nomes_enf'])
+    return clinica in ctx['nomes_clinica']
+
+
+def _coluna_local(clinica, enfermaria, imprimir_por, fallback='SEM LOCAL'):
+    if imprimir_por == 'enfermaria':
+        nome = (enfermaria or '').strip() or (clinica or '').strip()
+    else:
+        nome = (clinica or '').strip()
+    return nome or fallback
+
+
+def _nova_contagem():
+    return {'itens': {}, 'colunas': {}}
+
+
+def _acumular_item(bucket, nome, coluna, qtd=1):
+    nome_txt = ' '.join(str(nome or '').split())
+    col_txt = ' '.join(str(coluna or '').split()) or 'SEM LOCAL'
+    try:
+        qtd = int(qtd)
+    except (TypeError, ValueError):
+        return
+    if not nome_txt or qtd <= 0:
+        return
+    chave = _norm_txt(nome_txt)
+    col_chave = _norm_txt(col_txt)
+    bucket['colunas'].setdefault(col_chave, col_txt)
+    item = bucket['itens'].setdefault(chave, {'nome': nome_txt.upper(), 'cols': {}})
+    item['cols'][col_chave] = item['cols'].get(col_chave, 0) + qtd
+
+
+def _matriz_de(bucket):
+    col_chaves = sorted(bucket['colunas'], key=lambda k: bucket['colunas'][k].upper())
+    colunas = [
+        {'key': f'c{i}', 'label': bucket['colunas'][chave]}
+        for i, chave in enumerate(col_chaves)
+    ]
+    idx = {chave: col['key'] for chave, col in zip(col_chaves, colunas)}
+    linhas = []
+    totais = {c['key']: 0 for c in colunas}
+    totais['total'] = 0
+    for chave in sorted(bucket['itens'], key=lambda k: bucket['itens'][k]['nome']):
+        item = bucket['itens'][chave]
+        row = {'nome': item['nome'], 'total': 0}
+        for c in colunas:
+            row[c['key']] = 0
+        for col_chave, qtd in item['cols'].items():
+            key = idx.get(col_chave)
+            if not key:
+                continue
+            row[key] += qtd
+            row['total'] += qtd
+            totais[key] += qtd
+            totais['total'] += qtd
+        if row['total']:
+            linhas.append(row)
+    return {'colunas': colunas, 'linhas': linhas, 'totais': totais}
+
+
+def _pares_da_refeicao(linha, meal):
+    bruto = linha.get_substituicoes() if hasattr(linha, 'get_substituicoes') else {}
+    bloco = normalize_substituicoes(bruto).get(meal) or {}
+    return [
+        p for p in (bloco.get('pares') or [])
+        if (p.get('remover') or '').strip() or (p.get('adicionar') or '').strip()
+    ]
+
+
+def _pratos_padrao(dieta, dieta_id, meal, data_ref):
+    card = find_cardapio_for_meal(
+        dieta, meal, data_ref, dieta_id=dieta_id, exigir_dieta=True,
+    )
+    return list(card.pratos) if card else []
+
+
+def _linhas_mapa_dia(data_ref):
+    garantir_mapa_do_dia(data_ref)
+    return (
+        _q(NutMapaRefeicao)
+        .filter_by(data_refeicao=data_ref, ativo=True)
+        .order_by(
+            NutMapaRefeicao.clinica,
+            NutMapaRefeicao.enfermaria,
+            NutMapaRefeicao.leito,
+            NutMapaRefeicao.nome,
+        )
+        .all()
+    )
+
+
+def _acompanhantes_do_dia(data_ref):
+    from sqlalchemy import or_
+    return (
+        _q(NutRefeicaoAcompanhante)
+        .filter(NutRefeicaoAcompanhante.ativo.is_(True))
+        .filter(or_(
+            NutRefeicaoAcompanhante.data_saida.is_(None),
+            NutRefeicaoAcompanhante.data_saida > data_ref,
+        ))
+        .filter(or_(
+            NutRefeicaoAcompanhante.data_refeicao == data_ref,
+            NutRefeicaoAcompanhante.data_refeicao.is_(None),
+        ))
+        .all()
+    )
+
+
+def _funcionarios_do_dia(data_ref):
+    from sqlalchemy import or_
+    return (
+        _q(NutRefeicaoFuncionario)
+        .filter(NutRefeicaoFuncionario.ativo.is_(True))
+        .filter(or_(
+            NutRefeicaoFuncionario.data_refeicao == data_ref,
+            NutRefeicaoFuncionario.data_refeicao.is_(None),
+        ))
+        .all()
+    )
+
+
+def _refeicao_extra_vale(row, meal):
+    """Acompanhante e funcionário só têm almoço e jantar."""
+    if meal not in ('almoco', 'jantar'):
+        return False
+    flag = getattr(row, MEAL_FLAG_FIELD[meal], None)
+    return True if flag is None else bool(flag)
+
+
+def _dieta_extra(row):
+    dieta = (getattr(row, 'refeicao', None) or '').strip()
+    if not dieta and getattr(row, 'dieta_rel', None) is not None:
+        dieta = (row.dieta_rel.nome or '').strip()
+    return dieta, getattr(row, 'dieta_id', None)
+
+
+def _locais_por_paciente(linhas):
+    locais = {}
+    for linha in linhas:
+        if not linha.paciente_id:
+            continue
+        atual = locais.get(linha.paciente_id)
+        if atual is None or (linha.tipo_lancamento or 'principal') == 'principal':
+            locais[linha.paciente_id] = (
+                (linha.clinica or '').strip(),
+                (linha.enfermaria or '').strip(),
+            )
+    return locais
+
+
+def _cabecalho_relatorio(data_ref, ctx, meals, titulo):
+    return {
+        'titulo': titulo,
+        'data': data_ref.isoformat(),
+        'data_label': data_ref.strftime('%d/%m/%y'),
+        'data_hora_relatorio': fmt_brasilia(now_brasilia(), '%d/%m/%y %H:%M:%S'),
+        'imprimir_por': ctx['imprimir_por'],
+        'filtros_label': ', '.join(ctx['labels']) if ctx['labels'] else 'TODOS',
+        'horarios': meals,
+        'horarios_label': ', '.join(MEAL_LABELS.get(m, m) for m in meals),
+    }
+
+
+def totalizacao_substituicao_alimentos(
+    data_ref=None,
+    imprimir_por='clinica',
+    filtros=None,
+    horarios=None,
+):
+    """Conta, por clínica ou enfermaria, só o que entrou e o que saiu na substituição."""
+    data_ref = data_ref or date.today()
+    meals = _meals_escolhidos(horarios)
+    ctx = _resolver_filtro_local(imprimir_por, filtros)
+    linhas = [l for l in _linhas_mapa_dia(data_ref) if _linha_no_filtro(l, ctx)]
+
+    blocos = []
+    for meal in meals:
+        incluidos = _nova_contagem()
+        retirados = _nova_contagem()
+        trocas = 0
+        for linha in linhas:
+            if not getattr(linha, MEAL_FLAG_FIELD[meal], False):
+                continue
+            pares = _pares_da_refeicao(linha, meal)
+            if not pares:
+                continue
+            coluna = _coluna_local(linha.clinica, linha.enfermaria, ctx['imprimir_por'])
+            teve = False
+            for par in pares:
+                add = (par.get('adicionar') or '').strip()
+                rem = (par.get('remover') or '').strip()
+                if add:
+                    _acumular_item(incluidos, add, coluna, 1)
+                    teve = True
+                if rem:
+                    _acumular_item(retirados, rem, coluna, 1)
+                    teve = True
+            if teve:
+                trocas += 1
+        blocos.append({
+            'meal': meal,
+            'meal_label': MEAL_LABELS.get(meal, meal).upper(),
+            'trocas': trocas,
+            'tabelas': [
+                {
+                    'titulo': 'Itens incluídos na substituição',
+                    **_matriz_de(incluidos),
+                },
+                {
+                    'titulo': 'Itens retirados do cardápio',
+                    **_matriz_de(retirados),
+                },
+            ],
+        })
+
+    rel = _cabecalho_relatorio(
+        data_ref, ctx, meals, 'TOTALIZAÇÃO DE SUBSTITUIÇÃO DE ALIMENTOS',
+    )
+    rel['modo'] = 'substituicao'
+    rel['blocos'] = blocos
+    rel['qtd_trocas'] = sum(b['trocas'] for b in blocos)
+    return rel
+
+
+def totalizacao_consumo_alimentos(
+    data_ref=None,
+    imprimir_por='clinica',
+    filtros=None,
+    horarios=None,
+):
+    """Conta cada alimento que sai para o paciente, já com a substituição aplicada."""
+    data_ref = data_ref or date.today()
+    meals = _meals_escolhidos(horarios)
+    ctx = _resolver_filtro_local(imprimir_por, filtros)
+    linhas = [l for l in _linhas_mapa_dia(data_ref) if _linha_no_filtro(l, ctx)]
+    locais = _locais_por_paciente(linhas)
+    acompanhantes = _acompanhantes_do_dia(data_ref)
+    funcionarios = _funcionarios_do_dia(data_ref)
+
+    blocos = []
+    for meal in meals:
+        bucket = _nova_contagem()
+        porcoes = 0
+        for linha in linhas:
+            if not getattr(linha, MEAL_FLAG_FIELD[meal], False):
+                continue
+            dieta = (linha.dieta or '').strip()
+            pares = _pares_da_refeicao(linha, meal)
+            padrao = _pratos_padrao(dieta, linha.dieta_id, meal, data_ref)
+            servidos = cardapio_personalizado(padrao, pares)
+            if not servidos:
+                continue
+            coluna = _coluna_local(linha.clinica, linha.enfermaria, ctx['imprimir_por'])
+            for prato in servidos:
+                _acumular_item(bucket, prato, coluna, 1)
+                porcoes += 1
+
+        for a in acompanhantes:
+            if not _refeicao_extra_vale(a, meal):
+                continue
+            no_mapa = a.paciente_id in locais
+            clinica, enfermaria = locais.get(a.paciente_id, ('', ''))
+            if not clinica and a.paciente is not None:
+                clinica = (a.paciente.clinica or '').strip()
+            if not no_mapa and not ctx['todos']:
+                if ctx['imprimir_por'] == 'enfermaria':
+                    continue
+                if (clinica or '').strip().upper() not in ctx['nomes_clinica']:
+                    continue
+            dieta, dieta_id = _dieta_extra(a)
+            qtd = max(int(a.quantidade or 1), 1)
+            pratos = _pratos_padrao(dieta, dieta_id, meal, data_ref)
+            coluna = _coluna_local(
+                clinica, enfermaria, ctx['imprimir_por'], fallback='ACOMPANHANTES',
+            )
+            for prato in pratos:
+                _acumular_item(bucket, prato, coluna, qtd)
+                porcoes += qtd
+
+        if ctx['todos']:
+            for f in funcionarios:
+                if not _refeicao_extra_vale(f, meal):
+                    continue
+                dieta, dieta_id = _dieta_extra(f)
+                qtd = max(int(f.quantidade or 1), 1)
+                pratos = _pratos_padrao(dieta, dieta_id, meal, data_ref)
+                for prato in pratos:
+                    _acumular_item(bucket, prato, 'FUNCIONÁRIOS', qtd)
+                    porcoes += qtd
+
+        blocos.append({
+            'meal': meal,
+            'meal_label': MEAL_LABELS.get(meal, meal).upper(),
+            'porcoes': porcoes,
+            'tabelas': [{
+                'titulo': 'Alimentos servidos',
+                **_matriz_de(bucket),
+            }],
+        })
+
+    rel = _cabecalho_relatorio(
+        data_ref, ctx, meals, 'TOTALIZAÇÃO DO CONSUMO (COM SUBSTITUIÇÃO)',
+    )
+    rel['modo'] = 'consumo'
+    rel['blocos'] = blocos
+    rel['qtd_porcoes'] = sum(b['porcoes'] for b in blocos)
+    return rel
+
+
+def _nomes_filtro_cadastro(modelo, filtros):
+    filtros = [str(f).strip() for f in (filtros or []) if str(f).strip()]
+    upper = {f.upper() for f in filtros}
+    if (not filtros) or ('TODOS' in upper):
+        return True, ['TODOS'], set()
+    ids = [int(x) for x in filtros if str(x).isdigit()]
+    nomes = set()
+    labels = []
+    if ids:
+        for row in _q(modelo).filter(modelo.id.in_(ids)).all():
+            if row.nome:
+                nomes.add(row.nome.strip().upper())
+                labels.append(row.nome)
+    for f in filtros:
+        if not str(f).isdigit():
+            nomes.add(f.upper())
+            if f not in labels:
+                labels.append(f)
+    return False, labels, nomes
+
+
+def _passa_clinica_enfermaria(clinica, enfermaria, todos_cli, nomes_cli, todos_enf, nomes_enf):
+    if not todos_cli and (clinica or '').strip().upper() not in nomes_cli:
+        return False
+    if not todos_enf and (enfermaria or '').strip().upper() not in nomes_enf:
+        return False
+    return True
+
+
+def _itens_servidos(padrao, pares):
+    adds = {
+        _norm_txt(p.get('adicionar'))
+        for p in (pares or [])
+        if (p.get('adicionar') or '').strip()
+    }
+    servidos = cardapio_personalizado(padrao, pares)
+    retirados = []
+    vistos = set()
+    for p in pares or []:
+        rem = (p.get('remover') or '').strip()
+        chave = _norm_txt(rem)
+        if rem and chave not in vistos:
+            vistos.add(chave)
+            retirados.append(rem.upper())
+    return [
+        {'nome': prato, 'substituido': _norm_txt(prato) in adds}
+        for prato in servidos
+    ], retirados
+
+
+def impressao_cardapio_servido(
+    data_ref=None,
+    clinicas=None,
+    enfermarias=None,
+    horarios=None,
+):
+    """Cardápio que cada paciente recebe, depois da substituição."""
+    data_ref = data_ref or date.today()
+    meals = _meals_escolhidos(horarios)
+    todos_cli, labels_cli, nomes_cli = _nomes_filtro_cadastro(NutClinica, clinicas)
+    todos_enf, labels_enf, nomes_enf = _nomes_filtro_cadastro(NutEnfermaria, enfermarias)
+    linhas = _linhas_mapa_dia(data_ref)
+    locais = _locais_por_paciente(linhas)
+
+    def _entra(clinica, enfermaria):
+        return _passa_clinica_enfermaria(
+            clinica, enfermaria, todos_cli, nomes_cli, todos_enf, nomes_enf,
+        )
+
+    blocos = []
+    for meal in meals:
+        grupos = {}
+        total = 0
+
+        def _grupo(clinica, enfermaria):
+            cli = (clinica or '').strip() or 'SEM CLÍNICA'
+            enf = (enfermaria or '').strip() or 'SEM ENFERMARIA'
+            g = grupos.setdefault(cli.upper(), {'clinica': cli, 'enfermarias': {}})
+            return g['enfermarias'].setdefault(enf.upper(), {'enfermaria': enf, 'linhas': []})
+
+        for linha in linhas:
+            if not getattr(linha, MEAL_FLAG_FIELD[meal], False):
+                continue
+            if not _entra(linha.clinica, linha.enfermaria):
+                continue
+            pares = _pares_da_refeicao(linha, meal)
+            padrao = _pratos_padrao((linha.dieta or '').strip(), linha.dieta_id, meal, data_ref)
+            pratos, retirados = _itens_servidos(padrao, pares)
+            _grupo(linha.clinica, linha.enfermaria)['linhas'].append({
+                'leito': linha.leito or '',
+                'nome': linha.nome or '',
+                'dieta': (linha.dieta or '').strip(),
+                'tipo': 'Paciente',
+                'pratos': pratos,
+                'retirados': retirados,
+                'extras': (linha.extras or '').strip(),
+                'suplementos': (linha.suplementos or '').strip(),
+            })
+            total += 1
+
+        for a in _acompanhantes_do_dia(data_ref):
+            if not _refeicao_extra_vale(a, meal):
+                continue
+            clinica, enfermaria = locais.get(a.paciente_id, ('', ''))
+            if not clinica and a.paciente is not None:
+                clinica = (a.paciente.clinica or '').strip()
+            if not _entra(clinica, enfermaria):
+                continue
+            dieta, dieta_id = _dieta_extra(a)
+            qtd = max(int(a.quantidade or 1), 1)
+            pratos, _retirados = _itens_servidos(
+                _pratos_padrao(dieta, dieta_id, meal, data_ref), [],
+            )
+            nome = (a.nome_acompanhante or '').strip() or 'Acompanhante'
+            if qtd > 1:
+                nome = f'{nome} (x{qtd})'
+            _grupo(clinica or 'ACOMPANHANTES', enfermaria)['linhas'].append({
+                'leito': '',
+                'nome': nome,
+                'dieta': dieta,
+                'tipo': 'Acompanhante',
+                'pratos': pratos,
+                'retirados': [],
+                'extras': '',
+                'suplementos': '',
+            })
+            total += 1
+
+        if todos_cli and todos_enf:
+            for f in _funcionarios_do_dia(data_ref):
+                if not _refeicao_extra_vale(f, meal):
+                    continue
+                dieta, dieta_id = _dieta_extra(f)
+                qtd = max(int(f.quantidade or 1), 1)
+                pratos, _retirados = _itens_servidos(
+                    _pratos_padrao(dieta, dieta_id, meal, data_ref), [],
+                )
+                nome = (f.nome or '').strip() or 'Funcionário'
+                if qtd > 1:
+                    nome = f'{nome} (x{qtd})'
+                _grupo('FUNCIONÁRIOS', '')['linhas'].append({
+                    'leito': '',
+                    'nome': nome,
+                    'dieta': dieta,
+                    'tipo': 'Funcionário',
+                    'pratos': pratos,
+                    'retirados': [],
+                    'extras': '',
+                    'suplementos': '',
+                })
+                total += 1
+
+        grupos_out = []
+        for g in sorted(grupos.values(), key=lambda x: x['clinica'].upper()):
+            enfs = []
+            for enf in sorted(g['enfermarias'].values(), key=lambda x: x['enfermaria'].upper()):
+                enf['linhas'].sort(key=lambda r: (
+                    r['leito'].upper(), r['nome'].upper(),
+                ))
+                enfs.append(enf)
+            grupos_out.append({'clinica': g['clinica'], 'enfermarias': enfs})
+        blocos.append({
+            'meal': meal,
+            'meal_label': MEAL_LABELS.get(meal, meal).upper(),
+            'grupos': grupos_out,
+            'total': total,
+        })
+
+    return {
+        'titulo': 'CARDÁPIO SERVIDO',
+        'data': data_ref.isoformat(),
+        'data_label': data_ref.strftime('%d/%m/%y'),
+        'data_hora_relatorio': fmt_brasilia(now_brasilia(), '%d/%m/%y %H:%M:%S'),
+        'clinicas_label': ', '.join(labels_cli) if labels_cli else 'TODOS',
+        'enfermarias_label': ', '.join(labels_enf) if labels_enf else 'TODOS',
+        'horarios': meals,
+        'horarios_label': ', '.join(MEAL_LABELS.get(m, m) for m in meals),
+        'blocos': blocos,
+        'total': sum(b['total'] for b in blocos),
+    }
+
+
 # ---- Impressão de etiquetas ----
 
 HORARIO_ETIQUETA = {
