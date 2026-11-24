@@ -367,6 +367,38 @@
         #modal-clientes .acessos-table th { font-size: 9px; }
         #modal-acessos .badge,
         #modal-clientes .badge { padding: 3px 7px; font-size: 8px; }
+        .acessos-filtro { position: relative; margin: 0 0 0.75rem; }
+        .acessos-filtro i {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6b7c90;
+            font-size: 0.85rem;
+            pointer-events: none;
+        }
+        .acessos-filtro input {
+            width: 100%;
+            padding: 10px 12px 10px 34px;
+            border: 1px solid #d5e0ee;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            font-family: inherit;
+            color: var(--ink);
+            background: #fff;
+        }
+        .acessos-filtro input:focus {
+            outline: none;
+            border-color: var(--brand-blue);
+            box-shadow: 0 0 0 3px rgba(27, 79, 156, 0.14);
+        }
+        #modal-acessos .acessos-filtro { margin: 0 0 0.55rem; }
+        #modal-acessos .acessos-filtro i { left: 10px; font-size: 0.68rem; }
+        #modal-acessos .acessos-filtro input {
+            padding: 7px 10px 7px 28px;
+            font-size: 0.7rem;
+            border-radius: 8px;
+        }
         #modal-acessos .acessos-table th:last-child,
         #modal-acessos .acessos-table td:last-child,
         #modal-clientes .acessos-table th:last-child,
@@ -737,6 +769,10 @@
                     </button>
                 </div>
                 <div class="portal-alert" id="acessos-lista-msg" hidden></div>
+                <div class="acessos-filtro">
+                    <i class="fas fa-search" aria-hidden="true"></i>
+                    <input type="search" id="acessos-filtro-nome" placeholder="Filtrar por nome" autocomplete="off" aria-label="Filtrar acessos por nome">
+                </div>
                 <div class="acessos-table-wrap">
                     <table class="acessos-table">
                         <thead>
@@ -754,7 +790,7 @@
                         </thead>
                         <tbody id="acessos-tbody">
                             {% for item in acessos %}
-                            <tr data-id="{{ item.id }}">
+                            <tr data-id="{{ item.id }}" data-nome="{{ item.nome }}">
                                 <td>
                                     <strong>{{ item.nome }}</strong>
                                     {% if item.is_master %}<div style="font-size:12px;color:#1d4e89">Master</div>{% endif %}
@@ -1351,7 +1387,7 @@
 
         function rowHtml(item) {
             var s = item.sistemas || {};
-            return '<tr data-id="' + item.id + '">' +
+            return '<tr data-id="' + item.id + '" data-nome="' + escapeHtml(item.nome) + '">' +
                 '<td><strong>' + escapeHtml(item.nome) + '</strong>' +
                 (item.is_master ? '<div style="font-size:12px;color:#1d4e89">Master</div>' : '') + '</td>' +
                 '<td>' + escapeHtml(item.email) + '</td>' +
@@ -1412,6 +1448,40 @@
         }
         ensureCatalogMenus();
 
+        function textoFiltroAcesso(str) {
+            return String(str || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .trim();
+        }
+
+        function aplicarFiltroAcessos() {
+            var input = document.getElementById('acessos-filtro-nome');
+            var tbody = document.getElementById('acessos-tbody');
+            if (!input || !tbody) return;
+            var q = textoFiltroAcesso(input.value);
+            var rows = tbody.querySelectorAll('tr[data-id]');
+            var visiveis = 0;
+            rows.forEach(function (tr) {
+                var nome = textoFiltroAcesso(tr.getAttribute('data-nome'));
+                var show = !q || nome.indexOf(q) !== -1;
+                tr.style.display = show ? '' : 'none';
+                if (show) visiveis += 1;
+            });
+            var vazio = tbody.querySelector('.acessos-filtro-vazio');
+            if (rows.length && visiveis === 0) {
+                if (!vazio) {
+                    tbody.insertAdjacentHTML('beforeend',
+                        '<tr class="acessos-filtro-vazio"><td colspan="9">Nenhum acesso encontrado para esse nome.</td></tr>');
+                }
+            } else if (vazio) {
+                vazio.remove();
+            }
+        }
+
+        document.getElementById('acessos-filtro-nome').addEventListener('input', aplicarFiltroAcessos);
+
         function upsertAcesso(item) {
             var idx = ACESSOS.findIndex(function (a) { return a.id === item.id; });
             if (idx >= 0) ACESSOS[idx] = item;
@@ -1425,6 +1495,7 @@
             } else {
                 tbody.insertAdjacentHTML('afterbegin', rowHtml(item));
             }
+            aplicarFiltroAcessos();
         }
 
         function showAcessoLista() {
@@ -1525,9 +1596,10 @@
             var tbody = document.getElementById('acessos-tbody');
             var existing = tbody.querySelector('tr[data-id="' + id + '"]');
             if (existing) existing.remove();
-            if (!tbody.querySelector('tr')) {
+            if (!tbody.querySelector('tr[data-id]')) {
                 tbody.innerHTML = '<tr class="acessos-empty"><td colspan="9">Nenhum acesso cadastrado.</td></tr>';
             }
+            aplicarFiltroAcessos();
         }
 
         document.getElementById('acessos-tbody').addEventListener('click', async function (ev) {
