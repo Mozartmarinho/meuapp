@@ -1,6 +1,6 @@
 /* Formulários ligados ao Cadastro de Extras e Suplementos.
    A grade do mapa continua sendo a lista; Adicionar e Alterar abrem estas telas. */
-var umaCache = { vias: null, produtos: null };
+var umaCache = { vias: null, produtos: null, config: null };
 var umaForm = null;
 var umaLoc = null;
 var umaVia = null;
@@ -157,6 +157,57 @@ async function umaCarregarVias(force){
   return umaCache.vias;
 }
 
+async function umaCarregarConfig(force){
+  if (umaCache.config && !force) return umaCache.config;
+  const r = await fetch('/nutricao/api/config-uma');
+  const j = await r.json();
+  umaCache.config = (j && j.config) ? j.config : (j || {});
+  return umaCache.config;
+}
+
+function umaNumero(valor){
+  let s = String(valor == null ? '' : valor).trim();
+  if (!s) return 0;
+  if (s.indexOf(',') >= 0) s = s.replace(/\./g, '').replace(',', '.');
+  const n = Number(s);
+  return isFinite(n) ? n : 0;
+}
+
+function umaTxtHora(n){
+  return n.toFixed(2).replace('.', ',');
+}
+
+function umaAplicarPadrao(){
+  if (!umaForm || umaForm.idx >= 0) return;
+  const cfg = umaCache.config || {};
+  const d = umaForm.draft;
+  const aba = umaForm.abaId;
+  const vazio = function (v) { return !String(v || '').trim(); };
+  if (aba === 'enteral' && vazio(d.via_dieta) && cfg.via_enteral) d.via_dieta = cfg.via_enteral;
+  if (aba === 'formula' && vazio(d.via_dieta) && cfg.via_formula) d.via_dieta = cfg.via_formula;
+  if (aba === 'suplementos' && vazio(d.via) && cfg.via_suplemento) d.via = cfg.via_suplemento;
+  if (aba === 'enteral' || aba === 'formula'){
+    if (vazio(d.via_agua) && cfg.via_agua) d.via_agua = cfg.via_agua;
+    if (!umaNumero(d.vol_agua) && umaNumero(cfg.volume_agua) > 0){
+      d.vol_agua = cfg.volume_agua_txt || umaTxtHora(umaNumero(cfg.volume_agua));
+    }
+  }
+}
+
+function umaPreencherGotejo(){
+  if (!umaForm || umaForm.abaId !== 'enteral') return;
+  const cfg = umaCache.config || {};
+  const horas = cfg.gotejamento_metodo === 'calculado'
+    ? umaNumero(cfg.gotejamento_horas)
+    : 15;
+  const vol = umaNumero(umaForm.draft.vol_dieta || umaForm.draft.volume);
+  if (!horas || !vol) return;
+  const texto = umaTxtHora(vol / horas);
+  umaForm.draft.gotejamento = texto;
+  const inp = document.querySelector('#umaFormBody [data-k="gotejamento"]');
+  if (inp && !umaForm.gotejoManual) inp.value = texto;
+}
+
 function umaAbrirForm(row){
   if (typeof xcadState === 'undefined' || !xcadState) return;
   const aba = xcadAba(xcadState.aba);
@@ -168,14 +219,34 @@ function umaAbrirForm(row){
     modSel: -1
   };
   if (!Array.isArray(umaForm.draft.modulos)) umaForm.draft.modulos = [];
-  umaCarregarVias(false).then(function(){
+  umaForm.gotejoManual = umaForm.idx >= 0 && !!umaNum(umaForm.draft.gotejamento);
+  Promise.all([umaCarregarVias(false), umaCarregarConfig(false)]).then(function(){
+    umaAplicarPadrao();
     umaMontarForm();
+    umaLigarGotejo();
+    umaPreencherGotejo();
     const ov = document.getElementById('umaFormOverlay');
     if (ov) ov.hidden = false;
     const inp = document.querySelector('#umaFormBody input[data-k="' + UMA_NOME[aba.id].key + '"]');
     if (inp) inp.focus();
   }).catch(function(){
     showToast('Não foi possível carregar as vias', 'error');
+  });
+}
+
+function umaLigarGotejo(){
+  const body = document.getElementById('umaFormBody');
+  if (!body || !umaForm || umaForm.abaId !== 'enteral') return;
+  const vol = body.querySelector('[data-k="vol_dieta"]');
+  const got = body.querySelector('[data-k="gotejamento"]');
+  if (vol) vol.addEventListener('input', function () {
+    umaForm.draft.vol_dieta = vol.value;
+    umaForm.gotejoManual = false;
+    umaPreencherGotejo();
+  });
+  if (got) got.addEventListener('input', function () {
+    umaForm.gotejoManual = true;
+    umaForm.draft.gotejamento = got.value;
   });
 }
 

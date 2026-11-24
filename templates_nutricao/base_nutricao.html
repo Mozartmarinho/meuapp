@@ -275,6 +275,12 @@
                 </a>
             </li>
             <li>
+                <a href="{{ url_for('nutricao.configuracoes_sistema') }}" class="{% if active_page == 'config_uma' %}active{% endif %}" title="Configurações">
+                    <i class="fas fa-cog menu-icon"></i>
+                    <span class="menu-label">Configurações</span>
+                </a>
+            </li>
+            <li>
                 <a href="{{ url_for('nutricao.auditoria') }}" class="{% if active_page == 'auditoria' %}active{% endif %}" title="Auditoria">
                     <i class="fas fa-clipboard-check menu-icon"></i>
                     <span class="menu-label">Auditoria</span>

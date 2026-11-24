@@ -1363,3 +1363,30 @@ class NutUmaOpcao(db.Model):
     nome = db.Column(db.String(80), nullable=False)
     ativo = db.Column(db.Boolean, default=True)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class NutConfigUma(db.Model):
+    """Configuração da U.M.A. (via padrão, água, gotejamento, estoques e validade)."""
+    __tablename__ = 'nut_config_uma'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', name='uq_nut_config_uma_cliente'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    via_enteral = db.Column(db.String(80), default='')
+    via_suplemento = db.Column(db.String(80), default='')
+    via_formula = db.Column(db.String(80), default='')
+    via_agua = db.Column(db.String(80), default='')
+    volume_agua = db.Column(db.Float, default=0)
+    agua_produto_id = db.Column(db.Integer, nullable=True)
+    agua_coluna = db.Column(db.String(80), default='')
+    gotejamento_metodo = db.Column(db.String(20), default='continuo')
+    gotejamento_horas = db.Column(db.Float, default=3.5)
+    estoque_enteral_id = db.Column(db.Integer, nullable=True)
+    estoque_suplemento_id = db.Column(db.Integer, nullable=True)
+    estoque_formula_id = db.Column(db.Integer, nullable=True)
+    estoque_lve_id = db.Column(db.Integer, nullable=True)
+    estoque_modulo_id = db.Column(db.Integer, nullable=True)
+    validades = db.Column(db.Text, default='[]')
+    data_alteracao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

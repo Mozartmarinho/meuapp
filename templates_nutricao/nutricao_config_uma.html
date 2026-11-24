@@ -1,0 +1,261 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+{% macro opcoes_via(lista, atual) %}
+<option value="">Selecione</option>
+{% for v in lista %}
+<option value="{{ v.nome }}" {% if atual == v.nome %}selected{% endif %}>{{ v.nome }}</option>
+{% endfor %}
+{% endmacro %}
+<div class="cfg-uma chamados-page">
+  <div class="header">
+    <div>
+      <h1>Configurações do sistema</h1>
+      <p class="chamados-sub">Unidade de Manipulação Asséptica (U.M.A.)</p>
+    </div>
+    <div class="eq-header-actions">
+      <button type="button" class="btn btn-secondary" id="btnCancelarCfg">Cancelar</button>
+      <button type="button" class="btn btn-success" id="btnSalvarCfg">
+        <i class="fas fa-check"></i> OK
+      </button>
+    </div>
+  </div>
+
+  <div class="cfg-layout">
+    <nav class="cfg-arvore" aria-label="Configurações">
+      <button type="button" class="cfg-no ativo" data-painel="uma">U.M.A.</button>
+      <button type="button" class="cfg-no cfg-filho" data-painel="estoques">Estoques</button>
+      <button type="button" class="cfg-no cfg-filho" data-painel="validade">Validade das etiquetas</button>
+    </nav>
+
+    <div class="cfg-painel" id="painel-uma">
+      <fieldset class="cfg-box">
+        <legend>Definir via padrão</legend>
+        <p class="cfg-ajuda">Ao incluir o alimento no paciente, a via e o volume de água entram sozinhos.</p>
+        <div class="cfg-grade">
+          <label>Enteral
+            <select class="form-control" id="via_enteral" data-sg-no-search>{{ opcoes_via(vias, cfg.via_enteral) }}</select>
+          </label>
+          <label>Suplementos
+            <select class="form-control" id="via_suplemento" data-sg-no-search>{{ opcoes_via(vias, cfg.via_suplemento) }}</select>
+          </label>
+          <label>Fórmulas infantis
+            <select class="form-control" id="via_formula" data-sg-no-search>{{ opcoes_via(vias, cfg.via_formula) }}</select>
+          </label>
+          <label>Água
+            <select class="form-control" id="via_agua" data-sg-no-search>{{ opcoes_via(vias, cfg.via_agua) }}</select>
+          </label>
+          <label>Volume padrão de água
+            <input class="form-control" id="volume_agua" inputmode="decimal" value="{{ cfg.volume_agua_txt }}">
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset class="cfg-box">
+        <legend>Água para lavagem dos frascos</legend>
+        <p class="cfg-ajuda">Use quando a água da lavagem da sonda e dos frascos entra no faturamento.</p>
+        <div class="cfg-grade cfg-grade-1">
+          <label>Produto
+            <select class="form-control" id="agua_produto_id">
+              <option value="">Selecione</option>
+              {% for p in produtos %}
+              <option value="{{ p.id }}" {% if cfg.agua_produto_id == p.id %}selected{% endif %}>{{ p.descricao }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Coluna para totalização no faturamento
+            <select class="form-control" id="agua_coluna">
+              <option value="">Selecione</option>
+              {% for c in colunas %}
+              <option value="{{ c }}" {% if cfg.agua_coluna == c %}selected{% endif %}>{{ c }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset class="cfg-box">
+        <legend>Método de gotejamento</legend>
+        <p class="cfg-ajuda">Contínuo divide o volume de cada etapa por 15 horas. Calculado divide pelo valor informado.</p>
+        <div class="cfg-gotejo">
+          <label><input type="radio" name="gotejamento_metodo" value="continuo" {% if cfg.gotejamento_metodo != 'calculado' %}checked{% endif %}> Contínuo (vol/15)</label>
+          <label><input type="radio" name="gotejamento_metodo" value="calculado" {% if cfg.gotejamento_metodo == 'calculado' %}checked{% endif %}> Calculado</label>
+          <label class="cfg-horas">Volume (por etapa)
+            <span>
+              <input class="form-control" id="gotejamento_horas" inputmode="decimal" value="{{ cfg.gotejamento_horas_txt }}">
+              horas
+            </span>
+          </label>
+        </div>
+      </fieldset>
+    </div>
+
+    <div class="cfg-painel" id="painel-estoques" hidden>
+      <fieldset class="cfg-box">
+        <legend>Estoques</legend>
+        <p class="cfg-ajuda">Estoque em que o sistema procura o produto de cada alimento complementar.</p>
+        <div class="cfg-grade">
+          {% for chave, rotulo in (
+            ('estoque_enteral_id', 'Enteral'),
+            ('estoque_suplemento_id', 'Suplementos'),
+            ('estoque_formula_id', 'Fórmulas infantis'),
+            ('estoque_lve_id', 'LVE'),
+            ('estoque_modulo_id', 'Módulos'),
+          ) %}
+          <label>{{ rotulo }}
+            <select class="form-control" id="{{ chave }}" data-sg-no-search>
+              <option value="">Selecione</option>
+              {% for e in estoques %}
+              <option value="{{ e.id }}" {% if cfg[chave] == e.id %}selected{% endif %}>{{ e.nome }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+    </div>
+
+    <div class="cfg-painel" id="painel-validade" hidden>
+      <fieldset class="cfg-box">
+        <legend>Validade das etiquetas</legend>
+        <p class="cfg-ajuda">Para cada horário de entrega das fórmulas, a hora máxima de consumo. Sai na etiqueta depois de “Válido até:”.</p>
+        <table class="table" id="tabelaValidade">
+          <thead>
+            <tr>
+              <th>Horário de entrega</th>
+              <th>Válido até</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for v in cfg.validades %}
+            <tr>
+              <td><input class="form-control" data-k="horario" aria-label="Horário de entrega" value="{{ v.horario }}" placeholder="06:00"></td>
+              <td><input class="form-control" data-k="valido_ate" aria-label="Válido até" value="{{ v.valido_ate }}" placeholder="10:00"></td>
+              <td><button type="button" class="btn btn-sm btn-excluir" data-remover title="Remover"><i class="fas fa-trash"></i></button></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <button type="button" class="btn btn-ghost btn-sm" id="btnValidadeNova">
+          <i class="fas fa-plus"></i> Horário
+        </button>
+      </fieldset>
+    </div>
+  </div>
+</div>
+
+<style>
+.cfg-uma .header { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; flex-wrap: wrap; }
+.cfg-uma h1 { margin: 0; font-size: 1.6rem; }
+.cfg-layout { display: grid; grid-template-columns: 220px 1fr; gap: 1rem; align-items: start; }
+.cfg-arvore { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.45rem; display: flex; flex-direction: column; gap: 0.2rem; }
+.cfg-no { text-align: left; border: 0; background: transparent; border-radius: 6px; padding: 0.45rem 0.6rem; color: #1e293b; cursor: pointer; font-size: 0.86rem; }
+.cfg-no.cfg-filho { padding-left: 1.35rem; }
+.cfg-no.ativo { background: #1b4f9c; color: #fff; }
+.cfg-box { border: 1px solid #d6dde8; border-radius: 8px; padding: 0.8rem 0.9rem 0.9rem; margin: 0 0 0.8rem; background: #fff; }
+.cfg-box legend { font-size: 0.78rem; font-weight: 700; padding: 0 0.3rem; }
+.cfg-ajuda { margin: 0 0 0.7rem; color: #64748b; font-size: 0.78rem; }
+.cfg-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.7rem; }
+.cfg-grade label, .cfg-horas { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem; color: #334155; font-weight: 600; }
+.cfg-gotejo { display: flex; flex-wrap: wrap; gap: 0.9rem 1.2rem; align-items: flex-end; }
+.cfg-gotejo > label { display: flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; margin: 0; }
+.cfg-horas span { display: flex; align-items: center; gap: 0.4rem; font-weight: 500; }
+.cfg-horas input { width: 90px; }
+.cfg-uma .table { width: 100%; background: #fff; }
+.cfg-uma .table input { max-width: 140px; }
+@media (max-width: 800px) {
+  .cfg-layout { grid-template-columns: 1fr; }
+}
+</style>
+
+<script>
+(function () {
+  const paineis = document.querySelectorAll('.cfg-painel');
+  document.querySelectorAll('.cfg-no').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.cfg-no').forEach(function (b) { b.classList.remove('ativo'); });
+      btn.classList.add('ativo');
+      paineis.forEach(function (p) { p.hidden = p.id !== 'painel-' + btn.dataset.painel; });
+    });
+  });
+
+  function linhaValidade(horario, valido) {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td><input class="form-control" data-k="horario" aria-label="Horário de entrega" value="' + (horario || '') + '" placeholder="06:00"></td>' +
+      '<td><input class="form-control" data-k="valido_ate" aria-label="Válido até" value="' + (valido || '') + '" placeholder="10:00"></td>' +
+      '<td><button type="button" class="btn btn-sm btn-excluir" data-remover title="Remover"><i class="fas fa-trash"></i></button></td>';
+    return tr;
+  }
+
+  document.getElementById('btnValidadeNova').addEventListener('click', function () {
+    document.querySelector('#tabelaValidade tbody').appendChild(linhaValidade('', ''));
+  });
+  document.getElementById('tabelaValidade').addEventListener('click', function (ev) {
+    const btn = ev.target.closest('[data-remover]');
+    if (!btn) return;
+    const tr = btn.closest('tr');
+    if (tr) tr.remove();
+  });
+
+  function valor(id) {
+    const el = document.getElementById(id);
+    return el ? el.value : '';
+  }
+
+  function payload() {
+    const metodo = document.querySelector('input[name="gotejamento_metodo"]:checked');
+    const validades = [];
+    document.querySelectorAll('#tabelaValidade tbody tr').forEach(function (tr) {
+      validades.push({
+        horario: (tr.querySelector('[data-k="horario"]') || {}).value || '',
+        valido_ate: (tr.querySelector('[data-k="valido_ate"]') || {}).value || ''
+      });
+    });
+    return {
+      via_enteral: valor('via_enteral'),
+      via_suplemento: valor('via_suplemento'),
+      via_formula: valor('via_formula'),
+      via_agua: valor('via_agua'),
+      volume_agua: valor('volume_agua'),
+      agua_produto_id: valor('agua_produto_id'),
+      agua_coluna: valor('agua_coluna'),
+      gotejamento_metodo: metodo ? metodo.value : 'continuo',
+      gotejamento_horas: valor('gotejamento_horas'),
+      estoque_enteral_id: valor('estoque_enteral_id'),
+      estoque_suplemento_id: valor('estoque_suplemento_id'),
+      estoque_formula_id: valor('estoque_formula_id'),
+      estoque_lve_id: valor('estoque_lve_id'),
+      estoque_modulo_id: valor('estoque_modulo_id'),
+      validades: validades
+    };
+  }
+
+  document.getElementById('btnSalvarCfg').addEventListener('click', async function () {
+    const btn = this;
+    btn.disabled = true;
+    try {
+      const r = await fetch('/nutricao/api/config-uma', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload())
+      });
+      const j = await r.json();
+      if (!r.ok || !j.ok) {
+        showToast((j && j.error) || 'Não foi possível gravar', 'error');
+        return;
+      }
+      showToast('Configuração da U.M.A. gravada');
+    } catch (e) {
+      showToast('Não foi possível gravar', 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('btnCancelarCfg').addEventListener('click', function () {
+    window.location.reload();
+  });
+})();
+</script>
+{% endblock %}

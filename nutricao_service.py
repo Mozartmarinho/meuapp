@@ -11,7 +11,7 @@ from models_nutricao import (
     NutEstoqueLocal, NutUnidadeMedida, NutGrupoProduto, NutProduto, NutFornecedor,
     NutEtiqueta, NutEtiquetaCampo, NutPrecoRefeicao, NutTipoRefeicao, NutPrecoDietaTipo,
     NutRefeicaoAcompanhante, NutRefeicaoFuncionario,
-    NutViaAdministracao, NutUmaItem, NutUmaOpcao,
+    NutViaAdministracao, NutUmaItem, NutUmaOpcao, NutConfigUma,
 )
 from nutricao_seed_enfermarias import ENFERMARIAS_SEED, VINCULOS_CLINICA_ENFERMARIA_SEED
 from nutricao_seed_dietas import (
@@ -2638,6 +2638,220 @@ def list_vias(somente_ativas=True):
     return [v.to_dict() for v in q.order_by(NutViaAdministracao.nome, NutViaAdministracao.id).all()]
 
 
+VALIDADES_UMA_PADRAO = (
+    {'horario': '06:00', 'valido_ate': '10:00'},
+    {'horario': '10:00', 'valido_ate': '14:00'},
+    {'horario': '14:00', 'valido_ate': '18:00'},
+    {'horario': '18:00', 'valido_ate': '22:00'},
+    {'horario': '22:00', 'valido_ate': '02:00'},
+)
+
+_ESTOQUES_UMA = (
+    'estoque_enteral_id',
+    'estoque_suplemento_id',
+    'estoque_formula_id',
+    'estoque_lve_id',
+    'estoque_modulo_id',
+)
+
+
+def _fmt_br_uma(valor, casas=1):
+    try:
+        num = float(valor or 0)
+    except (TypeError, ValueError):
+        num = 0.0
+    texto = f'{num:.{casas}f}'
+    return texto.replace('.', ',')
+
+
+def _parse_br_uma(valor, default=0.0):
+    if valor is None or valor == '':
+        return default
+    if isinstance(valor, bool):
+        return default
+    if isinstance(valor, (int, float)):
+        return float(valor)
+    texto = str(valor).strip().replace(' ', '')
+    if not texto:
+        return default
+    if ',' in texto:
+        texto = texto.replace('.', '').replace(',', '.')
+    try:
+        return float(texto)
+    except ValueError:
+        return default
+
+
+def _hora_uma(valor):
+    texto = str(valor or '').strip()
+    m = re.fullmatch(r'(\d{1,2}):(\d{2})', texto)
+    if not m:
+        return ''
+    hora, minuto = int(m.group(1)), int(m.group(2))
+    if hora > 23 or minuto > 59:
+        return ''
+    return f'{hora:02d}:{minuto:02d}'
+
+
+def _garantir_tabela_config_uma():
+    try:
+        NutConfigUma.__table__.create(db.engine, checkfirst=True)
+    except Exception:
+        db.session.rollback()
+
+
+def _config_uma_do_cliente(cliente_id=None):
+    _garantir_tabela_config_uma()
+    if cliente_id is None:
+        cliente_id = write_cliente_id()
+    q = NutConfigUma.query
+    if cliente_id:
+        return q.filter_by(cliente_id=cliente_id).first()
+    return q.filter(NutConfigUma.cliente_id.is_(None)).first()
+
+
+def _validades_uma(bruto):
+    if isinstance(bruto, (list, tuple)):
+        data = list(bruto)
+    else:
+        try:
+            data = json.loads(bruto or '[]')
+        except (TypeError, ValueError):
+            data = []
+    if not isinstance(data, list):
+        return [dict(item) for item in VALIDADES_UMA_PADRAO]
+    saida = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        horario = _hora_uma(item.get('horario'))
+        valido = _hora_uma(item.get('valido_ate'))
+        if horario and valido:
+            saida.append({'horario': horario, 'valido_ate': valido})
+    return saida
+
+
+def config_uma_dict(cliente_id=None):
+    """Configuração da U.M.A. do cliente. Sem registro, devolve o padrão do manual."""
+    row = _config_uma_do_cliente(cliente_id)
+    produto = None
+    if row and row.agua_produto_id:
+        produto = NutProduto.query.get(row.agua_produto_id)
+    bruto_validades = row.validades if row and (row.validades or '').strip() else VALIDADES_UMA_PADRAO
+    validades = _validades_uma(bruto_validades)
+    if not validades:
+        validades = [dict(item) for item in VALIDADES_UMA_PADRAO]
+    metodo = (row.gotejamento_metodo if row else '') or 'continuo'
+    if metodo not in ('continuo', 'calculado'):
+        metodo = 'continuo'
+    horas = row.gotejamento_horas if row and row.gotejamento_horas else 3.5
+    volume = row.volume_agua if row else 0
+    return {
+        'via_enteral': (row.via_enteral if row else '') or '',
+        'via_suplemento': (row.via_suplemento if row else '') or '',
+        'via_formula': (row.via_formula if row else '') or '',
+        'via_agua': (row.via_agua if row else '') or '',
+        'volume_agua': volume or 0,
+        'volume_agua_txt': _fmt_br_uma(volume, 1),
+        'agua_produto_id': row.agua_produto_id if row else None,
+        'agua_produto': (produto.descricao if produto else '') or '',
+        'agua_coluna': (row.agua_coluna if row else '') or '',
+        'gotejamento_metodo': metodo,
+        'gotejamento_horas': horas or 3.5,
+        'gotejamento_horas_txt': _fmt_br_uma(horas or 3.5, 1),
+        'horas_divisao': horas if metodo == 'calculado' and horas else 15,
+        'estoque_enteral_id': row.estoque_enteral_id if row else None,
+        'estoque_suplemento_id': row.estoque_suplemento_id if row else None,
+        'estoque_formula_id': row.estoque_formula_id if row else None,
+        'estoque_lve_id': row.estoque_lve_id if row else None,
+        'estoque_modulo_id': row.estoque_modulo_id if row else None,
+        'validades': validades,
+    }
+
+
+def salvar_config_uma(payload, cliente_id=None):
+    """Grava a configuração da U.M.A. Levanta ValueError se o payload for inválido."""
+    d = payload or {}
+    if cliente_id is None:
+        cliente_id = write_cliente_id()
+
+    def _via(chave):
+        return str(d.get(chave) or '').strip().upper()[:80]
+
+    metodo = str(d.get('gotejamento_metodo') or 'continuo').strip().lower()
+    if metodo not in ('continuo', 'calculado'):
+        raise ValueError('Método de gotejamento inválido')
+    horas = _parse_br_uma(d.get('gotejamento_horas'), 3.5)
+    if metodo == 'calculado' and horas <= 0:
+        raise ValueError('Informe as horas do gotejamento calculado')
+
+    produto_id = d.get('agua_produto_id')
+    produto = None
+    if produto_id not in (None, '', 0, '0'):
+        try:
+            produto_id = int(produto_id)
+        except (TypeError, ValueError):
+            raise ValueError('Produto da água inválido')
+        produto = _q(NutProduto).filter(NutProduto.id == produto_id).first()
+        if not produto:
+            raise ValueError('Produto da água não encontrado neste cliente')
+    else:
+        produto_id = None
+
+    estoques = {}
+    for chave in _ESTOQUES_UMA:
+        bruto = d.get(chave)
+        if bruto in (None, '', 0, '0'):
+            estoques[chave] = None
+            continue
+        try:
+            eid = int(bruto)
+        except (TypeError, ValueError):
+            raise ValueError('Estoque inválido')
+        estoque = _q(NutEstoqueLocal).filter(NutEstoqueLocal.id == eid).first()
+        if not estoque:
+            raise ValueError('Estoque não encontrado neste cliente')
+        estoques[chave] = estoque.id
+
+    row = _config_uma_do_cliente(cliente_id)
+    if not row:
+        row = NutConfigUma(cliente_id=cliente_id)
+        db.session.add(row)
+
+    row.via_enteral = _via('via_enteral')
+    row.via_suplemento = _via('via_suplemento')
+    row.via_formula = _via('via_formula')
+    row.via_agua = _via('via_agua')
+    row.volume_agua = max(0.0, _parse_br_uma(d.get('volume_agua'), 0))
+    row.agua_produto_id = produto.id if produto else None
+    row.agua_coluna = str(d.get('agua_coluna') or '').strip().upper()[:80]
+    row.gotejamento_metodo = metodo
+    row.gotejamento_horas = horas if horas > 0 else 3.5
+    for chave, eid in estoques.items():
+        setattr(row, chave, eid)
+
+    validades = _validades_uma(d.get('validades'))
+    if not validades:
+        validades = [dict(item) for item in VALIDADES_UMA_PADRAO]
+    row.validades = json.dumps(validades, ensure_ascii=False)
+    db.session.commit()
+    return config_uma_dict(cliente_id)
+
+
+def calcular_gotejamento_uma(volume, cfg=None):
+    """mL/h da etapa. Contínuo divide por 15; calculado divide pelas horas configuradas."""
+    cfg = cfg or config_uma_dict()
+    metodo = cfg.get('gotejamento_metodo') or 'continuo'
+    if metodo == 'calculado':
+        horas = _parse_br_uma(cfg.get('gotejamento_horas'), 0)
+    else:
+        horas = 15.0
+    vol = _parse_br_uma(volume, 0)
+    if horas <= 0 or vol <= 0:
+        return None
+    return round(vol / horas, 2)
+
+
 def _seed_uma(cid):
     try:
         NutViaAdministracao.__table__.create(db.engine, checkfirst=True)
@@ -5083,6 +5297,21 @@ def _linha_legivel_uma(item):
     return ' '.join(p for p in partes if p).strip()
 
 
+def itens_campo_uma(texto):
+    """Itens estruturados gravados na grade ({uma_itens: [...]})."""
+    bruto = (texto or '').strip()
+    if not bruto.startswith('{'):
+        return []
+    try:
+        data = json.loads(bruto)
+    except (TypeError, ValueError):
+        return []
+    itens = data.get('uma_itens') if isinstance(data, dict) else None
+    if not isinstance(itens, list):
+        return []
+    return [item for item in itens if isinstance(item, dict)]
+
+
 def descricoes_campo_uma(texto):
     """Lista de itens de extras/suplementos/enteral/fórmula/LVE.
 
@@ -5619,6 +5848,8 @@ def relatorio_faturamento(data_de, data_ate, tipo='espelho_1', por_grupo_clinica
     formulas = defaultdict(lambda: {'item': '', 'qtd': 0})
     complementares = defaultdict(lambda: {'item': '', 'qtd': 0})
     clinica_por_paciente_dia = {}
+    cfg_uma = config_uma_dict()
+    rotulo_agua = (cfg_uma.get('agua_produto') or cfg_uma.get('agua_coluna') or '').strip()
 
     for l in linhas:
         clinica = (l.clinica or 'SEM CLÍNICA').strip() or 'SEM CLÍNICA'
@@ -5639,10 +5870,17 @@ def relatorio_faturamento(data_de, data_ate, tipo='espelho_1', por_grupo_clinica
 
         # fórmulas infantis e enterais
         for campo in ('enteral', 'formula_infantil'):
-            for parte in descricoes_campo_uma(getattr(l, campo, None)):
+            bruto_uma = getattr(l, campo, None)
+            for parte in descricoes_campo_uma(bruto_uma):
                 k = parte.upper()
                 formulas[k]['item'] = parte
                 formulas[k]['qtd'] += 1
+            if rotulo_agua:
+                for item in itens_campo_uma(bruto_uma):
+                    if _parse_br_uma(item.get('vol_agua'), 0) > 0:
+                        k = rotulo_agua.upper()
+                        formulas[k]['item'] = rotulo_agua
+                        formulas[k]['qtd'] += 1
 
         # complementares: extras / suplementos / lve
         for campo in ('extras', 'suplementos', 'lve'):

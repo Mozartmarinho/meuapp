@@ -73,6 +73,8 @@ from nutricao_service import (
     import_tabela_fdc,
     list_pratos_liquidos,
     list_vias,
+    config_uma_dict,
+    salvar_config_uma,
     list_uma_itens,
     gravar_uma_item,
     salvar_cadastro_uma,
@@ -2906,6 +2908,35 @@ def _tipo_cadastro_uma(valor):
     return tipo if tipo in _CADASTRO_UMA else 'formula'
 
 
+@nutricao.route('/nutricao/configuracoes', methods=['GET'])
+def configuracoes_sistema():
+    seed_nutricao()
+    cfg = config_uma_dict()
+    grupos = [g['nome'] for g in list_grupos_dieta(somente_ativos=True)]
+    return render_template(
+        'nutricao_config_uma.html',
+        cfg=cfg,
+        vias=list_vias(somente_ativas=True),
+        produtos=list_produtos(somente_ativos=True),
+        estoques=list_estoques(somente_ativos=True),
+        colunas=colunas_faturamento_uma(grupos),
+        **active('config_uma'),
+    )
+
+
+@nutricao.route('/nutricao/api/config-uma', methods=['GET', 'PUT'])
+def api_config_uma():
+    seed_nutricao()
+    if request.method == 'GET':
+        return jsonify(config_uma_dict())
+    d = request.get_json(force=True) or {}
+    try:
+        cfg = salvar_config_uma(d)
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+    return jsonify({'ok': True, 'config': cfg})
+
+
 @nutricao.route('/nutricao/cadastro-uma')
 def cadastro_uma():
     seed_nutricao()
@@ -2917,13 +2948,20 @@ def cadastro_uma():
         u for u in list_unidades(somente_ativas=True)
         if u.get('flag_uma', True)
     ]
+    cfg_uma = config_uma_dict()
+    estoque_do_tipo = {
+        'enteral': cfg_uma.get('estoque_enteral_id'),
+        'suplemento': cfg_uma.get('estoque_suplemento_id'),
+        'formula': cfg_uma.get('estoque_formula_id'),
+        'lve': cfg_uma.get('estoque_lve_id'),
+    }.get(tipo)
     produtos = [
         {
             'codigo': p.get('codigo') or '',
             'descricao': p.get('descricao') or '',
             'unidade': p.get('unidade') or '',
         }
-        for p in list_produtos(somente_ativos=True)
+        for p in list_produtos(estoque_id=estoque_do_tipo, somente_ativos=True)
     ]
     return render_template(
         'nutricao_cadastro_uma.html',
