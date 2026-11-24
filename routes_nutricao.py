@@ -75,6 +75,7 @@ from nutricao_service import (
     list_vias,
     config_uma_dict,
     salvar_config_uma,
+    colunas_faturamento_uma,
     list_uma_itens,
     gravar_uma_item,
     salvar_cadastro_uma,
