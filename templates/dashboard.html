@@ -72,6 +72,7 @@
     </div>
 
     <div class="mdk-panel" data-panel="tickets">
+        {% include '_dashboard_indicadores.html' %}
         <div class="mdk-grid">
             <div class="mdk-card mdk-span-5">
                 <h3>Resumo de tickets</h3>
@@ -80,6 +81,11 @@
                     <input type="hidden" name="de" value="{{ graf.de }}">
                     <input type="hidden" name="ate" value="{{ graf.ate }}">
                     {% if graf.tecnico_id %}<input type="hidden" name="tecnico" value="{{ graf.tecnico_id }}">{% endif %}
+                    <input type="hidden" name="ind_de" value="{{ indicadores.filtros.de }}">
+                    <input type="hidden" name="ind_ate" value="{{ indicadores.filtros.ate }}">
+                    <input type="hidden" name="ind_unidade" value="{{ indicadores.filtros.unidade }}">
+                    <input type="hidden" name="ind_servico" value="{{ indicadores.filtros.servico }}">
+                    <input type="hidden" name="ind_tipo" value="{{ indicadores.filtros.tipo }}">
                     <label>Mesa:
                         <select class="mdk-select" name="mesa" onchange="this.form.submit()">
                             <option value="">Todas</option>
@@ -155,6 +161,11 @@
             <div class="mdk-card mdk-span-12">
                 <h3>Atendimentos finalizados</h3>
                 <form method="get" action="{{ url_for('main.dashboard') }}" class="mdk-graf-filtros">
+                    <input type="hidden" name="ind_de" value="{{ indicadores.filtros.de }}">
+                    <input type="hidden" name="ind_ate" value="{{ indicadores.filtros.ate }}">
+                    <input type="hidden" name="ind_unidade" value="{{ indicadores.filtros.unidade }}">
+                    <input type="hidden" name="ind_servico" value="{{ indicadores.filtros.servico }}">
+                    <input type="hidden" name="ind_tipo" value="{{ indicadores.filtros.tipo }}">
                     <label>Mesa
                         <select class="mdk-select" name="mesa">
                             <option value="">Todas</option>

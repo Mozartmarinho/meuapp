@@ -94,6 +94,7 @@ from models import (
     normalizar_tipo_eq,
 )
 from permissions_sistemas import SISTEMAS, aplicar_permissoes_formulario, conceder_acesso_total
+from chamados_indicadores import calcular_indicadores
 from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy import func, or_, and_
 from sqlalchemy.exc import IntegrityError
@@ -2466,6 +2467,47 @@ def _dia_finalizacao(chamado):
     return datetime.combine(bruto, datetime.min.time())
 
 
+def _snapshot_indicador(chamado):
+    """Registro leve para os blocos de indicadores do dashboard."""
+    equipamento = getattr(chamado, 'equipamento_cadastro', None)
+    info = sla_do_chamado(chamado)
+    atendente = getattr(chamado, 'atendente', None)
+    return {
+        'id': chamado.id,
+        'numero': chamado.numero_chamado,
+        'cliente': chamado.cliente.nome if chamado.cliente else '—',
+        'servico': (chamado.tipo_servico or '').strip() or '—',
+        'unidade': normalizar_tipo_eq(equipamento.tipo_equipamento) if equipamento is not None else '',
+        'tipo': (equipamento.tipo_recurso or '').strip() if equipamento is not None else '',
+        'status': chamado.status or '',
+        'fechado': status_fechado(chamado.status),
+        'criacao': chamado.data_criacao,
+        'inicio': getattr(chamado, 'data_inicio_atendimento', None),
+        'conclusao': chamado.data_conclusao,
+        'mantenedor': atendente.nome if atendente else 'Sem mantenedor',
+        'venc_solucao': info['venc_solucao'] if info else None,
+    }
+
+
+def _indicadores_dashboard(chamados, args):
+    hoje = now_brasilia().date()
+    inicio = _parse_data_filtro(args.get('ind_de'), hoje - timedelta(days=29))
+    fim = _parse_data_filtro(args.get('ind_ate'), hoje)
+    dados = calcular_indicadores(
+        [_snapshot_indicador(chamado) for chamado in chamados],
+        inicio,
+        fim,
+        unidade=args.get('ind_unidade') or '',
+        servico=args.get('ind_servico') or '',
+        tipo=args.get('ind_tipo') or '',
+    )
+    for bloco in ('ranking_unidades', 'ranking_servicos'):
+        for linha in dados[bloco]:
+            for detalhe in linha['detalhe']:
+                detalhe['url'] = url_for('main.ver_chamado', id=detalhe['id'])
+    return dados
+
+
 def _grafico_finalizados_dashboard(args, mesa_filtro):
     """Finalizados no período, agrupados por dia/semana/mês e por técnico."""
     hoje = now_brasilia().date()
@@ -2583,7 +2625,11 @@ def dashboard():
     """Dashboard do sistema de gestão de chamados (widgets com dados reais)."""
     _reabrir_reagendados_do_dia()
     user = Usuario.query.get(session['user_id'])
-    visiveis = _query_chamados_usuario(user).all()
+    visiveis = (
+        _query_chamados_usuario(user)
+        .options(joinedload(Chamado.equipamento_cadastro))
+        .all()
+    )
     mesas = mesas_ativas()
     mesa_filtro = request.args.get('mesa', type=int)
     if mesa_filtro:
@@ -2684,6 +2730,7 @@ def dashboard():
         mesa_filtro=mesa_filtro,
         graf=graf,
         tecnicos_graf=tecnicos_graf,
+        indicadores=_indicadores_dashboard(visiveis, request.args),
     )
 
 

@@ -1,0 +1,390 @@
+<div class="mdk-ind">
+    <form method="get" action="{{ url_for('main.dashboard') }}" class="mdk-graf-filtros mdk-ind-filtros">
+        {% if mesa_filtro is defined and mesa_filtro %}<input type="hidden" name="mesa" value="{{ mesa_filtro }}">{% endif %}
+        {% if graf is defined and graf.de %}<input type="hidden" name="de" value="{{ graf.de }}">{% endif %}
+        {% if graf is defined and graf.ate %}<input type="hidden" name="ate" value="{{ graf.ate }}">{% endif %}
+        {% if graf is defined and graf.tecnico_id %}<input type="hidden" name="tecnico" value="{{ graf.tecnico_id }}">{% endif %}
+        <label>Período
+            <span class="mdk-ind-periodo">
+                <input class="mdk-select" type="date" name="ind_de" value="{{ indicadores.filtros.de }}" aria-label="De">
+                <input class="mdk-select" type="date" name="ind_ate" value="{{ indicadores.filtros.ate }}" aria-label="Até">
+            </span>
+        </label>
+        <label>Tipo de unidade
+            <select class="mdk-select" name="ind_unidade">
+                <option value="">Todos</option>
+                {% for u in indicadores.opcoes.unidades %}
+                <option value="{{ u.id }}" {% if indicadores.filtros.unidade == u.id %}selected{% endif %}>{{ u.nome }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Serviço
+            <select class="mdk-select" name="ind_servico">
+                <option value="">Todos</option>
+                {% for s in indicadores.opcoes.servicos %}
+                <option value="{{ s }}" {% if indicadores.filtros.servico == s %}selected{% endif %}>{{ s }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Tipo
+            <select class="mdk-select" name="ind_tipo">
+                <option value="">Todos</option>
+                {% for t in indicadores.opcoes.tipos %}
+                <option value="{{ t }}" {% if indicadores.filtros.tipo == t %}selected{% endif %}>{{ t }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <button type="submit" class="mdk-btn mdk-btn-teal">Filtrar</button>
+        <span class="mdk-graf-total">{{ indicadores.total }} chamado{{ 's' if indicadores.total != 1 else '' }}</span>
+    </form>
+
+    <div class="mdk-grid">
+        <div class="mdk-card mdk-span-12">
+            <h3>Evolução</h3>
+            <div class="mdk-ind-chart">
+                <canvas id="chartEvolucaoChamados"></canvas>
+            </div>
+        </div>
+
+        <div class="mdk-card mdk-span-6">
+            <h3>Ranking de unidades</h3>
+            {% if indicadores.ranking_unidades %}
+            <div class="mdk-ind-scroll">
+                <table class="mdk-table">
+                    <thead>
+                        <tr><th>#</th><th>Unidade</th><th>Chamados</th><th>%</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for linha in indicadores.ranking_unidades %}
+                        <tr class="mdk-ind-rank" tabindex="0" data-rank="unidades" data-idx="{{ loop.index0 }}">
+                            <td>{{ linha.pos }}</td>
+                            <td>{{ linha.nome }}</td>
+                            <td>{{ linha.total }}</td>
+                            <td>{{ linha.pct }}%</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="mdk-empty">Nenhum chamado no período.</p>
+            {% endif %}
+        </div>
+
+        <div class="mdk-card mdk-span-6">
+            <h3>Ranking de serviços</h3>
+            {% if indicadores.ranking_servicos %}
+            <div class="mdk-ind-scroll">
+                <table class="mdk-table">
+                    <thead>
+                        <tr><th>#</th><th>Serviço</th><th>Chamados</th><th>%</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for linha in indicadores.ranking_servicos %}
+                        <tr class="mdk-ind-rank" tabindex="0" data-rank="servicos" data-idx="{{ loop.index0 }}">
+                            <td>{{ linha.pos }}</td>
+                            <td>{{ linha.nome }}</td>
+                            <td>{{ linha.total }}</td>
+                            <td>{{ linha.pct }}%</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="mdk-empty">Nenhum chamado no período.</p>
+            {% endif %}
+        </div>
+
+        <div class="mdk-card mdk-span-12">
+            <h3>Mediana por mantenedor</h3>
+            <p class="mdk-ind-sub">Resposta: da abertura até o primeiro atendimento. Conclusão: da abertura até o fechamento.</p>
+            {% if indicadores.tempos %}
+            <div class="mdk-ind-scroll">
+                <table class="mdk-table">
+                    <thead>
+                        <tr>
+                            <th>Mantenedor</th>
+                            <th>Mediana de resposta</th>
+                            <th>Mediana de conclusão</th>
+                            <th>Chamados</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for linha in indicadores.tempos %}
+                        <tr>
+                            <td>{{ linha.nome }}</td>
+                            <td>{{ linha.mediana_resposta_txt }}</td>
+                            <td>{{ linha.mediana_conclusao_txt }}</td>
+                            <td>{{ linha.total }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="mdk-empty">Nenhum chamado no período.</p>
+            {% endif %}
+        </div>
+
+        <div class="mdk-card mdk-span-12">
+            <h3>Execução por mantenedor</h3>
+            <p class="mdk-ind-sub">% no prazo da solução. Índice de execução = concluídos ÷ chamados do período. A seta abre a mediana por tipo de item.</p>
+            {% if indicadores.execucao %}
+            <div class="mdk-ind-scroll">
+                <table class="mdk-table">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Mantenedor</th>
+                            <th>% no prazo</th>
+                            <th>Índice de execução</th>
+                            <th>Chamados</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for linha in indicadores.execucao %}
+                        <tr>
+                            <td>
+                                <button type="button" class="mdk-ind-exp" aria-expanded="false" aria-label="Mediana por tipo de item de {{ linha.nome }}">
+                                    <i class="fas fa-chevron-right"></i>
+                                </button>
+                            </td>
+                            <td>{{ linha.nome }}</td>
+                            <td>{% if linha.pct_prazo is not none %}{{ linha.pct_prazo }}%{% else %}—{% endif %}</td>
+                            <td>{% if linha.indice is not none %}{{ linha.indice }}%{% else %}—{% endif %}</td>
+                            <td>{{ linha.total }}</td>
+                        </tr>
+                        <tr class="mdk-ind-filho" hidden>
+                            <td colspan="5">
+                                <table class="mdk-table mdk-ind-subtable">
+                                    <thead>
+                                        <tr>
+                                            <th>Tipo de item</th>
+                                            <th>Mediana de conclusão</th>
+                                            <th>Chamados</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for tipo in linha.tipos %}
+                                        <tr>
+                                            <td>{{ tipo.tipo }}</td>
+                                            <td>{{ tipo.mediana_txt }}</td>
+                                            <td>{{ tipo.total }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="mdk-empty">Nenhum chamado no período.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div id="mdkIndDrawer" class="modal-overlay mdk-ind-drawer" hidden>
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="mdkIndDrawerTitulo">
+        <div class="modal-header">
+            <h2 id="mdkIndDrawerTitulo">Detalhe</h2>
+            <button type="button" class="modal-close" id="mdkIndDrawerFechar" aria-label="Fechar">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p class="mdk-ind-sub" id="mdkIndDrawerSub"></p>
+            <div class="mdk-ind-scroll">
+                <table class="mdk-table">
+                    <thead>
+                        <tr>
+                            <th>Chamado</th>
+                            <th>Status</th>
+                            <th>Mantenedor</th>
+                            <th>Serviço</th>
+                            <th>Abertura</th>
+                            <th>Conclusão</th>
+                            <th>No prazo</th>
+                        </tr>
+                    </thead>
+                    <tbody id="mdkIndDrawerCorpo"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="application/json" id="mdkIndDetalhe">{{ {'unidades': indicadores.ranking_unidades, 'servicos': indicadores.ranking_servicos}|tojson }}</script>
+<script type="application/json" id="mdkIndEvolucao">{{ indicadores.evolucao|tojson }}</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+(function () {
+    var evoEl = document.getElementById('mdkIndEvolucao');
+    var canvas = document.getElementById('chartEvolucaoChamados');
+    var evo = evoEl ? JSON.parse(evoEl.textContent || '{}') : {};
+    if (canvas && window.Chart) {
+        new Chart(canvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: evo.labels || [],
+                datasets: [
+                    {
+                        label: 'Abertos',
+                        data: evo.abertos || [],
+                        borderColor: '#1D4E89',
+                        backgroundColor: '#1D4E89',
+                        borderWidth: 2.5,
+                        tension: 0.35,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        fill: false
+                    },
+                    {
+                        label: 'Concluídos',
+                        data: evo.concluidos || [],
+                        borderColor: '#1ABC9C',
+                        backgroundColor: '#1ABC9C',
+                        borderWidth: 2.5,
+                        tension: 0.35,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        fill: false
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        align: 'start',
+                        labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, color: '#334155', font: { size: 11, weight: '600' } }
+                    }
+                },
+                scales: {
+                    x: { ticks: { maxRotation: 0, color: '#64748b', font: { size: 11 }, maxTicksLimit: 12 }, grid: { display: false } },
+                    y: { beginAtZero: true, ticks: { precision: 0, color: '#94a3b8', font: { size: 11 } }, grid: { color: 'rgba(148, 163, 184, 0.25)' } }
+                }
+            }
+        });
+    }
+
+    var detalheEl = document.getElementById('mdkIndDetalhe');
+    var ranks = detalheEl ? JSON.parse(detalheEl.textContent || '{}') : {};
+    var drawer = document.getElementById('mdkIndDrawer');
+    var corpo = document.getElementById('mdkIndDrawerCorpo');
+    var titulo = document.getElementById('mdkIndDrawerTitulo');
+    var sub = document.getElementById('mdkIndDrawerSub');
+
+    function fechar() {
+        if (!drawer) return;
+        drawer.hidden = true;
+        drawer.classList.remove('is-open');
+    }
+
+    function celula(texto) {
+        var td = document.createElement('td');
+        td.textContent = texto || '—';
+        return td;
+    }
+
+    function abrir(bloco, idx) {
+        var linha = (ranks[bloco] || [])[idx];
+        if (!linha || !drawer) return;
+        titulo.textContent = linha.nome;
+        var extra = linha.ocultos ? ' Mais ' + linha.ocultos + ' chamado(s) fora desta lista.' : '';
+        sub.textContent = linha.total + ' chamado(s) · ' + linha.pct + '%.' + extra;
+        corpo.textContent = '';
+        (linha.detalhe || []).forEach(function (item) {
+            var tr = document.createElement('tr');
+            var tdNum = document.createElement('td');
+            var link = document.createElement('a');
+            link.href = item.url || '#';
+            link.textContent = item.numero || '—';
+            tdNum.appendChild(link);
+            tr.appendChild(tdNum);
+            tr.appendChild(celula(item.status));
+            tr.appendChild(celula(item.mantenedor));
+            tr.appendChild(celula(item.servico));
+            tr.appendChild(celula(item.abertura));
+            tr.appendChild(celula(item.conclusao));
+            tr.appendChild(celula(item.prazo));
+            corpo.appendChild(tr);
+        });
+        drawer.hidden = false;
+        drawer.classList.add('is-open');
+    }
+
+    document.querySelectorAll('.mdk-ind-rank').forEach(function (tr) {
+        function ir() {
+            abrir(tr.getAttribute('data-rank'), Number(tr.getAttribute('data-idx')));
+        }
+        tr.addEventListener('click', ir);
+        tr.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                ir();
+            }
+        });
+    });
+
+    document.querySelectorAll('.mdk-ind-exp').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var pai = btn.closest('tr');
+            var filho = pai ? pai.nextElementSibling : null;
+            if (!filho) return;
+            var abrirLinha = filho.hasAttribute('hidden');
+            if (abrirLinha) filho.removeAttribute('hidden');
+            else filho.setAttribute('hidden', '');
+            btn.setAttribute('aria-expanded', abrirLinha ? 'true' : 'false');
+            var icone = btn.querySelector('i');
+            if (icone) {
+                icone.classList.toggle('fa-chevron-right', !abrirLinha);
+                icone.classList.toggle('fa-chevron-down', abrirLinha);
+            }
+        });
+    });
+
+    var fecharBtn = document.getElementById('mdkIndDrawerFechar');
+    if (fecharBtn) fecharBtn.addEventListener('click', fechar);
+    if (drawer) {
+        drawer.addEventListener('click', function (e) {
+            if (e.target === drawer) fechar();
+        });
+    }
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') fechar();
+    });
+})();
+</script>
+<style>
+.mdk-ind { margin-bottom: 0.75rem; }
+.mdk-ind-filtros { background: #fff; border: 1px solid var(--mdk-border, #e4e8ec); border-radius: 0.4rem; padding: 0.65rem 0.75rem; }
+.mdk-ind-periodo { display: flex; gap: 0.35rem; }
+.mdk-ind-periodo .mdk-select { min-width: 8.2rem; }
+.mdk-ind-sub { margin: -0.2rem 0 0.45rem; color: var(--mdk-muted, #8a97a6); font-size: 0.68rem; }
+.mdk-ind-chart { height: 220px; }
+.mdk-ind-scroll { overflow: auto; max-height: 320px; }
+.mdk-ind-rank { cursor: pointer; }
+.mdk-ind-rank:hover, .mdk-ind-rank:focus { background: #f4fbf9; outline: none; }
+.mdk-ind-exp {
+    border: 0; background: transparent; color: #1a9e86; cursor: pointer;
+    width: 1.4rem; height: 1.4rem; border-radius: 0.2rem;
+}
+.mdk-ind-exp:hover { background: #e7f7f3; }
+.mdk-ind-subtable { background: #f8fafb; }
+.mdk-ind-subtable th { background: transparent; }
+.mdk-ind-drawer.modal-overlay { display: none; }
+.mdk-ind-drawer.modal-overlay.is-open {
+    display: flex; justify-content: flex-end; align-items: stretch; padding: 0;
+}
+.mdk-ind-drawer .modal-dialog {
+    max-width: 640px; width: min(640px, 100%); height: 100%; max-height: 100%;
+    border-radius: 0; margin: 0;
+}
+.mdk-ind-drawer .mdk-table a { color: #1a9e86; font-weight: 700; text-decoration: none; }
+</style>
