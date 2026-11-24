@@ -172,7 +172,7 @@
 
             <div class="mdk-card mdk-span-12">
                 <h3>Atendimentos finalizados</h3>
-                <form method="get" action="{{ url_for('main.dashboard') }}" class="mdk-graf-filtros">
+                <form method="get" action="{{ url_for('main.dashboard') }}" class="mdk-graf-filtros mdk-filtro-bar">
                     <input type="hidden" name="ind_de" value="{{ indicadores.filtros.de }}">
                     <input type="hidden" name="ind_ate" value="{{ indicadores.filtros.ate }}">
                     <input type="hidden" name="ind_unidade" value="{{ indicadores.filtros.unidade }}">
@@ -200,7 +200,9 @@
                             {% endfor %}
                         </select>
                     </label>
-                    <button type="submit" class="mdk-btn mdk-btn-teal">Filtrar</button>
+                    <div class="mdk-filtro-acoes">
+                        <button type="submit" class="mdk-btn mdk-btn-teal">Filtrar</button>
+                    </div>
                     <span class="mdk-graf-total">{{ graf.total }} finalizado{{ 's' if graf.total != 1 else '' }}</span>
                 </form>
                 <div class="mdk-graf-grid">
@@ -387,6 +389,7 @@
         if ((location.hash || '').replace('#', '') === 'atendimento' || (h === '' && new URLSearchParams(location.search).get('dia'))) {
             renderChartDia();
         }
+        if (h === 'avaliacoes' && window.renderChartAvaliacoes) requestAnimationFrame(window.renderChartAvaliacoes);
     }
     document.querySelectorAll('.mdk-tab').forEach(function (btn) {
         btn.addEventListener('click', function () {
@@ -394,6 +397,7 @@
             history.replaceState(null, '', '#' + name);
             showTab(name);
             if (name === 'atendimento') renderChartDia();
+            if (name === 'avaliacoes' && window.renderChartAvaliacoes) requestAnimationFrame(window.renderChartAvaliacoes);
         });
     });
     window.addEventListener('hashchange', tabFromHash);

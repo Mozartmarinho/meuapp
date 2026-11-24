@@ -1,15 +1,15 @@
-<section class="mdk-av">
+<section class="mdk-avaliacoes">
     <div class="mdk-dia-head">
         <div>
             <h2>Avaliações de atendimento</h2>
             <p>Notas de quem abriu o chamado, depois do encerramento: péssimo, ruim, bom, muito bom ou excelente.</p>
         </div>
     </div>
-    <form method="get" action="{{ url_for('main.dashboard') }}#avaliacoes" class="mdk-graf-filtros">
+    <form method="get" action="{{ url_for('main.dashboard') }}#avaliacoes" class="mdk-graf-filtros mdk-filtro-bar">
         {% for chave, valor in qs_av.items() %}
         <input type="hidden" name="{{ chave }}" value="{{ valor }}">
         {% endfor %}
-        <label>Período
+        <label class="mdk-filtro-periodo">Período
             <span class="mdk-ind-periodo">
                 <input class="mdk-select" type="date" name="av_de" value="{{ avaliacoes.de }}" aria-label="De">
                 <input class="mdk-select" type="date" name="av_ate" value="{{ avaliacoes.ate }}" aria-label="Até">
@@ -31,9 +31,24 @@
                 {% endfor %}
             </select>
         </label>
-        <button type="submit" class="mdk-btn mdk-btn-teal">Filtrar</button>
+        <div class="mdk-filtro-acoes">
+            <button type="submit" class="mdk-btn mdk-btn-teal">Filtrar</button>
+        </div>
         <span class="mdk-graf-total">{{ avaliacoes.total }} avaliaç{{ 'ões' if avaliacoes.total != 1 else 'ão' }} · média {{ avaliacoes.media_txt }}</span>
     </form>
+
+    <div class="mdk-card mdk-av-grafico">
+        <h3>Gráfico das avaliações</h3>
+        <div class="mdk-av-chart-row">
+            <div class="mdk-av-media-box">
+                <b>{{ avaliacoes.media_txt }}</b>
+                <span>média do período</span>
+            </div>
+            <div class="mdk-av-chart">
+                <canvas id="chartAvaliacoes" aria-label="Gráfico das avaliações"></canvas>
+            </div>
+        </div>
+    </div>
 
     <div class="mdk-av-faixas">
         {% for faixa in avaliacoes.faixas %}
@@ -77,3 +92,54 @@
         {% endif %}
     </div>
 </section>
+<script type="application/json" id="mdkAvGrafico">{{ avaliacoes.faixas|tojson }}</script>
+<script>
+window.renderChartAvaliacoes = function () {
+    var canvas = document.getElementById('chartAvaliacoes');
+    var raw = document.getElementById('mdkAvGrafico');
+    if (!canvas || !raw || typeof Chart === 'undefined') return;
+    var faixas = [];
+    try { faixas = JSON.parse(raw.textContent || '[]'); } catch (e) { faixas = []; }
+    var cores = { 1: '#c0392b', 2: '#e67e22', 3: '#d4a017', 4: '#1a9e86', 5: '#1e8449' };
+    var dados = {
+        labels: faixas.map(function (f) { return f.rotulo; }),
+        datasets: [{
+            label: 'Avaliações',
+            data: faixas.map(function (f) { return f.total; }),
+            backgroundColor: faixas.map(function (f) { return cores[f.nota] || '#1ABC9C'; }),
+            borderRadius: 6,
+            maxBarThickness: 22
+        }]
+    };
+    if (window._chartAvaliacoes) {
+        window._chartAvaliacoes.data = dados;
+        window._chartAvaliacoes.update();
+        window._chartAvaliacoes.resize();
+        return;
+    }
+    window._chartAvaliacoes = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: dados,
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function (ctx) {
+                            var faixa = faixas[ctx.dataIndex] || {};
+                            return (faixa.total || 0) + ' · ' + (faixa.pct || 0) + '%';
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { beginAtZero: true, ticks: { precision: 0, color: '#64748b' }, grid: { color: 'rgba(148, 163, 184, 0.25)' } },
+                y: { ticks: { color: '#334155', font: { size: 12, weight: '600' } }, grid: { display: false } }
+            }
+        }
+    });
+};
+</script>

@@ -227,6 +227,11 @@ class AvaliacaoIntegracaoTest(unittest.TestCase):
         self.assertIn('Avaliações', html)
         self.assertIn('OS910004', html)
         self.assertIn('Hora de abertura', html)
+        self.assertIn('chartAvaliacoes', html)
+        self.assertIn('name="av_tecnico"', html)
+        self.assertIn('name="av_unidade"', html)
+        self.assertIn('mdk-avaliacoes', html)
+        self.assertNotIn('class="mdk-av"', html)
 
 
 if __name__ == '__main__':

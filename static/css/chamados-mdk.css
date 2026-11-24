@@ -208,10 +208,27 @@ body.mdk-tv .main-content {
 .mdk-note-list li { border-bottom: 1px solid #f0f2f4; padding: 0.35rem 0; }
 .mdk-note-list a { color: #1a9e86; text-decoration: none; font-weight: 600; }
 .mdk-note-list small { display: block; color: var(--mdk-muted, #8a97a6); font-size: 0.66rem; }
-.mdk-graf-filtros { display: flex; flex-wrap: wrap; gap: 0.45rem 0.6rem; align-items: flex-end; margin-bottom: 0.7rem; }
-.mdk-graf-filtros label { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.66rem; color: var(--mdk-muted, #8a97a6); font-weight: 600; }
-.mdk-graf-filtros .mdk-select, .mdk-graf-filtros input { min-width: 9rem; }
-.mdk-graf-total { font-size: 0.75rem; font-weight: 700; color: #1a9e86; margin-left: auto; align-self: center; }
+.mdk-graf-filtros { display: flex; flex-wrap: wrap; gap: 1rem 1.25rem; align-items: flex-end; margin-bottom: 0.85rem; }
+.mdk-graf-filtros label { display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.72rem; color: #5c6b7a; font-weight: 700; min-width: 0; }
+.mdk-graf-filtros .mdk-select, .mdk-graf-filtros input[type="date"] { min-width: 0; width: 100%; box-sizing: border-box; height: 2.25rem; max-height: 2.25rem; padding: 0.35rem 0.65rem; }
+.mdk-filtro-bar {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: flex-end;
+    gap: 0.9rem 1.25rem;
+    background: #fff;
+    border: 1px solid var(--mdk-border, #e4e8ec);
+    border-radius: 0.45rem;
+    padding: 0.95rem 1.15rem;
+}
+.mdk-filtro-bar > label { flex: 1 1 9.5rem; min-width: 9.5rem; max-width: none; }
+.mdk-filtro-bar > .mdk-filtro-periodo { flex: 1.65 1 21rem; min-width: 21rem; }
+.mdk-filtro-bar .sg-combo { width: 100%; height: 2.25rem; }
+.mdk-ind-periodo { display: flex; flex-direction: row; gap: 1rem; align-items: center; }
+.mdk-ind-periodo .mdk-select { flex: 1 1 0; min-width: 0; width: auto; height: 2.25rem; max-height: 2.25rem; }
+.mdk-filtro-acoes { flex: 0 0 auto; display: flex; align-items: flex-end; align-self: flex-end; }
+.mdk-filtro-acoes .mdk-btn { height: 2.25rem; padding: 0 1.15rem; white-space: nowrap; }
+.mdk-graf-total { font-size: 0.78rem; font-weight: 700; color: #1a9e86; margin-left: auto; align-self: center; white-space: nowrap; padding-bottom: 0.15rem; }
 .mdk-graf-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1rem; }
 .mdk-graf-grid h4 { margin: 0 0 0.4rem; font-size: 0.72rem; color: #5c6b7a; }
 .mdk-bars { display: flex; align-items: flex-end; gap: 0.35rem; height: 150px; overflow-x: auto; padding-top: 0.2rem; }
@@ -540,7 +557,14 @@ body.mdk-tv .main-content {
 .mdk-cal-day.is-sel { background:#1ABC9C; color:#fff; }
 .mdk-cal-day i { position:absolute; top:.05rem; right:.15rem; font-style:normal; font-size:.55rem; color:#1a9e86; }
 .mdk-cal-day.is-sel i { color:#fff; }
-.mdk-av-faixas { display:grid; grid-template-columns:repeat(5, 1fr); gap:.55rem; margin:.7rem 0; }
+.mdk-avaliacoes { display: block; width: 100%; }
+.mdk-av-grafico { margin-bottom: 0.85rem; }
+.mdk-av-chart-row { display: grid; grid-template-columns: 7.5rem 1fr; gap: 1rem; align-items: center; }
+.mdk-av-media-box { text-align: center; }
+.mdk-av-media-box b { display: block; font-size: 2rem; line-height: 1; color: #16324f; }
+.mdk-av-media-box span { display: block; margin-top: 0.3rem; color: #6b7c8d; font-size: 0.72rem; font-weight: 700; }
+.mdk-av-chart { height: 220px; position: relative; }
+.mdk-av-faixas { display:grid; grid-template-columns:repeat(5, 1fr); gap: 0.85rem; margin: 0 0 0.9rem; }
 .mdk-av-nota, .mdk-av-pill { border-radius:10px; }
 .mdk-av-nota { background:#fff; border:1px solid #e6ebf0; padding:.7rem; }
 .mdk-av-nota b { display:block; font-size:1.4rem; }
@@ -554,7 +578,13 @@ body.mdk-tv .main-content {
 .mdk-table small { display:block; color:#8a97a6; }
 @media (max-width:900px) {
     .mdk-dia-layout, .mdk-dia-cards, .mdk-av-faixas { grid-template-columns:1fr 1fr; }
+    .mdk-filtro-bar { flex-wrap: wrap; }
+    .mdk-filtro-bar > label, .mdk-filtro-bar > .mdk-filtro-periodo { flex: 1 1 14rem; min-width: 0; }
+    .mdk-av-chart-row { grid-template-columns: 1fr; }
 }
 @media (max-width:640px) {
     .mdk-dia-layout, .mdk-dia-cards, .mdk-av-faixas { grid-template-columns:1fr; }
+    .mdk-filtro-bar > label, .mdk-filtro-bar > .mdk-filtro-periodo { flex-basis: 100%; }
+    .mdk-ind-periodo { flex-direction: column; align-items: stretch; }
+    .mdk-ind-periodo .mdk-select { flex: 0 0 auto; width: 100%; }
 }

@@ -1,10 +1,10 @@
 <div class="mdk-ind">
-    <form method="get" action="{{ url_for('main.dashboard') }}" class="mdk-graf-filtros mdk-ind-filtros">
+    <form method="get" action="{{ url_for('main.dashboard') }}" class="mdk-graf-filtros mdk-filtro-bar">
         {% if mesa_filtro is defined and mesa_filtro %}<input type="hidden" name="mesa" value="{{ mesa_filtro }}">{% endif %}
         {% if graf is defined and graf.de %}<input type="hidden" name="de" value="{{ graf.de }}">{% endif %}
         {% if graf is defined and graf.ate %}<input type="hidden" name="ate" value="{{ graf.ate }}">{% endif %}
         {% if graf is defined and graf.tecnico_id %}<input type="hidden" name="tecnico" value="{{ graf.tecnico_id }}">{% endif %}
-        <label>Período
+        <label class="mdk-filtro-periodo">Período
             <span class="mdk-ind-periodo">
                 <input class="mdk-select" type="date" name="ind_de" value="{{ indicadores.filtros.de }}" aria-label="De">
                 <input class="mdk-select" type="date" name="ind_ate" value="{{ indicadores.filtros.ate }}" aria-label="Até">
@@ -34,7 +34,9 @@
                 {% endfor %}
             </select>
         </label>
-        <button type="submit" class="mdk-btn mdk-btn-teal">Filtrar</button>
+        <div class="mdk-filtro-acoes">
+            <button type="submit" class="mdk-btn mdk-btn-teal">Filtrar</button>
+        </div>
         <span class="mdk-graf-total">{{ indicadores.total }} chamado{{ 's' if indicadores.total != 1 else '' }}</span>
     </form>
 
@@ -363,9 +365,6 @@
 </script>
 <style>
 .mdk-ind { margin-bottom: 0.75rem; }
-.mdk-ind-filtros { background: #fff; border: 1px solid var(--mdk-border, #e4e8ec); border-radius: 0.4rem; padding: 0.65rem 0.75rem; }
-.mdk-ind-periodo { display: flex; gap: 0.35rem; }
-.mdk-ind-periodo .mdk-select { min-width: 8.2rem; }
 .mdk-ind-sub { margin: -0.2rem 0 0.45rem; color: var(--mdk-muted, #8a97a6); font-size: 0.68rem; }
 .mdk-ind-chart { height: 220px; }
 .mdk-ind-scroll { overflow: auto; max-height: 320px; }
