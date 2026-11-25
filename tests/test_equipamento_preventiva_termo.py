@@ -153,6 +153,7 @@ class EquipamentoPreventivaTermoTest(unittest.TestCase):
         ticket = garantir_chamado_ocorrencia(self.eq, prev, dia)
         db.session.commit()
         self.assertIsNotNone(ticket)
+        self.assertEqual(ticket.tipo_servico, 'Manutenção preventiva')
         self.assertTrue((ticket.numero_chamado or '').startswith('OS'))
         self.assertNotEqual(ticket.numero_chamado, self.eq.patrimonio)
         de_novo = garantir_chamado_ocorrencia(self.eq, prev, dia)

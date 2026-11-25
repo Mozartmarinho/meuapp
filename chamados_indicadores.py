@@ -1,11 +1,15 @@
 """Indicadores do dashboard de chamados.
 
 Período, tipo de unidade, serviço e tipo filtram todos os blocos.
+A mesa de atendimento filtra só o ranking de serviços.
 """
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from statistics import median
 
+MANUTENCAO_CORRETIVA = 'Manutenção corretiva'
+MANUTENCAO_PREVENTIVA = 'Manutenção preventiva'
+CLASSES_MANUTENCAO = (MANUTENCAO_CORRETIVA, MANUTENCAO_PREVENTIVA)
 SERVICOS_CONHECIDOS = ('Manutenção', 'Instalação', 'Reparo', 'Configuração', 'Outro')
 UNIDADES = (('ti', 'TI'), ('nutricao', 'Nutrição'))
 TIPOS_ITEM = (
@@ -156,6 +160,39 @@ def _opcoes(conhecidos, presentes):
     return list(conhecidos) + extras
 
 
+def _classe_manutencao(item):
+    """Abertura do sistema ou do WhatsApp é corretiva. Programada é preventiva."""
+    if item.get('preventiva'):
+        return MANUTENCAO_PREVENTIVA
+    return MANUTENCAO_CORRETIVA
+
+
+def _ranking_manutencao(filtrados):
+    """Duas fatias fixas: corretiva (aberturas) e preventiva (programadas)."""
+    if not filtrados:
+        return []
+    marcados = []
+    for item in filtrados:
+        copia = dict(item)
+        copia['servico'] = _classe_manutencao(item)
+        marcados.append(copia)
+    linhas = _ranking(marcados, 'servico')
+    por_nome = {linha['nome']: linha for linha in linhas}
+    saida = []
+    for nome in CLASSES_MANUTENCAO:
+        linha = por_nome.get(nome) or {
+            'nome': nome,
+            'total': 0,
+            'pct': 0,
+            'detalhe': [],
+            'ocultos': 0,
+        }
+        saida.append(linha)
+    for pos, linha in enumerate(saida, start=1):
+        linha['pos'] = pos
+    return saida
+
+
 def _ranking(filtrados, campo):
     grupos = defaultdict(list)
     for item in filtrados:
@@ -240,13 +277,21 @@ def _por_mantenedor(filtrados):
     return tempos, execucao
 
 
-def calcular_indicadores(itens, inicio, fim, unidade='', servico='', tipo=''):
+def _mesa_id(valor):
+    txt = str(valor or '').strip()
+    if not txt.isdigit():
+        return None
+    return int(txt)
+
+
+def calcular_indicadores(itens, inicio, fim, unidade='', servico='', tipo='', mesa=''):
     """Monta evolução, rankings e tabelas de mantenedor já filtrados."""
     if inicio > fim:
         inicio, fim = fim, inicio
     unidade = (unidade or '').strip()
     servico = (servico or '').strip()
     tipo = (tipo or '').strip()
+    mesa_id = _mesa_id(mesa)
 
     no_periodo = []
     for item in itens or []:
@@ -264,6 +309,12 @@ def calcular_indicadores(itens, inicio, fim, unidade='', servico='', tipo=''):
         if tipo and (item.get('tipo') or '') != tipo:
             continue
         filtrados.append(item)
+
+    do_ranking_servicos = filtrados
+    if mesa_id is not None:
+        do_ranking_servicos = [
+            item for item in filtrados if item.get('mesa_id') == mesa_id
+        ]
 
     buckets, chave, rotulo = _buckets(inicio, fim)
     abertos = Counter()
@@ -283,6 +334,7 @@ def calcular_indicadores(itens, inicio, fim, unidade='', servico='', tipo=''):
             'unidade': unidade,
             'servico': servico,
             'tipo': tipo,
+            'mesa': str(mesa_id) if mesa_id is not None else '',
         },
         'opcoes': {
             'unidades': [{'id': chave_u, 'nome': nome} for chave_u, nome in UNIDADES],
@@ -295,7 +347,7 @@ def calcular_indicadores(itens, inicio, fim, unidade='', servico='', tipo=''):
             'concluidos': [concluidos.get(bucket, 0) for bucket in buckets],
         },
         'ranking_unidades': _ranking(filtrados, 'cliente'),
-        'ranking_servicos': _ranking(filtrados, 'servico'),
+        'ranking_servicos': _ranking_manutencao(do_ranking_servicos),
         'tempos': tempos,
         'execucao': execucao,
         'total': len(filtrados),

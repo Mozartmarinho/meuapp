@@ -45,6 +45,8 @@
                 <label for="tipo_servico">Tipo de Serviço *</label>
                 <select id="tipo_servico" name="tipo_servico" required>
                     <option value="">Selecione...</option>
+                    <option value="Manutenção corretiva" {% if chamado.tipo_servico == 'Manutenção corretiva' %}selected{% endif %}>Manutenção corretiva</option>
+                    <option value="Manutenção preventiva" {% if chamado.tipo_servico == 'Manutenção preventiva' %}selected{% endif %}>Manutenção preventiva</option>
                     <option value="Manutenção" {% if chamado.tipo_servico == 'Manutenção' %}selected{% endif %}>Manutenção</option>
                     <option value="Instalação" {% if chamado.tipo_servico == 'Instalação' %}selected{% endif %}>Instalação</option>
                     <option value="Reparo" {% if chamado.tipo_servico == 'Reparo' %}selected{% endif %}>Reparo</option>

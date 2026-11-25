@@ -3,6 +3,8 @@
 import os
 import sys
 import unittest
+from datetime import datetime
+from unittest.mock import patch
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, ROOT)
@@ -17,6 +19,7 @@ from routes import (  # noqa: E402
     _usuario_toca_mesa,
     usuario_pode_atribuir_chamado,
 )
+from whatsapp_chamados import montar_mensagem_atribuicao_tecnico  # noqa: E402
 
 
 class EncaminharTecnicoTest(unittest.TestCase):
@@ -226,6 +229,83 @@ class EncaminharTecnicoTest(unittest.TestCase):
         ids_bruno = {c.id for c in _query_chamados_usuario(bruno).all()}
         self.assertNotIn(chamado.id, ids_ana)
         self.assertIn(chamado.id, ids_bruno)
+
+    def test_mensagem_atribuicao_usa_saudacao_e_link(self):
+        manha = montar_mensagem_atribuicao_tecnico(datetime(2026, 11, 25, 9, 0))
+        tarde = montar_mensagem_atribuicao_tecnico(datetime(2026, 11, 25, 15, 0))
+        noite = montar_mensagem_atribuicao_tecnico(datetime(2026, 11, 25, 20, 0))
+        self.assertTrue(manha.startswith('Bom dia, um chamado foi vinculado'))
+        self.assertTrue(tarde.startswith('Boa tarde, um chamado foi vinculado'))
+        self.assertTrue(noite.startswith('Boa noite, um chamado foi vinculado'))
+        for texto in (manha, tarde, noite):
+            self.assertIn('São Geraldo Service', texto)
+            self.assertIn('www.sistemas.saogeraldoservice.com', texto)
+            self.assertIn('gerencie seu atendimento.', texto)
+
+    def test_atribuir_envia_whatsapp_ao_tecnico(self):
+        ana = self._tecnico('Ana Técnica', 'ana-wa@example.com')
+        bruno = self._tecnico('Bruno Técnico', 'bruno-wa@example.com')
+        opener = self._usuario('Solicitante', 'abre-wa@example.com')
+        tec_ana = ChamadoTecnico.query.filter_by(usuario_id=ana.id).one()
+        tec_bruno = ChamadoTecnico.query.filter_by(usuario_id=bruno.id).one()
+        tec_ana.pode_atribuir = True
+        tec_bruno.whatsapp = '21988887777'
+        db.session.commit()
+        chamado = self._chamado(opener, 'OS000020')
+        enviados = []
+
+        def fake(to, texto):
+            enviados.append((to, texto))
+            return {'ok': True}
+
+        with patch('whatsapp_pesagem.send_whatsapp', fake):
+            ok = self._login(ana).post(
+                '/api/chamados/%s/atender' % chamado.id,
+                data={
+                    'acao': 'encaminhar',
+                    'tecnico_destino_id': str(tec_bruno.id),
+                    'instrucoes': 'Ver no local',
+                },
+            )
+        self.assertEqual(ok.status_code, 200, ok.get_json())
+        db.session.refresh(chamado)
+        self.assertEqual(chamado.atribuido_usuario_id, bruno.id)
+        self.assertEqual(len(enviados), 1)
+        destino, texto = enviados[0]
+        self.assertIn('21988887777', destino)
+        self.assertIn('um chamado foi vinculado no seu perfil', texto)
+        self.assertIn('www.sistemas.saogeraldoservice.com', texto)
+        self.assertIn('avisado no WhatsApp', (ok.get_json() or {}).get('message', ''))
+
+    def test_atribuir_sem_whatsapp_nao_desfaz_vinculo(self):
+        ana = self._tecnico('Ana Técnica', 'ana-sem@example.com')
+        bruno = self._tecnico('Bruno Técnico', 'bruno-sem@example.com')
+        opener = self._usuario('Solicitante', 'abre-sem@example.com')
+        tec_ana = ChamadoTecnico.query.filter_by(usuario_id=ana.id).one()
+        tec_bruno = ChamadoTecnico.query.filter_by(usuario_id=bruno.id).one()
+        tec_ana.pode_atribuir = True
+        db.session.commit()
+        chamado = self._chamado(opener, 'OS000021')
+        enviados = []
+
+        def fake(to, texto):
+            enviados.append((to, texto))
+            return {'ok': True}
+
+        with patch('whatsapp_pesagem.send_whatsapp', fake):
+            ok = self._login(ana).post(
+                '/api/chamados/%s/atender' % chamado.id,
+                data={
+                    'acao': 'encaminhar',
+                    'tecnico_destino_id': str(tec_bruno.id),
+                    'instrucoes': 'Ver no local',
+                },
+            )
+        self.assertEqual(ok.status_code, 200, ok.get_json())
+        db.session.refresh(chamado)
+        self.assertEqual(chamado.atribuido_usuario_id, bruno.id)
+        self.assertEqual(enviados, [])
+        self.assertIn('não tem WhatsApp', (ok.get_json() or {}).get('message', ''))
 
 
 if __name__ == '__main__':

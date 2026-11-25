@@ -55,12 +55,6 @@ TIPOS_TICKET = (
     ('portao', 'Reparo de portão'),
     ('ramal', 'Reparo de telefone/ramal'),
 )
-TIPO_SERVICO_TICKET = {
-    'equipamento': 'Manutenção',
-    'camera': 'Reparo de câmera',
-    'portao': 'Reparo de portão',
-    'ramal': 'Reparo de telefone/ramal',
-}
 TITULO_TICKET = {
     'equipamento': 'manutenção de equipamentos',
     'camera': 'reparo de câmera',
@@ -82,6 +76,17 @@ def saudacao(agora=None):
     if 12 <= hora < 18:
         return 'Boa tarde'
     return 'Boa noite'
+
+
+LINK_SISTEMA_CHAMADOS = 'www.sistemas.saogeraldoservice.com'
+
+
+def montar_mensagem_atribuicao_tecnico(agora=None):
+    return (
+        '%s, um chamado foi vinculado no seu perfil do sistema de chamados da São Geraldo Service, '
+        'entre no sistema atraves do link %s e gerencie seu atendimento.'
+        % (saudacao(agora), LINK_SISTEMA_CHAMADOS)
+    )
 
 
 def config_ativa():
@@ -281,12 +286,12 @@ def _msg_item_livre(tipo):
 
 def _criar_chamado_whatsapp(
     usuario,
-    tipo_servico,
     descricao,
     patrimonio=None,
     equipamento=None,
     equipamento_id=None,
 ):
+    """Abertura pelo WhatsApp entra sempre como manutenção corretiva."""
     tecnico = _tecnico_bot()
     if not tecnico:
         return None, 'Não há usuário no sistema para assumir o ticket.'
@@ -295,7 +300,7 @@ def _criar_chamado_whatsapp(
     chamado = Chamado(
         numero_chamado=numero,
         cliente_id=usuario.cliente_id,
-        tipo_servico=tipo_servico,
+        tipo_servico='Manutenção corretiva',
         descricao=descricao,
         status='Pendente',
         prioridade='Normal',
@@ -429,7 +434,6 @@ def _abrir_do_payload(usuario, payload=None):
     kind = payload.get('kind') or 'equipamento'
     return _criar_chamado_whatsapp(
         usuario,
-        TIPO_SERVICO_TICKET.get(kind) or 'Reparo',
         _descricao_abertura(usuario, TITULO_TICKET.get(kind) or 'reparo', payload.get('extra') or []),
         patrimonio=payload.get('patrimonio'),
         equipamento=payload.get('equipamento'),
@@ -541,6 +545,57 @@ def destinos_aviso_abertura(chamado):
         vistos.add(phone)
         destinos.append(row)
     return destinos
+
+
+def notificar_tecnico_atribuido(chamado, sender=None, agora=None):
+    """Avisa o técnico no WhatsApp quando o chamado é vinculado ao perfil dele."""
+    if not chamado or not getattr(chamado, 'atribuido_usuario_id', None):
+        return {'ok': False, 'skipped': True}
+    tec = (
+        ChamadoTecnico.query
+        .filter(
+            ChamadoTecnico.usuario_id == chamado.atribuido_usuario_id,
+            ChamadoTecnico.ativo == True,  # noqa: E712
+        )
+        .order_by(ChamadoTecnico.id.asc())
+        .first()
+    )
+    if not tec:
+        return {'ok': False, 'skipped': True, 'error': 'Técnico sem cadastro'}
+    phone = normalizar_telefone(tec.whatsapp)
+    if not telefone_valido(phone):
+        logger.info(
+            'WhatsApp atribuição %s: técnico %s sem número válido',
+            getattr(chamado, 'numero_chamado', ''),
+            tec.nome,
+        )
+        return {'ok': False, 'skipped': True, 'error': 'WhatsApp do técnico não cadastrado'}
+    from whatsapp_pesagem import send_whatsapp
+    sender = sender or send_whatsapp
+    texto = montar_mensagem_atribuicao_tecnico(agora)
+    try:
+        res = sender(tec.whatsapp, texto) or {}
+    except Exception as exc:
+        logger.warning(
+            'WhatsApp atribuição %s para %s: %s',
+            getattr(chamado, 'numero_chamado', ''),
+            tec.whatsapp,
+            exc,
+        )
+        return {'ok': False, 'error': str(exc), 'texto': texto}
+    if not res.get('ok'):
+        logger.warning(
+            'WhatsApp atribuição %s para %s: %s',
+            getattr(chamado, 'numero_chamado', ''),
+            tec.whatsapp,
+            res.get('error') or 'falha',
+        )
+    return {
+        'ok': bool(res.get('ok')),
+        'telefone': phone,
+        'texto': texto,
+        'error': res.get('error'),
+    }
 
 
 def notificar_abertura_chamado(chamado, sender=None):

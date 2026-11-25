@@ -88,6 +88,7 @@
                     <input type="hidden" name="ind_unidade" value="{{ indicadores.filtros.unidade }}">
                     <input type="hidden" name="ind_servico" value="{{ indicadores.filtros.servico }}">
                     <input type="hidden" name="ind_tipo" value="{{ indicadores.filtros.tipo }}">
+                    {% if indicadores.filtros.mesa %}<input type="hidden" name="ind_mesa" value="{{ indicadores.filtros.mesa }}">{% endif %}
                     <label>Mesa:
                         <select class="mdk-select" name="mesa" onchange="this.form.submit()">
                             <option value="">Todas</option>
@@ -178,6 +179,7 @@
                     <input type="hidden" name="ind_unidade" value="{{ indicadores.filtros.unidade }}">
                     <input type="hidden" name="ind_servico" value="{{ indicadores.filtros.servico }}">
                     <input type="hidden" name="ind_tipo" value="{{ indicadores.filtros.tipo }}">
+                    {% if indicadores.filtros.mesa %}<input type="hidden" name="ind_mesa" value="{{ indicadores.filtros.mesa }}">{% endif %}
                     <label>Mesa
                         <select class="mdk-select" name="mesa">
                             <option value="">Todas</option>

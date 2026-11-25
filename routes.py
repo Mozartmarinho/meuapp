@@ -2540,6 +2540,8 @@ def _snapshot_indicador(chamado):
         'numero': chamado.numero_chamado,
         'cliente': chamado.cliente.nome if chamado.cliente else '—',
         'servico': (chamado.tipo_servico or '').strip() or '—',
+        'preventiva': _chamado_e_preventiva(chamado),
+        'mesa_id': chamado.mesa_id,
         'unidade': normalizar_tipo_eq(equipamento.tipo_equipamento) if equipamento is not None else '',
         'tipo': (equipamento.tipo_recurso or '').strip() if equipamento is not None else '',
         'status': chamado.status or '',
@@ -2563,6 +2565,7 @@ def _indicadores_dashboard(chamados, args):
         unidade=args.get('ind_unidade') or '',
         servico=args.get('ind_servico') or '',
         tipo=args.get('ind_tipo') or '',
+        mesa=args.get('ind_mesa') or '',
     )
     for bloco in ('ranking_unidades', 'ranking_servicos'):
         for linha in dados[bloco]:
@@ -2685,7 +2688,7 @@ def _grafico_finalizados_dashboard(args, mesa_filtro):
 def _preservar_dashboard(excluir):
     chaves = (
         'mesa', 'de', 'ate', 'tecnico',
-        'ind_de', 'ind_ate', 'ind_unidade', 'ind_servico', 'ind_tipo',
+        'ind_de', 'ind_ate', 'ind_unidade', 'ind_servico', 'ind_tipo', 'ind_mesa',
         'av_de', 'av_ate', 'av_tecnico', 'av_unidade', 'dia',
     )
     fora = set(excluir or ())
@@ -3052,7 +3055,7 @@ def novo_chamado():
             chamado = Chamado(
                 numero_chamado=numero_chamado,
                 cliente_id=cliente_id,
-                tipo_servico=request.form['tipo_servico'],
+                tipo_servico='Manutenção corretiva',
                 descricao=request.form['descricao'],
                 status=request.form.get('status') or 'Pendente',
                 prioridade=normalizar_prioridade(request.form.get('prioridade') or 'Normal'),
@@ -3657,6 +3660,18 @@ def atender_chamado(id):
 
     if acao == 'encaminhar' and nome_tecnico_destino:
         msg = 'Atribuído para %s. O chamado fica só com esse técnico.' % nome_tecnico_destino
+        try:
+            from whatsapp_chamados import notificar_tecnico_atribuido
+            aviso_tecnico = notificar_tecnico_atribuido(chamado)
+        except Exception as exc:
+            print(f'Falha ao avisar técnico no WhatsApp: {exc}')
+            aviso_tecnico = {'ok': False, 'error': str(exc)}
+        if aviso_tecnico.get('ok'):
+            msg += ' O técnico foi avisado no WhatsApp.'
+        elif aviso_tecnico.get('skipped'):
+            msg += ' O técnico não tem WhatsApp cadastrado.'
+        else:
+            msg += ' O aviso por WhatsApp ao técnico não foi enviado.'
     elif acao == 'encaminhar':
         msg = f'Encaminhado para {chamado.setor_destino}.'
     elif acao == 'finalizar' and hop_tipo == TIPO_HOP_DEVOLVER:

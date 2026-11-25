@@ -68,11 +68,28 @@ class IndicadoresDashboardTest(unittest.TestCase):
         )
         self.assertEqual(dados['total'], 1)
         self.assertEqual(dados['ranking_unidades'][0]['nome'], 'A')
-        self.assertEqual(dados['ranking_servicos'][0]['nome'], 'Manutenção')
+        self.assertEqual(dados['ranking_servicos'][0]['nome'], 'Manutenção corretiva')
+        self.assertEqual(dados['ranking_servicos'][1]['nome'], 'Manutenção preventiva')
+        self.assertEqual(dados['ranking_servicos'][1]['total'], 0)
         self.assertEqual(sum(dados['evolucao']['abertos']), 1)
         self.assertEqual(sum(dados['evolucao']['concluidos']), 1)
         self.assertEqual(dados['ranking_unidades'][0]['detalhe'][0]['numero'], 'OS1')
         self.assertEqual(dados['ranking_unidades'][0]['detalhe'][0]['prazo'], 'Sim')
+
+    def test_ranking_separa_corretiva_preventiva_e_mesa(self):
+        itens = [
+            _item(id=1, numero='OS1', mesa_id=1),
+            _item(id=2, numero='OS2', mesa_id=2, preventiva=True),
+            _item(id=3, numero='OS3', mesa_id=1, preventiva=True),
+        ]
+        dados = calcular_indicadores(itens, date(2026, 11, 1), date(2026, 11, 30), mesa=1)
+        por = {linha['nome']: linha['total'] for linha in dados['ranking_servicos']}
+        self.assertEqual(por['Manutenção corretiva'], 1)
+        self.assertEqual(por['Manutenção preventiva'], 1)
+        self.assertEqual(dados['ranking_servicos'][1]['detalhe'][0]['servico'], 'Manutenção preventiva')
+        self.assertEqual(dados['total'], 3)
+        self.assertEqual(dados['ranking_unidades'][0]['total'], 3)
+        self.assertEqual(dados['filtros']['mesa'], '1')
 
     def test_sem_chamados(self):
         dados = calcular_indicadores([], date(2026, 11, 1), date(2026, 11, 3))

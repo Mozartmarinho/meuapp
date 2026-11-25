@@ -164,7 +164,7 @@ class WhatsAppChamadoTest(unittest.TestCase):
         self.assertEqual(chamado.setor_tecnico_id, self.setor.id)
         self.assertEqual(chamado.mesa_id, self.mesa.id)
         self.assertEqual(chamado.patrimonio, 'PAT-100')
-        self.assertEqual(chamado.tipo_servico, 'Manutenção')
+        self.assertEqual(chamado.tipo_servico, 'Manutenção corretiva')
         self.assertEqual(chamado.canal_abertura, 'WhatsApp')
         self.assertTrue((chamado.contato_abertura or '').endswith('21988880000'))
 
@@ -443,7 +443,7 @@ class WhatsAppChamadoTest(unittest.TestCase):
         r3 = self._send(phone, '2')
         self.assertTrue(any('Ticket' in m and 'aberto' in m for m in r3['replies']))
         chamado = Chamado.query.order_by(Chamado.id.desc()).first()
-        self.assertEqual(chamado.tipo_servico, 'Reparo de câmera')
+        self.assertEqual(chamado.tipo_servico, 'Manutenção corretiva')
         self.assertIn('Hall entrada', chamado.equipamento)
         self.assertEqual(chamado.mesa_id, self.mesa.id)
 
@@ -458,7 +458,7 @@ class WhatsAppChamadoTest(unittest.TestCase):
         r3 = self._send(phone, '2')
         self.assertTrue(any('Ticket' in m and 'aberto' in m for m in r3['replies']))
         chamado = Chamado.query.order_by(Chamado.id.desc()).first()
-        self.assertEqual(chamado.tipo_servico, 'Reparo de portão')
+        self.assertEqual(chamado.tipo_servico, 'Manutenção corretiva')
         self.assertIn('Portão principal', chamado.equipamento)
 
     def test_abre_ticket_ramal(self):
@@ -473,7 +473,7 @@ class WhatsAppChamadoTest(unittest.TestCase):
         r3 = self._send(phone, '2')
         self.assertTrue(any('Ticket' in m and 'aberto' in m for m in r3['replies']))
         chamado = Chamado.query.order_by(Chamado.id.desc()).first()
-        self.assertEqual(chamado.tipo_servico, 'Reparo de telefone/ramal')
+        self.assertEqual(chamado.tipo_servico, 'Manutenção corretiva')
         self.assertEqual(chamado.patrimonio, '201')
         self.assertIn('Recepção', chamado.equipamento)
 
@@ -489,7 +489,7 @@ class WhatsAppChamadoTest(unittest.TestCase):
         r3 = self._send(phone, '2')
         self.assertTrue(any('Ticket' in m and 'aberto' in m for m in r3['replies']))
         chamado = Chamado.query.order_by(Chamado.id.desc()).first()
-        self.assertEqual(chamado.tipo_servico, 'Reparo de câmera')
+        self.assertEqual(chamado.tipo_servico, 'Manutenção corretiva')
         self.assertEqual(chamado.equipamento, 'Câmera do corredor 3')
 
     def test_inbound_com_token_inicia_cadastro(self):
