@@ -36,15 +36,45 @@ SISTEMAS = {
         'campo': 'perm_nutricao',
         'endpoint': 'nutricao.dashboard',
         'menus': [
-            ('dashboard', 'Dashboard'),
-            ('cadastro', 'Cadastro'),
-            ('mapa_refeicoes', 'Mapa de Refeições Pacientes'),
-            ('refeicao_acompanhante', 'Refeição acompanhante'),
-            ('refeicoes_funcionarios', 'Refeições funcionários'),
-            ('estoque', 'Estoque'),
-            ('faturamento', 'Faturamento'),
-            ('faturamento_valores', 'Faturamento com valores'),
-            ('auditoria', 'Auditoria'),
+            ('mapa_refeicoes', 'Mapa de Refeições Pacientes', 'Menu'),
+            ('refeicao_acompanhante', 'Refeição acompanhante', 'Menu'),
+            ('refeicoes_funcionarios', 'Refeições funcionários', 'Menu'),
+            ('estoque', 'Estoque', 'Menu'),
+            ('analise_nutricional', 'Análise nutricional', 'Menu'),
+            ('evolucao', 'Evolução do paciente', 'Menu'),
+            ('configuracoes', 'Configurações', 'Menu'),
+            ('auditoria', 'Auditoria', 'Menu'),
+            ('cadastro_pacientes', 'Pacientes', 'Cadastro'),
+            ('cadastro_clinicas', 'Clínicas', 'Cadastro'),
+            ('cadastro_enfermarias', 'Enfermarias', 'Cadastro'),
+            ('cadastro_leitos', 'Leitos', 'Cadastro'),
+            ('cadastro_categorias', 'Categoria', 'Cadastro'),
+            ('cadastro_grupos_dietas', 'Grupos de Dietas', 'Cadastro'),
+            ('cadastro_dietas', 'Dietas', 'Cadastro'),
+            ('cadastro_vias', 'Vias de Administração', 'Cadastro'),
+            ('cadastro_uma_formula', 'Fórmula Infantil', 'Cadastro'),
+            ('cadastro_uma_enteral', 'Enteral', 'Cadastro'),
+            ('cadastro_uma_suplemento', 'Suplemento', 'Cadastro'),
+            ('cadastro_uma_lve', 'LVE', 'Cadastro'),
+            ('cadastro_tipos_refeicao', 'Tipos de Refeição', 'Cadastro'),
+            ('cadastro_cardapios', 'Cardápios', 'Cadastro'),
+            ('cadastro_precos_refeicoes', 'Preços das Refeições', 'Cadastro'),
+            ('cadastro_nutricional', 'Nutricional', 'Cadastro'),
+            ('cadastro_pratos_liquidos', 'Dietas Líquidas', 'Cadastro'),
+            ('cadastro_produtos', 'Produtos', 'Cadastro'),
+            ('cadastro_fornecedores', 'Fornecedores', 'Cadastro'),
+            ('cadastro_etiquetas', 'Etiquetas', 'Cadastro'),
+            ('relatorio_mapa_uma', 'Mapa da U.M.A.', 'Impressões e Relatórios'),
+            ('impressao_etiquetas', 'Impressão de etiquetas', 'Impressões e Relatórios'),
+            ('impressao_mapa', 'Impressão mapa da nutrição', 'Impressões e Relatórios'),
+            ('impressao_mapa_distribuicao', 'Impressão mapa distribuição', 'Impressões e Relatórios'),
+            ('totalizacao_dietas_refeicoes', 'Totalização de dietas e refeições', 'Impressões e Relatórios'),
+            ('totalizacao_substituicoes', 'Totalização de substituições', 'Impressões e Relatórios'),
+            ('totalizacao_consumo', 'Totalização do consumo', 'Impressões e Relatórios'),
+            ('cardapio_servido', 'Cardápio servido', 'Impressões e Relatórios'),
+            ('relatorios', 'Análise de Custos', 'Financeiro'),
+            ('faturamento', 'Faturamento', 'Financeiro'),
+            ('faturamento_valores', 'Faturamento com valores', 'Financeiro'),
         ],
     },
     'pesagem': {
@@ -132,29 +162,83 @@ SISTEMAS = {
 }
 
 
-def aplicar_permissoes_formulario(usuario, form):
+NUTRICAO_GRUPOS = {
+    'cadastro': (
+        'cadastro_pacientes', 'cadastro_clinicas', 'cadastro_enfermarias', 'cadastro_leitos',
+        'cadastro_categorias', 'cadastro_grupos_dietas', 'cadastro_dietas', 'cadastro_vias',
+        'cadastro_uma_formula', 'cadastro_uma_enteral', 'cadastro_uma_suplemento', 'cadastro_uma_lve',
+        'cadastro_tipos_refeicao', 'cadastro_cardapios', 'cadastro_precos_refeicoes',
+        'cadastro_nutricional', 'cadastro_pratos_liquidos', 'cadastro_produtos',
+        'cadastro_fornecedores', 'cadastro_etiquetas',
+    ),
+    'impressoes': (
+        'relatorio_mapa_uma', 'impressao_etiquetas', 'impressao_mapa',
+        'impressao_mapa_distribuicao', 'totalizacao_dietas_refeicoes',
+        'totalizacao_substituicoes', 'totalizacao_consumo', 'cardapio_servido',
+    ),
+    'financeiro': (
+        'relatorios', 'faturamento', 'faturamento_valores',
+    ),
+}
+
+
+def chaves_menu(meta):
+    for item in (meta or {}).get('menus') or []:
+        yield item[0]
+
+
+def heranca_menu_nutricao(menu_key):
+    """Chaves antigas que ainda valem quando o item novo não tem linha própria."""
+    pais = []
+    if menu_key in NUTRICAO_GRUPOS['cadastro']:
+        pais.append('cadastro')
+    if menu_key == 'mapa_refeicoes':
+        pais.append('dashboard')
+    if menu_key == 'dashboard':
+        pais.append('mapa_refeicoes')
+    return pais
+
+
+def _gravar_menu(usuario, sistema, menu_key, permitido):
     from models import db, PermissaoMenu
+    from sqlalchemy.exc import IntegrityError
+    perm = usuario.menus.filter_by(sistema=sistema, menu_key=menu_key).first()
+    if perm:
+        perm.permitido = permitido
+        return
+    try:
+        with db.session.begin_nested():
+            db.session.add(PermissaoMenu(
+                usuario_id=usuario.id,
+                sistema=sistema,
+                menu_key=menu_key,
+                permitido=permitido,
+            ))
+    except IntegrityError:
+        perm = PermissaoMenu.query.filter_by(
+            usuario_id=usuario.id, sistema=sistema, menu_key=menu_key
+        ).first()
+        if perm:
+            perm.permitido = permitido
+
+
+def permissoes_efetivas(usuario, sistema):
+    meta = SISTEMAS.get(sistema) or {}
+    return {chave: bool(usuario.tem_menu(sistema, chave)) for chave in chaves_menu(meta)}
+
+
+def aplicar_permissoes_formulario(usuario, form):
     for sistema, meta in SISTEMAS.items():
         liberado = usuario.is_master or form.get(f'sistema_{sistema}') == 'on'
         setattr(usuario, meta['campo'], True if usuario.is_master else liberado)
-        for menu_key, _label in meta['menus']:
+        for menu_key in chaves_menu(meta):
             permitido = usuario.is_master or (
                 liberado and form.get(f'menu_{sistema}_{menu_key}') == 'on'
             )
-            perm = usuario.menus.filter_by(sistema=sistema, menu_key=menu_key).first()
-            if not perm:
-                db.session.add(PermissaoMenu(
-                    usuario_id=usuario.id,
-                    sistema=sistema,
-                    menu_key=menu_key,
-                    permitido=permitido,
-                ))
-            else:
-                perm.permitido = permitido
+            _gravar_menu(usuario, sistema, menu_key, permitido)
 
 
 def conceder_acesso_total(usuario):
-    from models import db, PermissaoMenu
     usuario.perm_chamados = True
     usuario.perm_nutricao = True
     usuario.perm_pesagem = True
@@ -162,17 +246,8 @@ def conceder_acesso_total(usuario):
     usuario.perm_acesso = True
     usuario.perm_portal = True
     for sistema, meta in SISTEMAS.items():
-        for menu_key, _label in meta['menus']:
-            perm = usuario.menus.filter_by(sistema=sistema, menu_key=menu_key).first()
-            if not perm:
-                db.session.add(PermissaoMenu(
-                    usuario_id=usuario.id,
-                    sistema=sistema,
-                    menu_key=menu_key,
-                    permitido=True,
-                ))
-            else:
-                perm.permitido = True
+        for menu_key in chaves_menu(meta):
+            _gravar_menu(usuario, sistema, menu_key, True)
 
 
 def garantir_acesso_master():

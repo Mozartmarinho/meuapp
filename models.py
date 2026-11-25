@@ -408,9 +408,18 @@ class Usuario(db.Model):
         if not self.tem_sistema(sistema):
             return False
         perm = self.menus.filter_by(sistema=sistema, menu_key=menu_key).first()
-        if perm is None:
-            return True
-        return bool(perm.permitido)
+        if perm is not None:
+            return bool(perm.permitido)
+        if sistema == 'nutricao':
+            from permissions_sistemas import heranca_menu_nutricao
+            for legado in heranca_menu_nutricao(menu_key):
+                legado_perm = self.menus.filter_by(sistema=sistema, menu_key=legado).first()
+                if legado_perm is not None:
+                    return bool(legado_perm.permitido)
+        return True
+
+    def tem_algum_menu(self, sistema, menu_keys):
+        return any(self.tem_menu(sistema, chave) for chave in (menu_keys or ()))
 
     def menus_liberados(self, sistema):
         return {p.menu_key: p.permitido for p in self.menus.filter_by(sistema=sistema).all()}

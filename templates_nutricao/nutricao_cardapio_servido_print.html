@@ -115,12 +115,6 @@
                 {% if row.retirados %}
                   <div class="nota">Retirado: {{ row.retirados|join(', ') }}</div>
                 {% endif %}
-                {% if row.extras %}
-                  <div class="nota">Extras: {{ row.extras }}</div>
-                {% endif %}
-                {% if row.suplementos %}
-                  <div class="nota">Suplementos: {{ row.suplementos }}</div>
-                {% endif %}
               </td>
             </tr>
             {% endfor %}

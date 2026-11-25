@@ -276,6 +276,7 @@
         .check { display: flex; align-items: center; gap: 8px; font-weight: 600; }
         .sistema { border: 1px solid #d7e3f3; border-radius: 12px; padding: 14px; margin-bottom: 12px; }
         .menus { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; padding-left: 8px; margin-top: 8px; }
+        .menu-grupo { grid-column: 1 / -1; margin-top: 8px; font-size: 0.78rem; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; color: #1d4e89; }
         .portal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
         .hint { color: var(--muted); font-size: 0.85rem; margin-top: 6px; line-height: 1.45; }
         .perm-title { margin: 12px 0; color: #0D2B5C; font-size: 20px; font-family: Rajdhani, sans-serif; }
@@ -368,6 +369,17 @@
         #modal-acessos .badge,
         #modal-clientes .badge { padding: 3px 7px; font-size: 8px; }
         .acessos-filtro { position: relative; margin: 0 0 0.75rem; }
+        .portal-head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .acessos-visao { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; color: #35506f; font-size: 0.9rem; }
+        .acessos-visao select {
+            padding: 8px 10px;
+            border-radius: 10px;
+            border: 1px solid #d5e0ee;
+            background: #fff;
+            color: var(--brand-navy);
+            font-family: inherit;
+            font-weight: 700;
+        }
         .acessos-filtro i {
             position: absolute;
             left: 12px;
@@ -764,9 +776,17 @@
                         <h2 id="acessos-title">Acessos</h2>
                         <p>Cadastre e-mail e senha e libere os sistemas e as abas de cada um.</p>
                     </div>
-                    <button type="button" class="portal-btn pri" id="btn-novo-acesso">
-                        <i class="fas fa-plus"></i> Novo acesso
-                    </button>
+                    <div class="portal-head-actions">
+                        <label class="acessos-visao" for="acessos-visao">Exibir
+                            <select id="acessos-visao" aria-label="Exibir acessos ativos ou desativados">
+                                <option value="ativos" selected>Ativos</option>
+                                <option value="desativados">Desativados</option>
+                            </select>
+                        </label>
+                        <button type="button" class="portal-btn pri" id="btn-novo-acesso">
+                            <i class="fas fa-plus"></i> Novo acesso
+                        </button>
+                    </div>
                 </div>
                 <div class="portal-alert" id="acessos-lista-msg" hidden></div>
                 <div class="acessos-filtro">
@@ -806,7 +826,7 @@
                                     <div class="acesso-acoes">
                                         <button type="button" class="portal-btn pri" data-editar-acesso="{{ item.id }}">Editar</button>
                                         {% if not item.is_master %}
-                                        <button type="button" class="portal-btn danger" data-excluir-acesso="{{ item.id }}" title="Excluir usuário" aria-label="Excluir {{ item.nome }}">
+                                        <button type="button" class="portal-btn danger" data-excluir-acesso="{{ item.id }}" title="Desativar usuário" aria-label="Desativar {{ item.nome }}">
                                             <i class="fas fa-trash"></i>
                                         </button>
                                         {% endif %}
@@ -894,7 +914,13 @@
                             {{ meta.nome }}
                         </label>
                         <div class="menus" data-menus="{{ chave }}" style="opacity:.45">
+                            {% set ns = namespace(grupo='') %}
                             {% for menu in meta.menus %}
+                            {% set grupo = menu[2] if menu|length > 2 else '' %}
+                            {% if grupo and grupo != ns.grupo %}
+                            <div class="menu-grupo">{{ grupo }}</div>
+                            {% set ns.grupo = grupo %}
+                            {% endif %}
                             <label class="check">
                                 <input type="checkbox" class="menu-check" name="menu_{{ chave }}_{{ menu[0] }}" data-parent="{{ chave }}" disabled>
                                 {{ menu[1] }}
@@ -1336,6 +1362,7 @@
         var URL_NOVO = {{ url_for('main.novo_acesso') | tojson }};
         var URL_EDITAR_TPL = {{ url_for('main.editar_acesso', id=0) | tojson }};
         var URL_EXCLUIR_TPL = {{ url_for('main.excluir_acesso', id=0) | tojson }};
+        var URL_REATIVAR_TPL = {{ url_for('main.reativar_acesso', id=0) | tojson }};
         var URL_NOVO_CLIENTE = {{ url_for('main.novo_cliente') | tojson }};
         var URL_EDITAR_CLIENTE_TPL = {{ url_for('main.editar_cliente', id=0) | tojson }};
         var URL_EXCLUIR_CLIENTE_TPL = {{ url_for('main.excluir_cliente', id=0) | tojson }};
@@ -1354,12 +1381,19 @@
             return URL_EXCLUIR_TPL.replace('/0/', '/' + id + '/');
         }
 
+        function urlReativar(id) {
+            return URL_REATIVAR_TPL.replace('/0/', '/' + id + '/');
+        }
+
         function acessoAcoesHtml(item) {
             var html = '<td><div class="acesso-acoes">' +
                 '<button type="button" class="portal-btn pri" data-editar-acesso="' + item.id + '">Editar</button>';
-            if (!item.is_master) {
+            if (!item.is_master && item.ativo) {
                 html += '<button type="button" class="portal-btn danger" data-excluir-acesso="' + item.id +
-                    '" title="Excluir usuário" aria-label="Excluir"><i class="fas fa-trash"></i></button>';
+                    '" title="Desativar usuário" aria-label="Desativar"><i class="fas fa-trash"></i></button>';
+            } else if (!item.is_master && !item.ativo) {
+                html += '<button type="button" class="portal-btn pri" data-reativar-acesso="' + item.id +
+                    '">Reativar</button>';
             }
             html += '</div></td>';
             return html;
@@ -1436,14 +1470,22 @@
                 var menus = meta.menus || [];
                 var box = document.querySelector('#form-acesso [data-menus="' + chave + '"]');
                 if (!box) return;
-                box.innerHTML = menus.map(function (item) {
+                var html = '';
+                var grupoAtual = '';
+                menus.forEach(function (item) {
                     var key = item[0];
                     var nome = item[1];
-                    return '<label class="check">' +
+                    var grupo = item[2] || '';
+                    if (grupo && grupo !== grupoAtual) {
+                        html += '<div class="menu-grupo">' + escapeHtml(grupo) + '</div>';
+                        grupoAtual = grupo;
+                    }
+                    html += '<label class="check">' +
                         '<input type="checkbox" class="menu-check" name="menu_' + chave + '_' + key + '" data-parent="' + chave + '" disabled> ' +
                         escapeHtml(nome) +
                         '</label>';
-                }).join('');
+                });
+                box.innerHTML = html;
             });
         }
         ensureCatalogMenus();
@@ -1480,22 +1522,39 @@
             }
         }
 
+        function visaoAcessos() {
+            var el = document.getElementById('acessos-visao');
+            return el && el.value === 'desativados' ? 'desativados' : 'ativos';
+        }
+
+        function renderAcessos() {
+            var tbody = document.getElementById('acessos-tbody');
+            if (!tbody) return;
+            var visao = visaoAcessos();
+            var lista = ACESSOS.filter(function (item) {
+                return visao === 'desativados' ? !item.ativo : !!item.ativo;
+            });
+            if (!lista.length) {
+                var msg = visao === 'desativados' ? 'Nenhum acesso desativado.' : 'Nenhum acesso ativo.';
+                tbody.innerHTML = '<tr class="acessos-empty"><td colspan="9">' + msg + '</td></tr>';
+            } else {
+                tbody.innerHTML = lista.map(rowHtml).join('');
+            }
+            aplicarFiltroAcessos();
+        }
+
         document.getElementById('acessos-filtro-nome').addEventListener('input', aplicarFiltroAcessos);
+        document.getElementById('acessos-visao').addEventListener('change', function () {
+            var input = document.getElementById('acessos-filtro-nome');
+            if (input) input.value = '';
+            renderAcessos();
+        });
 
         function upsertAcesso(item) {
             var idx = ACESSOS.findIndex(function (a) { return a.id === item.id; });
             if (idx >= 0) ACESSOS[idx] = item;
             else ACESSOS.unshift(item);
-            var tbody = document.getElementById('acessos-tbody');
-            var existing = tbody.querySelector('tr[data-id="' + item.id + '"]');
-            var empty = tbody.querySelector('.acessos-empty');
-            if (empty) empty.remove();
-            if (existing) {
-                existing.outerHTML = rowHtml(item);
-            } else {
-                tbody.insertAdjacentHTML('afterbegin', rowHtml(item));
-            }
-            aplicarFiltroAcessos();
+            renderAcessos();
         }
 
         function showAcessoLista() {
@@ -1603,12 +1662,39 @@
         }
 
         document.getElementById('acessos-tbody').addEventListener('click', async function (ev) {
+            var reBtn = ev.target.closest('[data-reativar-acesso]');
+            if (reBtn) {
+                var reId = parseInt(reBtn.getAttribute('data-reativar-acesso'), 10);
+                var reItem = ACESSOS.find(function (a) { return a.id === reId; });
+                var reNome = (reItem && reItem.nome) || 'este usuário';
+                if (!confirm('Reativar o acesso de ' + reNome + '?')) return;
+                reBtn.disabled = true;
+                var reMsg = document.getElementById('acessos-lista-msg');
+                try {
+                    var rr = await fetch(urlReativar(reId), {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+                    var reData = await rr.json();
+                    showMsg(reMsg, !!reData.ok, reData.message || (reData.ok ? 'Acesso reativado.' : 'Falha ao reativar.'));
+                    if (reData.ok && reData.acesso) upsertAcesso(reData.acesso);
+                    else if (reData.ok && reItem) {
+                        reItem.ativo = true;
+                        renderAcessos();
+                    }
+                } catch (e) {
+                    showMsg(reMsg, false, 'Falha ao reativar o usuário.');
+                } finally {
+                    reBtn.disabled = false;
+                }
+                return;
+            }
             var delBtn = ev.target.closest('[data-excluir-acesso]');
             if (delBtn) {
                 var delId = parseInt(delBtn.getAttribute('data-excluir-acesso'), 10);
                 var delItem = ACESSOS.find(function (a) { return a.id === delId; });
                 var nome = (delItem && delItem.nome) || 'este usuário';
-                if (!confirm('Excluir o acesso de ' + JSON.stringify(nome) + '? Esta ação não pode ser desfeita.')) return;
+                if (!confirm('Desativar o acesso de ' + nome + '? Ele deixa de entrar no sistema e some da lista de ativos. Para reativar, escolha Exibir → Desativados.')) return;
                 delBtn.disabled = true;
                 var msg = document.getElementById('acessos-lista-msg');
                 try {
@@ -1617,10 +1703,14 @@
                         headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
                     });
                     var data = await r.json();
-                    showMsg(msg, !!data.ok, data.message || (data.ok ? 'Acesso excluído.' : 'Falha ao excluir.'));
-                    if (data.ok) removeAcessoDaLista(delId);
+                    showMsg(msg, !!data.ok, data.message || (data.ok ? 'Acesso desativado.' : 'Falha ao desativar.'));
+                    if (data.ok && data.acesso) upsertAcesso(data.acesso);
+                    else if (data.ok && delItem) {
+                        delItem.ativo = false;
+                        renderAcessos();
+                    }
                 } catch (e) {
-                    showMsg(msg, false, 'Falha ao excluir o usuário.');
+                    showMsg(msg, false, 'Falha ao desativar o usuário.');
                 } finally {
                     delBtn.disabled = false;
                 }

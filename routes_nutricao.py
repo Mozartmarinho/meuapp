@@ -125,6 +125,184 @@ from nutricao_service import (
 nutricao = Blueprint('nutricao', __name__, template_folder='templates_nutricao')
 
 
+def _chaves_menu_nutricao(path, method):
+    """Menu(s) exigidos para a URL. None = sem trava extra."""
+    path = (path or '').rstrip('/') or '/'
+    gravar = method in ('POST', 'PUT', 'PATCH', 'DELETE')
+    uma = (
+        'cadastro_uma_formula', 'cadastro_uma_enteral',
+        'cadastro_uma_suplemento', 'cadastro_uma_lve',
+    )
+    regras = (
+        ('/nutricao/api/pacientes', ('cadastro_pacientes', 'mapa_refeicoes'), ('cadastro_pacientes', 'mapa_refeicoes')),
+        ('/nutricao/pacientes', ('cadastro_pacientes',), ('cadastro_pacientes',)),
+        ('/nutricao/api/refeicao-acompanhantes', ('refeicao_acompanhante', 'mapa_refeicoes'), ('refeicao_acompanhante', 'mapa_refeicoes')),
+        ('/nutricao/refeicao-acompanhante', ('refeicao_acompanhante',), ('refeicao_acompanhante',)),
+        ('/nutricao/api/refeicao-funcionarios', ('refeicoes_funcionarios',), ('refeicoes_funcionarios',)),
+        ('/nutricao/refeicoes-funcionarios', ('refeicoes_funcionarios',), ('refeicoes_funcionarios',)),
+        ('/nutricao/api/mapa', ('mapa_refeicoes',), ('mapa_refeicoes',)),
+        ('/nutricao/mapa_refeicoes', ('mapa_refeicoes',), ('mapa_refeicoes',)),
+        ('/nutricao/api/clinicas', ('cadastro_clinicas', 'mapa_refeicoes'), ('cadastro_clinicas',)),
+        ('/nutricao/clinicas', ('cadastro_clinicas',), ('cadastro_clinicas',)),
+        ('/nutricao/api/grupos-clinicas', ('cadastro_clinicas',), ('cadastro_clinicas',)),
+        ('/nutricao/grupos-clinicas', ('cadastro_clinicas',), ('cadastro_clinicas',)),
+        ('/nutricao/api/enfermarias', ('cadastro_enfermarias', 'mapa_refeicoes'), ('cadastro_enfermarias',)),
+        ('/nutricao/enfermarias', ('cadastro_enfermarias',), ('cadastro_enfermarias',)),
+        ('/nutricao/api/leitos', ('cadastro_leitos', 'mapa_refeicoes'), ('cadastro_leitos',)),
+        ('/nutricao/leitos', ('cadastro_leitos',), ('cadastro_leitos',)),
+        ('/nutricao/api/dietas', ('cadastro_dietas', 'mapa_refeicoes', 'cadastro_cardapios'), ('cadastro_dietas',)),
+        ('/nutricao/dietas', ('cadastro_dietas',), ('cadastro_dietas',)),
+        ('/nutricao/api/categorias', ('cadastro_categorias',), ('cadastro_categorias',)),
+        ('/nutricao/categorias', ('cadastro_categorias',), ('cadastro_categorias',)),
+        ('/nutricao/api/grupos-dietas', ('cadastro_grupos_dietas',), ('cadastro_grupos_dietas',)),
+        ('/nutricao/grupos-dietas', ('cadastro_grupos_dietas',), ('cadastro_grupos_dietas',)),
+        ('/nutricao/api/tipos-refeicao', ('cadastro_tipos_refeicao', 'mapa_refeicoes'), ('cadastro_tipos_refeicao',)),
+        ('/nutricao/tipos-refeicao', ('cadastro_tipos_refeicao',), ('cadastro_tipos_refeicao',)),
+        ('/nutricao/api/cardapios', ('cadastro_cardapios',), ('cadastro_cardapios',)),
+        ('/nutricao/cardapios', ('cadastro_cardapios',), ('cadastro_cardapios',)),
+        ('/nutricao/api/tabelas-nutrientes', ('cadastro_nutricional',), ('cadastro_nutricional',)),
+        ('/nutricao/api/alimentos', ('cadastro_nutricional',), ('cadastro_nutricional',)),
+        ('/nutricao/nutricional', ('cadastro_nutricional',), ('cadastro_nutricional',)),
+        ('/nutricao/api/pratos-liquidos', ('cadastro_pratos_liquidos',), ('cadastro_pratos_liquidos',)),
+        ('/nutricao/pratos-liquidos', ('cadastro_pratos_liquidos',), ('cadastro_pratos_liquidos',)),
+        ('/nutricao/api/vias', ('cadastro_vias', 'configuracoes'), ('cadastro_vias',)),
+        ('/nutricao/vias', ('cadastro_vias',), ('cadastro_vias',)),
+        ('/nutricao/api/uma-itens', None, None),
+        ('/nutricao/api/cadastro-uma', None, None),
+        ('/nutricao/cadastro-uma', None, None),
+        ('/nutricao/api/config-uma', ('configuracoes',), ('configuracoes',)),
+        ('/nutricao/configuracoes', ('configuracoes',), ('configuracoes',)),
+        ('/nutricao/api/estoques', ('estoque', 'cadastro_produtos', 'configuracoes') + uma, ('estoque', 'cadastro_produtos')),
+        ('/nutricao/api/unidades', ('estoque', 'cadastro_produtos', 'configuracoes') + uma, ('estoque', 'cadastro_produtos')),
+        ('/nutricao/api/grupos-produto', ('estoque', 'cadastro_produtos'), ('estoque', 'cadastro_produtos')),
+        ('/nutricao/api/cardapio-produtos', ('cadastro_produtos', 'cadastro_cardapios'), ('cadastro_produtos', 'cadastro_cardapios')),
+        ('/nutricao/api/produtos', ('cadastro_produtos', 'estoque') + uma, ('cadastro_produtos', 'estoque')),
+        ('/nutricao/api/estoque-produtos-legado', ('estoque',), ('estoque',)),
+        ('/nutricao/produtos', ('cadastro_produtos',), ('cadastro_produtos',)),
+        ('/nutricao/estoque', ('estoque',), ('estoque',)),
+        ('/nutricao/api/fornecedores', ('cadastro_fornecedores', 'estoque'), ('cadastro_fornecedores',)),
+        ('/nutricao/fornecedores', ('cadastro_fornecedores',), ('cadastro_fornecedores',)),
+        ('/nutricao/api/etiquetas', ('cadastro_etiquetas', 'impressao_etiquetas'), ('cadastro_etiquetas',)),
+        ('/nutricao/etiquetas', ('cadastro_etiquetas',), ('cadastro_etiquetas',)),
+        ('/nutricao/impressao-etiquetas', ('impressao_etiquetas',), ('impressao_etiquetas',)),
+        ('/nutricao/impressao-mapa-distribuicao', ('impressao_mapa_distribuicao',), ('impressao_mapa_distribuicao',)),
+        ('/nutricao/impressao-mapa', ('impressao_mapa',), ('impressao_mapa',)),
+        ('/nutricao/api/precos-refeicoes', ('cadastro_precos_refeicoes',), ('cadastro_precos_refeicoes',)),
+        ('/nutricao/precos-refeicoes', ('cadastro_precos_refeicoes',), ('cadastro_precos_refeicoes',)),
+        ('/nutricao/api/relatorio-mapa-uma', ('relatorio_mapa_uma',), ('relatorio_mapa_uma',)),
+        ('/nutricao/relatorio-mapa-uma', ('relatorio_mapa_uma',), ('relatorio_mapa_uma',)),
+        ('/nutricao/totalizacao-dietas-refeicoes', ('totalizacao_dietas_refeicoes',), ('totalizacao_dietas_refeicoes',)),
+        ('/nutricao/totalizacao-dietas', ('totalizacao_dietas_refeicoes',), ('totalizacao_dietas_refeicoes',)),
+        ('/nutricao/totalizacao-substituicoes', ('totalizacao_substituicoes',), ('totalizacao_substituicoes',)),
+        ('/nutricao/totalizacao-consumo', ('totalizacao_consumo',), ('totalizacao_consumo',)),
+        ('/nutricao/cardapio-servido', ('cardapio_servido',), ('cardapio_servido',)),
+        ('/nutricao/faturamento-valores', ('faturamento_valores',), ('faturamento_valores',)),
+        ('/nutricao/faturamento', ('faturamento',), ('faturamento',)),
+        ('/nutricao/relatorios', ('relatorios',), ('relatorios',)),
+        ('/nutricao/auditoria', ('auditoria',), ('auditoria',)),
+        ('/nutricao/api/logs', ('auditoria',), ('auditoria',)),
+        ('/nutricao/utilitarios', ('auditoria',), ('auditoria',)),
+        ('/nutricao/api/analise-nutricional', ('analise_nutricional',), ('analise_nutricional',)),
+        ('/nutricao/analise-nutricional', ('analise_nutricional',), ('analise_nutricional',)),
+        ('/nutricao/api/evolucao', ('evolucao',), ('evolucao',)),
+        ('/nutricao/evolucao', ('evolucao',), ('evolucao',)),
+        ('/nutricao/api/totalizacao_direta', ('impressao_etiquetas',), ('impressao_etiquetas',)),
+        ('/nutricao/totalizacao-direta', ('impressao_etiquetas',), ('impressao_etiquetas',)),
+        ('/nutricao/api/autorizacoes_substituicao', ('mapa_refeicoes',), ('mapa_refeicoes',)),
+        ('/nutricao/admin', (), ()),
+        ('/nutricao/api/usuarios', (), ()),
+        ('/nutricao', ('mapa_refeicoes',), ('mapa_refeicoes',)),
+    )
+    if path.startswith('/nutricao/api/uma-itens') or path.startswith('/nutricao/cadastro-uma') or path.startswith('/nutricao/api/cadastro-uma'):
+        tipo = (request.args.get('tipo') or '').strip().lower()
+        if not tipo:
+            data = request.get_json(silent=True) or {}
+            if isinstance(data, dict):
+                tipo = (data.get('tipo') or request.form.get('tipo') or '').strip().lower()
+        mapa = {
+            'formula': 'cadastro_uma_formula',
+            'enteral': 'cadastro_uma_enteral',
+            'suplemento': 'cadastro_uma_suplemento',
+            'lve': 'cadastro_uma_lve',
+        }
+        if path.startswith('/nutricao/api/uma-itens') and tipo not in mapa:
+            return ('mapa_refeicoes', 'configuracoes') + uma
+        return (mapa.get(tipo, 'cadastro_uma_formula'),)
+    for prefix, ler, grav in regras:
+        if prefix == '/nutricao':
+            if path == '/nutricao':
+                return grav if gravar else ler
+            continue
+        if path == prefix or path.startswith(prefix + '/'):
+            return grav if gravar else ler
+    return None
+
+
+_NUTRICAO_ENTRADA = (
+    ('mapa_refeicoes', 'nutricao.dashboard'),
+    ('refeicao_acompanhante', 'nutricao.refeicao_acompanhante'),
+    ('refeicoes_funcionarios', 'nutricao.refeicoes_funcionarios'),
+    ('cadastro_pacientes', 'nutricao.pacientes'),
+    ('cadastro_clinicas', 'nutricao.clinicas'),
+    ('cadastro_enfermarias', 'nutricao.enfermarias'),
+    ('cadastro_leitos', 'nutricao.leitos'),
+    ('cadastro_categorias', 'nutricao.categorias_dietas'),
+    ('cadastro_grupos_dietas', 'nutricao.grupos_dietas'),
+    ('cadastro_dietas', 'nutricao.dietas'),
+    ('cadastro_vias', 'nutricao.vias_administracao'),
+    ('cadastro_uma_formula', 'nutricao.cadastro_uma'),
+    ('cadastro_tipos_refeicao', 'nutricao.tipos_refeicao'),
+    ('cadastro_cardapios', 'nutricao.cardapios'),
+    ('cadastro_precos_refeicoes', 'nutricao.precos_refeicoes'),
+    ('cadastro_nutricional', 'nutricao.nutricional'),
+    ('cadastro_pratos_liquidos', 'nutricao.pratos_liquidos'),
+    ('cadastro_produtos', 'nutricao.produtos'),
+    ('cadastro_fornecedores', 'nutricao.fornecedores'),
+    ('cadastro_etiquetas', 'nutricao.etiquetas'),
+    ('estoque', 'nutricao.estoque'),
+    ('analise_nutricional', 'nutricao.analise_nutricional'),
+    ('evolucao', 'nutricao.evolucao_paciente'),
+    ('relatorio_mapa_uma', 'nutricao.relatorio_mapa_uma'),
+    ('impressao_etiquetas', 'nutricao.impressao_etiquetas'),
+    ('impressao_mapa', 'nutricao.impressao_mapa'),
+    ('impressao_mapa_distribuicao', 'nutricao.impressao_mapa_distribuicao'),
+    ('totalizacao_dietas_refeicoes', 'nutricao.totalizacao_dietas_refeicoes'),
+    ('totalizacao_substituicoes', 'nutricao.totalizacao_substituicoes'),
+    ('totalizacao_consumo', 'nutricao.totalizacao_consumo'),
+    ('cardapio_servido', 'nutricao.cardapio_servido'),
+    ('relatorios', 'nutricao.relatorios'),
+    ('faturamento', 'nutricao.faturamento'),
+    ('faturamento_valores', 'nutricao.faturamento_valores'),
+    ('configuracoes', 'nutricao.configuracoes_sistema'),
+    ('auditoria', 'nutricao.auditoria'),
+)
+
+
+def _resposta_sem_menu_nutricao(user):
+    if not user:
+        return None
+    chaves = _chaves_menu_nutricao(request.path, request.method)
+    if chaves is None:
+        return None
+    if not chaves or any(user.tem_menu('nutricao', chave) for chave in chaves):
+        return None
+    wants_json = (
+        request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        or 'application/json' in (request.headers.get('Accept') or '')
+        or '/api/' in (request.path or '')
+    )
+    if wants_json:
+        return jsonify({'ok': False, 'message': 'Você não tem permissão para este item da nutrição.'}), 403
+    for chave, endpoint in _NUTRICAO_ENTRADA:
+        if user.tem_menu('nutricao', chave):
+            flash('Você não tem permissão para este item da nutrição.', 'error')
+            if endpoint == 'nutricao.cadastro_uma':
+                return redirect(url_for(endpoint, tipo='formula'))
+            return redirect(url_for(endpoint))
+    flash('Você não tem permissão para este item da nutrição.', 'error')
+    return redirect(url_for('main.inicio'))
+
+
 @nutricao.before_request
 def _nutricao_tenant_gate():
     user, cliente, cid = resolve_nutricao_cliente()
@@ -146,17 +324,27 @@ def _nutricao_tenant_gate():
                 return jsonify({'ok': False, 'message': msg}), 403
             flash(msg, 'error')
             return redirect(url_for('main.inicio'))
-    return None
+    return _resposta_sem_menu_nutricao(user)
 
 
 @nutricao.context_processor
 def _inject_nutricao_cliente():
+    from permissions_sistemas import NUTRICAO_GRUPOS
     cli = getattr(g, 'nutricao_cliente', None)
     user = getattr(g, 'nutricao_usuario', None)
     nome = label_cliente_nutricao(user) if user else ((cli.nome if cli else '') or '')
+
+    def nut_ok(key, usuario=user):
+        return bool(usuario and usuario.tem_menu('nutricao', key))
+
+    def nut_grupo_ok(grupo, usuario=user):
+        return bool(usuario and usuario.tem_algum_menu('nutricao', NUTRICAO_GRUPOS.get(grupo) or ()))
+
     return {
         'nutricao_cliente': cli,
         'nutricao_cliente_nome': nome,
+        'nut_ok': nut_ok,
+        'nut_grupo_ok': nut_grupo_ok,
     }
 
 

@@ -21,6 +21,9 @@
         .user-meta strong { color:var(--brand-navy); }
         .wrap { max-width:1100px; margin:0 auto; padding:0 1.25rem 2.5rem; }
         .head { display:flex; justify-content:space-between; align-items:center; gap:1rem; margin:1rem 0 1.25rem; flex-wrap:wrap; }
+        .head-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+        .acessos-visao { display:inline-flex; align-items:center; gap:8px; font-weight:700; color:#35506f; }
+        .acessos-visao select { padding:8px 10px; border-radius:10px; border:1px solid #d5e0ee; font-family:inherit; font-weight:700; color:var(--brand-navy); background:#fff; }
         h1 { font-family:'Rajdhani',sans-serif; color:var(--brand-navy); }
         .btn { display:inline-flex; align-items:center; gap:.45rem; padding:.7rem 1rem; border-radius:999px; text-decoration:none; font-weight:700; border:1px solid rgba(27,79,156,.15); background:#fff; color:var(--brand-navy); }
         .btn-primary { background:var(--brand-blue); color:#fff; border-color:var(--brand-blue); }
@@ -57,7 +60,16 @@
                 <h1>Acessos</h1>
                 <p style="color:var(--muted);margin-top:4px">Cadastre e-mail e senha e libere os sistemas e as abas de cada um.</p>
             </div>
-            <a class="btn btn-primary" href="{{ url_for('main.novo_acesso') }}"><i class="fas fa-plus"></i> Novo acesso</a>
+            <div class="head-actions">
+                <form method="get" class="acessos-visao">
+                    <label for="acessos-visao">Exibir</label>
+                    <select id="acessos-visao" name="visao" aria-label="Exibir acessos ativos ou desativados" onchange="this.form.submit()">
+                        <option value="ativos" {{ 'selected' if visao != 'desativados' else '' }}>Ativos</option>
+                        <option value="desativados" {{ 'selected' if visao == 'desativados' else '' }}>Desativados</option>
+                    </select>
+                </form>
+                <a class="btn btn-primary" href="{{ url_for('main.novo_acesso') }}"><i class="fas fa-plus"></i> Novo acesso</a>
+            </div>
         </div>
         <div class="card">
             <table>
@@ -91,19 +103,24 @@
                         <td>
                             <div class="acesso-acoes">
                                 <a class="btn btn-primary" href="{{ url_for('main.editar_acesso', id=item.id) }}">Editar</a>
-                                {% if not item.is_master %}
+                                {% if not item.is_master and item.ativo %}
                                 <form method="post" action="{{ url_for('main.excluir_acesso', id=item.id) }}"
-                                      onsubmit="return confirm('Excluir o acesso de {{ item.nome|e }}? Esta ação não pode ser desfeita.');">
-                                    <button type="submit" class="btn btn-danger" title="Excluir usuário" aria-label="Excluir {{ item.nome }}">
+                                      onsubmit="return confirm('Desativar o acesso de {{ item.nome|e }}? Ele deixa de entrar no sistema e some da lista de ativos.');">
+                                    <button type="submit" class="btn btn-danger" title="Desativar usuário" aria-label="Desativar {{ item.nome }}">
                                         <i class="fas fa-trash"></i>
                                     </button>
+                                </form>
+                                {% elif not item.is_master %}
+                                <form method="post" action="{{ url_for('main.reativar_acesso', id=item.id) }}"
+                                      onsubmit="return confirm('Reativar o acesso de {{ item.nome|e }}?');">
+                                    <button type="submit" class="btn btn-primary">Reativar</button>
                                 </form>
                                 {% endif %}
                             </div>
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="9">Nenhum acesso cadastrado.</td></tr>
+                    <tr><td colspan="9">{% if visao == 'desativados' %}Nenhum acesso desativado.{% else %}Nenhum acesso ativo.{% endif %}</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

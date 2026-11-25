@@ -94,7 +94,12 @@ from models import (
     acessorios_sugeridos,
     normalizar_tipo_eq,
 )
-from permissions_sistemas import SISTEMAS, aplicar_permissoes_formulario, conceder_acesso_total
+from permissions_sistemas import (
+    SISTEMAS,
+    aplicar_permissoes_formulario,
+    conceder_acesso_total,
+    permissoes_efetivas,
+)
 from chamados_indicadores import calcular_indicadores
 from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy import func, or_, and_
@@ -1943,7 +1948,7 @@ def _acesso_payload(usuario):
         'cliente_todos': cliente_todos,
         'cliente_nome': cliente_nome,
         'sistemas': {chave: usuario.tem_sistema(chave) for chave in SISTEMAS},
-        'permissoes': {sistema: usuario.menus_liberados(sistema) for sistema in SISTEMAS},
+        'permissoes': {sistema: permissoes_efetivas(usuario, sistema) for sistema in SISTEMAS},
     }
 
 
@@ -2057,8 +2062,9 @@ def inicio():
     senha_salva = False
     smtp_ok = False
     if user and user.pode_opcao_portal('acessos'):
-        acessos = Usuario.query.order_by(Usuario.data_criacao.desc()).all()
-        acessos_js = [_acesso_payload(a) for a in acessos]
+        todos_acessos = Usuario.query.order_by(Usuario.data_criacao.desc()).all()
+        acessos = [a for a in todos_acessos if a.ativo]
+        acessos_js = [_acesso_payload(a) for a in todos_acessos]
     if user and user.pode_opcao_portal('clientes'):
         clientes_portal = Cliente.query.order_by(Cliente.data_criacao.desc()).all()
         clientes_js = [_cliente_payload(c) for c in clientes_portal]
@@ -2102,8 +2108,16 @@ def listar_acessos():
     if not user or not user.pode_gerenciar_acessos():
         flash('Você não tem permissão para gerenciar acessos.', 'error')
         return redirect(url_for('main.inicio'))
-    acessos = Usuario.query.order_by(Usuario.data_criacao.desc()).all()
-    return render_template('acessos.html', acessos=acessos, user_name=user.nome)
+    visao = (request.args.get('visao') or 'ativos').strip()
+    if visao != 'desativados':
+        visao = 'ativos'
+    query = Usuario.query
+    if visao == 'desativados':
+        query = query.filter(Usuario.ativo.is_(False))
+    else:
+        query = query.filter(Usuario.ativo.is_(True))
+    acessos = query.order_by(Usuario.data_criacao.desc()).all()
+    return render_template('acessos.html', acessos=acessos, user_name=user.nome, visao=visao)
 
 
 def _exigir_gestao_acessos():
@@ -2231,46 +2245,22 @@ def _salvar_acesso_geral(usuario, form, novo=False):
     db.session.commit()
 
 
+def _acesso_e_administrador(acesso):
+    return bool(acesso and acesso.is_master)
+
+
 def _excluir_acesso_geral(acesso, ator):
-    """Remove um acesso do sistema, desvinculando FKs opcionais."""
-    if acesso.is_master:
-        raise ValueError('Não é possível excluir um acesso Master.')
+    """Desativa o acesso. O cadastro permanece para reativação."""
+    if _acesso_e_administrador(acesso):
+        raise ValueError('Não é possível desativar o administrador.')
     if ator and ator.id == acesso.id:
-        raise ValueError('Você não pode excluir o próprio acesso.')
+        raise ValueError('Você não pode desativar o próprio acesso.')
+    acesso.ativo = False
+    db.session.commit()
 
-    vinculos = []
-    if Chamado.query.filter_by(tecnico_id=acesso.id).first():
-        vinculos.append('chamados')
-    if ChamadoAtendimento.query.filter_by(usuario_id=acesso.id).first():
-        vinculos.append('atendimentos')
-    if ChamadoEncaminhamento.query.filter_by(usuario_id=acesso.id).first():
-        vinculos.append('encaminhamentos')
-    if ChamadoConhecimento.query.filter_by(usuario_id=acesso.id).first():
-        vinculos.append('conhecimentos')
-    if vinculos:
-        raise ValueError(
-            'Não é possível excluir: há ' + ', '.join(vinculos)
-            + ' vinculados a este usuário. Desative o acesso em Editar.'
-        )
 
-    Chamado.query.filter_by(encaminhado_por_id=acesso.id).update(
-        {Chamado.encaminhado_por_id: None}, synchronize_session=False
-    )
-    ChamadoMensagem.query.filter_by(usuario_id=acesso.id).update(
-        {ChamadoMensagem.usuario_id: None}, synchronize_session=False
-    )
-    ChamadoEstoqueUso.query.filter_by(usuario_id=acesso.id).update(
-        {ChamadoEstoqueUso.usuario_id: None}, synchronize_session=False
-    )
-    ChamadoTecnico.query.filter_by(usuario_id=acesso.id).update(
-        {ChamadoTecnico.usuario_id: None}, synchronize_session=False
-    )
-    PermissaoMenu.query.filter_by(usuario_id=acesso.id).delete(synchronize_session=False)
-    from models_acesso import AcessoUsuarioPermissao
-    AcessoUsuarioPermissao.query.filter_by(usuario_id=acesso.id).delete(
-        synchronize_session=False
-    )
-    db.session.delete(acesso)
+def _reativar_acesso_geral(acesso):
+    acesso.ativo = True
     db.session.commit()
 
 
@@ -2430,7 +2420,7 @@ def editar_acesso(id):
             if _wants_json():
                 return jsonify({'ok': False, 'message': str(e)}), 400
             flash(str(e), 'error')
-    permissoes = {sistema: acesso.menus_liberados(sistema) for sistema in SISTEMAS}
+    permissoes = {sistema: permissoes_efetivas(acesso, sistema) for sistema in SISTEMAS}
     return render_template(
         'acesso_form.html',
         acesso=acesso,
@@ -2456,8 +2446,13 @@ def excluir_acesso(id):
     try:
         _excluir_acesso_geral(acesso, user)
         if _wants_json():
-            return jsonify({'ok': True, 'message': 'Acesso excluído com sucesso.', 'id': id})
-        flash('Acesso excluído com sucesso.', 'success')
+            return jsonify({
+                'ok': True,
+                'message': 'Acesso desativado. Ele sai da lista de ativos e pode ser reativado em Exibir → Desativados.',
+                'id': id,
+                'acesso': _acesso_payload(acesso),
+            })
+        flash('Acesso desativado. Ele sai da lista de ativos e pode ser reativado em Exibir → Desativados.', 'success')
         return redirect(url_for('main.listar_acessos'))
     except ValueError as e:
         db.session.rollback()
@@ -2465,19 +2460,41 @@ def excluir_acesso(id):
             return jsonify({'ok': False, 'message': str(e)}), 400
         flash(str(e), 'error')
         return redirect(url_for('main.listar_acessos'))
-    except IntegrityError:
-        db.session.rollback()
-        msg = 'Não é possível excluir este usuário porque há registros vinculados. Desative o acesso em Editar.'
-        if _wants_json():
-            return jsonify({'ok': False, 'message': msg}), 400
-        flash(msg, 'error')
-        return redirect(url_for('main.listar_acessos'))
     except Exception as e:
         db.session.rollback()
         if _wants_json():
             return jsonify({'ok': False, 'message': str(e)}), 400
         flash(str(e), 'error')
         return redirect(url_for('main.listar_acessos'))
+
+
+@main.route('/acessos/<int:id>/reativar', methods=['POST'])
+@login_required
+def reativar_acesso(id):
+    user = Usuario.query.get(session['user_id'])
+    if not user or not user.pode_gerenciar_acessos():
+        if _wants_json():
+            return jsonify({'ok': False, 'message': 'Sem permissão para gerenciar acessos.'}), 403
+        flash('Você não tem permissão para gerenciar acessos.', 'error')
+        return redirect(url_for('main.inicio'))
+    acesso = Usuario.query.get_or_404(id)
+    try:
+        _reativar_acesso_geral(acesso)
+        if _wants_json():
+            return jsonify({
+                'ok': True,
+                'message': 'Acesso reativado.',
+                'id': id,
+                'acesso': _acesso_payload(acesso),
+            })
+        flash('Acesso reativado.', 'success')
+        return redirect(url_for('main.listar_acessos', visao='ativos'))
+    except Exception as e:
+        db.session.rollback()
+        if _wants_json():
+            return jsonify({'ok': False, 'message': str(e)}), 400
+        flash(str(e), 'error')
+        return redirect(url_for('main.listar_acessos', visao='desativados'))
 
 
 def _parse_data_filtro(raw, padrao):

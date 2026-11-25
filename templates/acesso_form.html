@@ -60,6 +60,10 @@
             background:#e0e7ff; color:#3730a3; font-size:0.62rem; font-weight:700;
         }
         .menus { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px; padding-left:8px; margin-top:8px; }
+        .menu-grupo { grid-column:1 / -1; margin-top:8px; font-size:12px; font-weight:800; letter-spacing:.02em; text-transform:uppercase; color:#1d4e89; }
+        .head-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+        .acessos-visao { display:inline-flex; align-items:center; gap:8px; font-weight:700; color:#35506f; }
+        .acessos-visao select { padding:8px 10px; border-radius:10px; border:1px solid #d5e0ee; font-family:inherit; font-weight:700; color:var(--brand-navy); background:#fff; }
         .actions { display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
         .btn { display:inline-flex; align-items:center; gap:.45rem; padding:.7rem 1rem; border-radius:999px; text-decoration:none; font-weight:700; border:0; cursor:pointer; }
         .btn-sec { background:#6b7c90; color:#fff; }
@@ -156,7 +160,15 @@
                     {{ meta.nome }}
                 </label>
                 <div class="menus" data-menus="{{ chave }}" style="{{ '' if sistema_on or (acesso and acesso.is_master) else 'opacity:.45' }}">
-                    {% for menu_key, menu_nome in meta.menus %}
+                    {% set ns = namespace(grupo='') %}
+                    {% for item in meta.menus %}
+                    {% set menu_key = item[0] %}
+                    {% set menu_nome = item[1] %}
+                    {% set grupo = item[2] if item|length > 2 else '' %}
+                    {% if grupo and grupo != ns.grupo %}
+                    <div class="menu-grupo">{{ grupo }}</div>
+                    {% set ns.grupo = grupo %}
+                    {% endif %}
                     {% set menu_on = permissoes.get(chave, {}).get(menu_key, sistema_on) %}
                     <label class="check">
                         <input type="checkbox" class="menu-check" name="menu_{{ chave }}_{{ menu_key }}" data-parent="{{ chave }}" {{ 'checked' if menu_on else '' }} {{ 'disabled' if (acesso and acesso.is_master) or not sistema_on else '' }}>

@@ -114,6 +114,26 @@ def create_app():
             mimetype='image/vnd.microsoft.icon',
         )
 
+    @app.before_request
+    def _bloquear_acesso_desativado():
+        from flask import flash, jsonify, redirect, request, session, url_for
+        uid = session.get('user_id')
+        if not uid or request.endpoint in ('main.login', 'main.logout', 'static', None):
+            return None
+        user = Usuario.query.get(uid)
+        if user is not None and user.ativo:
+            return None
+        session.clear()
+        wants_json = (
+            request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+            or 'application/json' in (request.headers.get('Accept') or '')
+            or '/api/' in (request.path or '')
+        )
+        if wants_json:
+            return jsonify({'ok': False, 'message': 'Este acesso está desativado.'}), 401
+        flash('Este acesso está desativado.', 'error')
+        return redirect(url_for('main.login'))
+
     return app
 
 

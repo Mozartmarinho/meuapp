@@ -1392,8 +1392,11 @@ def _dieta_match_score(paciente_dieta, cardapio_dieta):
     return 0
 
 
-def pratos_from_itens(itens, tipo=None):
-    """Extrai lista ordenada de pratos a partir do JSON de itens do cardápio."""
+def pratos_from_itens(itens, tipo=None, incluir_extras=True):
+    """Extrai lista ordenada de pratos a partir do JSON de itens do cardápio.
+
+    incluir_extras=False omite a alimentação complementar (itens extras do cardápio).
+    """
     itens = itens or {}
     if not isinstance(itens, dict):
         return []
@@ -1412,7 +1415,9 @@ def pratos_from_itens(itens, tipo=None):
         seen_keys.add(base)
         if base in _ITENS_SKIP or str(base).endswith('_tipo'):
             continue
-        valores = _vals_prato(itens.get(base)) + _vals_prato(itens.get(f'{base}_extras'))
+        valores = _vals_prato(itens.get(base))
+        if incluir_extras:
+            valores = valores + _vals_prato(itens.get(f'{base}_extras'))
         for text in valores:
             up = _norm_txt(text)
             if not up or up in seen:
@@ -6976,11 +6981,21 @@ def _pares_da_refeicao(linha, meal):
     ]
 
 
-def _pratos_padrao(dieta, dieta_id, meal, data_ref):
+def _pratos_padrao(dieta, dieta_id, meal, data_ref, incluir_extras=True):
     card = find_cardapio_for_meal(
         dieta, meal, data_ref, dieta_id=dieta_id, exigir_dieta=True,
     )
-    return list(card.pratos) if card else []
+    if not card:
+        return []
+    if incluir_extras:
+        return list(card.pratos)
+    itens = card.itens if isinstance(card.itens, dict) else None
+    if itens is None and card.id:
+        row = NutCardapio.query.get(card.id)
+        itens = row.get_itens() if row is not None else None
+    if isinstance(itens, dict):
+        return pratos_from_itens(itens, card.tipo, incluir_extras=False)
+    return list(card.pratos)
 
 
 def _linhas_mapa_dia(data_ref):
@@ -7302,7 +7317,10 @@ def impressao_cardapio_servido(
             if not _entra(linha.clinica, linha.enfermaria):
                 continue
             pares = _pares_da_refeicao(linha, meal)
-            padrao = _pratos_padrao((linha.dieta or '').strip(), linha.dieta_id, meal, data_ref)
+            padrao = _pratos_padrao(
+                (linha.dieta or '').strip(), linha.dieta_id, meal, data_ref,
+                incluir_extras=False,
+            )
             pratos, retirados = _itens_servidos(padrao, pares)
             _grupo(linha.clinica, linha.enfermaria)['linhas'].append({
                 'leito': linha.leito or '',
@@ -7311,8 +7329,6 @@ def impressao_cardapio_servido(
                 'tipo': 'Paciente',
                 'pratos': pratos,
                 'retirados': retirados,
-                'extras': (linha.extras or '').strip(),
-                'suplementos': (linha.suplementos or '').strip(),
             })
             total += 1
 
@@ -7327,7 +7343,7 @@ def impressao_cardapio_servido(
             dieta, dieta_id = _dieta_extra(a)
             qtd = max(int(a.quantidade or 1), 1)
             pratos, _retirados = _itens_servidos(
-                _pratos_padrao(dieta, dieta_id, meal, data_ref), [],
+                _pratos_padrao(dieta, dieta_id, meal, data_ref, incluir_extras=False), [],
             )
             nome = (a.nome_acompanhante or '').strip() or 'Acompanhante'
             if qtd > 1:
@@ -7339,8 +7355,6 @@ def impressao_cardapio_servido(
                 'tipo': 'Acompanhante',
                 'pratos': pratos,
                 'retirados': [],
-                'extras': '',
-                'suplementos': '',
             })
             total += 1
 
@@ -7351,7 +7365,7 @@ def impressao_cardapio_servido(
                 dieta, dieta_id = _dieta_extra(f)
                 qtd = max(int(f.quantidade or 1), 1)
                 pratos, _retirados = _itens_servidos(
-                    _pratos_padrao(dieta, dieta_id, meal, data_ref), [],
+                    _pratos_padrao(dieta, dieta_id, meal, data_ref, incluir_extras=False), [],
                 )
                 nome = (f.nome or '').strip() or 'Funcionário'
                 if qtd > 1:
@@ -7363,8 +7377,6 @@ def impressao_cardapio_servido(
                     'tipo': 'Funcionário',
                     'pratos': pratos,
                     'retirados': [],
-                    'extras': '',
-                    'suplementos': '',
                 })
                 total += 1
 

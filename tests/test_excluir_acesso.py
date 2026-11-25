@@ -68,7 +68,7 @@ class ExcluirAcessoTest(unittest.TestCase):
         self.assertIn('fa-trash', html)
         self.assertIn('/acessos/0/excluir', html)
 
-    def test_exclui_usuario_e_desvincula_tecnico(self):
+    def test_desativa_usuario_e_mantem_vinculos(self):
         alvo = self._operador()
         db.session.add(ChamadoTecnico(
             nome='Operador Teste',
@@ -92,11 +92,60 @@ class ExcluirAcessoTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertTrue(data['ok'])
-        self.assertIsNone(Usuario.query.get(uid))
+        salvo = Usuario.query.get(uid)
+        self.assertIsNotNone(salvo)
+        self.assertFalse(salvo.ativo)
         tec = ChamadoTecnico.query.get(tid)
         self.assertIsNotNone(tec)
-        self.assertIsNone(tec.usuario_id)
-        self.assertEqual(PermissaoMenu.query.filter_by(usuario_id=uid).count(), 0)
+        self.assertEqual(tec.usuario_id, uid)
+        self.assertEqual(PermissaoMenu.query.filter_by(usuario_id=uid).count(), 1)
+        home = self.client.get('/').get_data(as_text=True)
+        self.assertNotIn(f'data-id="{uid}"', home)
+        self.assertIn('id="acessos-visao"', home)
+        self.assertIn('Desativados', home)
+        lista = self.client.get('/acessos?visao=desativados')
+        self.assertEqual(lista.status_code, 200)
+        self.assertIn(alvo.nome, lista.get_data(as_text=True))
+        reativado = self.client.post(
+            f'/acessos/{uid}/reativar',
+            headers={'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json'},
+        )
+        self.assertEqual(reativado.status_code, 200)
+        self.assertTrue(reativado.get_json()['ok'])
+        self.assertTrue(Usuario.query.get(uid).ativo)
+
+    def test_submenu_nutricao_pode_ser_negado(self):
+        from permissions_sistemas import SISTEMAS
+        chaves = [item[0] for item in SISTEMAS['nutricao']['menus']]
+        self.assertIn('cadastro_pacientes', chaves)
+        self.assertIn('cadastro_uma_formula', chaves)
+        self.assertIn('impressao_mapa', chaves)
+        self.assertIn('faturamento_valores', chaves)
+        alvo = self._operador('nutri-perm@example.com')
+        alvo.perm_nutricao = True
+        alvo.cliente_todos = True
+        db.session.add(PermissaoMenu(
+            usuario_id=alvo.id,
+            sistema='nutricao',
+            menu_key='cadastro',
+            permitido=False,
+        ))
+        db.session.add(PermissaoMenu(
+            usuario_id=alvo.id,
+            sistema='nutricao',
+            menu_key='mapa_refeicoes',
+            permitido=True,
+        ))
+        db.session.commit()
+        self.assertFalse(alvo.tem_menu('nutricao', 'cadastro_pacientes'))
+        self.assertFalse(alvo.tem_menu('nutricao', 'cadastro_etiquetas'))
+        self.assertTrue(alvo.tem_menu('nutricao', 'mapa_refeicoes'))
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = alvo.id
+            sess['user_name'] = alvo.nome
+        resp = self.client.get('/nutricao/pacientes')
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('/nutricao', resp.headers.get('Location', ''))
 
     def test_nao_exclui_master(self):
         resp = self.client.post(
