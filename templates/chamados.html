@@ -326,6 +326,18 @@
                         <div class="at-fotos" id="atFotosEncaminhar"></div>
                     </div>
                 </div>
+                {% if encaminhar_tecnico %}
+                <div class="form-group at-finalizar-como" id="atFinalizarComoBox">
+                    <label for="at_tecnico_finalizar">Finalizar como o técnico</label>
+                    <select id="at_tecnico_finalizar" name="tecnico_finalizar_id">
+                        <option value="">Eu mesmo</option>
+                        {% for t in tecnicos_destino %}
+                        <option value="{{ t.id }}">{{ t.nome }}{% if t.funcao_label %} — {{ t.funcao_label }}{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                    <span class="at-hint">A contagem do atendimento fica com o técnico escolhido. Em branco, fica com quem finalizou.</span>
+                </div>
+                {% endif %}
             </div>
             <div class="nc-footer">
                 <button type="button" class="btn nc-btn-muted" id="btnFecharAt">
@@ -590,6 +602,13 @@
     padding: 0.5rem 0.6rem 0.2rem;
     margin-top: 0.3rem;
     background: #f8fafc;
+}
+.at-finalizar-como {
+    border: 1px solid #99f6e4;
+    background: #f0fdfa;
+    border-radius: 0.35rem;
+    padding: 0.5rem 0.6rem;
+    margin-top: 0.45rem;
 }
 .at-enc-title {
     margin: 0 0 0.4rem;
@@ -1368,6 +1387,8 @@ body.modal-open { overflow: hidden; }
                 btnFinalizar.innerHTML = '<i class="fas fa-check-circle"></i> Finalizar chamado';
             }
         }
+        const boxFin = document.getElementById('atFinalizarComoBox');
+        if (boxFin) boxFin.hidden = !!podeDevolver;
         sincronizarReagendamento();
     }
 
@@ -1424,6 +1445,8 @@ body.modal-open { overflow: hidden; }
         }
         const selTec = document.getElementById('at_tecnico');
         if (selTec) selTec.value = '';
+        const selFin = document.getElementById('at_tecnico_finalizar');
+        if (selFin) selFin.value = data.atribuido_tecnico_id ? String(data.atribuido_tecnico_id) : '';
         document.getElementById('at_notas').value = data.atendimento_notas || '';
         document.getElementById('at_status').value = data.status || 'Em Andamento';
         document.getElementById('at_aguardar_peca').checked = data.status === 'Aguardar peça';

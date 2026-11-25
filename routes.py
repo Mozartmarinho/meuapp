@@ -1590,6 +1590,10 @@ def _chamado_atender_payload(chamado, usuario=None):
         'atendente_nome': _nome_atendente(chamado),
         'atribuido_usuario_id': getattr(chamado, 'atribuido_usuario_id', None),
         'atribuido_nome': chamado.atribuido.nome if getattr(chamado, 'atribuido', None) else '',
+        'atribuido_tecnico_id': (
+            _tecnico_id_do_usuario(getattr(chamado, 'atribuido_usuario_id', None))
+            if usuario and usuario_pode_atribuir_chamado(usuario) else None
+        ),
         'data_inicio_atendimento': fmt_brasilia(getattr(chamado, 'data_inicio_atendimento', None)),
         'data_conclusao': fmt_brasilia(getattr(chamado, 'data_conclusao', None)),
         'data_reagendamento': (
@@ -2562,7 +2566,6 @@ def _indicadores_dashboard(chamados, args):
         [_snapshot_indicador(chamado) for chamado in chamados],
         inicio,
         fim,
-        unidade=args.get('ind_unidade') or '',
         servico=args.get('ind_servico') or '',
         tipo=args.get('ind_tipo') or '',
         mesa=args.get('ind_mesa') or '',
@@ -2688,7 +2691,7 @@ def _grafico_finalizados_dashboard(args, mesa_filtro):
 def _preservar_dashboard(excluir):
     chaves = (
         'mesa', 'de', 'ate', 'tecnico',
-        'ind_de', 'ind_ate', 'ind_unidade', 'ind_servico', 'ind_tipo', 'ind_mesa',
+        'ind_de', 'ind_ate', 'ind_servico', 'ind_tipo', 'ind_mesa',
         'av_de', 'av_ate', 'av_tecnico', 'av_unidade', 'dia',
     )
     fora = set(excluir or ())
@@ -3513,6 +3516,28 @@ def atender_chamado(id):
             return 'Anexe a foto do serviço realizado.'
         return None
 
+    credito_id = user.id
+    aviso_usuario = user
+    if acao == 'finalizar' and not pode_devolver:
+        raw_fin = (request.form.get('tecnico_finalizar_id') or '').strip()
+        if raw_fin:
+            if not usuario_pode_atribuir_chamado(user):
+                return jsonify({
+                    'ok': False,
+                    'message': (
+                        'Você não tem permissão para finalizar como outro técnico. '
+                        'Marque Atribuir no cadastro do técnico, gestor ou assistente.'
+                    ),
+                }), 400
+            try:
+                tec_fin = _tecnico_cadastrado_com_acesso(
+                    raw_fin, 'Selecione o técnico para finalizar.',
+                )
+            except ValueError as exc:
+                return jsonify({'ok': False, 'message': str(exc)}), 400
+            credito_id = tec_fin.usuario_id
+            aviso_usuario = Usuario.query.get(credito_id) or user
+
     tecnico_dest = (request.form.get('tecnico_destino_id') or '').strip()
     if acao == 'encaminhar' and tecnico_dest and not aguardar_peca:
         try:
@@ -3575,6 +3600,7 @@ def atender_chamado(id):
             atendimento_status = STATUS_ATENDIDO
         else:
             chamado.status = STATUS_ATENDIDO
+            chamado.atendente_id = credito_id
     else:
         if aguardar_peca:
             chamado.status = STATUS_AGUARDAR_PECA
@@ -3612,9 +3638,14 @@ def atender_chamado(id):
             chamado.atendente_id = user.id
 
     pendencia_aberta = not status_fechado(chamado.status)
+    usuario_atendimento = user.id
+    if acao == 'finalizar' and not pode_devolver:
+        usuario_atendimento = credito_id
+    elif acao == 'encaminhar' and nome_tecnico_destino:
+        usuario_atendimento = chamado.atendente_id or user.id
     atendimento = ChamadoAtendimento(
         chamado_id=chamado.id,
-        usuario_id=user.id,
+        usuario_id=usuario_atendimento,
         o_que_foi_consertado=notas,
         status=atendimento_status or chamado.status,
         setor_destino=chamado.setor_destino,
@@ -3677,7 +3708,12 @@ def atender_chamado(id):
     elif acao == 'finalizar' and hop_tipo == TIPO_HOP_DEVOLVER:
         msg = f'Atendido e devolvido para {chamado.setor_destino}.'
     elif acao == 'finalizar':
-        msg = 'Chamado finalizado.'
+        if aviso_usuario and aviso_usuario.id != user.id:
+            msg = 'Chamado finalizado. A contagem do atendimento ficou com %s.' % (
+                aviso_usuario.nome or 'o técnico escolhido',
+            )
+        else:
+            msg = 'Chamado finalizado.'
     elif chamado.status == STATUS_REAGENDADO and getattr(chamado, 'data_reagendamento', None):
         msg = 'Chamado reagendado para %s.' % chamado.data_reagendamento.strftime('%d/%m/%Y')
     else:
@@ -3690,7 +3726,7 @@ def atender_chamado(id):
             msg,
         )
     if status_fechado(chamado.status) and not status_fechado(status_antes):
-        _avisar_finalizacao_ticket(chamado, user, notas)
+        _avisar_finalizacao_ticket(chamado, aviso_usuario, notas)
     if reagendou:
         aviso = _avisar_reagendamento_ticket(chamado, user, notas)
         if aviso.get('ok'):
@@ -3853,6 +3889,33 @@ def _tecnicos_para_atribuir():
     )
 
 
+def _tecnico_cadastrado_com_acesso(tecnico_id_raw, mensagem_vazio):
+    """Técnico ativo, com login, a partir do id do cadastro."""
+    raw = str(tecnico_id_raw or '').strip()
+    if not raw.isdigit():
+        raise ValueError(mensagem_vazio)
+    tec = ChamadoTecnico.query.get(int(raw))
+    if not tec or not tec.ativo or not tec.usuario_id:
+        raise ValueError('Selecione um técnico cadastrado com acesso ao sistema.')
+    return tec
+
+
+def _tecnico_id_do_usuario(usuario_id):
+    """Id do cadastro de técnico ativo ligado a esse acesso."""
+    if not usuario_id:
+        return None
+    tec = (
+        ChamadoTecnico.query
+        .filter(
+            ChamadoTecnico.usuario_id == usuario_id,
+            ChamadoTecnico.ativo == True,  # noqa: E712
+        )
+        .order_by(ChamadoTecnico.id.asc())
+        .first()
+    )
+    return tec.id if tec else None
+
+
 def _atribuir_chamado_a_tecnico(chamado, user, tecnico_id_raw, instrucoes):
     """Atribui o chamado a qualquer técnico cadastrado e tira da fila dos outros."""
     if not usuario_pode_atribuir_chamado(user):
@@ -3860,12 +3923,9 @@ def _atribuir_chamado_a_tecnico(chamado, user, tecnico_id_raw, instrucoes):
             'Você não tem permissão para atribuir chamado. '
             'Marque a permissão no cadastro do técnico, gestor ou assistente.'
         )
-    raw = str(tecnico_id_raw or '').strip()
-    if not raw.isdigit():
-        raise ValueError('Selecione o técnico para atribuir.')
-    tec = ChamadoTecnico.query.get(int(raw))
-    if not tec or not tec.ativo or not tec.usuario_id:
-        raise ValueError('Selecione um técnico cadastrado com acesso ao sistema.')
+    tec = _tecnico_cadastrado_com_acesso(
+        tecnico_id_raw, 'Selecione o técnico para atribuir.',
+    )
     texto = (instrucoes or '').strip()
     if not texto:
         raise ValueError('Informe o que precisa fazer.')

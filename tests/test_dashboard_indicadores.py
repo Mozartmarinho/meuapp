@@ -87,8 +87,13 @@ class IndicadoresDashboardTest(unittest.TestCase):
         self.assertEqual(por['Manutenção corretiva'], 1)
         self.assertEqual(por['Manutenção preventiva'], 1)
         self.assertEqual(dados['ranking_servicos'][1]['detalhe'][0]['servico'], 'Manutenção preventiva')
-        self.assertEqual(dados['total'], 3)
-        self.assertEqual(dados['ranking_unidades'][0]['total'], 3)
+        self.assertEqual(dados['total'], 2)
+        self.assertEqual(dados['ranking_unidades'][0]['total'], 2)
+        self.assertEqual(sum(dados['evolucao']['abertos']), 2)
+        self.assertEqual([linha['nome'] for linha in dados['tempos']], ['Ana'])
+        self.assertEqual(dados['tempos'][0]['mediana_resposta'], 2.0)
+        self.assertEqual([linha['nome'] for linha in dados['execucao']], ['Ana'])
+        self.assertEqual(dados['execucao'][0]['total'], 2)
         self.assertEqual(dados['filtros']['mesa'], '1')
 
     def test_sem_chamados(self):

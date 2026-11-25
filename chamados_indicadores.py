@@ -1,7 +1,7 @@
 """Indicadores do dashboard de chamados.
 
-Período, tipo de unidade, serviço e tipo filtram todos os blocos.
-A mesa de atendimento filtra só o ranking de serviços.
+Período, mesa de atendimento, serviço e tipo filtram evolução,
+os dois rankings, a mediana e a execução.
 """
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
@@ -261,6 +261,8 @@ def _por_mantenedor(filtrados):
         tipos.sort(key=lambda linha: (-linha['total'], linha['tipo']))
         tempos.append({
             'nome': nome,
+            'mediana_resposta': round(med_resp, 2) if med_resp is not None else None,
+            'mediana_conclusao': round(med_conc, 2) if med_conc is not None else None,
             'mediana_resposta_txt': _txt_horas(med_resp),
             'mediana_conclusao_txt': _txt_horas(med_conc),
             'total': len(grupo),
@@ -285,7 +287,7 @@ def _mesa_id(valor):
 
 
 def calcular_indicadores(itens, inicio, fim, unidade='', servico='', tipo='', mesa=''):
-    """Monta evolução, rankings e tabelas de mantenedor já filtrados."""
+    """Monta evolução, rankings e séries de mantenedor já filtrados."""
     if inicio > fim:
         inicio, fim = fim, inicio
     unidade = (unidade or '').strip()
@@ -308,13 +310,9 @@ def calcular_indicadores(itens, inicio, fim, unidade='', servico='', tipo='', me
             continue
         if tipo and (item.get('tipo') or '') != tipo:
             continue
+        if mesa_id is not None and item.get('mesa_id') != mesa_id:
+            continue
         filtrados.append(item)
-
-    do_ranking_servicos = filtrados
-    if mesa_id is not None:
-        do_ranking_servicos = [
-            item for item in filtrados if item.get('mesa_id') == mesa_id
-        ]
 
     buckets, chave, rotulo = _buckets(inicio, fim)
     abertos = Counter()
@@ -347,7 +345,7 @@ def calcular_indicadores(itens, inicio, fim, unidade='', servico='', tipo='', me
             'concluidos': [concluidos.get(bucket, 0) for bucket in buckets],
         },
         'ranking_unidades': _ranking(filtrados, 'cliente'),
-        'ranking_servicos': _ranking_manutencao(do_ranking_servicos),
+        'ranking_servicos': _ranking_manutencao(filtrados),
         'tempos': tempos,
         'execucao': execucao,
         'total': len(filtrados),

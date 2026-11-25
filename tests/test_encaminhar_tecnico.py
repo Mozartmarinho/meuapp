@@ -11,7 +11,7 @@ sys.path.insert(0, ROOT)
 os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
 
 from app import create_app  # noqa: E402
-from models import Chamado, ChamadoTecnico, Cliente, Usuario, db  # noqa: E402
+from models import Chamado, ChamadoAtendimento, ChamadoTecnico, Cliente, Usuario, db  # noqa: E402
 from password_utils import generate_password_hash  # noqa: E402
 from routes import (  # noqa: E402
     _pendencias_chamados,
@@ -39,6 +39,7 @@ class EncaminharTecnicoTest(unittest.TestCase):
         cls.ctx.pop()
 
     def setUp(self):
+        ChamadoAtendimento.query.delete()
         Chamado.query.delete()
         ChamadoTecnico.query.delete()
         Usuario.query.delete()
@@ -180,7 +181,10 @@ class EncaminharTecnicoTest(unittest.TestCase):
         self.assertEqual(off.status_code, 400)
         self.assertIn('permissão', (off.get_json() or {}).get('message', ''))
         lista_off = self._login(ana).get('/chamados')
-        self.assertNotIn('id="at_tecnico"', lista_off.get_data(as_text=True))
+        html_off = lista_off.get_data(as_text=True)
+        self.assertNotIn('id="at_tecnico"', html_off)
+        self.assertNotIn('id="at_tecnico_finalizar"', html_off)
+        self.assertNotIn('Finalizar como o técnico', html_off)
 
         for funcao in ('tecnico', 'gestor', 'assistente'):
             marcavel = self._login(admin).post('/tecnicos/tecnico/%s/editar' % tec_ana.id, json={
@@ -212,6 +216,8 @@ class EncaminharTecnicoTest(unittest.TestCase):
         self.assertIn('at_tecnico', html)
         self.assertIn('Bruno Técnico', html)
         self.assertIn('Atribuir para o técnico', html)
+        self.assertIn('Finalizar como o técnico', html)
+        self.assertIn('id="at_tecnico_finalizar"', html)
 
         ok = self._login(ana).post(
             '/api/chamados/%s/atender' % chamado.id,
@@ -225,6 +231,8 @@ class EncaminharTecnicoTest(unittest.TestCase):
         db.session.refresh(chamado)
         self.assertEqual(chamado.atribuido_usuario_id, bruno.id)
         self.assertEqual(chamado.atendente_id, bruno.id)
+        atendimento = ChamadoAtendimento.query.filter_by(chamado_id=chamado.id).one()
+        self.assertEqual(atendimento.usuario_id, bruno.id)
         ids_ana = {c.id for c in _query_chamados_usuario(ana).all()}
         ids_bruno = {c.id for c in _query_chamados_usuario(bruno).all()}
         self.assertNotIn(chamado.id, ids_ana)
@@ -306,6 +314,110 @@ class EncaminharTecnicoTest(unittest.TestCase):
         self.assertEqual(chamado.atribuido_usuario_id, bruno.id)
         self.assertEqual(enviados, [])
         self.assertIn('não tem WhatsApp', (ok.get_json() or {}).get('message', ''))
+
+    def test_finalizar_como_outro_tecnico_conta_para_ele(self):
+        ana = self._tecnico('Ana Técnica', 'ana-fim@example.com')
+        bruno = self._tecnico('Bruno Técnico', 'bruno-fim@example.com')
+        opener = self._usuario('Solicitante', 'abre-fim@example.com')
+        tec_ana = ChamadoTecnico.query.filter_by(usuario_id=ana.id).one()
+        tec_bruno = ChamadoTecnico.query.filter_by(usuario_id=bruno.id).one()
+        tec_ana.pode_atribuir = True
+        db.session.commit()
+        chamado = self._chamado(opener, 'OS000030')
+
+        sem = self._login(ana).post(
+            '/api/chamados/%s/atender' % chamado.id,
+            data={
+                'acao': 'finalizar',
+                'atendimento_notas': 'Troquei o cabo',
+                'tecnico_finalizar_id': 'abc',
+            },
+        )
+        self.assertEqual(sem.status_code, 400)
+        db.session.refresh(chamado)
+        self.assertNotEqual(chamado.status, 'Atendido')
+
+        ok = self._login(ana).post(
+            '/api/chamados/%s/atender' % chamado.id,
+            data={
+                'acao': 'finalizar',
+                'atendimento_notas': 'Troquei o cabo',
+                'tecnico_finalizar_id': str(tec_bruno.id),
+            },
+        )
+        self.assertEqual(ok.status_code, 200, ok.get_json())
+        db.session.refresh(chamado)
+        self.assertEqual(chamado.status, 'Atendido')
+        self.assertEqual(chamado.atendente_id, bruno.id)
+        atendimento = ChamadoAtendimento.query.filter_by(chamado_id=chamado.id).one()
+        self.assertEqual(atendimento.usuario_id, bruno.id)
+        self.assertIn('Bruno Técnico', (ok.get_json() or {}).get('message', ''))
+
+    def test_finalizar_como_outro_sem_permissao_nao_conta(self):
+        ana = self._tecnico('Ana Técnica', 'ana-sem-fim@example.com')
+        bruno = self._tecnico('Bruno Técnico', 'bruno-sem-fim@example.com')
+        opener = self._usuario('Solicitante', 'abre-sem-fim@example.com')
+        tec_bruno = ChamadoTecnico.query.filter_by(usuario_id=bruno.id).one()
+        chamado = self._chamado(opener, 'OS000031')
+        off = self._login(ana).post(
+            '/api/chamados/%s/atender' % chamado.id,
+            data={
+                'acao': 'finalizar',
+                'atendimento_notas': 'Troquei o cabo',
+                'tecnico_finalizar_id': str(tec_bruno.id),
+            },
+        )
+        self.assertEqual(off.status_code, 400)
+        self.assertIn('permissão', (off.get_json() or {}).get('message', ''))
+        db.session.refresh(chamado)
+        self.assertNotEqual(chamado.status, 'Atendido')
+        self.assertEqual(ChamadoAtendimento.query.filter_by(chamado_id=chamado.id).count(), 0)
+
+    def test_quem_fecha_depois_do_encaminhamento_fica_com_a_contagem(self):
+        ana = self._tecnico('Ana Técnica', 'ana-fecha@example.com')
+        bruno = self._tecnico('Bruno Técnico', 'bruno-fecha@example.com')
+        opener = self._usuario('Solicitante', 'abre-fecha@example.com')
+        tec_ana = ChamadoTecnico.query.filter_by(usuario_id=ana.id).one()
+        tec_bruno = ChamadoTecnico.query.filter_by(usuario_id=bruno.id).one()
+        tec_ana.pode_atribuir = True
+        db.session.commit()
+        chamado = self._chamado(opener, 'OS000032')
+        self._login(ana).get('/api/chamados/%s/atender' % chamado.id)
+        enc = self._login(ana).post(
+            '/api/chamados/%s/atender' % chamado.id,
+            data={
+                'acao': 'encaminhar',
+                'tecnico_destino_id': str(tec_bruno.id),
+                'instrucoes': 'Ver no local',
+            },
+        )
+        self.assertEqual(enc.status_code, 200, enc.get_json())
+        db.session.refresh(chamado)
+        self.assertEqual(chamado.atendente_id, bruno.id)
+        self.assertEqual(
+            ChamadoAtendimento.query.filter_by(chamado_id=chamado.id).one().usuario_id,
+            bruno.id,
+        )
+        fim = self._login(bruno).post(
+            '/api/chamados/%s/atender' % chamado.id,
+            data={'acao': 'finalizar', 'atendimento_notas': 'Fonte trocada'},
+        )
+        self.assertEqual(fim.status_code, 200, fim.get_json())
+        db.session.refresh(chamado)
+        self.assertEqual(chamado.status, 'Atendido')
+        self.assertEqual(chamado.atendente_id, bruno.id)
+        linhas = (
+            ChamadoAtendimento.query
+            .filter_by(chamado_id=chamado.id)
+            .order_by(ChamadoAtendimento.id.asc())
+            .all()
+        )
+        self.assertTrue(linhas)
+        self.assertTrue(all(linha.usuario_id == bruno.id for linha in linhas))
+        self.assertNotIn(
+            ana.id,
+            {linha.usuario_id for linha in linhas},
+        )
 
 
 if __name__ == '__main__':
