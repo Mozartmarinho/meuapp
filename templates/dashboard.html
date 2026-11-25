@@ -76,100 +76,6 @@
     <div class="mdk-panel" data-panel="tickets">
         {% include '_dashboard_indicadores.html' %}
         <div class="mdk-grid">
-            <div class="mdk-card mdk-span-5">
-                <h3>Resumo de tickets</h3>
-                {% if mesas %}
-                <form method="get" action="{{ url_for('main.dashboard') }}" class="mdk-mesa-filter">
-                    <input type="hidden" name="de" value="{{ graf.de }}">
-                    <input type="hidden" name="ate" value="{{ graf.ate }}">
-                    {% if graf.tecnico_id %}<input type="hidden" name="tecnico" value="{{ graf.tecnico_id }}">{% endif %}
-                    <input type="hidden" name="ind_de" value="{{ indicadores.filtros.de }}">
-                    <input type="hidden" name="ind_ate" value="{{ indicadores.filtros.ate }}">
-                    <input type="hidden" name="ind_servico" value="{{ indicadores.filtros.servico }}">
-                    <input type="hidden" name="ind_tipo" value="{{ indicadores.filtros.tipo }}">
-                    {% if indicadores.filtros.mesa %}<input type="hidden" name="ind_mesa" value="{{ indicadores.filtros.mesa }}">{% endif %}
-                    <label>Mesa:
-                        <select class="mdk-select" name="mesa" onchange="this.form.submit()">
-                            <option value="">Todas</option>
-                            {% for m in mesas %}
-                            <option value="{{ m.id }}" {% if mesa_filtro == m.id %}selected{% endif %}>{{ m.nome }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                </form>
-                {% endif %}
-                <div class="mdk-metrics">
-                    <a class="mdk-metric" href="{{ url_for('main.listar_chamados') }}"><b>{{ dash.todos }}</b><span>Todos</span></a>
-                    <a class="mdk-metric" href="{{ url_for('main.listar_chamados') }}"><b>{{ dash.meus }}</b><span>Meus</span></a>
-                    <a class="mdk-metric" href="{{ url_for('main.listar_chamados') }}"><b>{{ dash.nao_atendidos }}</b><span>Não atendidos</span></a>
-                    <a class="mdk-metric" href="{{ url_for('main.listar_chamados') }}"><b>{{ dash.em_andamento }}</b><span>Em andamento</span></a>
-                    <a class="mdk-metric" href="{{ url_for('main.listar_chamados') }}"><b>{{ dash.pausados }}</b><span>Pausados</span></a>
-                    <a class="mdk-metric" href="{{ url_for('main.listar_chamados') }}"><b>{{ dash.vencidos }}</b><span>Vencidos</span></a>
-                </div>
-            </div>
-            <div class="mdk-card mdk-span-4">
-                <h3>Vencimento atendimento</h3>
-                <div class="mdk-due">
-                    <div><b>{{ dash.venc_at.hoje }}</b><span>Hoje</span></div>
-                    <div><b>{{ dash.venc_at.amanha }}</b><span>Amanhã</span></div>
-                    <div><b>{{ dash.venc_at.depois }}</b><span>Depois</span></div>
-                </div>
-            </div>
-            <div class="mdk-card mdk-span-3">
-                <h3>Vencimento solução</h3>
-                <div class="mdk-due">
-                    <div><b>{{ dash.venc_sol.hoje }}</b><span>Hoje</span></div>
-                    <div><b>{{ dash.venc_sol.amanha }}</b><span>Amanhã</span></div>
-                    <div><b>{{ dash.venc_sol.depois }}</b><span>Depois</span></div>
-                </div>
-            </div>
-
-            <div class="mdk-card mdk-span-4">
-                <h3>Tickets sem respostas</h3>
-                {% if sem_resp %}
-                <ul class="mdk-note-list">
-                    {% for c in sem_resp %}
-                    <li>
-                        <a href="{{ url_for('main.ver_chamado', id=c.id) }}">{{ c.numero_chamado }}</a>
-                        <small>{{ c.cliente.nome if c.cliente else '—' }} · {{ c.status }}</small>
-                    </li>
-                    {% endfor %}
-                </ul>
-                {% else %}
-                <p class="mdk-empty">Nenhum ticket sem resposta.</p>
-                {% endif %}
-                <p class="mdk-empty" style="padding-top:0.3rem">{{ dash.sem_respostas }} no total</p>
-            </div>
-            <div class="mdk-card mdk-span-4">
-                <h3>Avaliação 30 dias</h3>
-                {% if avaliacao_30.total %}
-                <p class="mdk-av-media"><b>{{ avaliacao_30.media_txt }}</b><span>média · {{ avaliacao_30.total }} nota{{ 's' if avaliacao_30.total != 1 else '' }}</span></p>
-                <ul class="mdk-note-list">
-                    {% for faixa in avaliacao_30.faixas %}
-                    <li><strong>{{ faixa.rotulo }}</strong> <small>{{ faixa.total }} · {{ faixa.pct }}%</small></li>
-                    {% endfor %}
-                </ul>
-                {% else %}
-                <p class="mdk-empty">Nenhuma avaliação nos últimos 30 dias.</p>
-                {% endif %}
-                <p><a href="#avaliacoes">Abrir relatório</a></p>
-            </div>
-            <div class="mdk-card mdk-span-4">
-                <h3>Últimas notificações</h3>
-                {% if notificacoes %}
-                <ul class="mdk-note-list">
-                    {% for n in notificacoes[:6] %}
-                    <li>
-                        <a href="{{ n.url_atender }}">{{ n.numero_chamado }}</a>
-                        <small>{{ n.tipo }} · {{ n.cliente }}</small>
-                    </li>
-                    {% endfor %}
-                </ul>
-                {% else %}
-                <p class="mdk-empty">Nenhuma notificação.</p>
-                {% endif %}
-            </div>
-
             <div class="mdk-card mdk-span-12">
                 <h3>Atendimentos finalizados</h3>
                 <form method="get" action="{{ url_for('main.dashboard') }}" class="mdk-graf-filtros mdk-filtro-bar">
@@ -211,11 +117,19 @@
                         {% if graf.total and graf.periodo %}
                         <div class="mdk-bars">
                             {% for b in graf.periodo %}
-                            <div class="mdk-bar" title="{{ b.label }}: {{ b.count }}">
+                            {% if b.count %}
+                            <button type="button" class="mdk-bar" data-graf-pop="periodo" data-graf-idx="{{ loop.index0 }}" title="Ver atendimentos de {{ b.titulo }}">
+                                <b>{{ b.count }}</b>
+                                <i style="height:{{ b.pct }}%"></i>
+                                <span>{{ b.label }}</span>
+                            </button>
+                            {% else %}
+                            <div class="mdk-bar" title="{{ b.label }}: 0">
                                 <b>{{ b.count }}</b>
                                 <i style="height:{{ b.pct }}%"></i>
                                 <span>{{ b.label }}</span>
                             </div>
+                            {% endif %}
                             {% endfor %}
                         </div>
                         {% else %}
@@ -227,11 +141,11 @@
                         {% if graf.tecnicos %}
                         <div class="mdk-hbars">
                             {% for b in graf.tecnicos %}
-                            <div class="mdk-hbar" title="{{ b.label }}: {{ b.count }}">
+                            <button type="button" class="mdk-hbar" data-graf-pop="tecnicos" data-graf-idx="{{ loop.index0 }}" title="Ver atendimentos de {{ b.titulo }}">
                                 <span>{{ b.label }}</span>
                                 <em><i style="width:{{ b.pct }}%"></i></em>
                                 <b>{{ b.count }}</b>
-                            </div>
+                            </button>
                             {% endfor %}
                         </div>
                         {% else %}
@@ -250,57 +164,36 @@
                 </ul>
                 {% endif %}
             </div>
+        </div>
+    </div>
 
-            <div class="mdk-card mdk-span-8">
-                <h3>Minhas horas apontadas</h3>
-                <div class="mdk-chart-empty">
-                    <svg viewBox="0 0 400 80" preserveAspectRatio="none" aria-hidden="true">
-                        <polyline fill="none" stroke="#d5dde3" stroke-width="2" points="0,70 50,70 100,70 150,70 200,70 250,70 300,70 350,70 400,70"/>
-                    </svg>
-                    <strong>{{ dash.horas }}</strong>
-                    <span>Sem apontamento de horas</span>
+    <div id="mdkGrafPop" class="modal-overlay mdk-graf-pop" hidden>
+        <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="mdkGrafPopTitulo">
+            <div class="modal-header">
+                <h2 id="mdkGrafPopTitulo">Atendimentos</h2>
+                <button type="button" class="modal-close" id="mdkGrafPopFechar" aria-label="Fechar">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="mdk-ind-sub" id="mdkGrafPopSub"></p>
+                <div class="mdk-ind-scroll">
+                    <table class="mdk-table">
+                        <thead>
+                            <tr>
+                                <th>Chamado</th>
+                                <th>Quando</th>
+                                <th>Técnico</th>
+                                <th>Mesa</th>
+                                <th>Cliente</th>
+                                <th>Serviço</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mdkGrafPopCorpo"></tbody>
+                    </table>
                 </div>
-            </div>
-            <div class="mdk-card mdk-span-4">
-                <h3>Tickets em andamento</h3>
-                {% if dash.pie %}
-                <div class="mdk-pie-wrap">
-                    <svg width="110" height="110" viewBox="0 0 140 140" aria-hidden="true">
-                        <circle cx="70" cy="70" r="54" fill="none" stroke="#eef1f4" stroke-width="22"></circle>
-                        {% for s in dash.pie %}
-                        <circle cx="70" cy="70" r="54" fill="none" stroke="{{ s.color }}" stroke-width="22"
-                            stroke-dasharray="{{ s.dash }} {{ s.gap }}" stroke-dashoffset="{{ s.offset }}"
-                            transform="rotate(-90 70 70)"></circle>
-                        {% endfor %}
-                    </svg>
-                    <ul class="mdk-legend">
-                        {% for s in dash.pie %}
-                        <li><span class="mdk-dot" style="background:{{ s.color }}"></span>{{ s.label }} ({{ s.count }})</li>
-                        {% endfor %}
-                    </ul>
-                </div>
-                {% else %}
-                <p class="mdk-empty">Nenhum ticket em andamento.</p>
-                {% endif %}
-            </div>
-
-            <div class="mdk-card mdk-span-6">
-                <h3>Meus compromissos</h3>
-                <p class="mdk-empty">Nenhum compromisso.</p>
-            </div>
-            <div class="mdk-card mdk-span-6">
-                <h3>Todos os compromissos</h3>
-                <p class="mdk-empty">Nenhum compromisso.</p>
-            </div>
-
-            <div class="mdk-card mdk-span-12">
-                <h3>Pendentes</h3>
-                <div class="mdk-pend-row"><span>Pré-tickets</span><b>0</b></div>
-                <div class="mdk-pend-row"><span>Autorizações</span><b>0</b></div>
-                <div class="mdk-pend-row"><span>Pré-apontamentos</span><b>0</b></div>
             </div>
         </div>
     </div>
+    <script type="application/json" id="grafPopDados">{{ {'periodo': graf.periodo, 'tecnicos': graf.tecnicos}|tojson }}</script>
 
     <div class="mdk-panel" data-panel="chats" hidden>
         <div class="mdk-kpi-row">
@@ -465,6 +358,72 @@
         const b = document.getElementById('bellBadge');
         if (b) b.remove();
         if (window.mdkToast) window.mdkToast('Notificações marcadas como lidas');
+    });
+
+    const grafPopEl = document.getElementById('grafPopDados');
+    const grafPop = grafPopEl ? JSON.parse(grafPopEl.textContent || '{}') : {};
+    const grafModal = document.getElementById('mdkGrafPop');
+    const grafTitulo = document.getElementById('mdkGrafPopTitulo');
+    const grafSub = document.getElementById('mdkGrafPopSub');
+    const grafCorpo = document.getElementById('mdkGrafPopCorpo');
+    const chamadoBase = {{ url_for('main.ver_chamado', id=0)|tojson }};
+
+    function fecharGrafPop() {
+        if (!grafModal) return;
+        grafModal.hidden = true;
+        grafModal.classList.remove('is-open');
+    }
+
+    function celulaGraf(texto) {
+        const td = document.createElement('td');
+        td.textContent = texto || '—';
+        return td;
+    }
+
+    function abrirGrafPop(kind, idx) {
+        const linha = (grafPop[kind] || [])[idx];
+        if (!linha || !grafModal || !linha.count) return;
+        const itens = linha.itens || [];
+        grafTitulo.textContent = 'Atendimentos de ' + (linha.titulo || linha.label);
+        grafSub.textContent = itens.length + (itens.length === 1 ? ' atendimento finalizado' : ' atendimentos finalizados');
+        grafCorpo.textContent = '';
+        itens.forEach(function (item) {
+            const tr = document.createElement('tr');
+            const tdNum = document.createElement('td');
+            const link = document.createElement('a');
+            link.href = chamadoBase.replace(/0$/, String(item.id));
+            link.textContent = item.numero || '—';
+            if (item.descricao) {
+                link.title = item.descricao;
+                tdNum.title = item.descricao;
+            }
+            tdNum.appendChild(link);
+            tr.appendChild(tdNum);
+            tr.appendChild(celulaGraf(item.quando));
+            tr.appendChild(celulaGraf(item.tecnico));
+            tr.appendChild(celulaGraf(item.mesa));
+            tr.appendChild(celulaGraf(item.cliente));
+            tr.appendChild(celulaGraf(item.servico));
+            grafCorpo.appendChild(tr);
+        });
+        grafModal.hidden = false;
+        grafModal.classList.add('is-open');
+    }
+
+    document.querySelectorAll('[data-graf-pop]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            abrirGrafPop(btn.getAttribute('data-graf-pop'), Number(btn.getAttribute('data-graf-idx')));
+        });
+    });
+    const grafFechar = document.getElementById('mdkGrafPopFechar');
+    if (grafFechar) grafFechar.addEventListener('click', fecharGrafPop);
+    if (grafModal) {
+        grafModal.addEventListener('click', function (e) {
+            if (e.target === grafModal) fecharGrafPop();
+        });
+    }
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') fecharGrafPop();
     });
 })();
 </script>

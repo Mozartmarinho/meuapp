@@ -77,7 +77,6 @@ from models import (
     atualizar_setor,
     excluir_setor,
     sla_do_chamado,
-    _bucket_sla,
     mesas_ativas,
     mesa_padrao,
     resolver_mesa_id,
@@ -707,27 +706,6 @@ def _fmt_dt(valor):
     if not valor:
         return '—'
     return valor.strftime('%d/%m/%Y %H:%M')
-
-
-def _contar_sla_widgets(chamados_abertos):
-    hoje_d = date.today()
-    agora = datetime.utcnow()
-    venc_at = {'hoje': 0, 'amanha': 0, 'depois': 0}
-    venc_sol = {'hoje': 0, 'amanha': 0, 'depois': 0}
-    vencidos = 0
-    for c in chamados_abertos:
-        info = sla_do_chamado(c)
-        if not info:
-            continue
-        b_at = _bucket_sla(info['venc_atendimento'], hoje_d, agora, False)
-        b_sol = _bucket_sla(info['venc_solucao'], hoje_d, agora, False)
-        if b_at == 'vencido' or b_sol == 'vencido':
-            vencidos += 1
-        if b_at in venc_at:
-            venc_at[b_at] += 1
-        if b_sol in venc_sol:
-            venc_sol[b_sol] += 1
-    return venc_at, venc_sol, vencidos
 
 
 def _avisar_abertura_ticket(chamado, opener):
@@ -2598,7 +2576,11 @@ def _grafico_finalizados_dashboard(args, mesa_filtro):
         inicio, fim = fim, inicio
     tecnico_id = args.get('tecnico', type=int)
     q = (
-        Chamado.query.options(joinedload(Chamado.atendente), joinedload(Chamado.mesa))
+        Chamado.query.options(
+            joinedload(Chamado.atendente),
+            joinedload(Chamado.mesa),
+            joinedload(Chamado.cliente),
+        )
         .filter(Chamado.status.in_(STATUS_FECHADOS))
     )
     if mesa_filtro:
@@ -2646,30 +2628,63 @@ def _grafico_finalizados_dashboard(args, mesa_filtro):
                 cursor = cursor.replace(year=cursor.year + 1, month=1)
             else:
                 cursor = cursor.replace(month=cursor.month + 1)
-    por_periodo = Counter()
-    por_tecnico = Counter()
-    lista = []
-    for chamado, conclusao in rows:
-        if tecnico_id and chamado.atendente_id != tecnico_id:
-            continue
-        por_periodo[chave(conclusao)] += 1
-        nome = chamado.atendente.nome if chamado.atendente else 'Sem técnico'
-        por_tecnico[nome] += 1
-        lista.append({
+    if dias <= 31:
+        def titulo_bucket(dt):
+            return dt.strftime('%d/%m/%Y')
+    elif dias <= 120:
+        def titulo_bucket(dt):
+            fim_sem = dt + timedelta(days=6)
+            return f'{dt.strftime("%d/%m/%Y")} a {fim_sem.strftime("%d/%m/%Y")}'
+    else:
+        def titulo_bucket(dt):
+            return dt.strftime('%m/%Y')
+
+    def _resumo_finalizado(chamado, conclusao, nome):
+        descricao = re.sub(r'\s+', ' ', (chamado.descricao or '').strip())
+        if len(descricao) > 120:
+            descricao = descricao[:117] + '...'
+        return {
             'id': chamado.id,
             'numero': chamado.numero_chamado,
             'quando': conclusao.strftime('%d/%m/%Y %H:%M'),
             'tecnico': nome,
             'mesa': chamado.mesa.nome if chamado.mesa else 'Sem mesa',
-            'ordem': conclusao,
-        })
-    lista.sort(key=lambda item: item['ordem'], reverse=True)
-    for item in lista:
-        item.pop('ordem', None)
+            'cliente': chamado.cliente.nome if chamado.cliente else '—',
+            'servico': (chamado.tipo_servico or '').strip() or '—',
+            'descricao': descricao,
+            '_ordem': conclusao,
+        }
+
+    def _publicar(itens):
+        ordenados = sorted(itens, key=lambda item: item['_ordem'], reverse=True)
+        return [{k: v for k, v in item.items() if k != '_ordem'} for item in ordenados]
+
+    por_periodo = Counter()
+    por_tecnico = Counter()
+    itens_periodo = {}
+    itens_tecnico = {}
+    lista = []
+    for chamado, conclusao in rows:
+        if tecnico_id and chamado.atendente_id != tecnico_id:
+            continue
+        nome = chamado.atendente.nome if chamado.atendente else 'Sem técnico'
+        resumo = _resumo_finalizado(chamado, conclusao, nome)
+        por_periodo[chave(conclusao)] += 1
+        por_tecnico[nome] += 1
+        itens_periodo.setdefault(chave(conclusao), []).append(resumo)
+        itens_tecnico.setdefault(nome, []).append(resumo)
+        lista.append(resumo)
+    lista = _publicar(lista)
     serie_tecnico = por_tecnico
     total = len(lista)
     periodo = _barras((rotulo(b), por_periodo.get(b, 0)) for b in buckets)
+    for barra, bucket in zip(periodo, buckets):
+        barra['titulo'] = titulo_bucket(bucket)
+        barra['itens'] = _publicar(itens_periodo.get(bucket, []))
     tecnicos_serie = _barras(serie_tecnico.most_common(12))
+    for barra in tecnicos_serie:
+        barra['titulo'] = barra['label']
+        barra['itens'] = _publicar(itens_tecnico.get(barra['label'], []))
     opcoes = []
     vistos = set()
     for tec in ChamadoTecnico.query.filter_by(ativo=True).order_by(ChamadoTecnico.nome.asc()).all():
@@ -2733,43 +2748,8 @@ def dashboard():
     mesa_filtro = request.args.get('mesa', type=int)
     if mesa_filtro:
         visiveis = [c for c in visiveis if c.mesa_id == mesa_filtro]
-    meus = [c for c in visiveis if c.tecnico_id == user.id]
     abertos = [c for c in visiveis if not status_fechado(c.status)]
-    st_nao = [c for c in visiveis if c.status == 'Pendente']
-    st_and = [c for c in visiveis if c.status in ('Em Andamento', STATUS_ENCAMINHADO, STATUS_DEVOLVIDO, STATUS_AGUARDAR_PECA)]
-    st_pause = [c for c in visiveis if c.status in (STATUS_AGUARDAR_PECA, STATUS_REAGENDADO)]
-    venc_at, venc_sol, vencidos = _contar_sla_widgets(abertos)
     ids = [c.id for c in visiveis]
-    have_at = set()
-    if ids:
-        have_at = {
-            r[0] for r in db.session.query(ChamadoAtendimento.chamado_id)
-            .filter(ChamadoAtendimento.chamado_id.in_(ids))
-            .distinct()
-        }
-    sem_resp = [c for c in abertos if c.id not in have_at]
-    pie_src = Counter()
-    for c in visiveis:
-        if c.status in ('Em Andamento', STATUS_ENCAMINHADO, STATUS_DEVOLVIDO, STATUS_AGUARDAR_PECA):
-            pie_src[c.setor_destino or user.nome or 'Eu'] += 1
-    pie_total = sum(pie_src.values())
-    colors = ['#1ABC9C', '#3498db', '#9b59b6', '#e67e22', '#e74c3c', '#95a5a6']
-    circ = 339.3
-    pie = []
-    acc = 0.0
-    if pie_total:
-        for i, (label, n) in enumerate(pie_src.most_common()):
-            frac = n / pie_total
-            pie.append({
-                'label': label,
-                'count': n,
-                'pct': round(frac * 100),
-                'color': colors[i % len(colors)],
-                'dash': round(frac * circ, 2),
-                'gap': round(circ - frac * circ, 2),
-                'offset': round(-acc * circ, 2),
-            })
-            acc += frac
     notificacoes = _pendencias_chamados(user)
     alertas = _alertas_sla_e_parada(abertos)
     seen_n = {(n.get('id'), n.get('tipo')) for n in notificacoes}
@@ -2803,7 +2783,6 @@ def dashboard():
     from chamados_avaliacao import montar_atendimento_dia, montar_calendario, relatorio_avaliacoes
     av_de, av_ate, av_tec, av_uni = _filtros_avaliacao(request.args)
     ids_visiveis = [c.id for c in visiveis]
-    hoje_av = now_brasilia().date()
     unidades_av = []
     vistos_un = set()
     for c in visiveis:
@@ -2829,18 +2808,6 @@ def dashboard():
             cell['href'] = _href_dia(cell['iso'])
     avaliacoes = relatorio_avaliacoes(ids_visiveis, av_de, av_ate, av_tec, av_uni)
     dash = {
-        'todos': len(visiveis),
-        'meus': len(meus),
-        'nao_atendidos': len(st_nao),
-        'em_andamento': len(st_and),
-        'pausados': len(st_pause),
-        'vencidos': vencidos,
-        'venc_at': venc_at,
-        'venc_sol': venc_sol,
-        'sem_respostas': len(sem_resp),
-        'pie': pie,
-        'pie_total': pie_total,
-        'horas': '00:00',
         'setores_chat': listar_setores(TIPO_SETOR_CHAMADOS),
     }
     return render_template(
@@ -2852,7 +2819,6 @@ def dashboard():
         ultimas_respostas=ultimas_respostas,
         tickets_index=tickets_index,
         user_setor=_setor_usuario(user),
-        sem_resp=sem_resp[:8],
         mesas=mesas,
         mesa_filtro=mesa_filtro,
         graf=graf,
@@ -2861,9 +2827,6 @@ def dashboard():
         atendimento=atendimento,
         calendario=calendario,
         avaliacoes=avaliacoes,
-        avaliacao_30=relatorio_avaliacoes(
-            ids_visiveis, hoje_av - timedelta(days=29), hoje_av,
-        ),
         unidades_av=unidades_av,
         dia_painel=dia_painel.isoformat(),
         qs_dia=qs_dia,
