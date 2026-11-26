@@ -262,6 +262,7 @@ class NutPaciente(db.Model):
     nascimento = db.Column(db.Date)
     prontuario = db.Column(db.String(40), index=True)
     clinica = db.Column(db.String(120))
+    enfermaria = db.Column(db.String(120))
     leito = db.Column(db.String(40))
     dieta = db.Column(db.String(200))
     diagnostico = db.Column(db.Text)
@@ -301,6 +302,7 @@ class NutPaciente(db.Model):
             'nascimento': self.nascimento.isoformat() if self.nascimento else '',
             'prontuario': self.prontuario or '',
             'clinica': self.clinica or '',
+            'enfermaria': self.enfermaria or '',
             'leito': self.leito or '',
             'dieta': self.dieta or '',
             'diagnostico': self.diagnostico or '',

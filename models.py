@@ -575,6 +575,14 @@ class ConfiguracaoEmail(db.Model):
     usuario = db.Column(db.String(200), default='')
     senha = db.Column(db.String(255), default='')
     remetente = db.Column(db.String(200), default='')
+    email_backup = db.Column(db.String(200), default='')
+    backup_horario = db.Column(db.String(5), default='23:50')
+    backup_ultimo_dia = db.Column(db.Date, nullable=True)
+    backup_ultimo_em = db.Column(db.DateTime, nullable=True)
+    backup_ultima_tentativa_em = db.Column(db.DateTime, nullable=True)
+    backup_ultimo_arquivo = db.Column(db.String(255), default='')
+    backup_ultimo_bytes = db.Column(db.BigInteger, nullable=True)
+    backup_ultimo_erro = db.Column(db.Text, nullable=True)
     atualizado_em = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 

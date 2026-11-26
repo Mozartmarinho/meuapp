@@ -64,6 +64,11 @@ def create_app():
             ensure_logistica_schema()
         except Exception as extra:
             print(f"Aviso ao ajustar schema de logística: {extra}")
+        try:
+            from backup_service import ensure_backup_schema
+            ensure_backup_schema()
+        except Exception as extra:
+            print(f"Aviso ao ajustar schema de backup: {extra}")
 
     @app.context_processor
     def inject_acesso():
@@ -1110,6 +1115,11 @@ if __name__ == '__main__':
         start_preventiva_background(app)
     except Exception as extra:
         print(f"Aviso ao iniciar preventiva de equipamentos: {extra}")
+    try:
+        from backup_service import start_backup_background
+        start_backup_background(app)
+    except Exception as extra:
+        print(f"Aviso ao iniciar backup diário: {extra}")
 
     host = os.environ.get('HOST', '0.0.0.0')
     port = int(os.environ.get('PORT', '80'))

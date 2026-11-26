@@ -8,6 +8,7 @@ from flask import (
     url_for,
     flash,
     session,
+    send_file,
 )
 from functools import wraps
 from password_utils import generate_password_hash, check_password_hash
@@ -1923,6 +1924,31 @@ def _wants_json():
     )
 
 
+def _backup_info_view():
+    try:
+        from backup_service import info_backup
+        return info_backup()
+    except Exception:
+        return {
+            'email': '',
+            'horario': '23:50',
+            'mensagem': '',
+            'tem_arquivo': False,
+            'ultimo_em_fmt': '',
+            'ultimo_bytes_fmt': '',
+            'ultimo_erro': '',
+        }
+
+
+def _resposta_configuracao(ok, message, code=200, backup=None):
+    if backup is None:
+        backup = _backup_info_view()
+    if _wants_json():
+        return jsonify({'ok': ok, 'message': message, 'backup': backup}), code
+    flash(message, 'success' if ok else 'error')
+    return redirect(url_for('main.configuracoes'))
+
+
 def _acesso_payload(usuario):
     cliente_todos = bool(getattr(usuario, 'cliente_todos', False))
     if cliente_todos:
@@ -2058,6 +2084,7 @@ def inicio():
     smtp_cfg = {'servidor': '', 'porta': 587, 'usar_tls': True, 'usuario': '', 'remetente': ''}
     senha_salva = False
     smtp_ok = False
+    backup_info = _backup_info_view()
     if user and user.pode_opcao_portal('acessos'):
         todos_acessos = Usuario.query.order_by(Usuario.data_criacao.desc()).all()
         acessos = [a for a in todos_acessos if a.ativo]
@@ -2087,6 +2114,7 @@ def inicio():
         smtp_cfg=smtp_cfg,
         senha_salva=senha_salva,
         smtp_ok=smtp_ok,
+        backup_info=backup_info,
         pendencias=pendencias,
         pendencias_js=pendencias,
         mostrar_pendencias=mostrar_pendencias,
@@ -2141,6 +2169,12 @@ def configuracoes():
         return redirect(url_for('main.inicio'))
 
     from email_service import obter_config_smtp, smtp_configurado
+    from backup_service import HORARIO_PADRAO, email_backup_valido, ensure_backup_schema, normalizar_horario
+
+    try:
+        ensure_backup_schema()
+    except Exception:
+        db.session.rollback()
 
     if request.method == 'POST':
         servidor = (request.form.get('servidor') or '').strip()
@@ -2165,6 +2199,23 @@ def configuracoes():
             flash('Servidor SMTP e remetente (From) são obrigatórios.', 'error')
             return redirect(url_for('main.configuracoes'))
 
+        email_backup = None
+        horario_backup = None
+        if 'email_backup' in request.form:
+            email_backup = (request.form.get('email_backup') or '').strip().lower()
+            if email_backup and not email_backup_valido(email_backup):
+                return _resposta_configuracao(False, 'Informe um e-mail válido para receber o backup.', 400)
+        if 'backup_horario' in request.form:
+            bruto_hora = (request.form.get('backup_horario') or '').strip()
+            try:
+                horario_backup = normalizar_horario(bruto_hora) if bruto_hora else HORARIO_PADRAO
+            except ValueError:
+                return _resposta_configuracao(
+                    False,
+                    'Horário do backup inválido. Use HH:MM, entre 00:00 e 23:59.',
+                    400,
+                )
+
         row = ConfiguracaoEmail.query.get(1)
         if not row:
             row = ConfiguracaoEmail(id=1)
@@ -2176,16 +2227,22 @@ def configuracoes():
         row.remetente = remetente
         if senha_nova:
             row.senha = senha_nova
+        if email_backup is not None:
+            row.email_backup = email_backup
+        if horario_backup is not None:
+            row.backup_horario = horario_backup
         db.session.commit()
+        cfg_atual = obter_config_smtp()
+        backup = _backup_info_view()
         if _wants_json():
-            cfg_atual = obter_config_smtp()
             return jsonify({
                 'ok': True,
-                'message': 'Configurações de e-mail salvas.',
+                'message': 'Configurações salvas.',
                 'smtp_ok': smtp_configurado(),
                 'senha_salva': bool(row.senha) or bool(cfg_atual.get('senha')),
+                'backup': backup,
             })
-        flash('Configurações de e-mail salvas.', 'success')
+        flash('Configurações salvas.', 'success')
         return redirect(url_for('main.configuracoes'))
 
     cfg = obter_config_smtp()
@@ -2197,7 +2254,56 @@ def configuracoes():
         cfg=cfg,
         senha_salva=senha_salva,
         smtp_ok=smtp_configurado(),
+        backup_info=_backup_info_view(),
     )
+
+
+@main.route('/configuracoes/backup/enviar', methods=['POST'])
+@login_required
+def configuracoes_backup_enviar():
+    user = _exigir_opcao_portal('configuracoes', 'Você não tem permissão para enviar o backup.')
+    if not user:
+        if _wants_json():
+            return jsonify({'ok': False, 'message': 'Você não tem permissão para enviar o backup.'}), 403
+        return redirect(url_for('main.inicio'))
+    from backup_service import executar_backup
+    resultado = executar_backup(forcar=True)
+    return _resposta_configuracao(
+        bool(resultado.get('ok')),
+        resultado.get('message') or 'Não foi possível enviar o backup.',
+        200 if resultado.get('ok') else 400,
+        backup=resultado.get('backup'),
+    )
+
+
+@main.route('/configuracoes/backup/restaurar', methods=['POST'])
+@login_required
+def configuracoes_backup_restaurar():
+    user = _exigir_opcao_portal('configuracoes', 'Você não tem permissão para restaurar o backup.')
+    if not user:
+        if _wants_json():
+            return jsonify({'ok': False, 'message': 'Você não tem permissão para restaurar o backup.'}), 403
+        return redirect(url_for('main.inicio'))
+    from backup_service import restaurar_upload
+    try:
+        resultado = restaurar_upload(request.files.get('arquivo'), request.form.get('confirmacao'))
+    except ValueError as exc:
+        return _resposta_configuracao(False, str(exc), 400)
+    return _resposta_configuracao(True, resultado.get('message') or 'Banco restaurado.', 200, backup=resultado.get('backup'))
+
+
+@main.route('/configuracoes/backup/baixar')
+@login_required
+def configuracoes_backup_baixar():
+    user = _exigir_opcao_portal('configuracoes', 'Você não tem permissão para baixar o backup.')
+    if not user:
+        return redirect(url_for('main.inicio'))
+    from backup_service import caminho_backup_atual
+    path = caminho_backup_atual()
+    if not path:
+        flash('Nenhum backup salvo no servidor.', 'error')
+        return redirect(url_for('main.configuracoes'))
+    return send_file(path, as_attachment=True, download_name=path.name, mimetype='application/octet-stream')
 
 
 def _salvar_acesso_geral(usuario, form, novo=False):

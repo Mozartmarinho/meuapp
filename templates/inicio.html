@@ -259,6 +259,8 @@
         .portal-form input[type=email],
         .portal-form input[type=password],
         .portal-form input[type=number],
+        .portal-form input[type=time],
+        .portal-form input[type=file],
         .portal-form select {
             width: 100%;
             padding: 12px;
@@ -279,6 +281,9 @@
         .menu-grupo { grid-column: 1 / -1; margin-top: 8px; font-size: 0.78rem; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; color: #1d4e89; }
         .portal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
         .hint { color: var(--muted); font-size: 0.85rem; margin-top: 6px; line-height: 1.45; }
+        .backup-sep { margin-top: 16px; padding-top: 14px; border-top: 1px solid #e8eef6; }
+        .warn { background: #fff7ed; color: #9a3412; border: 1px solid #fdba74; border-radius: 12px; padding: 12px 14px; margin: 0 0 14px; line-height: 1.45; font-size: 0.9rem; }
+        .backup-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
         .perm-title { margin: 12px 0; color: #0D2B5C; font-size: 20px; font-family: Rajdhani, sans-serif; }
 
         .setor-field-row { display: flex; gap: 6px; align-items: stretch; }
@@ -1111,6 +1116,7 @@
     </div>
 
     <div class="portal-overlay" id="modal-config" role="presentation">
+        {% set backup_info = backup_info|default({'email': '', 'horario': '23:50', 'mensagem': '', 'tem_arquivo': false}) %}
         <div class="portal-card narrow" role="dialog" aria-modal="true" aria-labelledby="config-title">
             <button type="button" class="portal-close" data-close-modal aria-label="Fechar">&times;</button>
             <div class="portal-head">
@@ -1119,7 +1125,7 @@
                         Configurações
                         <span class="status {{ 'on' if smtp_ok else 'off' }}" id="smtp-status">{{ 'E-mail pronto' if smtp_ok else 'E-mail pendente' }}</span>
                     </h2>
-                    <p>Saída de e-mail (SMTP) usada no envio do link de redefinição de senha.</p>
+                    <p>E-mail de saída (SMTP), backup diário do banco e restauração.</p>
                 </div>
             </div>
             <div class="portal-alert" id="config-msg" hidden></div>
@@ -1145,17 +1151,51 @@
                         <label for="remetente">Remetente (From) *</label>
                         <input type="email" id="remetente" name="remetente" value="{{ smtp_cfg.remetente }}" placeholder="nao-responda@saogeraldoservice.com.br" required>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group full">
                         <label class="check" style="padding-top:8px">
                             <input type="checkbox" name="usar_tls" {{ 'checked' if smtp_cfg.usar_tls else '' }}>
                             Usar TLS
                         </label>
                     </div>
+                    <div class="form-group">
+                        <label for="email-backup">E-mail do backup diário</label>
+                        <input type="email" id="email-backup" name="email_backup" value="{{ backup_info.email }}" placeholder="backup@seudominio.com.br">
+                    </div>
+                    <div class="form-group">
+                        <label for="backup-horario">Horário do backup</label>
+                        <input type="time" id="backup-horario" name="backup_horario" value="{{ backup_info.horario }}" step="60" required>
+                    </div>
                 </div>
                 <p class="hint">Assunto do e-mail de redefinição: <strong>redefinição senha sistema são geraldo</strong>. Porta comum: 587 com TLS.</p>
+                <p class="hint">O banco inteiro é compactado ao máximo e enviado todo dia às <strong id="backup-horario-texto">{{ backup_info.horario }}</strong> (horário de Brasília). Deixe o e-mail em branco para não enviar.</p>
+                <p class="hint" id="backup-status">{{ backup_info.mensagem }}</p>
                 <div class="portal-actions">
                     <button type="button" class="portal-btn sec" data-close-modal>Cancelar</button>
                     <button type="submit" class="portal-btn pri"><i class="fas fa-save"></i> Salvar</button>
+                </div>
+            </form>
+            <div class="backup-sep">
+                <div class="portal-alert" id="backup-msg" hidden></div>
+                <div class="backup-actions">
+                    <form id="form-backup-enviar">
+                        <button type="submit" class="portal-btn sec"><i class="fas fa-paper-plane"></i> Enviar backup agora</button>
+                    </form>
+                    <a class="portal-btn sec" id="backup-baixar" href="{{ url_for('main.configuracoes_backup_baixar') }}" {% if not backup_info.tem_arquivo %}hidden{% endif %}><i class="fas fa-download"></i> Baixar último backup</a>
+                </div>
+            </div>
+            <form class="portal-form backup-sep" id="form-backup-restaurar" enctype="multipart/form-data" autocomplete="off">
+                <h3 style="font-family:Rajdhani,sans-serif;color:#0D2B5C;margin-bottom:6px">Restaurar banco</h3>
+                <p class="warn">Isso substitui o banco inteiro pelo arquivo. Chamados, nutrição, pesagem, acessos e os demais dados atuais passam a ser os do backup. Antes de aplicar, o sistema guarda uma cópia do banco atual no servidor.</p>
+                <div class="form-group">
+                    <label for="arquivo-backup">Arquivo de backup (.xz, .gz ou .sql)</label>
+                    <input type="file" id="arquivo-backup" name="arquivo" accept=".xz,.gz,.sql,.sql.xz,.sql.gz" required>
+                </div>
+                <div class="form-group">
+                    <label for="confirmacao-backup">Digite RESTAURAR para confirmar</label>
+                    <input type="text" id="confirmacao-backup" name="confirmacao" autocomplete="off" placeholder="RESTAURAR" required>
+                </div>
+                <div class="portal-actions">
+                    <button type="submit" class="portal-btn danger"><i class="fas fa-undo"></i> Restaurar banco</button>
                 </div>
             </form>
         </div>
@@ -1367,6 +1407,8 @@
         var URL_EDITAR_CLIENTE_TPL = {{ url_for('main.editar_cliente', id=0) | tojson }};
         var URL_EXCLUIR_CLIENTE_TPL = {{ url_for('main.excluir_cliente', id=0) | tojson }};
         var URL_CONFIG = {{ url_for('main.configuracoes') | tojson }};
+        var URL_BACKUP_ENVIAR = {{ url_for('main.configuracoes_backup_enviar') | tojson }};
+        var URL_BACKUP_RESTAURAR = {{ url_for('main.configuracoes_backup_restaurar') | tojson }};
         var URL_SETOR = {{ url_for('main.criar_setor_funcao') | tojson }};
         var SETORES = {
             chamados: {{ setores_chamados | tojson }},
@@ -1968,6 +2010,7 @@
                         document.getElementById('senha-smtp-hint').textContent = '(deixe em branco para manter)';
                         senha.placeholder = 'Senha já salva';
                     }
+                    aplicarBackup(data.backup);
                 }
             } catch (err) {
                 showMsg(msg, false, 'Não foi possível salvar. Tente de novo.');
@@ -1975,6 +2018,59 @@
                 btn.disabled = false;
             }
         });
+
+        function aplicarBackup(info) {
+            if (!info) return;
+            var status = document.getElementById('backup-status');
+            if (status) status.textContent = info.mensagem || '';
+            var hora = document.getElementById('backup-horario-texto');
+            if (hora && info.horario) hora.textContent = info.horario;
+            var campo = document.getElementById('backup-horario');
+            if (campo && info.horario) campo.value = info.horario;
+            var email = document.getElementById('email-backup');
+            if (email && typeof info.email === 'string') email.value = info.email;
+            var link = document.getElementById('backup-baixar');
+            if (link) link.hidden = !info.tem_arquivo;
+        }
+
+        var formBackupEnviar = document.getElementById('form-backup-enviar');
+        if (formBackupEnviar) {
+            formBackupEnviar.addEventListener('submit', async function (ev) {
+                ev.preventDefault();
+                var btn = formBackupEnviar.querySelector('button[type="submit"]');
+                var msg = document.getElementById('backup-msg');
+                btn.disabled = true;
+                try {
+                    var data = await postForm(URL_BACKUP_ENVIAR, formBackupEnviar);
+                    showMsg(msg, !!data.ok, data.message || (data.ok ? 'Backup enviado.' : 'Não foi possível enviar o backup.'));
+                    aplicarBackup(data.backup);
+                } catch (err) {
+                    showMsg(msg, false, 'Não foi possível enviar o backup. Tente de novo.');
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+        }
+
+        var formBackupRestaurar = document.getElementById('form-backup-restaurar');
+        if (formBackupRestaurar) {
+            formBackupRestaurar.addEventListener('submit', async function (ev) {
+                ev.preventDefault();
+                var btn = formBackupRestaurar.querySelector('button[type="submit"]');
+                var msg = document.getElementById('backup-msg');
+                btn.disabled = true;
+                try {
+                    var data = await postForm(URL_BACKUP_RESTAURAR, formBackupRestaurar);
+                    showMsg(msg, !!data.ok, data.message || (data.ok ? 'Banco restaurado.' : 'Não foi possível restaurar.'));
+                    aplicarBackup(data.backup);
+                    if (data.ok) formBackupRestaurar.reset();
+                } catch (err) {
+                    showMsg(msg, false, 'Não foi possível restaurar o banco. Tente de novo.');
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+        }
 
         function dash(v) { return (v && String(v).trim()) ? escapeHtml(v) : '-'; }
 

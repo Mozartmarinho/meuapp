@@ -5,6 +5,7 @@ import json
 import os
 
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 
 from models import db
 from models_nutricao import (
@@ -464,6 +465,7 @@ def _list_pacientes_db(ativos_only=True, q=None, limit=50):
             NutPaciente.nome.ilike(like),
             NutPaciente.prontuario.ilike(like),
             NutPaciente.clinica.ilike(like),
+            NutPaciente.enfermaria.ilike(like),
             NutPaciente.leito.ilike(like),
         ))
     query = query.order_by(NutPaciente.nome)
@@ -562,10 +564,26 @@ def dashboard():
 @nutricao.route('/nutricao/pacientes')
 def pacientes():
     seed_nutricao()
+    clinicas = []
+    rows = (
+        scoped_query(NutClinica)
+        .filter_by(ativo=True)
+        .options(selectinload(NutClinica.enfermarias))
+        .order_by(NutClinica.nome)
+        .all()
+    )
+    for c in rows:
+        item = c.to_dict()
+        item['enfermarias'] = [
+            {'id': e.id, 'nome': e.nome or ''}
+            for e in sorted(c.enfermarias or [], key=lambda e: (e.nome or '').upper())
+            if getattr(e, 'ativo', True)
+        ]
+        clinicas.append(item)
     return render_template(
         'nutricao_pacientes.html',
         pacientes=_list_pacientes_db(False),
-        clinicas=_list_clinicas_db(somente_ativas=True),
+        clinicas=clinicas,
         dietas=_list_dietas_db(),
         **active('cadastro_pacientes')
     )
@@ -662,6 +680,7 @@ def api_paciente(pid):
         linha.diagnostico = p.diagnostico
         linha.observacoes = p.observacoes
         linha.clinica = p.clinica
+        linha.enfermaria = p.enfermaria
         tipo = (linha.tipo_lancamento or 'principal')
         if tipo == 'principal':
             linha.dieta = p.dieta
@@ -1143,7 +1162,7 @@ def api_mapa_inserir():
         return jsonify({'ok': False, 'error': 'Selecione um paciente cadastrado'}), 400
 
     # atualiza dados básicos do cadastro se enviados
-    for campo in ('prontuario', 'diagnostico', 'dieta', 'observacoes', 'clinica', 'leito'):
+    for campo in ('prontuario', 'diagnostico', 'dieta', 'observacoes', 'clinica', 'enfermaria', 'leito'):
         if campo in d and d.get(campo) is not None:
             setattr(p, campo, (str(d.get(campo)).strip() or None))
     if 'admissao' in d:

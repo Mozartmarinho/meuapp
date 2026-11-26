@@ -9,7 +9,7 @@
 <div class="toolbar">
   <div class="toolbar-search">
     <i class="fas fa-search"></i>
-    <input type="text" id="buscaPaciente" placeholder="Buscar por nome, prontuário, clínica ou leito..." oninput="filtrarPacientes()">
+    <input type="text" id="buscaPaciente" placeholder="Buscar por nome, prontuário, clínica, enfermaria ou leito..." oninput="filtrarPacientes()">
   </div>
   <button class="btn btn-primary btn-sm" type="button" onclick="abrirPopupPaciente()">
     <i class="fas fa-plus"></i> Adicionar Paciente
@@ -27,6 +27,7 @@
           <th>Sexo</th>
           <th>Nascimento</th>
           <th>Clínica</th>
+          <th>Enfermaria</th>
           <th>Leito</th>
           <th>Dieta</th>
           <th>Diagnóstico</th>
@@ -42,6 +43,7 @@
             data-sexo="{{ p.sexo or '' }}"
             data-nascimento="{{ p.nascimento[:10] if p.nascimento else '' }}"
             data-clinica="{{ p.clinica or '' }}"
+            data-enfermaria="{{ p.enfermaria or '' }}"
             data-leito="{{ p.leito or '' }}"
             data-dieta="{{ p.dieta or '' }}"
             data-diagnostico="{{ p.diagnostico or '' }}"
@@ -52,6 +54,7 @@
           <td>{{ p.sexo_label or p.sexo or '-' }}</td>
           <td>{{ p.nascimento[:10] if p.nascimento else '-' }}</td>
           <td>{{ p.clinica or '-' }}</td>
+          <td>{{ p.enfermaria or '-' }}</td>
           <td>{{ p.leito or '-' }}</td>
           <td><span class="status status-info">{{ p.dieta or '-' }}</span></td>
           <td>{{ p.diagnostico or '-' }}</td>
@@ -66,7 +69,7 @@
         </tr>
         {% else %}
         <tr id="linhaVazia">
-          <td colspan="10" style="text-align:center;color:#6B7280;">Nenhum paciente cadastrado.</td>
+          <td colspan="11" style="text-align:center;color:#6B7280;">Nenhum paciente cadastrado.</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -153,6 +156,14 @@ const clinicasOptions = {{ clinicas | tojson }};
 const dietasOptions = {{ dietas | tojson }};
 window.DIETAS_PACIENTE = dietasOptions;
 
+function escPac(v){
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function filtrarPacientes(){
   const input = document.getElementById('buscaPaciente');
   const q = (input && input.value || '').toLowerCase().trim();
@@ -163,6 +174,7 @@ function filtrarPacientes(){
       tr.dataset.nome || '',
       tr.dataset.prontuario || '',
       tr.dataset.clinica || '',
+      tr.dataset.enfermaria || '',
       tr.dataset.leito || '',
       tr.dataset.dieta || '',
       tr.dataset.diagnostico || ''
@@ -182,6 +194,7 @@ function editarPacienteLinha(btn){
     sexo: tr.dataset.sexo || '',
     nascimento: tr.dataset.nascimento || '',
     clinica: tr.dataset.clinica || '',
+    enfermaria: tr.dataset.enfermaria || '',
     leito: tr.dataset.leito || '',
     dieta: tr.dataset.dieta || '',
     diagnostico: tr.dataset.diagnostico || '',
@@ -205,7 +218,7 @@ function calcularIdadePopup(){
 function abrirPopupPaciente(data){
   const isEdit = !!(data && data.id);
   const clinicaOpts = (clinicasOptions || []).map(c =>
-    `<option value="${c.nome}" ${(data && data.clinica === c.nome) ? 'selected' : ''}>${c.nome}</option>`
+    `<option value="${escPac(c.nome)}" data-id="${c.id}" ${(data && data.clinica === c.nome) ? 'selected' : ''}>${escPac(c.nome)}</option>`
   ).join('');
   const dietaOpts = (dietasOptions || []).map(d =>
     `<option value="${d.nome}" ${(data && data.dieta === d.nome) ? 'selected' : ''}>${d.nome}</option>`
@@ -232,21 +245,60 @@ function abrirPopupPaciente(data){
     </div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Clínica</label>
-        <select class="form-control" id="f-clinica" data-sg-search><option value="">Selecione</option>${clinicaOpts}</select>
+        <select class="form-control" id="f-clinica" data-sg-search onchange="carregarEnfermariasPaciente()">
+          <option value="">Selecione</option>${clinicaOpts}
+        </select>
       </div>
-      <div class="form-group"><label class="form-label">Leito</label><input class="form-control" id="f-leito" value="${(data && data.leito) || ''}"></div>
+      <div class="form-group"><label class="form-label">Enfermaria</label>
+        <select class="form-control" id="f-enfermaria" data-sg-search>
+          <option value="">Selecione a clínica</option>
+        </select>
+      </div>
     </div>
     <div class="form-row">
+      <div class="form-group"><label class="form-label">Leito</label><input class="form-control" id="f-leito" value="${escPac((data && data.leito) || '')}"></div>
       <div class="form-group"><label class="form-label">Dieta</label>
         <select class="form-control" id="f-dieta" data-sg-search><option value="">Selecione</option>${dietaOpts}</select>
       </div>
-      <div class="form-group"><label class="form-label">Diagnóstico</label><input class="form-control" id="f-diagnostico" value="${(data && data.diagnostico) || ''}"></div>
     </div>
+    <div class="form-group"><label class="form-label">Diagnóstico</label><input class="form-control" id="f-diagnostico" value="${escPac((data && data.diagnostico) || '')}"></div>
     <div class="form-group"><label class="form-label">Observações</label><textarea class="form-control" id="f-observacoes" rows="2">${(data && data.observacoes) || ''}</textarea></div>
   `;
   window._editPacienteId = isEdit ? data.id : null;
   abrirModal(isEdit ? 'Editar Paciente' : 'Novo Paciente', html, isEdit ? 'Atualizar' : 'Salvar', salvarPacientePopup);
   calcularIdadePopup();
+  carregarEnfermariasPaciente((data && data.enfermaria) || '');
+}
+
+function carregarEnfermariasPaciente(preEnf){
+  const selCli = document.getElementById('f-clinica');
+  const selEnf = document.getElementById('f-enfermaria');
+  if (!selCli || !selEnf) return;
+  const preservar = arguments.length > 0;
+  const preferida = preservar ? String(preEnf || '') : '';
+  const opt = selCli.selectedOptions && selCli.selectedOptions[0];
+  const cid = opt && opt.dataset.id;
+  const clinica = (clinicasOptions || []).find(c => String(c.id) === String(cid || ''));
+  const lista = (clinica && clinica.enfermarias) || [];
+  if (!cid){
+    selEnf.innerHTML = preferida
+      ? `<option value="">Selecione</option><option value="${escPac(preferida)}" selected>${escPac(preferida)}</option>`
+      : '<option value="">Selecione a clínica</option>';
+    return;
+  }
+  const pref = preferida.trim().toUpperCase();
+  let html = '<option value="">Selecione</option>' + lista.map(e => {
+    const selAttr = pref && String(e.nome || '').toUpperCase() === pref ? ' selected' : '';
+    return `<option value="${escPac(e.nome)}"${selAttr}>${escPac(e.nome)}</option>`;
+  }).join('');
+  const jaTem = lista.some(e => String(e.nome || '').toUpperCase() === pref);
+  if (preferida && !jaTem){
+    html += `<option value="${escPac(preferida)}" selected>${escPac(preferida)}</option>`;
+  }
+  if (!lista.length && !preferida){
+    html = '<option value="">Nenhuma enfermaria vinculada</option>';
+  }
+  selEnf.innerHTML = html;
 }
 
 async function salvarPacientePopup(){
@@ -258,6 +310,7 @@ async function salvarPacientePopup(){
     nascimento: document.getElementById('f-nasc')?.value || '',
     prontuario: document.getElementById('f-prontuario')?.value || '',
     clinica: document.getElementById('f-clinica')?.value || '',
+    enfermaria: document.getElementById('f-enfermaria')?.value || '',
     leito: document.getElementById('f-leito')?.value || '',
     dieta: document.getElementById('f-dieta')?.value || '',
     diagnostico: document.getElementById('f-diagnostico')?.value || '',

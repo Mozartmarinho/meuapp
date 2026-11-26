@@ -581,6 +581,8 @@ def _ensure_nutricao_columns(force=False):
                 db.session.execute(text("ALTER TABLE nut_pacientes ADD COLUMN hora_saida VARCHAR(20)"))
             if 'motivo_saida' not in cols:
                 db.session.execute(text("ALTER TABLE nut_pacientes ADD COLUMN motivo_saida VARCHAR(40)"))
+            if 'enfermaria' not in cols:
+                db.session.execute(text("ALTER TABLE nut_pacientes ADD COLUMN enfermaria VARCHAR(120)"))
             db.session.commit()
             _ensure_index('nut_pacientes', 'ix_nut_pacientes_nome', ('nome',))
             _ensure_index('nut_pacientes', 'ix_nut_pacientes_prontuario', ('prontuario',))
@@ -4099,6 +4101,7 @@ def paciente_from_payload(d, paciente=None):
     paciente.nascimento = _parse_date(d.get('nascimento'))
     paciente.prontuario = (d.get('prontuario') or '').strip() or None
     paciente.clinica = (d.get('clinica') or '').strip() or None
+    paciente.enfermaria = (d.get('enfermaria') or '').strip() or None
     paciente.leito = (d.get('leito') or '').strip() or None
     paciente.dieta = (d.get('dieta') or '').strip() or None
     paciente.diagnostico = (d.get('diagnostico') or '').strip() or None
@@ -4464,7 +4467,9 @@ def mapa_from_paciente(paciente, data_ref=None, flags=None, extras=None, usuario
         tipo_lancamento=tipo,
         observacoes=(extras.get('observacoes') if 'observacoes' in extras else paciente.observacoes),
         clinica=(extras.get('clinica') if 'clinica' in extras else paciente.clinica),
-        enfermaria=(extras.get('enfermaria') or None),
+        enfermaria=(
+            extras.get('enfermaria') if 'enfermaria' in extras else getattr(paciente, 'enfermaria', None)
+        ),
         fl_desjejum=bool(flags.get('fl_desjejum', True)),
         fl_colacao=bool(flags.get('fl_colacao', True)),
         fl_almoco=bool(flags.get('fl_almoco', True)),

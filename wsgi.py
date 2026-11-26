@@ -54,3 +54,8 @@ try:
     start_preventiva_background(app)
 except Exception as extra:
     print(f"Aviso ao iniciar preventiva de equipamentos: {extra}")
+try:
+    from backup_service import start_backup_background
+    start_backup_background(app)
+except Exception as extra:
+    print(f"Aviso ao iniciar backup diário: {extra}")

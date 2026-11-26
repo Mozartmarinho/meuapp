@@ -28,12 +28,17 @@
         }
         .btn-sec { background:#fff; color:var(--brand-navy); border:1px solid rgba(27,79,156,.15); }
         .btn-pri { background:var(--brand-blue); color:#fff; }
+        .btn-danger { background:#dc2626; color:#fff; }
         .card { background:#fff; border-radius:18px; padding:24px; box-shadow:0 10px 30px rgba(13,43,92,.08); }
+        .card + .card { margin-top:16px; }
+        .card h2 { font-family:'Rajdhani',sans-serif; color:var(--brand-navy); font-size:1.35rem; margin-bottom:6px; }
+        .warn { background:#fff7ed; color:#9a3412; border:1px solid #fdba74; border-radius:12px; padding:12px 14px; margin:0 0 14px; line-height:1.45; }
+        .actions.start { justify-content:flex-start; flex-wrap:wrap; }
         .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
         .form-group { margin-bottom:4px; }
         .form-group.full { grid-column:1/-1; }
         label { display:block; margin-bottom:6px; font-weight:700; color:#35506f; font-size:.9rem; }
-        input[type=text], input[type=email], input[type=password], input[type=number] {
+        input[type=text], input[type=email], input[type=password], input[type=number], input[type=time], input[type=file] {
             width:100%; padding:12px; border:1px solid #d5e0ee; border-radius:10px; font-size:15px; font-family:inherit;
         }
         input:focus { outline:none; border-color:var(--brand-blue); box-shadow:0 0 0 3px rgba(27,79,156,.14); }
@@ -75,9 +80,11 @@
             <span class="status off">E-mail pendente</span>
             {% endif %}
         </h1>
-        <p class="subtitle">Saída de e-mail (SMTP) usada no envio do link de redefinição de senha.</p>
+        <p class="subtitle">Saída de e-mail (SMTP), backup diário do banco e restauração.</p>
+        {% set backup_info = backup_info|default({'email': '', 'horario': '23:50', 'mensagem': '', 'tem_arquivo': false}) %}
 
-        <form method="POST" class="card" autocomplete="off">
+        <div class="card">
+        <form method="POST" autocomplete="off">
             <div class="grid">
                 <div class="form-group">
                     <label for="servidor">Servidor SMTP *</label>
@@ -99,17 +106,52 @@
                     <label for="remetente">Remetente (From) *</label>
                     <input type="email" id="remetente" name="remetente" value="{{ cfg.remetente }}" placeholder="nao-responda@saogeraldoservice.com.br" required>
                 </div>
-                <div class="form-group">
+                <div class="form-group full">
                     <label class="check">
                         <input type="checkbox" name="usar_tls" {{ 'checked' if cfg.usar_tls else '' }}>
                         Usar TLS
                     </label>
                 </div>
+                <div class="form-group">
+                    <label for="email-backup">E-mail do backup diário</label>
+                    <input type="email" id="email-backup" name="email_backup" value="{{ backup_info.email }}" placeholder="backup@seudominio.com.br">
+                </div>
+                <div class="form-group">
+                    <label for="backup-horario">Horário do backup</label>
+                    <input type="time" id="backup-horario" name="backup_horario" value="{{ backup_info.horario }}" step="60" required>
+                </div>
             </div>
             <p class="hint">Assunto do e-mail de redefinição: <strong>redefinição senha sistema são geraldo</strong>. Porta comum: 587 com TLS.</p>
+            <p class="hint">O banco inteiro é compactado ao máximo e enviado todo dia às <strong id="backup-horario-texto">{{ backup_info.horario }}</strong> (horário de Brasília). Deixe o e-mail em branco para não enviar.</p>
+            <p class="hint" id="backup-status">{{ backup_info.mensagem }}</p>
             <div class="actions">
                 <a class="btn btn-sec" href="{{ url_for('main.inicio') }}">Cancelar</a>
                 <button type="submit" class="btn btn-pri"><i class="fas fa-save"></i> Salvar</button>
+            </div>
+        </form>
+        <div class="actions start">
+            <form method="POST" action="{{ url_for('main.configuracoes_backup_enviar') }}">
+                <button type="submit" class="btn btn-sec"><i class="fas fa-paper-plane"></i> Enviar backup agora</button>
+            </form>
+            {% if backup_info.tem_arquivo %}
+            <a class="btn btn-sec" href="{{ url_for('main.configuracoes_backup_baixar') }}"><i class="fas fa-download"></i> Baixar último backup</a>
+            {% endif %}
+        </div>
+        </div>
+
+        <form method="POST" action="{{ url_for('main.configuracoes_backup_restaurar') }}" class="card" enctype="multipart/form-data" autocomplete="off">
+            <h2>Restaurar banco</h2>
+            <p class="warn">Isso substitui o banco inteiro pelo arquivo. Chamados, nutrição, pesagem, acessos e os demais dados atuais passam a ser os do backup. Antes de aplicar, o sistema guarda uma cópia do banco atual no servidor.</p>
+            <div class="form-group" style="margin-bottom:14px">
+                <label for="arquivo-backup">Arquivo de backup (.xz, .gz ou .sql)</label>
+                <input type="file" id="arquivo-backup" name="arquivo" accept=".xz,.gz,.sql,.sql.xz,.sql.gz" required>
+            </div>
+            <div class="form-group">
+                <label for="confirmacao-backup">Digite RESTAURAR para confirmar</label>
+                <input type="text" id="confirmacao-backup" name="confirmacao" autocomplete="off" placeholder="RESTAURAR" required>
+            </div>
+            <div class="actions">
+                <button type="submit" class="btn btn-danger"><i class="fas fa-undo"></i> Restaurar banco</button>
             </div>
         </form>
     </main>

@@ -59,14 +59,28 @@ def smtp_configurado() -> bool:
     return bool(cfg.get('servidor') and cfg.get('remetente'))
 
 
-def enviar_email(destinatario: str, assunto: str, texto: str, html: str | None = None) -> None:
+def _exigir_smtp():
     cfg = obter_config_smtp()
     if not cfg.get('servidor') or not cfg.get('remetente'):
         raise RuntimeError(
             'E-mail de saída não está configurado. '
             'Preencha Servidor SMTP e Remetente em Opções → Configurações.'
         )
+    return cfg
 
+
+def _enviar_smtp(msg: EmailMessage, timeout: int = 20) -> None:
+    cfg = _exigir_smtp()
+    with smtplib.SMTP(cfg['servidor'], int(cfg['porta'] or 587), timeout=timeout) as smtp:
+        if cfg.get('usar_tls'):
+            smtp.starttls()
+        if cfg.get('usuario'):
+            smtp.login(cfg['usuario'], cfg.get('senha') or '')
+        smtp.send_message(msg)
+
+
+def enviar_email(destinatario: str, assunto: str, texto: str, html: str | None = None) -> None:
+    cfg = _exigir_smtp()
     msg = EmailMessage()
     msg['Subject'] = assunto
     msg['From'] = cfg['remetente']
@@ -74,13 +88,30 @@ def enviar_email(destinatario: str, assunto: str, texto: str, html: str | None =
     msg.set_content(texto)
     if html:
         msg.add_alternative(html, subtype='html')
+    _enviar_smtp(msg, timeout=20)
 
-    with smtplib.SMTP(cfg['servidor'], int(cfg['porta'] or 587), timeout=20) as smtp:
-        if cfg.get('usar_tls'):
-            smtp.starttls()
-        if cfg.get('usuario'):
-            smtp.login(cfg['usuario'], cfg.get('senha') or '')
-        smtp.send_message(msg)
+
+def enviar_email_anexo(
+    destinatario: str,
+    assunto: str,
+    texto: str,
+    nome_arquivo: str,
+    conteudo: bytes,
+    timeout: int = 300,
+) -> None:
+    cfg = _exigir_smtp()
+    msg = EmailMessage()
+    msg['Subject'] = assunto
+    msg['From'] = cfg['remetente']
+    msg['To'] = destinatario
+    msg.set_content(texto)
+    msg.add_attachment(
+        conteudo,
+        maintype='application',
+        subtype='octet-stream',
+        filename=nome_arquivo,
+    )
+    _enviar_smtp(msg, timeout=timeout)
 
 
 def _esc(valor) -> str:

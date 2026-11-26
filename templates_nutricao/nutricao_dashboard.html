@@ -3371,7 +3371,7 @@ function abrirFormularioInserirMapa(p){
   `;
   abrirModal('Inserir paciente no mapa', html, 'Salvar no mapa', salvarInserirPacienteMapa);
   setTimeout(() => {
-    if (clinicaPref) carregarEnfermariasInserir(prefill.enfermaria, prefill.leito);
+    if (clinicaPref) carregarEnfermariasInserir(prefill.enfermaria || (p && p.enfermaria) || '', prefill.leito || (p && p.leito) || '');
   }, 40);
 }
 

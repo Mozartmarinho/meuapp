@@ -13,6 +13,9 @@ instance/
 *.db
 *.sock
 
+# --- Backup geral do banco (nunca versionar) ---
+backups/
+
 # --- Dumps com PII (nunca versionar) ---
 docs/acesso/dumps/*.sql
 docs/acesso/dumps/*.sql.gz
