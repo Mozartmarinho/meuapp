@@ -126,8 +126,9 @@
 #modalOverlay .form-group { margin-bottom: 0.56rem; }
 #modalOverlay .form-row { gap: 0.6rem; }
 #modalOverlay .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
+#modalOverlay .prod-flags { display:flex; flex-wrap:wrap; gap:0.8rem 1.2rem; margin-top:0.2rem; }
 #modalOverlay .prod-check {
-  display:flex; align-items:center; gap:0.4rem; margin:0.2rem 0 0;
+  display:flex; align-items:center; gap:0.4rem; margin:0;
   font-size:0.72rem; font-weight:600; color:#334155;
 }
 </style>
@@ -201,9 +202,10 @@ function renderGrid(){
       <th class="col-num">Quant. mín.</th><th class="col-num">Quant. máx.</th>
       <th class="col-num">Quant. líq.</th><th>Un. Liq.</th>
       <th class="col-check">FC</th>
+      <th class="col-check">Fórmulas</th>
       <th class="col-acoes">Ações</th>
     </tr>`;
-    body.innerHTML = PRODUTOS.map(p => rowProduto(p)).join('') || emptyRow(13);
+    body.innerHTML = PRODUTOS.map(p => rowProduto(p)).join('') || emptyRow(14);
   }
   if (selectedId){
     const tr = body.querySelector(`tr[data-id="${selectedId}"]`);
@@ -260,6 +262,7 @@ function rowProduto(p){
     <td class="col-num">${p.quant_liq ? fmt(p.quant_liq) : ''}</td>
     <td>${esc(p.un_liq||'')}</td>
     <td class="col-check">${p.fc?'X':''}</td>
+    <td class="col-check">${p.formula?'X':''}</td>
     ${acoesHtml(p.id)}
   </tr>`;
 }
@@ -359,7 +362,10 @@ function htmlProduto(item){
         <select class="form-control" id="f-prod-unliq">${unOpts(p.un_liq||'NC')}</select>
       </div>
     </div>
-    <label class="prod-check"><input type="checkbox" id="f-prod-fc" ${p.fc?'checked':''}> FC</label>`;
+    <div class="prod-flags">
+      <label class="prod-check"><input type="checkbox" id="f-prod-fc" ${p.fc?'checked':''}> FC</label>
+      <label class="prod-check" title="Quando ativo, este produto aparece em Produto principal"><input type="checkbox" id="f-prod-formula" ${p.formula?'checked':''}> Fórmulas</label>
+    </div>`;
 }
 
 function abrirCadastro(item){
@@ -421,6 +427,7 @@ function collectProduto(){
     quant_liq: parseFloat(document.getElementById('f-prod-liq')?.value)||0,
     un_liq: document.getElementById('f-prod-unliq')?.value || 'NC',
     fc: !!document.getElementById('f-prod-fc')?.checked,
+    formula: !!document.getElementById('f-prod-formula')?.checked,
     ativo: true
   };
 }

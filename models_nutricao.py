@@ -820,6 +820,7 @@ class NutProduto(db.Model):
     quant_liq = db.Column(db.Float, default=0)
     un_liq = db.Column(db.String(20), default='NC')
     fc = db.Column(db.Boolean, default=False)
+    formula = db.Column(db.Boolean, default=False)
     ativo = db.Column(db.Boolean, default=True)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     data_alteracao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -846,6 +847,7 @@ class NutProduto(db.Model):
             'quant_liq': self.quant_liq or 0,
             'un_liq': self.un_liq or 'NC',
             'fc': bool(self.fc),
+            'formula': bool(self.formula),
             'ativo': bool(self.ativo),
         }
 

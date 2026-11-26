@@ -294,6 +294,57 @@ class UmaCatalogoTest(unittest.TestCase):
         self.assertEqual(restaurado.status_code, 200, restaurado.get_data(as_text=True))
         self.assertIn('SEM LACTOSE', restaurado.get_json()['nomes'])
 
+    def test_produto_principal_lista_so_formulas_ativas(self):
+        from models_nutricao import NutEstoqueLocal, NutGrupoProduto
+
+        est = NutEstoqueLocal.query.first()
+        grp = NutGrupoProduto.query.first()
+        self.assertIsNotNone(est)
+        self.assertIsNotNone(grp)
+        client = self.app.test_client()
+        base = {
+            'estoque_id': est.id,
+            'grupo_id': grp.id,
+            'quantidade': 0,
+            'unidade': 'UN',
+        }
+        ativo = client.post('/nutricao/api/produtos', json={
+            **base,
+            'codigo': 'FORMULA-ON',
+            'descricao': 'PRODUTO FORMULA ATIVA',
+            'formula': True,
+        })
+        self.assertEqual(ativo.status_code, 200, ativo.get_data(as_text=True))
+        self.assertTrue(ativo.get_json()['produto']['formula'])
+        inativo = client.post('/nutricao/api/produtos', json={
+            **base,
+            'codigo': 'FORMULA-OFF',
+            'descricao': 'PRODUTO FORMULA INATIVA',
+            'formula': False,
+        })
+        self.assertEqual(inativo.status_code, 200, inativo.get_data(as_text=True))
+        self.assertFalse(inativo.get_json()['produto']['formula'])
+
+        pagina = client.get('/nutricao/cadastro-uma?tipo=enteral').get_data(as_text=True)
+        self.assertIn('PRODUTO FORMULA ATIVA', pagina)
+        self.assertNotIn('PRODUTO FORMULA INATIVA', pagina)
+        formula = client.get('/nutricao/cadastro-uma?tipo=formula').get_data(as_text=True)
+        self.assertIn('PRODUTO FORMULA ATIVA', formula)
+        self.assertNotIn('PRODUTO FORMULA INATIVA', formula)
+
+        cadastro = client.get('/nutricao/produtos').get_data(as_text=True)
+        self.assertIn('f-prod-formula', cadastro)
+        self.assertIn('Fórmulas', cadastro)
+
+        desligado = client.put(
+            '/nutricao/api/produtos/' + str(ativo.get_json()['id']),
+            json={'formula': False},
+        )
+        self.assertEqual(desligado.status_code, 200, desligado.get_data(as_text=True))
+        self.assertFalse(desligado.get_json()['produto']['formula'])
+        depois = client.get('/nutricao/cadastro-uma?tipo=enteral').get_data(as_text=True)
+        self.assertNotIn('PRODUTO FORMULA ATIVA', depois)
+
 
 if __name__ == '__main__':
     unittest.main()

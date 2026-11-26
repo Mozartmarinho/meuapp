@@ -3154,6 +3154,7 @@ def cadastro_uma():
             'unidade': p.get('unidade') or '',
         }
         for p in list_produtos(estoque_id=estoque_do_tipo, somente_ativos=True)
+        if p.get('formula')
     ]
     return render_template(
         'nutricao_cadastro_uma.html',
@@ -3285,6 +3286,8 @@ def _produto_from_payload(d, row=None):
         row.un_liq = (d.get('un_liq') or 'NC').strip().upper() or 'NC'
     if 'fc' in d:
         row.fc = bool(d.get('fc'))
+    if 'formula' in d:
+        row.formula = bool(d.get('formula'))
     if 'ativo' in d:
         row.ativo = bool(d.get('ativo'))
     row.data_alteracao = datetime.utcnow()

@@ -595,6 +595,7 @@ def _ensure_nutricao_columns(force=False):
                 'quant_liq': 'FLOAT DEFAULT 0',
                 'un_liq': "VARCHAR(20) DEFAULT 'NC'",
                 'fc': 'BOOLEAN DEFAULT 0',
+                'formula': 'BOOLEAN DEFAULT 0',
                 'ativo': 'BOOLEAN DEFAULT 1',
             }
             for col, tipo in alteracoes.items():
