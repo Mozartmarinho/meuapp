@@ -38,6 +38,168 @@ body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .app-topbar {
     background: #0c3a38;
 }
 
+/* Shell acompanha a altura da janela: a barra lateral fica na tela e o miolo rola. */
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] {
+    height: 100vh;
+    height: 100dvh;
+    height: 100svh;
+    overflow: hidden;
+}
+
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .sidebar {
+    height: 100vh;
+    height: 100dvh;
+    height: 100svh;
+    max-height: 100svh;
+}
+
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .main-content {
+    height: 100vh;
+    height: 100dvh;
+    height: 100svh;
+    max-height: 100svh;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .main-content > .novo-chamado-page,
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .main-content > .editar-chamado-page,
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .main-content > .cli-cadastro-page,
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .main-content > .container:has(> form.form-container) {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+/* Cadastros (cliente, usuário, equipamento): o formulário cabe na janela e o Salvar fica no fim. */
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .cli-cadastro-page,
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .main-content > .container:has(> form.form-container) {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    width: min(100%, 56rem);
+    max-width: 100%;
+}
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .cli-cadastro-page > .header,
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .container:has(> form.form-container) > .header {
+    flex-shrink: 0;
+}
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .cli-cadastro-page .form-container,
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .container > form.form-container {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+}
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .cli-cadastro-page form {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .cad-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .cli-cadastro-page .form-actions,
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .container > form.form-container > .form-actions {
+    flex-shrink: 0;
+    margin-top: 0;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--gray-200);
+    background: var(--white, #fff);
+}
+
+/* Popups: não cobrem a barra lateral e cabem na altura da janela, com Salvar/Gravar visível. */
+@media (min-width: 769px) {
+    body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .modal-overlay:not(.mdk-ind-drawer),
+    body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .mdk-ind-drawer.modal-overlay.is-open,
+    body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .tec-overlay {
+        left: var(--sidebar-width);
+    }
+}
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .modal-overlay:not([hidden]):not(.mdk-ind-drawer) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .modal-overlay > .modal-dialog {
+    min-height: 0;
+    max-height: calc(100svh - 1.6rem);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-self: center;
+}
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .modal-dialog > .modal-header,
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .modal-dialog .nc-footer,
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .modal-dialog .modal-footer {
+    flex-shrink: 0;
+    background: var(--white, #fff);
+}
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .modal-dialog > form {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .modal-dialog .modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .tec-overlay {
+    z-index: 1200;
+}
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .tec-modal {
+    z-index: 1210;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100svh - 1.6rem);
+    overflow: hidden;
+    top: 50%;
+    left: calc(var(--sidebar-width) + (100vw - var(--sidebar-width)) / 2);
+    transform: translate(-50%, -50%);
+    width: min(420px, calc(100vw - var(--sidebar-width) - 1.6rem));
+}
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .tec-modal.eq-setores-modal,
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .tec-modal.tec-modal-wide {
+    width: min(640px, calc(100vw - var(--sidebar-width) - 1.6rem));
+}
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .tec-modal-head,
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .tec-modal-foot {
+    flex-shrink: 0;
+}
+body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .tec-modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    max-height: none;
+}
+@media (max-width: 768px) {
+    body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .modal-overlay,
+    body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .tec-overlay {
+        left: 0;
+    }
+    body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .tec-modal {
+        left: 50%;
+        width: min(96vw, 420px);
+    }
+    body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .tec-modal.eq-setores-modal,
+    body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .tec-modal.tec-modal-wide {
+        width: min(96vw, 640px);
+    }
+}
+
 .mdk-new-ticket-li { margin: 0.35rem 0 0.7rem !important; }
 
 .mdk-new-ticket {

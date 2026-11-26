@@ -24,9 +24,11 @@ from models import (
     aplicar_automacoes,
     contrato_vigente,
     db,
+    frase_prazo_execucao,
     mesa_padrao,
     mesas_ativas,
     now_brasilia,
+    prazo_execucao_do_chamado,
 )
 from whatsapp_pesagem import normalizar_telefone, telefone_valido
 
@@ -105,6 +107,14 @@ def montar_mensagem_atribuicao_tecnico(agora=None, template=None):
     else:
         texto = (template or '').strip() or MENSAGEM_ENCAMINHAMENTO_TECNICO_PADRAO
     return texto.replace('{saudacao}', saudacao(agora))
+
+
+def montar_mensagem_atendimento_finalizado(agora=None):
+    return (
+        '%s, um atendimento finalizado foi vinculado no seu perfil do sistema de chamados da São Geraldo Service, '
+        'entre no sistema atraves do link %s e consulte o atendimento.'
+        % (saudacao(agora), LINK_SISTEMA_CHAMADOS)
+    )
 
 
 def config_ativa():
@@ -315,6 +325,7 @@ def _criar_chamado_whatsapp(
         return None, 'Não há usuário no sistema para assumir o ticket.'
     mesa = mesa_escolhida(usuario)
     numero = _gerar_os()
+    eq_prazo = Equipamento.query.get(equipamento_id) if equipamento_id else None
     chamado = Chamado(
         numero_chamado=numero,
         cliente_id=usuario.cliente_id,
@@ -333,6 +344,7 @@ def _criar_chamado_whatsapp(
         equipamento_id=equipamento_id,
         equipamento=equipamento,
         data_criacao=now_brasilia(),
+        prazo_execucao_horas=eq_prazo.prazo_execucao_horas if eq_prazo else None,
     )
     vig = contrato_vigente(usuario.cliente_id)
     if vig:
@@ -512,7 +524,7 @@ def montar_mensagem_abertura(chamado):
     defeito = _texto_ou_traco(chamado.descricao)
     if len(defeito) > MAX_DEFEITO_WHATSAPP:
         defeito = defeito[: MAX_DEFEITO_WHATSAPP - 1] + '…'
-    return (
+    texto = (
         '*Abertura de chamado*\n'
         'Ticket: %s\n'
         'Tipo: %s\n'
@@ -533,6 +545,10 @@ def montar_mensagem_abertura(chamado):
             defeito,
         )
     )
+    prazo = frase_prazo_execucao(prazo_execucao_do_chamado(chamado))
+    if prazo:
+        texto += '\n' + prazo
+    return texto
 
 
 def destinos_aviso_abertura(chamado):
@@ -565,10 +581,29 @@ def destinos_aviso_abertura(chamado):
     return destinos
 
 
+def notificar_tecnico_atendimento_finalizado(chamado, sender=None, agora=None):
+    """Avisa o técnico que recebeu um atendimento já finalizado no perfil dele."""
+    return _notificar_tecnico_vinculado(
+        chamado,
+        montar_mensagem_atendimento_finalizado(agora),
+        sender=sender,
+        assunto='atendimento finalizado',
+    )
+
+
 def notificar_tecnico_atribuido(chamado, sender=None, agora=None):
     """Avisa o técnico no WhatsApp quando o chamado é vinculado ao perfil dele."""
     if not aviso_tecnico_ligado():
         return {'ok': False, 'skipped': True, 'disabled': True}
+    return _notificar_tecnico_vinculado(
+        chamado,
+        montar_mensagem_atribuicao_tecnico(agora),
+        sender=sender,
+        assunto='atribuição',
+    )
+
+
+def _notificar_tecnico_vinculado(chamado, texto, sender=None, assunto='atribuição'):
     if not chamado or not getattr(chamado, 'atribuido_usuario_id', None):
         return {'ok': False, 'skipped': True}
     tec = (
@@ -585,19 +620,20 @@ def notificar_tecnico_atribuido(chamado, sender=None, agora=None):
     phone = normalizar_telefone(tec.whatsapp)
     if not telefone_valido(phone):
         logger.info(
-            'WhatsApp atribuição %s: técnico %s sem número válido',
+            'WhatsApp %s %s: técnico %s sem número válido',
+            assunto,
             getattr(chamado, 'numero_chamado', ''),
             tec.nome,
         )
         return {'ok': False, 'skipped': True, 'error': 'WhatsApp do técnico não cadastrado'}
     from whatsapp_pesagem import send_whatsapp
     sender = sender or send_whatsapp
-    texto = montar_mensagem_atribuicao_tecnico(agora)
     try:
         res = sender(tec.whatsapp, texto) or {}
     except Exception as exc:
         logger.warning(
-            'WhatsApp atribuição %s para %s: %s',
+            'WhatsApp %s %s para %s: %s',
+            assunto,
             getattr(chamado, 'numero_chamado', ''),
             tec.whatsapp,
             exc,
@@ -605,7 +641,8 @@ def notificar_tecnico_atribuido(chamado, sender=None, agora=None):
         return {'ok': False, 'error': str(exc), 'texto': texto}
     if not res.get('ok'):
         logger.warning(
-            'WhatsApp atribuição %s para %s: %s',
+            'WhatsApp %s %s para %s: %s',
+            assunto,
             getattr(chamado, 'numero_chamado', ''),
             tec.whatsapp,
             res.get('error') or 'falha',
@@ -730,7 +767,7 @@ def _msg_patrimonio():
 
 def _msg_ticket_aberto(usuario, chamado):
     tipo = ler_ctx(usuario, 'ticket_tipo') or 'equipamento'
-    return (
+    texto = (
         'Ticket %s aberto para %s da São Geraldo Service, '
         'vinculado a %s / %s, mesa %s.'
         % (
@@ -741,6 +778,10 @@ def _msg_ticket_aberto(usuario, chamado):
             chamado.mesa.nome if getattr(chamado, 'mesa', None) else '—',
         )
     )
+    prazo = frase_prazo_execucao(prazo_execucao_do_chamado(chamado))
+    if prazo:
+        texto += ' ' + prazo
+    return texto
 
 
 def _seguir_apos_item(usuario):

@@ -21,11 +21,14 @@ from models_pesagem import (  # noqa: E402
 )
 from password_utils import generate_password_hash  # noqa: E402
 from whatsapp_pesagem import (  # noqa: E402
+    eh_ultimo_dia_mes,
     formatar_kg,
     montar_mensagem,
     normalizar_telefone,
+    pdf_fechamento_mes,
     process_scheduled_sends,
     totais_liquido_do_dia,
+    totais_liquido_do_periodo,
 )
 
 
@@ -197,7 +200,7 @@ class PesagemWhatsAppTest(unittest.TestCase):
         self.assertIn('CCD --- total 8,000 kg', corpo)
 
     def test_agendador_envia_uma_vez_no_horario(self):
-        hoje = date.today()
+        hoje = date(2026, 6, 15)
         self._criar_leitura('CCD', 4.0, datetime.combine(hoje, dt_time(7, 0)))
         dest = PesagemWhatsAppDestino(
             nome='Operador',
@@ -239,6 +242,66 @@ class PesagemWhatsAppTest(unittest.TestCase):
         result = process_scheduled_sends(now=agora, sender=lambda t, m: enviados.append(1) or {'ok': True})
         self.assertEqual(result, [])
         self.assertEqual(enviados, [])
+
+    def test_ultimo_dia_do_mes(self):
+        self.assertTrue(eh_ultimo_dia_mes(date(2026, 1, 31)))
+        self.assertTrue(eh_ultimo_dia_mes(date(2026, 4, 30)))
+        self.assertTrue(eh_ultimo_dia_mes(date(2026, 2, 28)))
+        self.assertTrue(eh_ultimo_dia_mes(date(2028, 2, 29)))
+        self.assertFalse(eh_ultimo_dia_mes(date(2026, 1, 30)))
+        self.assertFalse(eh_ultimo_dia_mes(date(2028, 2, 28)))
+
+    def test_fechamento_mensal_soma_o_periodo_e_envia_pdf_uma_vez(self):
+        self._criar_leitura('CCD', 12.0, datetime(2026, 1, 2, 9, 0), peso=10.0)
+        self._criar_leitura('CCD', 8.0, datetime(2026, 1, 31, 18, 0), peso=5.0)
+        self._criar_leitura('HOTEL', 3.0, datetime(2026, 1, 15, 11, 0), peso=3.0)
+        self._criar_leitura('FORA', 9.0, datetime(2025, 12, 31, 23, 0), peso=9.0)
+        totais = {t['nome']: t for t in totais_liquido_do_periodo(date(2026, 1, 1), date(2026, 1, 31))}
+        self.assertAlmostEqual(totais['CCD']['total'], 15.0, places=3)
+        self.assertEqual(totais['CCD']['quantidade'], 2)
+        self.assertNotIn('FORA', totais)
+        pdf, _, inicio = pdf_fechamento_mes(date(2026, 1, 31))
+        self.assertTrue(pdf.startswith(b'%PDF'))
+        self.assertIn(b'Fechamento mensal', pdf)
+        self.assertEqual(inicio, date(2026, 1, 1))
+
+        dest = PesagemWhatsAppDestino(
+            nome='Financeiro',
+            telefone='5521999990000',
+            hora=dt_time(18, 0),
+            mensagem='Dia',
+            ativo=True,
+        )
+        db.session.add(dest)
+        db.session.commit()
+        docs = []
+
+        def fake_texto(telefone, texto):
+            return {'ok': True}
+
+        def fake_doc(telefone, arquivo, filename, caption=''):
+            docs.append((telefone, arquivo, filename, caption))
+            return {'ok': True}
+
+        agora = datetime(2026, 1, 31, 18, 0, 5)
+        primeiro = process_scheduled_sends(now=agora, sender=fake_texto, document_sender=fake_doc)
+        segundo = process_scheduled_sends(now=agora, sender=fake_texto, document_sender=fake_doc)
+        fechamentos = [item for item in primeiro if item.get('tipo') == 'fechamento']
+        self.assertEqual(len(fechamentos), 1)
+        self.assertTrue(fechamentos[0]['ok'])
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(docs[0][2], 'fechamento-pesagem-2026-01.pdf')
+        self.assertIn('01/2026', docs[0][3])
+        self.assertTrue(docs[0][1].startswith(b'%PDF'))
+        self.assertEqual([item for item in segundo if item.get('tipo') == 'fechamento'], [])
+
+        meio = process_scheduled_sends(
+            now=datetime(2026, 1, 15, 18, 0),
+            sender=fake_texto,
+            document_sender=fake_doc,
+        )
+        self.assertEqual(len(docs), 1)
+        self.assertFalse(any(item.get('tipo') == 'fechamento' for item in meio))
 
 
 if __name__ == '__main__':

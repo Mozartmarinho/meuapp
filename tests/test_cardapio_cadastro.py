@@ -99,7 +99,8 @@ class CardapioCadastroTest(unittest.TestCase):
         self.assertIn('Cadastrar mais item 1', html)
         self.assertIn('Cadastrar mais bebida', html)
         self.assertIn('Cadastrar mais principal', html)
-        self.assertIn('/nutricao/api/cardapio-produtos', html)
+        self.assertIn('/nutricao/api/cardapio-itens', html)
+        self.assertNotIn('/nutricao/api/cardapio-produtos', html)
         self.assertIn('abrirSugestoes', html)
         self.assertIn('filtrarNomesProdutos', html)
         self.assertIn("input: 'p-prato1', tipo: 'pequenas', grupo: 'PRATO'", html)
@@ -416,68 +417,73 @@ class CardapioCadastroTest(unittest.TestCase):
         lista = self.client.get(f'/nutricao/api/cardapios?dieta_id={dieta_id}').get_json()
         self.assertTrue(any(c['id'] == row.id and c['itens']['bebida'] == 'CAFÉ' for c in lista))
 
-    def test_mais_do_cardapio_grava_produto_no_grupo_do_tema(self):
-        from models_nutricao import NutGrupoProduto, NutProduto  # noqa: E402
+    def test_incluir_item_nao_cria_produto(self):
+        from models_nutricao import NutProduto  # noqa: E402
         from nutricao_service import seed_nutricao  # noqa: E402
         seed_nutricao(force=True)
-
-        resp = self.client.post('/nutricao/api/cardapio-produtos', json={
+        antes = NutProduto.query.count()
+        resp = self.client.post('/nutricao/api/cardapio-itens', json={
             'nome': 'FEIJÃO TUTU',
             'grupo': 'Acompanhamento',
+            'tipo': 'grandes',
         })
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
         data = resp.get_json()
         self.assertTrue(data.get('ok'))
-        self.assertEqual(data['produto']['nome'], 'FEIJÃO TUTU')
-        grupo_nome = (data['produto']['grupo'] or '').upper()
-        self.assertIn(grupo_nome, {'ACOMPANHAMENTO', 'ACOMPANHAMENTOS'})
+        self.assertEqual(data['item']['nome'], 'FEIJÃO TUTU')
+        self.assertEqual(data['item']['grupo'], 'ACOMPANHAMENTO')
+        self.assertEqual(NutProduto.query.filter_by(descricao='FEIJÃO TUTU').count(), 0)
+        self.assertEqual(NutProduto.query.count(), antes)
 
-        grupo = NutGrupoProduto.query.filter(
-            db.func.upper(NutGrupoProduto.nome).in_(['ACOMPANHAMENTO', 'ACOMPANHAMENTOS'])
-        ).first()
-        self.assertIsNotNone(grupo)
-        prod = NutProduto.query.filter_by(id=data['id']).first()
-        self.assertIsNotNone(prod)
-        self.assertEqual(prod.grupo_id, grupo.id)
-        self.assertEqual((prod.descricao or '').upper(), 'FEIJÃO TUTU')
-
-        lista = self.client.get('/nutricao/api/cardapio-produtos?grupo=acompanhamento').get_json()
+        lista = self.client.get(
+            '/nutricao/api/cardapio-itens?tipo=grandes&grupo=acompanhamento'
+        ).get_json()
         nomes = [p['nome'].upper() for p in lista]
         self.assertIn('FEIJÃO TUTU', nomes)
+        pequenas = self.client.get(
+            '/nutricao/api/cardapio-itens?tipo=pequenas&grupo=ACOMPANHAMENTO'
+        ).get_json()
+        self.assertNotIn('FEIJÃO TUTU', [p['nome'].upper() for p in pequenas])
 
-        dup = self.client.post('/nutricao/api/cardapio-produtos', json={
+        dup = self.client.post('/nutricao/api/cardapio-itens', json={
             'nome': 'feijão tutu',
             'grupo': 'ACOMPANHAMENTO',
+            'tipo': 'grandes',
         })
         self.assertEqual(dup.status_code, 200)
         self.assertEqual(dup.get_json()['id'], data['id'])
 
-    def test_lista_bebidas_no_campo_bebida(self):
+    def test_busca_historico_de_itens_sem_misturar_refeicao(self):
+        from models_nutricao import NutProduto  # noqa: E402
         from nutricao_service import seed_nutricao  # noqa: E402
         seed_nutricao(force=True)
-        lista = self.client.get('/nutricao/api/cardapio-produtos?grupo=BEBIDA').get_json()
-        self.assertIsInstance(lista, list)
-        self.assertGreater(len(lista), 0)
-        nomes = ' '.join(p['nome'].upper() for p in lista)
-        self.assertTrue('AGUA' in nomes or 'SUCO' in nomes or 'COCA' in nomes)
-
-    def test_pratos_pequenas_usam_grupo_prato(self):
-        from nutricao_service import seed_nutricao  # noqa: E402
-        seed_nutricao(force=True)
-        resp = self.client.post('/nutricao/api/cardapio-produtos', json={
-            'nome': 'PÃO FRANCÊS',
-            'grupo': 'PRATO',
+        antes = NutProduto.query.count()
+        salvo = self.client.post('/nutricao/api/cardapios', json={
+            'tipo': 'pequenas',
+            'dieta': 'HISTORICO ITEM',
+            'hr_desjejum': True,
+            'dia_mes': 3,
+            'itens': {'bebida': 'CAFÉ COM LEITE', 'prato1': 'PÃO DE FORMA'},
         })
-        self.assertEqual(resp.status_code, 200)
-        data = resp.get_json()
-        self.assertTrue(data.get('ok'))
-        self.assertIn((data['produto']['grupo'] or '').upper(), {'PRATO', 'PRATOS'})
-        lista = self.client.get('/nutricao/api/cardapio-produtos?grupo=PRATO').get_json()
-        nomes = [p['nome'].upper() for p in lista]
-        self.assertIn('PÃO FRANCÊS', nomes)
-        por_numero = self.client.get('/nutricao/api/cardapio-produtos?grupo=PRATO%201').get_json()
-        nomes_n = [p['nome'].upper() for p in por_numero]
-        self.assertIn('PÃO FRANCÊS', nomes_n)
+        self.assertEqual(salvo.status_code, 200, salvo.get_data(as_text=True))
+        bebidas = self.client.get(
+            '/nutricao/api/cardapio-itens?tipo=pequenas&grupo=BEBIDA'
+        ).get_json()
+        self.assertIn('CAFÉ COM LEITE', [p['nome'].upper() for p in bebidas])
+        pratos = self.client.get(
+            '/nutricao/api/cardapio-itens?tipo=pequenas&grupo=PRATO'
+        ).get_json()
+        self.assertIn('PÃO DE FORMA', [p['nome'].upper() for p in pratos])
+        por_numero = self.client.get(
+            '/nutricao/api/cardapio-itens?tipo=pequenas&grupo=PRATO%201'
+        ).get_json()
+        self.assertIn('PÃO DE FORMA', [p['nome'].upper() for p in por_numero])
+        almoco = self.client.get(
+            '/nutricao/api/cardapio-itens?tipo=grandes&grupo=PRATO%20BASE'
+        ).get_json()
+        self.assertNotIn('PÃO DE FORMA', [p['nome'].upper() for p in almoco])
+        self.assertNotIn('CAFÉ COM LEITE', [p['nome'].upper() for p in almoco])
+        self.assertEqual(NutProduto.query.count(), antes)
 
 
     def test_opcoes_de_adicao_respeitam_refeicao_e_dieta(self):
@@ -572,6 +578,66 @@ class CardapioCadastroTest(unittest.TestCase):
 
         invalido = self.client.get(f'/nutricao/api/mapa/{mapa.id}/substituicoes/opcoes?meal=liquidas')
         self.assertEqual(invalido.status_code, 400)
+
+    def test_sobremesa_pequena_nao_entra_na_refeicao_grande(self):
+        from datetime import date
+        from models_nutricao import NutMapaRefeicao
+        from nutricao_service import invalidar_cache_cardapios, invalidar_cache_produtos_cardapio
+
+        dieta = NutDieta(nome='SOBREMESA SEPARADA', ativo=True)
+        db.session.add(dieta)
+        db.session.commit()
+        dia = date.today().day
+        self.client.post('/nutricao/api/cardapios', json={
+            'tipo': 'pequenas',
+            'dieta_id': dieta.id,
+            'dieta': dieta.nome,
+            'hr_desjejum': True,
+            'dia_mes': dia,
+            'itens': {'sobremesa': 'PUDIM DE DESJEJUM'},
+        })
+        self.client.post('/nutricao/api/cardapios', json={
+            'tipo': 'grandes',
+            'dieta_id': dieta.id,
+            'dieta': dieta.nome,
+            'hr_almoco': True,
+            'dia_mes': dia,
+            'itens': {'sobremesa': 'PUDIM DE ALMOCO'},
+        })
+        self.client.post('/nutricao/api/cardapio-produtos', json={
+            'nome': 'GELATINA PEQUENA', 'grupo': 'SOBREMESA', 'tipo': 'pequenas',
+        })
+        self.client.post('/nutricao/api/cardapio-produtos', json={
+            'nome': 'MOUSSE GRANDE', 'grupo': 'SOBREMESA', 'tipo': 'grandes',
+        })
+        mapa = NutMapaRefeicao(
+            data_refeicao=date.today(), nome='PAC SOBREMESA',
+            dieta=dieta.nome, dieta_id=dieta.id, ativo=True,
+        )
+        db.session.add(mapa)
+        db.session.commit()
+        invalidar_cache_cardapios()
+        invalidar_cache_produtos_cardapio()
+
+        def nomes(resp):
+            out = []
+            for setor in (resp.get_json() or {}).get('setores') or []:
+                out.extend((item.get('nome') or '').upper() for item in setor.get('itens') or [])
+            return out
+
+        desj = nomes(self.client.get(f'/nutricao/api/mapa/{mapa.id}/substituicoes/opcoes?meal=desjejum'))
+        alm = nomes(self.client.get(f'/nutricao/api/mapa/{mapa.id}/substituicoes/opcoes?meal=almoco'))
+        self.assertIn('PUDIM DE DESJEJUM', desj)
+        self.assertIn('GELATINA PEQUENA', desj)
+        self.assertNotIn('PUDIM DE ALMOCO', desj)
+        self.assertNotIn('MOUSSE GRANDE', desj)
+        self.assertIn('PUDIM DE ALMOCO', alm)
+        self.assertIn('MOUSSE GRANDE', alm)
+        self.assertNotIn('PUDIM DE DESJEJUM', alm)
+        self.assertNotIn('GELATINA PEQUENA', alm)
+        pagina = self.client.get('/nutricao/cardapios').get_data(as_text=True)
+        self.assertIn('Buscar item...', pagina)
+        self.assertIn("tipo: tipoItem", pagina)
 
 
 if __name__ == '__main__':

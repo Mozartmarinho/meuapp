@@ -74,6 +74,7 @@
                     data-compra="{{ eq.data_compra.strftime('%Y-%m-%d') if eq.data_compra else '' }}"
                     data-cliente="{{ eq.cliente_id or '' }}"
                     data-tipo="{% if eq.tipo_equipamento_norm is defined %}{{ eq.tipo_equipamento_norm() }}{% else %}ti{% endif %}"
+                    data-prazo="{{ eq.prazo_execucao_horas or '' }}"
                     data-prev-ativa="{{ '1' if prev and prev.ativa else '0' }}"
                     data-prev-freq="{{ prev.frequencia if prev else 'mensal' }}"
                     data-prev-proxima="{{ prev.proxima_data.strftime('%Y-%m-%d') if prev and prev.proxima_data else '' }}"
@@ -191,6 +192,17 @@
                 <div class="form-group">
                     <label for="eq_compra">Data da compra</label>
                     <input type="date" id="eq_compra" name="data_compra">
+                </div>
+                <div class="form-group">
+                    <label for="eq_prazo">Prazo de execução (horas)</label>
+                    <select id="eq_prazo" name="prazo_execucao_horas">
+                        <option value="">Selecione...</option>
+                        <option value="4">4 horas</option>
+                        <option value="12">12 horas</option>
+                        <option value="24">24 horas</option>
+                        <option value="48">48 horas</option>
+                        <option value="72">72 horas</option>
+                    </select>
                 </div>
             </div>
             <div class="nc-footer">
@@ -731,6 +743,7 @@ body.modal-open { overflow: hidden; }
         document.getElementById('eq_estoque').checked = !!dados.em_estoque;
         document.getElementById('eq_compra').value = dados.compra || '';
         document.getElementById('eq_tipo').value = dados.tipo || 'ti';
+        document.getElementById('eq_prazo').value = dados.prazo ? String(dados.prazo) : '';
         limparErroCodigo();
         ultimoCodigoVerificado = (dados.codigo || '').trim();
     }
@@ -747,7 +760,8 @@ body.modal-open { overflow: hidden; }
             setor: tr.getAttribute('data-setor') || '',
             em_estoque: tr.getAttribute('data-estoque') === '1',
             compra: tr.getAttribute('data-compra') || '',
-            tipo: tr.getAttribute('data-tipo') || 'ti'
+            tipo: tr.getAttribute('data-tipo') || 'ti',
+            prazo: tr.getAttribute('data-prazo') || ''
         });
         abrirModal();
     }
@@ -791,7 +805,8 @@ body.modal-open { overflow: hidden; }
                     setor: eq.setor || eq.localizacao || '',
                     em_estoque: !!eq.em_estoque,
                     compra: eq.data_compra_iso || '',
-                    tipo: eq.tipo_equipamento || 'ti'
+                    tipo: eq.tipo_equipamento || 'ti',
+                    prazo: eq.prazo_execucao_horas || ''
                 });
                 setTimeout(function () { eqNome.focus(); }, 30);
             } else {
@@ -878,7 +893,8 @@ body.modal-open { overflow: hidden; }
             em_estoque: document.getElementById('eq_estoque').checked,
             data_compra: document.getElementById('eq_compra').value || '',
             cliente_id: localSel.value || '',
-            tipo_equipamento: document.getElementById('eq_tipo').value || 'ti'
+            tipo_equipamento: document.getElementById('eq_tipo').value || 'ti',
+            prazo_execucao_horas: document.getElementById('eq_prazo').value || ''
         };
         if (!body.codigo || !body.nome || !body.cliente_id) {
             alert('Preencha código, nome e local (cliente).');

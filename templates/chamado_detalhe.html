@@ -71,6 +71,9 @@
                     {% if chamado.equipamento or chamado.patrimonio %}
                     <p class="mdk-kv" style="margin-top:0.6rem"><span>Equipamento</span>{{ chamado.equipamento or '—' }} {% if chamado.patrimonio %}({{ chamado.patrimonio }}){% endif %}</p>
                     {% endif %}
+                    {% if chamado.prazo_execucao_horas %}
+                    <p class="mdk-kv"><span>Prazo de execução</span>{{ chamado.prazo_execucao_horas }} horas</p>
+                    {% endif %}
                     {% if chamado.observacoes %}
                     <p class="mdk-kv"><span>Observações</span>{{ chamado.observacoes }}</p>
                     {% endif %}

@@ -13,6 +13,7 @@
 
 <div class="form-container">
     <form method="POST" action="{{ url_for('main.novo_chamado') }}">
+        <div class="nc-scroll">
         <input type="hidden" name="status" value="{{ status_inicial|default('Pendente') }}">
         <div class="form-group">
             <label for="cliente_id">Cliente *</label>
@@ -82,6 +83,7 @@
             <label for="observacoes">Observações</label>
             <textarea id="observacoes" name="observacoes" rows="2"></textarea>
         </div>
+        </div>
 
         <div class="nc-actions">
             <button type="reset" class="btn nc-btn-muted">
@@ -99,12 +101,21 @@
 </div>
 
 <style>
-.novo-chamado-page { font-size: 0.8rem; }
+.novo-chamado-page {
+    font-size: clamp(0.75rem, 0.68rem + 0.22vw, 0.9rem);
+    display: flex;
+    flex-direction: column;
+    width: min(100%, 52rem);
+    max-width: 100%;
+    min-height: 0;
+}
 .novo-chamado-page .nc-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1rem;
+    margin-bottom: 0.7rem;
+    flex-shrink: 0;
+    gap: 0.6rem;
 }
 .novo-chamado-page .nc-header h1 {
     color: var(--gray-800);
@@ -114,8 +125,28 @@
 }
 .novo-chamado-page .form-container {
     padding: 0.96rem;
-    max-width: 512px;
+    width: 100%;
+    max-width: none;
+    margin: 0;
     border-radius: 0.4rem;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.novo-chamado-page form {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+.novo-chamado-page .nc-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 0.15rem;
 }
 .novo-chamado-page .form-group { margin-bottom: 0.56rem; }
 .novo-chamado-page label {
@@ -146,8 +177,12 @@
     display: flex;
     justify-content: flex-end;
     gap: 0.48rem;
-    margin-top: 1rem;
+    margin-top: 0;
+    padding-top: 0.7rem;
     flex-wrap: wrap;
+    flex-shrink: 0;
+    border-top: 1px solid var(--gray-200);
+    background: var(--white);
 }
 </style>
 

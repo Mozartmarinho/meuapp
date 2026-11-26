@@ -75,7 +75,9 @@ class EquipamentosColunasTest(unittest.TestCase):
                 'grupo_id INTEGER,'
                 'usuario_equipamento VARCHAR(120),'
                 'ip VARCHAR(45),'
-                'is_agente INTEGER DEFAULT 0'
+                'is_agente INTEGER DEFAULT 0,'
+                'em_estoque INTEGER DEFAULT 0,'
+                'prazo_execucao_horas INTEGER'
                 ')'
             ))
             db.session.execute(text(
@@ -119,6 +121,7 @@ class EquipamentosColunasTest(unittest.TestCase):
             ensure_equipamentos_schema()
             cols = {c['name'] for c in inspect(db.engine).get_columns('equipamentos')}
             self.assertIn('equipamento', cols)
+            self.assertIn('prazo_execucao_horas', cols)
             eq = Equipamento.query.first()
             self.assertIsNotNone(eq)
             self.assertEqual(eq.nome_equipamento, 'PC Recepção')

@@ -13,6 +13,7 @@
 
     <div class="form-container">
         <form method="POST" action="{{ url_for('main.editar_chamado', id=chamado.id) }}">
+            <div class="ec-scroll">
             <div class="form-group">
                 <label for="numero_chamado">Número do Chamado</label>
                 <input type="text" id="numero_chamado" value="{{ chamado.numero_chamado }}" readonly>
@@ -91,6 +92,25 @@
                 <small>Obrigatório no status Reagendado. Quem abriu o chamado recebe o aviso.</small>
             </div>
 
+            {% if pode_atribuir %}
+            <div class="form-group">
+                <label for="tecnico_id">Técnico do atendimento</label>
+                <select id="tecnico_id" name="tecnico_id">
+                    <option value="">Quem está editando</option>
+                    {% for t in tecnicos_destino %}
+                    <option value="{{ t.id }}" {% if tecnico_vinculado_id == t.id %}selected{% endif %}>{{ t.nome }}{% if t.funcao_label %} — {{ t.funcao_label }}{% endif %}</option>
+                    {% endfor %}
+                </select>
+                <small>Se o chamado já foi encaminhado, o técnico do encaminhamento já vem selecionado. A finalização fica com ele.</small>
+            </div>
+            {% elif tecnico_vinculado_nome %}
+            <div class="form-group">
+                <label>Técnico do atendimento</label>
+                <input type="text" value="{{ tecnico_vinculado_nome }}" readonly>
+                <small>Encaminhamento já vinculado a este técnico. A finalização permanece com ele.</small>
+            </div>
+            {% endif %}
+
             <div class="form-group">
                 <label for="mesa_id">Mesa de serviço</label>
                 <select id="mesa_id" name="mesa_id">
@@ -129,6 +149,7 @@
                     </div>
                 </div>
             </div>
+            </div>
 
             <div class="ec-actions">
                 <a href="{{ url_for('main.listar_chamados') }}" class="btn ec-btn-muted">
@@ -143,14 +164,22 @@
 </div>
 
 <style>
-.editar-chamado-page { font-size: 0.7rem; }
+.editar-chamado-page {
+    font-size: clamp(0.7rem, 0.64rem + 0.2vw, 0.85rem);
+    display: flex;
+    flex-direction: column;
+    width: min(100%, 56rem);
+    max-width: 100%;
+    min-height: 0;
+}
 .editar-chamado-page .ec-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1.4rem;
+    margin-bottom: 0.7rem;
     gap: 0.7rem;
     flex-wrap: wrap;
+    flex-shrink: 0;
 }
 .editar-chamado-page .ec-header h1 {
     color: var(--gray-800);
@@ -161,8 +190,28 @@
 }
 .editar-chamado-page .form-container {
     padding: 1.05rem;
-    max-width: 560px;
+    width: 100%;
+    max-width: none;
+    margin: 0;
     border-radius: 0.35rem;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.editar-chamado-page form {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+.editar-chamado-page .ec-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 0.15rem;
 }
 .editar-chamado-page .form-group { margin-bottom: 0.88rem; }
 .editar-chamado-page label {
@@ -219,8 +268,12 @@
     display: flex;
     justify-content: flex-end;
     gap: 0.7rem;
-    margin-top: 1.4rem;
+    margin-top: 0;
+    padding-top: 0.75rem;
     flex-wrap: wrap;
+    flex-shrink: 0;
+    border-top: 1px solid var(--gray-200);
+    background: var(--white);
 }
 </style>
 {% endblock %}

@@ -1,0 +1,110 @@
+{% extends "base_pesagem.html" %}
+{% block title %}Lançamento avulso{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Lançamento avulso</h1>
+    <p>Registra o peso direto pela web, sem o agente da balança. O líquido entra na soma do dia.</p>
+  </div>
+</div>
+
+<div class="card" id="lancamentoManual" style="margin-bottom:1.25rem;padding:1rem 1.15rem;">
+  <h3 style="margin:0 0 0.85rem;font-family:var(--font-brand);color:var(--brand-navy);">Lançar peso manualmente</h3>
+  {% if clientes and balancas %}
+  <form id="formLancamentoManual" data-no-loading style="display:flex;flex-wrap:wrap;gap:0.65rem;align-items:flex-end;">
+    <div class="form-group" style="margin:0;min-width:180px;flex:1.2;">
+      <label class="form-label" for="manualCliente">Cliente</label>
+      <select class="form-control" id="manualCliente" name="cliente_id" required>
+        <option value="">Selecione</option>
+        {% for c in clientes %}
+        <option value="{{ c.id }}">{{ c.nome }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="margin:0;min-width:140px;">
+      <label class="form-label" for="manualBalanca">Balança</label>
+      <select class="form-control" id="manualBalanca" name="balanca_codigo" required>
+        <option value="">Selecione</option>
+        {% for b in balancas %}
+        {% if b.ativo %}
+        <option value="{{ b.codigo }}">{{ b.codigo }}{% if b.nome %} — {{ b.nome }}{% endif %}</option>
+        {% endif %}
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="margin:0;min-width:120px;">
+      <label class="form-label" for="manualPeso">Líquido (kg)</label>
+      <input class="form-control" id="manualPeso" name="peso" inputmode="decimal" placeholder="0,000" required>
+    </div>
+    <div class="form-group" style="margin:0;min-width:110px;">
+      <label class="form-label" for="manualTara">Tara (kg)</label>
+      <input class="form-control" id="manualTara" name="tara" inputmode="decimal" placeholder="0" value="0">
+    </div>
+    <div class="form-group" style="margin:0;min-width:190px;">
+      <label class="form-label" for="manualQuando">Data e hora</label>
+      <input class="form-control" id="manualQuando" name="data_hora" type="datetime-local">
+    </div>
+    <div class="form-group" style="margin:0;min-width:160px;flex:1;">
+      <label class="form-label" for="manualObs">Observação</label>
+      <input class="form-control" id="manualObs" name="observacao" maxlength="255" placeholder="Opcional">
+    </div>
+    <button class="btn btn-primary" id="btnLancarPeso" type="submit">
+      <i class="fas fa-plus"></i> Lançar peso
+    </button>
+  </form>
+  {% else %}
+  <p style="margin:0;font-size:0.9rem;color:#475569;">Cadastre ao menos um cliente e uma balança ativa para lançar o peso pela web.</p>
+  {% endif %}
+</div>
+<script>
+(function () {
+  var quando = document.getElementById('manualQuando');
+  if (quando && !quando.value) {
+    var n = new Date();
+    n.setMinutes(n.getMinutes() - n.getTimezoneOffset());
+    quando.value = n.toISOString().slice(0, 16);
+  }
+  var form = document.getElementById('formLancamentoManual');
+  if (!form) return;
+  form.addEventListener('submit', async function (ev) {
+    ev.preventDefault();
+    var btn = document.getElementById('btnLancarPeso');
+    var peso = (document.getElementById('manualPeso').value || '').trim();
+    var cliente = document.getElementById('manualCliente').value;
+    var balanca = document.getElementById('manualBalanca').value;
+    if (!cliente || !balanca || !peso) {
+      showToast('Informe cliente, balança e peso líquido.', 'error');
+      return;
+    }
+    if (btn) btn.disabled = true;
+    try {
+      var r = await fetch('/api/pesagem/leituras/manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cliente_id: cliente,
+          balanca_codigo: balanca,
+          peso: peso,
+          tara: (document.getElementById('manualTara').value || '').trim(),
+          data_hora: (document.getElementById('manualQuando').value || '').trim(),
+          observacao: (document.getElementById('manualObs').value || '').trim()
+        })
+      });
+      var j = await r.json().catch(function () { return {}; });
+      if (!r.ok || j.ok === false) {
+        if (btn) btn.disabled = false;
+        showToast((j && j.error) || 'Falha ao lançar o peso', 'error');
+        return;
+      }
+      showToast('Peso lançado', 'success');
+      document.getElementById('manualPeso').value = '';
+      document.getElementById('manualObs').value = '';
+      if (btn) btn.disabled = false;
+    } catch (e) {
+      if (btn) btn.disabled = false;
+      showToast('Erro ao lançar o peso', 'error');
+    }
+  });
+})();
+</script>
+{% endblock %}

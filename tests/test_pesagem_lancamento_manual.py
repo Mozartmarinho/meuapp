@@ -3,7 +3,9 @@
 import os
 import sys
 import unittest
+import zipfile
 from datetime import datetime
+from io import BytesIO
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, ROOT)
@@ -63,14 +65,31 @@ class LancamentoManualPesagemTest(unittest.TestCase):
         db.session.commit()
         return cli, bal
 
-    def test_dashboard_mostra_formulario_manual(self):
+    def test_lancamento_avulso_saiu_do_dashboard(self):
         self._cliente_balanca()
-        html = self.client.get('/pesagem').get_data(as_text=True)
+        html = self.client.get('/pesagem/lancamento').get_data(as_text=True)
+        self.assertIn('Lançamento avulso', html)
         self.assertIn('Lançar peso manualmente', html)
         self.assertIn('id="formLancamentoManual"', html)
         self.assertIn('/api/pesagem/leituras/manual', html)
         self.assertIn('HOTEL SOL', html)
         self.assertIn('BAL-01', html)
+        painel = self.client.get('/pesagem').get_data(as_text=True)
+        self.assertNotIn('id="formLancamentoManual"', painel)
+        self.assertNotIn('Agente local', painel)
+        self.assertIn('Evolução pesagem', painel)
+        self.assertIn('Imprimir dados filtro', painel)
+        self.assertIn('Gerar PDF do filtro', painel)
+        self.assertIn('Gerar Excel', painel)
+        self.assertIn('Agente pesagem (exe)', painel)
+        self.assertLess(
+            painel.find('Cadastro de Cliente'),
+            painel.find('Lançamento avulso'),
+        )
+        self.assertLess(
+            painel.find('Agente pesagem (exe)'),
+            painel.find('>Auditoria<'),
+        )
 
     def test_lanca_peso_manual(self):
         cli, bal = self._cliente_balanca()
@@ -129,6 +148,69 @@ class LancamentoManualPesagemTest(unittest.TestCase):
         )
         self.assertIn(resp.status_code, (302, 401))
         self.assertEqual(PesagemLeitura.query.count(), 0)
+
+    def test_evolucao_pdf_e_excel_do_filtro(self):
+        cli, bal = self._cliente_balanca()
+        outra = PesagemBalanca(codigo='BAL-02', nome='Secundária', ativo=True)
+        db.session.add(outra)
+        db.session.flush()
+        for quando, codigo, peso in (
+            (datetime(2026, 11, 1, 8, 0), 'BAL-01', 10.0),
+            (datetime(2026, 11, 1, 9, 0), 'BAL-01', 5.0),
+            (datetime(2026, 11, 2, 8, 0), 'BAL-01', 2.0),
+            (datetime(2026, 11, 1, 10, 0), 'BAL-02', 99.0),
+        ):
+            db.session.add(PesagemLeitura(
+                balanca_id=bal.id if codigo == 'BAL-01' else outra.id,
+                balanca_codigo=codigo,
+                peso=peso,
+                peso_liquido=peso,
+                peso_bruto=peso,
+                tara=0,
+                unidade='kg',
+                estavel=True,
+                origem='agente',
+                cliente_id=cli.id,
+                cliente_nome=cli.nome,
+                data_leitura=quando,
+            ))
+        db.session.commit()
+        html = self.client.get('/pesagem', query_string={
+            'evo_de': '2026-11-01',
+            'evo_ate': '2026-11-03',
+            'evo_balanca': 'BAL-01',
+            'data_de': '2026-11-01',
+            'data_ate': '2026-11-01',
+            'balanca': 'BAL-01',
+        }).get_data(as_text=True)
+        self.assertIn('"itens":[2,1,0]', html.replace(' ', ''))
+        self.assertIn('chartEvolucaoPesagem', html)
+
+        pdf = self.client.get('/pesagem/filtro.pdf', query_string={
+            'data_de': '2026-11-01',
+            'data_ate': '2026-11-01',
+            'balanca': 'BAL-01',
+        })
+        self.assertEqual(pdf.status_code, 200)
+        self.assertIn('pdf', pdf.mimetype)
+        self.assertTrue(pdf.data.startswith(b'%PDF'))
+        self.assertIn('HOTEL SOL'.encode('latin-1'), pdf.data)
+
+        xlsx = self.client.get('/pesagem/filtro.xlsx', query_string={
+            'data_de': '2026-11-01',
+            'data_ate': '2026-11-02',
+            'cliente_id': cli.id,
+        })
+        self.assertEqual(xlsx.status_code, 200)
+        self.assertTrue(xlsx.data.startswith(b'PK'))
+        with zipfile.ZipFile(BytesIO(xlsx.data)) as pacote:
+            planilha = pacote.read('xl/worksheets/sheet1.xml').decode('utf-8')
+        self.assertIn('HOTEL SOL', planilha)
+        self.assertEqual(planilha.count('<row '), 5)
+
+        agente = self.client.get('/pesagem/agente')
+        self.assertEqual(agente.status_code, 200)
+        self.assertIn('Baixar AgentePesagem.exe', agente.get_data(as_text=True))
 
 
 if __name__ == '__main__':

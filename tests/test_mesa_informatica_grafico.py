@@ -143,6 +143,14 @@ class MesaInformaticaGraficoTest(unittest.TestCase):
         self.assertEqual(so_info['total'], 3)
         so_nutri, _ = _grafico_finalizados_dashboard(Args(de='2020-01-01', ate=ate), nutri.id)
         self.assertEqual(so_nutri['total'], 0)
+        por_ind, _ = _grafico_finalizados_dashboard(
+            Args(ind_de=de, ind_ate=ate, ind_servico='Manutenção'), None,
+        )
+        self.assertEqual(por_ind['total'], 2)
+        outro, _ = _grafico_finalizados_dashboard(
+            Args(ind_de=de, ind_ate=ate, ind_servico='Instalação'), None,
+        )
+        self.assertEqual(outro['total'], 0)
 
 
 if __name__ == '__main__':

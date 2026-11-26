@@ -309,6 +309,35 @@ class EquipamentoPreventivaTermoTest(unittest.TestCase):
         self.assertIn('tipo_equipamento', html)
         self.assertIn('btnAddAcc', html)
         self.assertIn('btnSalvarTermo', html)
+        self.assertIn('eq_prazo', html)
+        self.assertIn('Prazo de execução (horas)', html)
+
+    def test_cadastro_grava_prazo_execucao(self):
+        r = self.client.post('/api/equipamentos', json={
+            'codigo': 'N-11',
+            'nome': 'Freezer',
+            'cliente_id': self.cli.id,
+            'prazo_execucao_horas': 48,
+        })
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        eq = Equipamento.query.filter_by(patrimonio='N-11').first()
+        self.assertEqual(eq.prazo_execucao_horas, 48)
+        self.assertEqual(eq.to_dict()['prazo_execucao_horas'], 48)
+        r2 = self.client.put('/api/equipamentos/%s' % eq.id, json={
+            'codigo': 'N-11',
+            'nome': 'Freezer',
+            'cliente_id': self.cli.id,
+            'prazo_execucao_horas': 4,
+        })
+        self.assertEqual(r2.status_code, 200, r2.get_data(as_text=True))
+        self.assertEqual(Equipamento.query.get(eq.id).prazo_execucao_horas, 4)
+        ruim = self.client.post('/api/equipamentos', json={
+            'codigo': 'N-12',
+            'nome': 'Forno',
+            'cliente_id': self.cli.id,
+            'prazo_execucao_horas': 5,
+        })
+        self.assertEqual(ruim.status_code, 400)
 
 
 if __name__ == '__main__':

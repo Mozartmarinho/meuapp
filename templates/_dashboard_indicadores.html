@@ -1,8 +1,5 @@
 <div class="mdk-ind">
     <form method="get" action="{{ url_for('main.dashboard') }}" class="mdk-graf-filtros mdk-filtro-bar">
-        {% if mesa_filtro is defined and mesa_filtro %}<input type="hidden" name="mesa" value="{{ mesa_filtro }}">{% endif %}
-        {% if graf is defined and graf.de %}<input type="hidden" name="de" value="{{ graf.de }}">{% endif %}
-        {% if graf is defined and graf.ate %}<input type="hidden" name="ate" value="{{ graf.ate }}">{% endif %}
         {% if graf is defined and graf.tecnico_id %}<input type="hidden" name="tecnico" value="{{ graf.tecnico_id }}">{% endif %}
         <label class="mdk-filtro-periodo">Período
             <span class="mdk-ind-periodo">
@@ -74,14 +71,26 @@
         </div>
 
         <div class="mdk-card mdk-span-12">
-            <h3>Mediana por mantenedor</h3>
-            <p class="mdk-ind-sub">Resposta: da abertura até o primeiro atendimento. Conclusão: da abertura até o fechamento.</p>
+            <h3>Atendimentos por mantenedor</h3>
+            <p class="mdk-ind-sub">Quantidade de chamados de cada mantenedor no período.</p>
             {% if indicadores.tempos %}
             <div class="mdk-ind-chart">
-                <canvas id="chartMedianaMantenedor" aria-label="Mediana por mantenedor"></canvas>
+                <canvas id="chartMedianaMantenedor" aria-label="Atendimentos por mantenedor"></canvas>
             </div>
             {% else %}
             <p class="mdk-empty">Nenhum chamado no período.</p>
+            {% endif %}
+        </div>
+
+        <div class="mdk-card mdk-span-12">
+            <h3>Prazo e início do atendimento</h3>
+            <p class="mdk-ind-sub">Prazo de execução do equipamento e mediana das horas até o início do atendimento. Verde: dentro do prazo. Vermelho: passou do prazo.</p>
+            {% if indicadores.prazo_atendimento %}
+            <div class="mdk-ind-chart">
+                <canvas id="chartPrazoAtendimento" aria-label="Prazo e início do atendimento"></canvas>
+            </div>
+            {% else %}
+            <p class="mdk-empty">Nenhum chamado com prazo de execução neste filtro.</p>
             {% endif %}
         </div>
 
@@ -130,6 +139,7 @@
 <script type="application/json" id="mdkIndDetalhe">{{ {'unidades': indicadores.ranking_unidades, 'servicos': indicadores.ranking_servicos}|tojson }}</script>
 <script type="application/json" id="mdkIndEvolucao">{{ indicadores.evolucao|tojson }}</script>
 <script type="application/json" id="mdkIndMantenedor">{{ {'tempos': indicadores.tempos, 'execucao': indicadores.execucao}|tojson }}</script>
+<script type="application/json" id="mdkIndPrazo">{{ indicadores.prazo_atendimento|tojson }}</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 (function () {
@@ -304,31 +314,16 @@
     var canvasMediana = document.getElementById('chartMedianaMantenedor');
     if (canvasMediana && window.Chart && tempos.length) {
         new Chart(canvasMediana.getContext('2d'), {
-            type: 'line',
+            type: 'bar',
             data: {
                 labels: tempos.map(function (linha) { return linha.nome; }),
                 datasets: [
                     {
-                        label: 'Mediana de resposta',
-                        data: tempos.map(function (linha) { return linha.mediana_resposta; }),
-                        borderColor: '#1D4E89',
+                        label: 'Atendimentos',
+                        data: tempos.map(function (linha) { return linha.total; }),
                         backgroundColor: '#1D4E89',
-                        borderWidth: 2.5,
-                        tension: 0.35,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        fill: false
-                    },
-                    {
-                        label: 'Mediana de conclusão',
-                        data: tempos.map(function (linha) { return linha.mediana_conclusao; }),
-                        borderColor: '#1ABC9C',
-                        backgroundColor: '#1ABC9C',
-                        borderWidth: 2.5,
-                        tension: 0.35,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        fill: false
+                        borderRadius: 4,
+                        maxBarThickness: 36
                     }
                 ]
             },
@@ -340,20 +335,86 @@
                     legend: {
                         position: 'top',
                         align: 'start',
-                        labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, color: '#334155', font: { size: 11, weight: '600' } }
+                        labels: { boxWidth: 10, color: '#334155', font: { size: 11, weight: '600' } }
                     },
                     tooltip: {
                         callbacks: {
                             label: function (ctx) {
-                                var linha = tempos[ctx.dataIndex] || {};
-                                var txt = ctx.datasetIndex === 0 ? linha.mediana_resposta_txt : linha.mediana_conclusao_txt;
-                                return ' ' + ctx.dataset.label + ': ' + (txt || '—');
+                                var qtd = ctx.parsed.y;
+                                var texto = qtd == null ? '—' : qtd + (qtd === 1 ? ' atendimento' : ' atendimentos');
+                                return ' ' + texto;
                             }
                         }
                     }
                 },
                 scales: {
                     x: { ticks: { maxRotation: 0, color: '#64748b', font: { size: 11 }, maxTicksLimit: 12 }, grid: { display: false } },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { precision: 0, color: '#94a3b8', font: { size: 11 } },
+                        grid: { color: 'rgba(148, 163, 184, 0.25)' },
+                        title: { display: true, text: 'Quantidade', color: '#94a3b8', font: { size: 11 } }
+                    }
+                }
+            }
+        });
+    }
+
+    var prazoEl = document.getElementById('mdkIndPrazo');
+    var prazos = prazoEl ? JSON.parse(prazoEl.textContent || '[]') : [];
+    var canvasPrazo = document.getElementById('chartPrazoAtendimento');
+    if (canvasPrazo && window.Chart && prazos.length) {
+        new Chart(canvasPrazo.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: prazos.map(function (linha) { return linha.label; }),
+                datasets: [
+                    {
+                        label: 'Prazo (h)',
+                        data: prazos.map(function (linha) { return linha.prazo; }),
+                        backgroundColor: '#94a3b8',
+                        borderRadius: 4,
+                        maxBarThickness: 36
+                    },
+                    {
+                        label: 'Início do atendimento (mediana, h)',
+                        data: prazos.map(function (linha) { return linha.mediana; }),
+                        backgroundColor: prazos.map(function (linha) {
+                            if (linha.mediana == null) return '#cbd5e1';
+                            return linha.mediana <= linha.prazo ? '#1ABC9C' : '#e74c3c';
+                        }),
+                        borderRadius: 4,
+                        maxBarThickness: 36
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        align: 'start',
+                        labels: { boxWidth: 10, color: '#334155', font: { size: 11, weight: '600' } }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function (ctx) {
+                                var linha = prazos[ctx.dataIndex] || {};
+                                if (ctx.datasetIndex === 0) {
+                                    return ' Prazo: ' + linha.prazo + ' h · ' + (linha.total || 0) + ' chamado(s)';
+                                }
+                                var tempo = linha.mediana_txt || '—';
+                                var dentro = linha.pct_dentro == null ? '—' : linha.pct_dentro + '% no prazo';
+                                var espera = linha.sem_inicio ? ' · ' + linha.sem_inicio + ' sem início' : '';
+                                return ' Atendido em ' + tempo + ' · ' + dentro + espera;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { ticks: { maxRotation: 0, color: '#64748b', font: { size: 11 } }, grid: { display: false } },
                     y: {
                         beginAtZero: true,
                         ticks: { color: '#94a3b8', font: { size: 11 } },

@@ -335,7 +335,7 @@
                         <option value="{{ t.id }}">{{ t.nome }}{% if t.funcao_label %} — {{ t.funcao_label }}{% endif %}</option>
                         {% endfor %}
                     </select>
-                    <span class="at-hint">A contagem do atendimento fica com o técnico escolhido. Em branco, fica com quem finalizou.</span>
+                    <span class="at-hint">O técnico escolhido recebe este chamado já finalizado. Em branco, fica com quem finalizou.</span>
                 </div>
                 {% endif %}
             </div>
@@ -492,17 +492,31 @@
 .priority-normal, .priority-media { color: #6c757d; }
 .priority-baixa { color: #28a745; }
 
-.nc-modal { padding: 0.8rem; align-items: center; justify-content: center; }
+.nc-modal { padding: 0.8rem; align-items: center; justify-content: center; overflow: hidden; }
 .nc-modal:not([hidden]) { display: flex; }
 .nc-dialog {
-    max-width: 512px;
+    max-width: min(40rem, 100%);
     width: 100%;
-    max-height: 90vh;
-    max-height: 90dvh;
+    max-height: calc(100vh - 1.6rem);
+    max-height: calc(100dvh - 1.6rem);
+    max-height: calc(100svh - 1.6rem);
+    min-height: 0;
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    font-size: 0.8rem;
+    font-size: clamp(0.75rem, 0.68rem + 0.2vw, 0.88rem);
+    align-self: center;
+}
+@media (min-width: 769px) {
+    body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .nc-modal {
+        left: var(--sidebar-width);
+    }
+}
+#modalAtender .nc-dialog {
+    height: calc(100vh - 1.6rem);
+    height: calc(100dvh - 1.6rem);
+    height: calc(100svh - 1.6rem);
+    max-height: calc(100svh - 1.6rem);
 }
 .nc-dialog .modal-header {
     padding: 0.92rem 1rem 0;
@@ -781,6 +795,9 @@ body.modal-open { overflow: hidden; }
     #modalAtender .nc-dialog {
         height: calc(100svh - 0.8rem);
         max-height: calc(100svh - 0.8rem);
+    }
+    body[data-sidebar-collapse="sg-chamados-sidebar-collapsed"] .nc-modal {
+        left: 0;
     }
     #modalAtender .modal-body {
         scrollbar-width: thin;
@@ -1443,10 +1460,11 @@ body.modal-open { overflow: hidden; }
                 origemBox.hidden = true;
             }
         }
+        const tecVinculado = data.atribuido_tecnico_id ? String(data.atribuido_tecnico_id) : '';
         const selTec = document.getElementById('at_tecnico');
-        if (selTec) selTec.value = '';
+        if (selTec) selTec.value = tecVinculado;
         const selFin = document.getElementById('at_tecnico_finalizar');
-        if (selFin) selFin.value = data.atribuido_tecnico_id ? String(data.atribuido_tecnico_id) : '';
+        if (selFin) selFin.value = tecVinculado;
         document.getElementById('at_notas').value = data.atendimento_notas || '';
         document.getElementById('at_status').value = data.status || 'Em Andamento';
         document.getElementById('at_aguardar_peca').checked = data.status === 'Aguardar peça';

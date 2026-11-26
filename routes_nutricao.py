@@ -46,6 +46,10 @@ from nutricao_service import (
     list_leitos_vagos,
     montar_grade_leitos_mapa,
     listar_linhas_mapa_uma,
+    separar_lancamentos_uma,
+    aplicar_campos_uma_independentes,
+    apagar_lancamento_uma,
+    eh_lancamento_uma,
     invalidar_cache_cardapios,
     invalidar_cache_produtos_cardapio,
     baixar_acompanhantes_do_paciente,
@@ -81,6 +85,8 @@ from nutricao_service import (
     list_uma_itens,
     gravar_uma_item,
     salvar_cadastro_uma,
+    apagar_cadastro_lve,
+    desvincular_lves_das_dietas,
     salvar_opcao_uma,
     listar_campo_uma,
     renomear_opcao_uma,
@@ -92,6 +98,9 @@ from nutricao_service import (
     list_produtos_tema_cardapio,
     list_produtos_temas_cardapio,
     criar_produto_tema_cardapio,
+    list_itens_tema_cardapio,
+    list_itens_temas_cardapio,
+    criar_item_cardapio,
     list_fornecedores,
     list_etiquetas,
     list_precos_refeicoes,
@@ -160,6 +169,7 @@ def _chaves_menu_nutricao(path, method):
         ('/nutricao/grupos-dietas', ('cadastro_grupos_dietas',), ('cadastro_grupos_dietas',)),
         ('/nutricao/api/tipos-refeicao', ('cadastro_tipos_refeicao', 'mapa_refeicoes'), ('cadastro_tipos_refeicao',)),
         ('/nutricao/tipos-refeicao', ('cadastro_tipos_refeicao',), ('cadastro_tipos_refeicao',)),
+        ('/nutricao/api/cardapio-itens', ('cadastro_cardapios',), ('cadastro_cardapios',)),
         ('/nutricao/api/cardapios', ('cadastro_cardapios',), ('cadastro_cardapios',)),
         ('/nutricao/cardapios', ('cadastro_cardapios',), ('cadastro_cardapios',)),
         ('/nutricao/api/tabelas-nutrientes', ('cadastro_nutricional',), ('cadastro_nutricional',)),
@@ -1083,6 +1093,7 @@ def api_mapa_get():
     clinica = (request.args.get('clinica') or '').strip()
     if uma:
         garantir_mapa_do_dia(data_ref)
+        separar_lancamentos_uma(data_ref)
         return jsonify({
             'ok': True,
             'uma': True,
@@ -1093,6 +1104,7 @@ def api_mapa_get():
     # Clínica/grupo: a tela só usa a grade. Não serializa o hospital inteiro.
     if grupo or clinica:
         garantir_mapa_do_dia(data_ref)
+        separar_lancamentos_uma(data_ref)
         if grupo == '__todas__' or clinica == '__todas__':
             grade = montar_grade_leitos_mapa(data_ref, clinica_nome='__todas__')
         elif grupo:
@@ -1335,7 +1347,14 @@ def api_mapa_put(mid):
         'leito', 'prontuario', 'nome', 'diagnostico', 'dieta', 'observacoes', 'clinica', 'enfermaria',
         'obs_etiqueta', 'extras', 'suplementos', 'enteral', 'formula_infantil', 'lve',
     )
+    campos_uma = ('suplementos', 'enteral', 'formula_infantil', 'lve')
+    if any(campo in d for campo in campos_uma):
+        aplicar_campos_uma_independentes(
+            row, d, usuario=_usuario_sessao(), apagar_vazio=bool(d.get('uma_explicito')),
+        )
     for campo in campos_cadastro:
+        if campo in campos_uma:
+            continue
         if campo in d:
             val = d.get(campo)
             setattr(row, campo, (str(val).strip() if val is not None else '') or None)
@@ -1379,8 +1398,9 @@ def api_mapa_put(mid):
             target = obter_ou_criar_linha_mapa_dia(row, dest, usuario=_usuario_sessao())
             if target:
                 for campo in campos_cadastro:
-                    if campo in d:
-                        setattr(target, campo, getattr(row, campo))
+                    if campo in campos_uma or campo not in d:
+                        continue
+                    setattr(target, campo, getattr(row, campo))
                 if 'idade' in d:
                     target.idade = row.idade
                 if 'adm' in d:
@@ -1412,6 +1432,15 @@ def api_mapa_saida(mid):
     if not tipo:
         return jsonify({'ok': False, 'error': 'Selecione o motivo da saída'}), 400
     usuario = _usuario_sessao()
+    if tipo in ('apagar_lancamento', 'apagar'):
+        if not eh_lancamento_uma(row.tipo_lancamento):
+            return jsonify({
+                'ok': False,
+                'error': 'Só dá para apagar lançamento de LVE, fórmula infantil, enteral ou suplemento.',
+            }), 400
+        apagar_lancamento_uma(row, usuario=usuario)
+        db.session.commit()
+        return jsonify({'ok': True, 'acao': 'apagar_lancamento'})
     data_ref = _parse_date(d.get('data_saida')) or row.data_refeicao or date.today()
 
     if tipo in ('alta_medica', 'alta', 'a'):
@@ -1505,6 +1534,9 @@ def api_mapa_substituicoes(mid):
 
     d = request.get_json(force=True) or {}
     result = save_mapa_substituicoes(row, d, usuario=_usuario_sessao())
+    if isinstance(result, dict) and result.get('erro'):
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': result['erro']}), 400
     db.session.commit()
     payload = get_mapa_substituicoes(row)
     if isinstance(result, dict):
@@ -3145,6 +3177,9 @@ def api_config_uma():
 def cadastro_uma():
     seed_nutricao()
     tipo = _tipo_cadastro_uma(request.args.get('tipo'))
+    if tipo == 'lve':
+        desvincular_lves_das_dietas(write_cliente_id())
+        db.session.commit()
     titulo, page = _CADASTRO_UMA[tipo]
     grupos = listar_campo_uma(tipo, 'grupo')
     colunas = listar_campo_uma(tipo, 'coluna')
@@ -3249,6 +3284,10 @@ def api_cadastro_uma_ops(iid):
     if not row:
         return jsonify({'ok': False, 'error': 'Item não encontrado'}), 404
     if request.method == 'DELETE':
+        if (row.tipo or '').strip().lower() == 'lve':
+            apagar_cadastro_lve(row)
+            db.session.commit()
+            return jsonify({'ok': True, 'apagado': True})
         row.ativo = False
         row.produto_disponivel = False
         db.session.commit()
@@ -3532,6 +3571,37 @@ def api_produtos_cadastro():
     return jsonify(list_produtos(estoque_id=estoque_id, grupo_id=grupo_id, somente_ativos=False))
 
 
+@nutricao.route('/nutricao/api/cardapio-itens', methods=['GET', 'POST'])
+def api_cardapio_itens():
+    """Itens do cardápio, separados do cadastro de produtos."""
+    seed_nutricao()
+    if request.method == 'POST':
+        d = request.get_json(force=True) or {}
+        nome = (d.get('nome') or '').strip()
+        grupo = (d.get('grupo') or d.get('tema') or '').strip()
+        tipo = (d.get('tipo') or '').strip().lower()
+        row, err = criar_item_cardapio(nome, grupo, tipo)
+        if err:
+            return jsonify({'ok': False, 'error': err}), 400
+        _tag_cliente(row)
+        db.session.commit()
+        return jsonify({
+            'ok': True,
+            'id': row.id,
+            'item': row.to_dict(),
+            'itens': list_itens_tema_cardapio(grupo, tipo),
+        })
+    tipo = (request.args.get('tipo') or '').strip().lower()
+    if not tipo:
+        return jsonify({'ok': False, 'error': 'Informe o tipo do cardápio'}), 400
+    tema = (request.args.get('grupo') or request.args.get('tema') or '').strip()
+    if tema:
+        return jsonify(list_itens_tema_cardapio(tema, tipo))
+    raw = (request.args.get('temas') or '').strip()
+    temas = [t.strip() for t in raw.split(',') if t.strip()]
+    return jsonify(list_itens_temas_cardapio(temas, tipo))
+
+
 @nutricao.route('/nutricao/api/cardapio-produtos', methods=['GET', 'POST'])
 def api_cardapio_produtos():
     """Produtos do cardápio: grupo = tema do campo (Acompanhamento, Bebida, …)."""
@@ -3540,7 +3610,8 @@ def api_cardapio_produtos():
         d = request.get_json(force=True) or {}
         nome = (d.get('nome') or d.get('descricao') or '').strip()
         grupo = (d.get('grupo') or d.get('tema') or '').strip()
-        row, err = criar_produto_tema_cardapio(nome, grupo)
+        tipo_cardapio = (d.get('tipo') or '').strip().lower() or None
+        row, err = criar_produto_tema_cardapio(nome, grupo, tipo=tipo_cardapio)
         if err:
             return jsonify({'ok': False, 'error': err}), 400
         _tag_cliente(row)
@@ -3555,14 +3626,15 @@ def api_cardapio_produtos():
                 'nome': row.descricao,
                 'grupo': row.grupo.nome if row.grupo else grupo,
             },
-            'itens': list_produtos_tema_cardapio(grupo),
+            'itens': list_produtos_tema_cardapio(grupo, tipo=tipo_cardapio),
         })
     tema = (request.args.get('grupo') or request.args.get('tema') or '').strip()
+    tipo_cardapio = (request.args.get('tipo') or '').strip().lower() or None
     if tema:
-        return jsonify(list_produtos_tema_cardapio(tema))
+        return jsonify(list_produtos_tema_cardapio(tema, tipo=tipo_cardapio))
     raw = (request.args.get('temas') or '').strip()
     temas = [t.strip() for t in raw.split(',') if t.strip()]
-    return jsonify(list_produtos_temas_cardapio(temas))
+    return jsonify(list_produtos_temas_cardapio(temas, tipo=tipo_cardapio))
 
 
 @nutricao.route('/nutricao/api/produtos/<int:pid>', methods=['PUT', 'DELETE'])

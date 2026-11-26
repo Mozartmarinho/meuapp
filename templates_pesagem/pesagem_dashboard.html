@@ -1,22 +1,51 @@
 {% extends "base_pesagem.html" %}
 {% block title %}Leituras{% endblock %}
 {% block content %}
-<div class="page-header" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-start;justify-content:space-between;">
+<div class="card pesagem-evo" style="margin-bottom:1.25rem;padding:1rem 1.15rem;">
+  <div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:baseline;justify-content:space-between;">
+    <h3 style="margin:0;font-family:var(--font-brand);color:var(--brand-navy);">Evolução pesagem</h3>
+    <span style="font-size:0.85rem;color:#1a9e86;font-weight:700;">
+      {{ evolucao.total_itens }} ite{{ 'ns' if evolucao.total_itens != 1 else 'm' }}
+      · {{ '%.2f'|format(evolucao.total_kg) }} kg
+    </span>
+  </div>
+  <p style="margin:0.25rem 0 0.75rem;font-size:0.82rem;color:var(--gray-500);">Itens pesados por dia e total líquido no período.</p>
+  <form method="get" action="{{ url_for('pesagem.dashboard') }}"
+        style="display:flex;flex-wrap:wrap;gap:0.65rem;align-items:flex-end;margin-bottom:0.85rem;">
+    <input type="hidden" name="data_de" value="{{ filtros.data_de }}">
+    <input type="hidden" name="data_ate" value="{{ filtros.data_ate }}">
+    <input type="hidden" name="cliente_id" value="{{ filtros.cliente_id }}">
+    <input type="hidden" name="balanca" value="{{ filtros.balanca }}">
+    <input type="hidden" name="q" value="{{ filtros.q }}">
+    <input type="hidden" name="limit" value="{{ filtros.limit }}">
+    <div class="form-group" style="margin:0;min-width:140px;">
+      <label class="form-label" for="evoDe">Dia inicial</label>
+      <input class="form-control" type="date" id="evoDe" name="evo_de" value="{{ evolucao_filtros.de }}">
+    </div>
+    <div class="form-group" style="margin:0;min-width:140px;">
+      <label class="form-label" for="evoAte">Dia final</label>
+      <input class="form-control" type="date" id="evoAte" name="evo_ate" value="{{ evolucao_filtros.ate }}">
+    </div>
+    <div class="form-group" style="margin:0;min-width:150px;">
+      <label class="form-label" for="evoBalanca">Balança</label>
+      <select class="form-control" id="evoBalanca" name="evo_balanca">
+        <option value="">Todas</option>
+        {% for b in balancas %}
+        <option value="{{ b.codigo }}" {% if evolucao_filtros.balanca == b.codigo %}selected{% endif %}>{{ b.codigo }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Filtrar evolução</button>
+  </form>
+  <div class="pesagem-evo-chart">
+    <canvas id="chartEvolucaoPesagem"></canvas>
+  </div>
+</div>
+
+<div class="page-header">
   <div>
     <h1>Controle de Pesagem</h1>
-    <p>Pesos recebidos do agente da balança ou lançados manualmente pela web</p>
-  </div>
-  <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
-    <a class="btn btn-secondary" id="btnImprimir" href="{{ url_for('pesagem.dashboard_imprimir', **{
-      'data_de': filtros.data_de,
-      'data_ate': filtros.data_ate,
-      'cliente_id': filtros.cliente_id,
-      'balanca': filtros.balanca,
-      'q': filtros.q,
-      'limit': filtros.limit
-    }) }}" target="_blank" rel="noopener">
-      <i class="fas fa-print"></i> Imprimir filtro
-    </a>
+    <p>Pesos recebidos do agente da balança e lançamentos avulsos</p>
   </div>
 </div>
 
@@ -51,6 +80,9 @@
 
 <form class="toolbar card" method="get" action="{{ url_for('pesagem.dashboard') }}"
       style="padding:1rem 1.15rem;margin-bottom:1.25rem;display:flex;flex-wrap:wrap;gap:0.65rem;align-items:flex-end;">
+  <input type="hidden" name="evo_de" value="{{ evolucao_filtros.de }}">
+  <input type="hidden" name="evo_ate" value="{{ evolucao_filtros.ate }}">
+  <input type="hidden" name="evo_balanca" value="{{ evolucao_filtros.balanca }}">
   <div class="form-group" style="margin:0;min-width:180px;flex:1.2;">
     <label class="form-label" for="filtroCliente">Cliente</label>
     <select class="form-control" id="filtroCliente" name="cliente_id">
@@ -84,80 +116,39 @@
   <input type="hidden" name="limit" value="{{ filtros.limit }}">
   <button class="btn btn-primary" type="submit"><i class="fas fa-search"></i> Filtrar</button>
   <a class="btn btn-secondary" href="{{ url_for('pesagem.dashboard') }}">Limpar</a>
+  <a class="btn btn-secondary" id="btnImprimir" href="{{ url_for('pesagem.dashboard_imprimir', **{
+      'data_de': filtros.data_de,
+      'data_ate': filtros.data_ate,
+      'cliente_id': filtros.cliente_id,
+      'balanca': filtros.balanca,
+      'q': filtros.q,
+      'limit': filtros.limit
+    }) }}" target="_blank" rel="noopener">
+    <i class="fas fa-print"></i> Imprimir dados filtro
+  </a>
+  <a class="btn btn-secondary" id="btnPdfFiltro" data-no-loading href="{{ url_for('pesagem.dashboard_pdf', **{
+      'data_de': filtros.data_de,
+      'data_ate': filtros.data_ate,
+      'cliente_id': filtros.cliente_id,
+      'balanca': filtros.balanca,
+      'q': filtros.q
+    }) }}">
+    <i class="fas fa-file-pdf"></i> Gerar PDF do filtro
+  </a>
+  <a class="btn btn-secondary" id="btnExcelFiltro" data-no-loading href="{{ url_for('pesagem.dashboard_excel', **{
+      'data_de': filtros.data_de,
+      'data_ate': filtros.data_ate,
+      'cliente_id': filtros.cliente_id,
+      'balanca': filtros.balanca,
+      'q': filtros.q
+    }) }}">
+    <i class="fas fa-file-excel"></i> Gerar Excel
+  </a>
 </form>
 
 <div class="card" style="margin-bottom:1.25rem;padding:0.85rem 1.15rem;font-size:0.9rem;color:#475569;">
   <strong style="color:var(--brand-navy);">Filtro atual:</strong> {{ filtros.rotulo }}
   <span style="margin-left:0.5rem;">— exibindo até {{ filtros.limit }} registro(s)</span>
-</div>
-
-<div class="card" id="lancamentoManual" style="margin-bottom:1.25rem;padding:1rem 1.15rem;">
-  <h3 style="margin:0 0 0.35rem;font-family:var(--font-brand);color:var(--brand-navy);">Lançar peso manualmente</h3>
-  <p style="margin:0 0 0.85rem;font-size:0.85rem;color:var(--gray-500);">Registra o peso direto nesta tela, sem o agente da balança. O líquido entra na soma do dia.</p>
-  {% if clientes and balancas %}
-  <form id="formLancamentoManual" data-no-loading style="display:flex;flex-wrap:wrap;gap:0.65rem;align-items:flex-end;">
-    <div class="form-group" style="margin:0;min-width:180px;flex:1.2;">
-      <label class="form-label" for="manualCliente">Cliente</label>
-      <select class="form-control" id="manualCliente" name="cliente_id" required>
-        <option value="">Selecione</option>
-        {% for c in clientes %}
-        <option value="{{ c.id }}">{{ c.nome }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="form-group" style="margin:0;min-width:140px;">
-      <label class="form-label" for="manualBalanca">Balança</label>
-      <select class="form-control" id="manualBalanca" name="balanca_codigo" required>
-        <option value="">Selecione</option>
-        {% for b in balancas %}
-        {% if b.ativo %}
-        <option value="{{ b.codigo }}">{{ b.codigo }}{% if b.nome %} — {{ b.nome }}{% endif %}</option>
-        {% endif %}
-        {% endfor %}
-      </select>
-    </div>
-    <div class="form-group" style="margin:0;min-width:120px;">
-      <label class="form-label" for="manualPeso">Líquido (kg)</label>
-      <input class="form-control" id="manualPeso" name="peso" inputmode="decimal" placeholder="0,000" required>
-    </div>
-    <div class="form-group" style="margin:0;min-width:110px;">
-      <label class="form-label" for="manualTara">Tara (kg)</label>
-      <input class="form-control" id="manualTara" name="tara" inputmode="decimal" placeholder="0" value="0">
-    </div>
-    <div class="form-group" style="margin:0;min-width:190px;">
-      <label class="form-label" for="manualQuando">Data e hora</label>
-      <input class="form-control" id="manualQuando" name="data_hora" type="datetime-local">
-    </div>
-    <div class="form-group" style="margin:0;min-width:160px;flex:1;">
-      <label class="form-label" for="manualObs">Observação</label>
-      <input class="form-control" id="manualObs" name="observacao" maxlength="255" placeholder="Opcional">
-    </div>
-    <button class="btn btn-primary" id="btnLancarPeso" type="submit">
-      <i class="fas fa-plus"></i> Lançar peso
-    </button>
-  </form>
-  {% else %}
-  <p style="margin:0;font-size:0.9rem;color:#475569;">Cadastre ao menos um cliente e uma balança ativa para lançar o peso pela web.</p>
-  {% endif %}
-</div>
-
-<div class="card" style="margin-bottom:1.25rem;padding:1rem 1.15rem;">
-  <h3 style="margin:0 0 0.85rem;font-family:var(--font-brand);color:var(--brand-navy);">Agente local (.exe)</h3>
-  <div style="display:flex;flex-wrap:wrap;gap:0.65rem;">
-    <a class="btn btn-primary" data-no-loading download="AgentePesagem-{{ agente_versao }}.exe"
-       href="{{ url_for('pesagem.download_agente_arquivo', nome='AgentePesagem-' ~ agente_versao ~ '.exe', v=agente_versao) }}">
-      <i class="fas fa-download"></i> Baixar AgentePesagem.exe
-    </a>
-    <a class="btn btn-secondary" data-no-loading download="config.json"
-       href="{{ url_for('pesagem.download_agente_arquivo', nome='config.json', v=agente_versao) }}">
-      <i class="fas fa-file-code"></i> Baixar config.json
-    </a>
-    <a class="btn btn-secondary" data-no-loading download="instalar_inicio_windows.bat"
-       href="{{ url_for('pesagem.download_agente_arquivo', nome='instalar_inicio_windows.bat', v=agente_versao) }}">
-      <i class="fas fa-power-off"></i> Baixar instalador
-    </a>
-  </div>
-  <p style="margin:0.75rem 0 0;font-size:0.8rem;color:var(--gray-500);">Versão {{ agente_versao }} · servidor {{ server_hint }}</p>
 </div>
 
 <div class="card" style="padding:0;overflow:hidden;">
@@ -201,7 +192,7 @@
         {% else %}
         <tr>
           <td colspan="11" style="text-align:center;padding:1.5rem;color:#64748b;">
-            Nenhuma leitura no filtro selecionado. Envie pesos pelo agente com cliente selecionado.
+            Nenhuma leitura no filtro selecionado.
           </td>
         </tr>
         {% endfor %}
@@ -213,52 +204,68 @@
 .col-excluir { width: 1%; white-space: nowrap; text-align: right; }
 .btn-excluir-leitura { color: #b45309; }
 .btn-excluir-leitura:hover { color: #991b1b; }
+.pesagem-evo-chart { position: relative; height: 240px; }
 </style>
+<script type="application/json" id="pesagemEvolucao">{{ evolucao|tojson }}</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 (function () {
-  var quando = document.getElementById('manualQuando');
-  if (quando && !quando.value) {
-    var n = new Date();
-    n.setMinutes(n.getMinutes() - n.getTimezoneOffset());
-    quando.value = n.toISOString().slice(0, 16);
-  }
-  var form = document.getElementById('formLancamentoManual');
-  if (!form) return;
-  form.addEventListener('submit', async function (ev) {
-    ev.preventDefault();
-    var btn = document.getElementById('btnLancarPeso');
-    var peso = (document.getElementById('manualPeso').value || '').trim();
-    var cliente = document.getElementById('manualCliente').value;
-    var balanca = document.getElementById('manualBalanca').value;
-    if (!cliente || !balanca || !peso) {
-      showToast('Informe cliente, balança e peso líquido.', 'error');
-      return;
-    }
-    if (btn) btn.disabled = true;
-    try {
-      var r = await fetch('/api/pesagem/leituras/manual', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cliente_id: cliente,
-          balanca_codigo: balanca,
-          peso: peso,
-          tara: (document.getElementById('manualTara').value || '').trim(),
-          data_hora: (document.getElementById('manualQuando').value || '').trim(),
-          observacao: (document.getElementById('manualObs').value || '').trim()
-        })
-      });
-      var j = await r.json().catch(function () { return {}; });
-      if (!r.ok || j.ok === false) {
-        if (btn) btn.disabled = false;
-        showToast((j && j.error) || 'Falha ao lançar o peso', 'error');
-        return;
+  var el = document.getElementById('pesagemEvolucao');
+  var canvas = document.getElementById('chartEvolucaoPesagem');
+  var evo = el ? JSON.parse(el.textContent || '{}') : {};
+  if (!canvas || !window.Chart) return;
+  var pontos = (evo.labels || []).length <= 45 ? 3 : 0;
+  new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: evo.labels || [],
+      datasets: [
+        {
+          label: 'Itens pesados',
+          data: evo.itens || [],
+          borderColor: '#1D4E89',
+          backgroundColor: '#1D4E89',
+          borderWidth: 2.5,
+          tension: 0.35,
+          pointRadius: pontos,
+          pointHoverRadius: 4,
+          fill: false,
+          yAxisID: 'y'
+        },
+        {
+          label: 'Kg líquido',
+          data: evo.kg || [],
+          borderColor: '#1ABC9C',
+          backgroundColor: '#1ABC9C',
+          borderWidth: 2.5,
+          tension: 0.35,
+          pointRadius: pontos,
+          pointHoverRadius: 4,
+          fill: false,
+          yAxisID: 'y1'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'top', labels: { boxWidth: 12, font: { size: 12 } } }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: 'Itens' },
+          ticks: { precision: 0 }
+        },
+        y1: {
+          beginAtZero: true,
+          position: 'right',
+          grid: { drawOnChartArea: false },
+          title: { display: true, text: 'Kg' }
+        }
       }
-      showToast('Peso lançado', 'success');
-      location.reload();
-    } catch (e) {
-      if (btn) btn.disabled = false;
-      showToast('Erro ao lançar o peso', 'error');
     }
   });
 })();

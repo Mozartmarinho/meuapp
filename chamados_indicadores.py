@@ -1,7 +1,7 @@
 """Indicadores do dashboard de chamados.
 
 Período, mesa de atendimento, serviço e tipo filtram evolução,
-os dois rankings, a mediana e a execução.
+os dois rankings, a mediana, a execução e o prazo x início do atendimento.
 """
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
@@ -23,6 +23,7 @@ TIPOS_ITEM = (
     'Software',
 )
 LIMITE_DETALHE = 80
+PRAZOS_HORAS = (4, 12, 24, 48, 72)
 
 
 def _data(dt):
@@ -279,6 +280,44 @@ def _por_mantenedor(filtrados):
     return tempos, execucao
 
 
+def _prazo_vs_inicio(filtrados):
+    """Prazo do equipamento e mediana das horas até o início do atendimento."""
+    grupos = {horas: [] for horas in PRAZOS_HORAS}
+    sem_inicio = {horas: 0 for horas in PRAZOS_HORAS}
+    for item in filtrados:
+        prazo = item.get('prazo_horas')
+        try:
+            prazo = int(prazo)
+        except (TypeError, ValueError):
+            continue
+        if prazo not in grupos:
+            continue
+        decorrido = _horas(item.get('criacao'), item.get('inicio'))
+        if decorrido is None:
+            sem_inicio[prazo] += 1
+            continue
+        grupos[prazo].append(decorrido)
+    linhas = []
+    for prazo in PRAZOS_HORAS:
+        valores = grupos[prazo]
+        if not valores and not sem_inicio[prazo]:
+            continue
+        med = _mediana(valores)
+        dentro = sum(1 for horas in valores if horas <= prazo)
+        linhas.append({
+            'prazo': prazo,
+            'label': '%s h' % prazo,
+            'mediana': round(med, 2) if med is not None else None,
+            'mediana_txt': _txt_horas(med),
+            'total': len(valores) + sem_inicio[prazo],
+            'com_inicio': len(valores),
+            'sem_inicio': sem_inicio[prazo],
+            'dentro': dentro,
+            'pct_dentro': _pct(dentro, len(valores)),
+        })
+    return linhas
+
+
 def _mesa_id(valor):
     txt = str(valor or '').strip()
     if not txt.isdigit():
@@ -348,5 +387,6 @@ def calcular_indicadores(itens, inicio, fim, unidade='', servico='', tipo='', me
         'ranking_servicos': _ranking_manutencao(filtrados),
         'tempos': tempos,
         'execucao': execucao,
+        'prazo_atendimento': _prazo_vs_inicio(filtrados),
         'total': len(filtrados),
     }

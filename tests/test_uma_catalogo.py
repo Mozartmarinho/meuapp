@@ -345,6 +345,39 @@ class UmaCatalogoTest(unittest.TestCase):
         depois = client.get('/nutricao/cadastro-uma?tipo=enteral').get_data(as_text=True)
         self.assertNotIn('PRODUTO FORMULA ATIVA', depois)
 
+    def test_lixeira_do_lve_apaga_e_nao_cria_dieta(self):
+        from nutricao_service import salvar_cadastro_uma
+
+        client = self.app.test_client()
+        pagina = client.get('/nutricao/cadastro-uma?tipo=lve').get_data(as_text=True)
+        self.assertIn('Apagar este LVE?', pagina)
+        self.assertIn('LVE apagado', pagina)
+
+        base = NutUmaItem.query.first()
+        self.assertIsNotNone(base)
+        db.session.add(NutDieta(
+            cliente_id=base.cliente_id,
+            nome='LVE SEM DIETA TESTE',
+            categoria='lve',
+            ativo=True,
+        ))
+        db.session.commit()
+        row = salvar_cadastro_uma(base.cliente_id, {
+            'tipo': 'lve',
+            'nome': 'LVE SEM DIETA TESTE',
+            'unidade': 'ML',
+            'grupo': 'SEM LACTOSE',
+            'ativo': True,
+        })
+        db.session.commit()
+        dieta = NutDieta.query.filter_by(nome='LVE SEM DIETA TESTE').first()
+        self.assertIsNone(dieta)
+
+        resp = client.delete('/nutricao/api/cadastro-uma/' + str(row.id))
+        self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
+        self.assertTrue(resp.get_json().get('apagado'))
+        self.assertIsNone(NutUmaItem.query.get(row.id))
+
 
 if __name__ == '__main__':
     unittest.main()

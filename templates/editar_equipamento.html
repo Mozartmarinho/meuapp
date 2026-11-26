@@ -12,6 +12,7 @@
     </div>
 
     <form method="POST" class="form-container">
+        <div class="cad-scroll">
         <div class="form-group">
             <label for="tipo_equipamento">Tipo do equipamento *</label>
             <select id="tipo_equipamento" name="tipo_equipamento" required>
@@ -65,6 +66,7 @@
                 <input type="checkbox" id="ativo" name="ativo" {% if equipamento.ativo %}checked{% endif %}>
                 Equipamento Ativo
             </label>
+        </div>
         </div>
 
         <div class="form-actions">

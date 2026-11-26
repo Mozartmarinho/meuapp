@@ -811,8 +811,13 @@ function cfgPorInput(inputId){
 }
 extrasPorCampo = extrasVazios();
 
-function nomesProdutosGrupo(grupo){
-  return (produtosPorGrupo[grupo] || []).map(p => {
+function chaveProdutos(tipo, grupo){
+  return String(tipo || '') + '|' + String(grupo || '');
+}
+
+function nomesProdutosGrupo(grupo, tipo){
+  const lista = produtosPorGrupo[chaveProdutos(tipo, grupo)] || produtosPorGrupo[grupo] || [];
+  return lista.map(p => {
     if (!p) return '';
     return typeof p === 'string' ? p : (p.nome || '');
   }).filter(Boolean);
@@ -871,10 +876,10 @@ function renderSugestoes(cfg, filtro){
   const box = boxSugestao(cfg.key);
   const inp = document.getElementById(cfg.input);
   if (!box || !inp) return;
-  const nomes = filtrarNomesProdutos(nomesProdutosGrupo(cfg.grupo), filtro);
+  const nomes = filtrarNomesProdutos(nomesProdutosGrupo(cfg.grupo, cfg.tipo), filtro);
   if (!nomes.length){
-    const temCadastro = nomesProdutosGrupo(cfg.grupo).length;
-    box.innerHTML = `<div class="vazio">${temCadastro ? 'Nenhum produto com esse texto' : 'Nenhum produto neste grupo. Use + para cadastrar.'}</div>`;
+    const temCadastro = nomesProdutosGrupo(cfg.grupo, cfg.tipo).length;
+    box.innerHTML = `<div class="vazio">${temCadastro ? 'Nenhum item com esse texto' : 'Nenhum item cadastrado. Use + para cadastrar.'}</div>`;
   } else {
     box.innerHTML = nomes.map((nome) => (
       `<button type="button" data-use-produto="${cfg.key}" data-nome="${escapeHtml(nome)}" role="option">` +
@@ -937,9 +942,11 @@ function prepararCamposSugestao(){
       inp.dataset.itemSave = '1';
       const numero = (IDS_ITEM[cfg.tipo] || []).indexOf(cfg.input) + 1;
       inp.addEventListener('blur', function(){
+        lembrarItemLocal(cfg, this.value);
         if (numero > 0) salvarItemHorario(numero);
       });
     }
+    if (!inp.getAttribute('placeholder')) inp.setAttribute('placeholder', 'Buscar item...');
     if (inp.dataset.suggestPronto === '1') return;
     inp.dataset.suggestPronto = '1';
     inp.addEventListener('click', function(){
@@ -985,17 +992,36 @@ function temasCardapio(){
   return [...new Set(CAMPOS_COM_MAIS.map(c => c.grupo).filter(Boolean))];
 }
 
+function lembrarItemLocal(cfg, nome){
+  const texto = String(nome || '').trim().toUpperCase();
+  if (!cfg || !texto) return;
+  const chave = chaveProdutos(cfg.tipo, cfg.grupo);
+  const lista = (produtosPorGrupo[chave] || []).slice();
+  const ja = lista.some(p => String((p && p.nome) || p || '').toUpperCase() === texto);
+  if (!ja) lista.push({ nome: texto });
+  produtosPorGrupo[chave] = lista;
+}
+
 async function carregarProdutosCardapio(){
-  const temas = temasCardapio();
+  const tipos = ['pequenas', 'grandes', 'liquidas'];
   try {
-    const r = await fetch('/nutricao/api/cardapio-produtos?temas=' + encodeURIComponent(temas.join(',')));
-    const j = await r.json();
-    const mapa = (j && typeof j === 'object' && !Array.isArray(j)) ? j : {};
-    temas.forEach(grupo => {
-      produtosPorGrupo[grupo] = Array.isArray(mapa[grupo]) ? mapa[grupo] : [];
-    });
+    await Promise.all(tipos.map(async (tipo) => {
+      const temas = [...new Set(CAMPOS_COM_MAIS.filter(c => c.tipo === tipo).map(c => c.grupo))];
+      const r = await fetch(
+        '/nutricao/api/cardapio-itens?tipo=' + encodeURIComponent(tipo) +
+        '&temas=' + encodeURIComponent(temas.join(','))
+      );
+      const j = await r.json();
+      const mapa = (j && typeof j === 'object' && !Array.isArray(j)) ? j : {};
+      temas.forEach(grupo => {
+        produtosPorGrupo[chaveProdutos(tipo, grupo)] = Array.isArray(mapa[grupo]) ? mapa[grupo] : [];
+      });
+    }));
   } catch (e) {
-    temas.forEach(grupo => { produtosPorGrupo[grupo] = produtosPorGrupo[grupo] || []; });
+    CAMPOS_COM_MAIS.forEach(cfg => {
+      const chave = chaveProdutos(cfg.tipo, cfg.grupo);
+      produtosPorGrupo[chave] = produtosPorGrupo[chave] || [];
+    });
   }
   renderTodosExtras();
 }
@@ -1052,32 +1078,33 @@ async function confirmarPopupExtra(){
   const cfg = cfgDoCampo(extraCampoAtual);
   const grupo = cfg ? cfg.grupo : '';
   if (!grupo){ showToast('Grupo inválido','error'); return; }
-  const jaTem = (produtosPorGrupo[grupo] || []).some(p => String(p.nome || '').toUpperCase() === nome.toUpperCase());
+  const tipoItem = cfg ? cfg.tipo : '';
+  const jaTem = nomesProdutosGrupo(grupo, tipoItem).some(n => String(n).toUpperCase() === nome.toUpperCase());
   if (jaTem){
-    showToast('Esse produto já está cadastrado neste grupo','error');
+    showToast('Esse item já está cadastrado','error');
     return;
   }
   try {
-    const r = await fetch('/nutricao/api/cardapio-produtos', {
+    const r = await fetch('/nutricao/api/cardapio-itens', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nome, grupo }),
+      body: JSON.stringify({ nome, grupo, tipo: tipoItem }),
     });
     const j = await r.json();
     if (!r.ok || j.ok === false){
-      showToast((j && j.error) || 'Falha ao cadastrar produto','error');
+      showToast((j && j.error) || 'Falha ao cadastrar item','error');
       return;
     }
-    produtosPorGrupo[grupo] = Array.isArray(j.itens) ? j.itens : (produtosPorGrupo[grupo] || []);
+    produtosPorGrupo[chaveProdutos(tipoItem, grupo)] = Array.isArray(j.itens) ? j.itens : (produtosPorGrupo[chaveProdutos(tipoItem, grupo)] || []);
     renderGrupoProdutos(grupo);
     if (cfg && cfg.input){
-      const preenchido = (j.produto && j.produto.nome) || nome;
+      const preenchido = (j.item && j.item.nome) || nome;
       if (!valCampo(cfg.input)) setTexto(cfg.input, preenchido);
     }
     fecharPopupExtra();
-    showToast('Produto cadastrado em ' + grupo.toLowerCase(), 'success');
+    showToast('Item cadastrado', 'success');
   } catch (e) {
-    showToast('Falha ao cadastrar produto','error');
+    showToast('Falha ao cadastrar item','error');
   }
 }
 

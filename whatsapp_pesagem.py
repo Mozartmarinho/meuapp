@@ -1,6 +1,8 @@
 """WhatsApp da pesagem: totais do dia, QR (bridge Node) e envio agendado."""
 from __future__ import annotations
 
+import base64
+import calendar
 import json
 import logging
 import os
@@ -80,11 +82,10 @@ def peso_liquido_expr():
     return func.coalesce(PesagemLeitura.peso_liquido, PesagemLeitura.peso, 0.0)
 
 
-def totais_liquido_do_dia(dia=None):
-    """Soma o peso líquido de cada cadastro no dia (ex.: 10 pesagens CCD → um total)."""
-    dia = dia or date.today()
-    inicio = datetime.combine(dia, dt_time.min)
-    fim = datetime.combine(dia, dt_time.max).replace(microsecond=0)
+def totais_liquido_do_periodo(inicio, fim):
+    """Soma o peso líquido de cada cadastro entre duas datas, inclusive."""
+    inicio_dt = datetime.combine(inicio, dt_time.min)
+    fim_dt = datetime.combine(fim + timedelta(days=1), dt_time.min)
     rows = (
         db.session.query(
             PesagemLeitura.cliente_id,
@@ -93,8 +94,8 @@ def totais_liquido_do_dia(dia=None):
             func.count(PesagemLeitura.id),
         )
         .filter(
-            PesagemLeitura.data_leitura >= inicio,
-            PesagemLeitura.data_leitura <= fim,
+            PesagemLeitura.data_leitura >= inicio_dt,
+            PesagemLeitura.data_leitura < fim_dt,
         )
         .group_by(PesagemLeitura.cliente_id, PesagemLeitura.cliente_nome)
         .order_by(PesagemLeitura.cliente_nome)
@@ -110,6 +111,52 @@ def totais_liquido_do_dia(dia=None):
             'quantidade': int(qtd or 0),
         })
     return totais
+
+
+def totais_liquido_do_dia(dia=None):
+    """Soma o peso líquido de cada cadastro no dia (ex.: 10 pesagens CCD → um total)."""
+    dia = dia or date.today()
+    return totais_liquido_do_periodo(dia, dia)
+
+
+def eh_ultimo_dia_mes(dia):
+    """28, 29, 30 ou 31, conforme o calendário daquele mês."""
+    return dia.day == calendar.monthrange(dia.year, dia.month)[1]
+
+
+def pdf_fechamento_mes(dia):
+    """PDF com a soma de cada cliente do dia 1 até o fim do mês."""
+    from pesagem_export import gerar_pdf
+
+    inicio = dia.replace(day=1)
+    totais = totais_liquido_do_periodo(inicio, dia)
+    linhas = []
+    for item in totais:
+        linhas.append([
+            item['nome'],
+            str(item['quantidade']),
+            formatar_kg(item['total']).replace(' kg', ''),
+        ])
+    total_qtd = sum(item['quantidade'] for item in totais)
+    total_kg = sum(item['total'] for item in totais)
+    if linhas:
+        linhas.append(['TOTAL', str(total_qtd), formatar_kg(total_kg).replace(' kg', '')])
+    pdf = gerar_pdf(
+        'Fechamento mensal de pesagem',
+        [
+            'São Geraldo Service',
+            'Período: %s a %s' % (inicio.strftime('%d/%m/%Y'), dia.strftime('%d/%m/%Y')),
+            'Soma totalizada de cada cliente',
+        ],
+        (
+            ('Cliente', 280, 'L'),
+            ('Pesagens', 90, 'R'),
+            ('Total líquido (kg)', 150, 'R'),
+        ),
+        linhas,
+        rodape='Gerado em %s' % datetime.now().strftime('%d/%m/%Y %H:%M'),
+    )
+    return pdf, totais, inicio
 
 
 def montar_linhas_totais(totais):
@@ -564,7 +611,47 @@ def send_whatsapp(telefone, texto):
     if st.get('state') != 'open':
         return {'ok': False, 'error': 'WhatsApp não está conectado. Leia o QR Code.'}
     try:
-        resp = _bridge_post('/send', {'to': to, 'text': texto}, timeout=45)
+        resp = _bridge_post('/send', {'to': to, 'text': texto}, timeout=90)
+        data = resp.json() if resp.content else {}
+        if not resp.ok:
+            return {'ok': False, 'error': data.get('error') or ('HTTP %s' % resp.status_code)}
+        return data if isinstance(data, dict) else {'ok': True}
+    except (requests.RequestException, ValueError) as exc:
+        return {'ok': False, 'error': str(exc)}
+
+
+def send_whatsapp_documento(telefone, arquivo, filename, caption=''):
+    """Envia um PDF pela ponte (WhatsApp Web)."""
+    if _disabled():
+        return {'ok': False, 'error': 'WhatsApp desabilitado neste ambiente.'}
+    raw = str(telefone or '').strip()
+    if '@' in raw:
+        to = raw
+        phone = raw.split('@')[0].split(':')[0]
+        if not phone:
+            return {'ok': False, 'error': 'Telefone inválido'}
+    else:
+        phone = normalizar_telefone(raw)
+        if not telefone_valido(phone):
+            return {'ok': False, 'error': 'Telefone inválido'}
+        to = phone
+    if not arquivo:
+        return {'ok': False, 'error': 'Arquivo vazio'}
+    reason = _bridge_unavailable_reason()
+    if reason and not _port_open(BRIDGE_HOST, BRIDGE_PORT):
+        return {'ok': False, 'error': reason}
+    st = status_whatsapp(auto_start=False)
+    if st.get('state') != 'open':
+        return {'ok': False, 'error': 'WhatsApp não está conectado. Leia o QR Code.'}
+    payload = {
+        'to': to,
+        'filename': (filename or 'documento.pdf')[:120],
+        'mimetype': 'application/pdf',
+        'data': base64.b64encode(arquivo).decode('ascii'),
+        'caption': (caption or '').strip(),
+    }
+    try:
+        resp = _bridge_post('/send-document', payload, timeout=90)
         data = resp.json() if resp.content else {}
         if not resp.ok:
             return {'ok': False, 'error': data.get('error') or ('HTTP %s' % resp.status_code)}
@@ -637,8 +724,32 @@ def enviar_para_destino(destino, tipo='manual', dia=None, sender=None):
     }
 
 
-def process_scheduled_sends(now=None, sender=None):
-    """Envia uma vez ao dia no horário cadastrado de cada destinatário ativo."""
+def enviar_fechamento_mes(destino, dia, sender=None):
+    """PDF do mês para um destinatário. Não grava tentativa falha, para repetir no minuto."""
+    sender = sender or send_whatsapp_documento
+    pdf, totais, inicio = pdf_fechamento_mes(dia)
+    nome = 'fechamento-pesagem-%s.pdf' % inicio.strftime('%Y-%m')
+    caption = 'Fechamento do mês %s — soma de cada cliente.' % inicio.strftime('%m/%Y')
+    corpo = caption + '\n\n' + montar_linhas_totais(totais)
+    result = sender(destino.telefone, pdf, nome, caption)
+    ok = bool(result and result.get('ok'))
+    if not ok:
+        logger.warning(
+            'Fechamento mensal WhatsApp destino=%s falhou: %s',
+            destino.id,
+            (result or {}).get('error'),
+        )
+        return {
+            'ok': False,
+            'error': (result or {}).get('error') or 'Falha no envio',
+            'tipo': 'fechamento',
+        }
+    _gravar_envio(destino, dia, 'fechamento', 'ok', corpo, None)
+    return {'ok': True, 'error': None, 'tipo': 'fechamento'}
+
+
+def process_scheduled_sends(now=None, sender=None, document_sender=None):
+    """Envia o resumo do dia e, no último dia do mês, o PDF de fechamento."""
     now = now or datetime.now()
     dia = now.date()
     hora_min = now.strftime('%H:%M')
@@ -649,10 +760,12 @@ def process_scheduled_sends(now=None, sender=None):
             continue
         if dest.hora.strftime('%H:%M') != hora_min:
             continue
-        if _ja_enviou(dest.id, dia, 'agendado'):
-            continue
-        result = enviar_para_destino(dest, tipo='agendado', dia=dia, sender=sender)
-        enviados.append({'destino_id': dest.id, **result})
+        if not _ja_enviou(dest.id, dia, 'agendado'):
+            result = enviar_para_destino(dest, tipo='agendado', dia=dia, sender=sender)
+            enviados.append({'destino_id': dest.id, **result})
+        if eh_ultimo_dia_mes(dia) and not _ja_enviou(dest.id, dia, 'fechamento'):
+            result = enviar_fechamento_mes(dest, dia, sender=document_sender)
+            enviados.append({'destino_id': dest.id, **result})
     return enviados
 
 

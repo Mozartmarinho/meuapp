@@ -416,6 +416,10 @@ class NutMapaRefeicao(db.Model):
             'tipo_lancamento_label': {
                 'adicional': 'Adicional',
                 'substituicao': 'Substituição',
+                'lve': 'LVE',
+                'formula': 'Fórm. infantil',
+                'enteral': 'Enteral',
+                'suplemento': 'Suplemento',
             }.get((self.tipo_lancamento or 'principal'), 'Principal'),
             'lancamento_grupo_id': self.lancamento_grupo_id,
             'observacoes': self.observacoes or '',
@@ -579,6 +583,33 @@ class NutCardapio(db.Model):
             'usuario_alteracao': self.usuario_alteracao or '',
             'data_alteracao': self.data_alteracao.strftime('%d/%m/%Y %H:%M:%S') if self.data_alteracao else '',
             'ativo': bool(self.ativo),
+        }
+
+
+class NutItemCardapio(db.Model):
+    """Nome de item do cardápio. Não é produto de estoque."""
+    __tablename__ = 'nut_itens_cardapio'
+    __table_args__ = (
+        db.UniqueConstraint(
+            'cliente_id', 'tipo', 'grupo', 'nome',
+            name='uq_nut_item_cardapio_cliente_tipo_grupo_nome',
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    tipo = db.Column(db.String(20), nullable=False, index=True)
+    grupo = db.Column(db.String(80), nullable=False, index=True)
+    nome = db.Column(db.String(255), nullable=False)
+    ativo = db.Column(db.Boolean, default=True)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'nome': self.nome or '',
+            'grupo': self.grupo or '',
+            'tipo': self.tipo or '',
         }
 
 

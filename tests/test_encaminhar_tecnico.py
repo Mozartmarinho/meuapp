@@ -19,7 +19,10 @@ from routes import (  # noqa: E402
     _usuario_toca_mesa,
     usuario_pode_atribuir_chamado,
 )
-from whatsapp_chamados import montar_mensagem_atribuicao_tecnico  # noqa: E402
+from whatsapp_chamados import (  # noqa: E402
+    montar_mensagem_atendimento_finalizado,
+    montar_mensagem_atribuicao_tecnico,
+)
 
 
 class EncaminharTecnicoTest(unittest.TestCase):
@@ -423,9 +426,55 @@ class EncaminharTecnicoTest(unittest.TestCase):
         db.session.refresh(chamado)
         self.assertEqual(chamado.status, 'Atendido')
         self.assertEqual(chamado.atendente_id, bruno.id)
+        self.assertEqual(chamado.atribuido_usuario_id, bruno.id)
         atendimento = ChamadoAtendimento.query.filter_by(chamado_id=chamado.id).one()
         self.assertEqual(atendimento.usuario_id, bruno.id)
-        self.assertIn('Bruno Técnico', (ok.get_json() or {}).get('message', ''))
+        self.assertEqual(atendimento.status, 'Atendido')
+        self.assertFalse(atendimento.pendencia_aberta)
+        ids_bruno = {c.id for c in _query_chamados_usuario(bruno).all()}
+        self.assertIn(chamado.id, ids_bruno)
+        self.assertEqual(_pendencias_chamados(bruno), [])
+        mensagem = (ok.get_json() or {}).get('message', '')
+        self.assertIn('Bruno Técnico', mensagem)
+        self.assertIn('recebeu este atendimento finalizado', mensagem)
+
+    def test_finalizar_como_outro_avisa_tecnico_no_whatsapp(self):
+        ana = self._tecnico('Ana Técnica', 'ana-fim-wa@example.com')
+        bruno = self._tecnico('Bruno Técnico', 'bruno-fim-wa@example.com')
+        opener = self._usuario('Solicitante', 'abre-fim-wa@example.com')
+        tec_ana = ChamadoTecnico.query.filter_by(usuario_id=ana.id).one()
+        tec_bruno = ChamadoTecnico.query.filter_by(usuario_id=bruno.id).one()
+        tec_ana.pode_atribuir = True
+        tec_bruno.whatsapp = '21977776666'
+        db.session.commit()
+        chamado = self._chamado(opener, 'OS000033')
+        enviados = []
+
+        def fake(to, texto):
+            enviados.append((to, texto))
+            return {'ok': True}
+
+        with patch('whatsapp_pesagem.send_whatsapp', fake):
+            ok = self._login(ana).post(
+                '/api/chamados/%s/atender' % chamado.id,
+                data={
+                    'acao': 'finalizar',
+                    'atendimento_notas': 'Troquei a fonte',
+                    'tecnico_finalizar_id': str(tec_bruno.id),
+                },
+            )
+        self.assertEqual(ok.status_code, 200, ok.get_json())
+        db.session.refresh(chamado)
+        self.assertEqual(chamado.status, 'Atendido')
+        self.assertEqual(chamado.atribuido_usuario_id, bruno.id)
+        self.assertEqual(len(enviados), 1)
+        destino, texto = enviados[0]
+        self.assertIn('21977776666', destino)
+        self.assertIn('um atendimento finalizado foi vinculado no seu perfil', texto)
+        self.assertIn('www.sistemas.saogeraldoservice.com', texto)
+        self.assertIn('avisado no WhatsApp', (ok.get_json() or {}).get('message', ''))
+        manha = montar_mensagem_atendimento_finalizado(datetime(2026, 11, 25, 9, 0))
+        self.assertTrue(manha.startswith('Bom dia, um atendimento finalizado foi vinculado'))
 
     def test_finalizar_como_outro_sem_permissao_nao_conta(self):
         ana = self._tecnico('Ana Técnica', 'ana-sem-fim@example.com')
@@ -492,6 +541,60 @@ class EncaminharTecnicoTest(unittest.TestCase):
             ana.id,
             {linha.usuario_id for linha in linhas},
         )
+
+    def test_editar_e_finalizar_ja_vem_com_tecnico_do_encaminhamento(self):
+        ana = self._tecnico('Ana Técnica', 'ana-abre@example.com')
+        bruno = self._tecnico('Bruno Técnico', 'bruno-abre@example.com')
+        gestor = self._tecnico('Gestor', 'gestor-abre@example.com', funcao='gestor', pode_atribuir=True)
+        gestor.is_master = True
+        gestor.tipo = 'admin'
+        opener = self._usuario('Solicitante', 'abre-vinculo@example.com')
+        tec_ana = ChamadoTecnico.query.filter_by(usuario_id=ana.id).one()
+        tec_bruno = ChamadoTecnico.query.filter_by(usuario_id=bruno.id).one()
+        tec_ana.pode_atribuir = True
+        db.session.commit()
+        chamado = self._chamado(opener, 'OS000040')
+        enc = self._login(ana).post(
+            '/api/chamados/%s/atender' % chamado.id,
+            data={
+                'acao': 'encaminhar',
+                'tecnico_destino_id': str(tec_bruno.id),
+                'instrucoes': 'Finalizar no local',
+            },
+        )
+        self.assertEqual(enc.status_code, 200, enc.get_json())
+
+        aberto = self._login(gestor).get('/api/chamados/%s/atender' % chamado.id)
+        self.assertEqual(aberto.status_code, 200, aberto.get_json())
+        payload = aberto.get_json()['chamado']
+        self.assertEqual(payload['atribuido_tecnico_id'], tec_bruno.id)
+        self.assertEqual(payload['atribuido_nome'], 'Bruno Técnico')
+        db.session.refresh(chamado)
+        self.assertEqual(chamado.atendente_id, bruno.id)
+        self.assertEqual(chamado.atribuido_usuario_id, bruno.id)
+
+        editar = self._login(gestor).get('/chamados/%s/editar' % chamado.id)
+        html = editar.get_data(as_text=True)
+        self.assertIn('Técnico do atendimento', html)
+        self.assertIn(
+            'value="%s" selected' % tec_bruno.id,
+            html,
+        )
+
+        salvo = self._login(gestor).post('/chamados/%s/editar' % chamado.id, data={
+            'cliente_id': str(self.cli.id),
+            'tipo_servico': 'Manutenção',
+            'descricao': 'Não liga',
+            'status': 'Atendido',
+            'prioridade': 'Normal',
+            'observacoes': 'Fechado na edição',
+            'tecnico_id': str(tec_bruno.id),
+        }, follow_redirects=False)
+        self.assertEqual(salvo.status_code, 302)
+        db.session.refresh(chamado)
+        self.assertEqual(chamado.status, 'Atendido')
+        self.assertEqual(chamado.atendente_id, bruno.id)
+        self.assertEqual(chamado.atribuido_usuario_id, bruno.id)
 
 
 if __name__ == '__main__':

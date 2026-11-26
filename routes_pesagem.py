@@ -1,6 +1,7 @@
 """Rotas do Sistema de Controle de Pesagem."""
 from functools import wraps
 from datetime import date, datetime, timedelta
+from io import BytesIO
 from pathlib import Path
 import os
 import socket
@@ -21,6 +22,7 @@ from models_pesagem import (
     PesagemWhatsAppDestino,
     PesagemWhatsAppEnvio,
 )
+from pesagem_export import gerar_pdf, gerar_xlsx
 
 pesagem = Blueprint('pesagem', __name__, template_folder='templates_pesagem')
 
@@ -52,13 +54,17 @@ def login_required(f):
 _PESAGEM_ENDPOINT_MENUS = {
     'pesagem.dashboard': 'dashboard',
     'pesagem.dashboard_imprimir': 'dashboard',
+    'pesagem.dashboard_pdf': 'dashboard',
+    'pesagem.dashboard_excel': 'dashboard',
     'pesagem.balancas_page': 'balancas',
     'pesagem.clientes_page': 'clientes',
+    'pesagem.lancamento_page': 'lancamento',
     'pesagem.whatsapp_page': 'whatsapp',
+    'pesagem.agente_page': 'agente',
     'pesagem.auditoria': 'auditoria',
-    'pesagem.download_agente_arquivo': 'dashboard',
+    'pesagem.download_agente_arquivo': 'agente',
     'pesagem.api_listar_leituras': 'dashboard',
-    'pesagem.api_lancar_leitura_manual': 'dashboard',
+    'pesagem.api_lancar_leitura_manual': 'lancamento',
     'pesagem.api_excluir_leitura': 'dashboard',
     'pesagem.api_editar_leitura': 'dashboard',
     'pesagem.api_balancas': 'balancas',
@@ -446,6 +452,137 @@ def _consultar_dashboard(filtros):
     return resumo, leituras, cliente_nome
 
 
+def _como_data(valor):
+    if valor is None:
+        return None
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    texto = str(valor)[:10]
+    try:
+        return datetime.strptime(texto, '%Y-%m-%d').date()
+    except ValueError:
+        return None
+
+
+def _filtros_evolucao_from_request(args=None):
+    """Período diário da evolução, independente do filtro da tabela."""
+    args = args if args is not None else request.args
+    hoje = date.today()
+    tem = any(k in args for k in ('evo_de', 'evo_ate', 'evo_balanca'))
+    if not tem:
+        data_de = hoje.replace(day=1)
+        data_ate = hoje
+        balanca = None
+    else:
+        data_de = _parse_date_arg(args.get('evo_de')) or hoje.replace(day=1)
+        data_ate = _parse_date_arg(args.get('evo_ate')) or hoje
+        balanca = (args.get('evo_balanca') or '').strip().upper() or None
+    if data_de > data_ate:
+        data_de, data_ate = data_ate, data_de
+    if (data_ate - data_de).days > 366:
+        data_de = data_ate - timedelta(days=366)
+    return {
+        'de': data_de,
+        'ate': data_ate,
+        'balanca': balanca,
+    }
+
+
+def _evolucao_pesagem(filtros):
+    """Itens pesados e kg líquido de cada dia do período, por balança."""
+    data_de = filtros['de']
+    data_ate = filtros['ate']
+    inicio = datetime.combine(data_de, datetime.min.time())
+    fim = datetime.combine(data_ate + timedelta(days=1), datetime.min.time())
+    dia_expr = func.date(PesagemLeitura.data_leitura)
+    liquido = func.coalesce(PesagemLeitura.peso_liquido, PesagemLeitura.peso, 0.0)
+    query = (
+        db.session.query(dia_expr, func.count(PesagemLeitura.id), func.sum(liquido))
+        .filter(PesagemLeitura.data_leitura >= inicio, PesagemLeitura.data_leitura < fim)
+    )
+    if filtros.get('balanca'):
+        query = query.filter(PesagemLeitura.balanca_codigo == filtros['balanca'])
+    por_dia = {}
+    for dia, qtd, soma in query.group_by(dia_expr).all():
+        chave = _como_data(dia)
+        if chave is None:
+            continue
+        por_dia[chave] = (int(qtd or 0), float(soma or 0))
+    labels, itens, kgs = [], [], []
+    cursor = data_de
+    while cursor <= data_ate:
+        labels.append(cursor.strftime('%d/%m'))
+        qtd, soma = por_dia.get(cursor, (0, 0.0))
+        itens.append(qtd)
+        kgs.append(round(soma, 3))
+        cursor += timedelta(days=1)
+    return {
+        'labels': labels,
+        'itens': itens,
+        'kg': kgs,
+        'total_itens': int(sum(itens)),
+        'total_kg': round(sum(kgs), 3),
+    }
+
+
+def _origem_rotulo(origem):
+    codigo = (origem or '').strip()
+    return {
+        'ja_pesado': 'Roupa já pesada',
+        'agente': 'Agente',
+        'manual': 'Manual',
+    }.get(codigo, codigo or '-')
+
+
+def _linhas_exportacao(leituras):
+    linhas = []
+    for leitura in leituras:
+        liquido = leitura.peso_liquido if leitura.peso_liquido is not None else leitura.peso
+        tara = leitura.tara if leitura.tara is not None else 0
+        bruto = leitura.peso_bruto if leitura.peso_bruto is not None else leitura.peso
+        quando = ''
+        if leitura.data_leitura:
+            quando = leitura.data_leitura.strftime('%d/%m/%Y %H:%M:%S')
+        pc = leitura.computador or '-'
+        if leitura.porta_com:
+            pc = '%s / %s' % (pc, leitura.porta_com)
+        linhas.append([
+            quando,
+            leitura.cliente_nome or '-',
+            round(float(liquido or 0), 3),
+            round(float(tara or 0), 3),
+            round(float(bruto or 0), 3),
+            leitura.balanca_codigo or '',
+            'Sim' if leitura.estavel else 'Não',
+            _origem_rotulo(leitura.origem),
+            pc,
+            leitura.observacao or '',
+        ])
+    return linhas
+
+
+_COLUNAS_EXPORTACAO = (
+    ('Data/Hora', 120, 'L'),
+    ('Cliente', 140, 'L'),
+    ('Líquido (kg)', 70, 'R'),
+    ('Tara (kg)', 60, 'R'),
+    ('Bruto (kg)', 60, 'R'),
+    ('Balança', 60, 'L'),
+    ('Estável', 50, 'L'),
+    ('Origem', 80, 'L'),
+    ('PC / COM', 90, 'L'),
+    ('Observação', 110, 'L'),
+)
+
+
+def _consultar_exportacao(filtros):
+    exportados = dict(filtros)
+    exportados['limit'] = 10000
+    return _consultar_dashboard(exportados)
+
+
 # ---- PÁGINAS ----
 @pesagem.route('/pesagem')
 @login_required
@@ -465,6 +602,8 @@ def dashboard():
 
     clientes = PesagemCliente.query.order_by(PesagemCliente.nome).all()
     balancas = PesagemBalanca.query.order_by(PesagemBalanca.codigo).all()
+    evo_filtros = _filtros_evolucao_from_request()
+    evolucao = _evolucao_pesagem(evo_filtros)
 
     filtros_ui = {
         'data_de': filtros['data_de'].isoformat() if filtros.get('data_de') else '',
@@ -489,9 +628,12 @@ def dashboard():
         media_filtro=resumo['media'],
         ultima=resumo['ultima'],
         filtros=filtros_ui,
-        api_key=PESAGEM_API_KEY,
-        server_hint=request.host_url.rstrip('/'),
-        agente_versao=_agente_pesagem_version(),
+        evolucao=evolucao,
+        evolucao_filtros={
+            'de': evo_filtros['de'].isoformat(),
+            'ate': evo_filtros['ate'].isoformat(),
+            'balanca': evo_filtros.get('balanca') or '',
+        },
         **{'active_page': 'dashboard'},
     )
 
@@ -519,6 +661,88 @@ def dashboard_imprimir():
             'q': filtros.get('q') or '',
         },
         gerado_em=datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
+    )
+
+
+def _nome_arquivo_filtro(filtros, extensao):
+    de = filtros['data_de'].strftime('%Y%m%d') if filtros.get('data_de') else 'inicio'
+    ate = filtros['data_ate'].strftime('%Y%m%d') if filtros.get('data_ate') else 'fim'
+    return 'pesagem-filtro-%s-%s.%s' % (de, ate, extensao)
+
+
+@pesagem.route('/pesagem/filtro.pdf')
+@login_required
+def dashboard_pdf():
+    """PDF das leituras com os mesmos filtros da tela."""
+    filtros = _filtros_leituras_from_request()
+    resumo, leituras, cliente_nome = _consultar_exportacao(filtros)
+    rotulo = _rotulo_filtros(filtros, cliente_nome)
+    metas = [
+        'São Geraldo Service',
+        rotulo,
+        'Leituras: %d · Soma: %.2f kg · Média: %.3f kg' % (
+            resumo['total'], resumo['soma'], resumo['media'],
+        ),
+    ]
+    if resumo['total'] > len(leituras):
+        metas.append('Arquivo limitado às %d leituras mais recentes.' % len(leituras))
+    pdf = gerar_pdf(
+        'Controle de Pesagem — filtro',
+        metas,
+        _COLUNAS_EXPORTACAO,
+        _linhas_exportacao(leituras),
+        rodape='Gerado em %s' % datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
+        paisagem=True,
+    )
+    buf = BytesIO(pdf)
+    buf.seek(0)
+    return send_file(
+        buf,
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=_nome_arquivo_filtro(filtros, 'pdf'),
+    )
+
+
+@pesagem.route('/pesagem/filtro.xlsx')
+@login_required
+def dashboard_excel():
+    """Planilha das leituras com os mesmos filtros da tela."""
+    filtros = _filtros_leituras_from_request()
+    _resumo, leituras, _cliente_nome = _consultar_exportacao(filtros)
+    cabecalhos = [col[0] for col in _COLUNAS_EXPORTACAO]
+    xlsx = gerar_xlsx(cabecalhos, _linhas_exportacao(leituras), aba='Pesagem')
+    buf = BytesIO(xlsx)
+    buf.seek(0)
+    return send_file(
+        buf,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=_nome_arquivo_filtro(filtros, 'xlsx'),
+    )
+
+
+@pesagem.route('/pesagem/lancamento')
+@login_required
+def lancamento_page():
+    clientes = PesagemCliente.query.order_by(PesagemCliente.nome).all()
+    balancas = PesagemBalanca.query.order_by(PesagemBalanca.codigo).all()
+    return render_template(
+        'pesagem_lancamento.html',
+        clientes=[_cliente_to_dict(c) for c in clientes],
+        balancas=[b.to_dict() for b in balancas],
+        **{'active_page': 'lancamento'},
+    )
+
+
+@pesagem.route('/pesagem/agente')
+@login_required
+def agente_page():
+    return render_template(
+        'pesagem_agente.html',
+        agente_versao=_agente_pesagem_version(),
+        server_hint=request.host_url.rstrip('/'),
+        **{'active_page': 'agente'},
     )
 
 

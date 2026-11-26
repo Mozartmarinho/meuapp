@@ -810,11 +810,20 @@ async function salvar(){
 async function excluir(tr){
   const id = tr.getAttribute('data-id');
   if (!id) return;
-  if (!confirm('Desativar este item? Ele deixa de aparecer nos lançamentos.')) return;
+  const apagar = TIPO === 'lve';
+  const pergunta = apagar
+    ? 'Apagar este LVE? O cadastro some de vez e não fica ligado a nenhuma dieta.'
+    : 'Desativar este item? Ele deixa de aparecer nos lançamentos.';
+  if (!confirm(pergunta)) return;
   const r = await fetch('/nutricao/api/cadastro-uma/' + id, { method: 'DELETE' });
   const j = await r.json();
   if (!r.ok || j.ok === false) {
-    showToast((j && j.error) || 'Falha ao excluir', 'error');
+    showToast((j && j.error) || (apagar ? 'Falha ao apagar' : 'Falha ao excluir'), 'error');
+    return;
+  }
+  if (apagar) {
+    tr.remove();
+    showToast('LVE apagado', 'success');
     return;
   }
   showToast('Item desativado', 'success');

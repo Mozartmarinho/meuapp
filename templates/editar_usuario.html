@@ -12,6 +12,7 @@
     </div>
 
     <form method="POST" class="form-container">
+        <div class="cad-scroll">
         <div class="form-group">
             <label for="nome">Nome Completo *</label>
             <input type="text" id="nome" name="nome" value="{{ usuario.nome }}" required>
@@ -50,6 +51,7 @@
                 {{ menu_nome }}
             </label>
             {% endfor %}
+        </div>
         </div>
 
         <div class="form-actions">

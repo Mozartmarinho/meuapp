@@ -564,6 +564,10 @@
 }
 .badge-tipo-dieta.substituicao { background: #fef3c7; color: #92400e; }
 .badge-tipo-dieta.adicional { background: #dbeafe; color: #1e3a8a; }
+.badge-tipo-dieta.lve { background: #ede9fe; color: #5b21b6; }
+.badge-tipo-dieta.formula { background: #fce7f3; color: #9d174d; }
+.badge-tipo-dieta.enteral { background: #d1fae5; color: #065f46; }
+.badge-tipo-dieta.suplemento { background: #ffedd5; color: #9a3412; }
 .linha-mapa.selected .badge-tipo-dieta { background: #fff; color: #0f2a56; }
 .mapa-table td.cell-texto { text-align: center; }
 .ver-texto {
@@ -1610,7 +1614,7 @@ function renderSlotGrade(slot){
     ? `<button type="button" class="btn btn-ghost btn-sm" title="Inserir paciente neste leito" onclick="inserirNoLeitoVago(this.closest('tr').dataset.clinica, this.closest('tr').dataset.enfermaria, this.closest('tr').dataset.leito)"><i class="fas fa-user-plus"></i></button>`
     : `<button type="button" class="btn btn-ghost btn-sm" title="Editar" onclick="editarLinhaMapa(${id})"><i class="fas fa-pen"></i></button>
         <button type="button" class="btn btn-ghost btn-sm" title="Nova dieta" onclick="abrirNovaDieta(${id}, 'adicional')"><i class="fas fa-plus"></i></button>
-        <button type="button" class="btn btn-ghost btn-sm" title="Excluir" onclick="abrirExcluirLinhaMapa(${id})"><i class="fas fa-trash"></i></button>`;
+        <button type="button" class="btn btn-ghost btn-sm" title="${['lve','formula','enteral','suplemento'].includes(tipo) ? 'Apagar lançamento' : 'Excluir'}" onclick="abrirExcluirLinhaMapa(${id})"><i class="fas fa-trash"></i></button>`;
   const flag = (campo, on) => vago
     ? `<td class="col-flag"><button type="button" class="flag-btn" disabled>○</button></td>`
     : flagCell(campo, on);
@@ -2526,13 +2530,11 @@ async function substAbrirAdicionar(){
   const label = { desjejum: 'Desjejum', colacao: 'Colação', almoco: 'Almoço', merenda: 'Merenda', jantar: 'Jantar', ceia: 'Ceia' }[meal] || meal;
   const dieta = substState.data?.dieta || document.getElementById('substDieta')?.textContent || '';
   const prato = (substState.pratoSel || '').trim();
-  if (!prato) {
-    showToast('Selecione o item do cardápio para substituir', 'error');
-    return;
-  }
-  if (titulo) titulo.textContent = 'Substituir item — ' + label;
+  if (titulo) titulo.textContent = (prato ? 'Substituir item — ' : 'Buscar itens — ') + label;
   if (hint) {
-    hint.textContent = `${label} · ${dieta}. O item selecionado (${prato}) vai para Remover; os marcados entram em Adicionar.`;
+    hint.textContent = prato
+      ? `${label} · ${dieta}. Busque o item. O selecionado (${prato}) vai para Remover; os marcados entram em Adicionar.`
+      : `${label} · ${dieta}. Busque item a item. Desjejum, colação, merenda e ceia não misturam com almoço e jantar.`;
   }
   lista.innerHTML = '<div class="subst-just-vazio">Carregando itens...</div>';
   overlay.hidden = false;
@@ -2784,10 +2786,19 @@ function _substPrepararOverlay(readonly){
   document.body.classList.add('subst-aberto');
 }
 
+function linhaEhLancamentoUma(id){
+  const l = linhasMapaCache[id] || {};
+  return ['lve', 'formula', 'enteral', 'suplemento'].includes(l.tipo_lancamento || '');
+}
+
 async function abrirSubstituicoes(mapaId, opts){
   const id = parseInt(mapaId, 10);
   if (!id) {
     showToast('Selecione uma linha', 'error');
+    return;
+  }
+  if (linhaEhLancamentoUma(id)) {
+    showToast('LVE, fórmula infantil, enteral e suplemento são lançamentos separados e não usam cardápio', 'error');
     return;
   }
   const readonly = !!(opts && opts.readonly);
@@ -3648,6 +3659,23 @@ function xcadHeaderTexto(l){
   return [data, local || '-', l.prontuario || '-', l.nome || '-'].join(' :: ');
 }
 
+function _textoUmaDoPaciente(l, campo){
+  const direto = String(l[campo] || '').trim();
+  if (direto) return direto;
+  const pid = String(l.paciente_id || '');
+  const nome = String(l.nome || '').trim().toUpperCase();
+  const pront = String(l.prontuario || '').trim().toUpperCase();
+  for (const outra of Object.values(linhasMapaCache)){
+    if (!outra || outra === l) continue;
+    const mesmo = (pid && String(outra.paciente_id || '') === pid)
+      || (nome && String(outra.nome || '').trim().toUpperCase() === nome && pront && String(outra.prontuario || '').trim().toUpperCase() === pront);
+    if (!mesmo) continue;
+    const texto = String(outra[campo] || '').trim();
+    if (texto) return texto;
+  }
+  return '';
+}
+
 function abrirCadastroUma(id, abaId){
   const l = linhasMapaCache[id];
   if (!l){ showToast('Selecione uma linha','error'); return; }
@@ -3659,10 +3687,10 @@ function abrirCadastroUma(id, abaId){
     linha: l,
     dados: {
       extras: xcadParse(l.extras, 'extras'),
-      suplementos: xcadParse(l.suplementos, 'suplementos'),
-      enteral: xcadParse(l.enteral, 'enteral'),
-      formula: xcadParse(l.formula_infantil, 'formula'),
-      lve: xcadParse(l.lve, 'lve')
+      suplementos: xcadParse(_textoUmaDoPaciente(l, 'suplementos'), 'suplementos'),
+      enteral: xcadParse(_textoUmaDoPaciente(l, 'enteral'), 'enteral'),
+      formula: xcadParse(_textoUmaDoPaciente(l, 'formula_infantil'), 'formula'),
+      lve: xcadParse(_textoUmaDoPaciente(l, 'lve'), 'lve')
     }
   };
   const overlay = document.getElementById('xcadOverlay');
@@ -3783,6 +3811,7 @@ async function salvarCadastroUma(){
   if (!xcadState) return false;
   const id = xcadState.id;
   const body = {
+    uma_explicito: true,
     extras: xcadSerial('extras'),
     suplementos: xcadSerial('suplementos'),
     enteral: xcadSerial('enteral'),
@@ -4015,6 +4044,13 @@ async function salvarEdicaoLinhaMapa(){
 function abrirExcluirLinhaMapa(id){
   const l = linhasMapaCache[id];
   if (!l){ showToast('Linha não encontrada','error'); return; }
+  const tipo = l.tipo_lancamento || 'principal';
+  if (['lve', 'formula', 'enteral', 'suplemento'].includes(tipo)) {
+    const rotulo = l.tipo_lancamento_label || tipo;
+    if (!window.confirm(`Apagar o lançamento de ${rotulo}?\n\nO cardápio da dieta permanece.`)) return;
+    apagarLancamentoUma(id);
+    return;
+  }
   window._excluirMapaId = id;
   const html = `
     <p style="margin:0 0 0.75rem;color:#475569">Paciente: <strong>${esc(l.nome)}</strong></p>
@@ -4041,6 +4077,21 @@ function toggleTransfDestino(){
   if (tipo === 'transferencia'){
     setTimeout(() => document.getElementById('saida-hospital')?.focus(), 40);
   }
+}
+
+async function apagarLancamentoUma(id){
+  const r = await fetch(`/nutricao/api/mapa/${id}/saida`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ motivo: 'apagar_lancamento' })
+  });
+  const j = await r.json();
+  if (!r.ok || j.ok === false){
+    showToast((j && j.error) || 'Falha ao apagar lançamento','error');
+    return;
+  }
+  showToast('Lançamento apagado','success');
+  await carregarMapa();
 }
 
 async function confirmarSaidaLinhaMapa(){

@@ -69,11 +69,27 @@
                 </a>
             </li>
             {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('pesagem', 'lancamento') %}
+            <li>
+                <a href="{{ url_for('pesagem.lancamento_page') }}" class="{% if active_page == 'lancamento' %}active{% endif %}" title="Lançamento avulso">
+                    <i class="fas fa-file-circle-plus menu-icon"></i>
+                    <span class="menu-label">Lançamento avulso</span>
+                </a>
+            </li>
+            {% endif %}
             {% if usuario_atual and usuario_atual.tem_menu('pesagem', 'whatsapp') %}
             <li>
                 <a href="{{ url_for('pesagem.whatsapp_page') }}" class="{% if active_page == 'whatsapp' %}active{% endif %}" title="Conf. WhatsApp">
                     <i class="fab fa-whatsapp menu-icon"></i>
                     <span class="menu-label">Conf. WhatsApp</span>
+                </a>
+            </li>
+            {% endif %}
+            {% if usuario_atual and usuario_atual.tem_menu('pesagem', 'agente') %}
+            <li>
+                <a href="{{ url_for('pesagem.agente_page') }}" class="{% if active_page == 'agente' %}active{% endif %}" title="Agente pesagem (exe)">
+                    <i class="fas fa-download menu-icon"></i>
+                    <span class="menu-label">Agente pesagem (exe)</span>
                 </a>
             </li>
             {% endif %}

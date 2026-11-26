@@ -77,6 +77,8 @@ from models import (
     atualizar_setor,
     excluir_setor,
     sla_do_chamado,
+    normalizar_prazo_execucao,
+    prazo_execucao_do_chamado,
     mesas_ativas,
     mesa_padrao,
     resolver_mesa_id,
@@ -321,10 +323,12 @@ def _vincular_equipamento_chamado(chamado, form, cliente_id):
         chamado.equipamento_id = eq.id
         chamado.patrimonio = eq.patrimonio
         chamado.equipamento = eq.nome_equipamento
+        chamado.prazo_execucao_horas = eq.prazo_execucao_horas
         return
     chamado.equipamento_id = None
     chamado.patrimonio = codigo or None
     chamado.equipamento = nome_form or None
+    chamado.prazo_execucao_horas = None
 
 def gerar_numero_chamado():
     """Gera um número único para o chamado"""
@@ -529,12 +533,16 @@ def _ultimo_atendimento_id(chamado):
 
 
 def _assumir_chamado(chamado, user):
-    """Atribui o chamado ao técnico e entra em atendimento (o toque para)."""
+    """Atribui o chamado ao técnico e entra em atendimento (o toque para).
+
+    Se já foi encaminhado a um técnico, o vínculo permanece com ele.
+    """
     veio_da_mesa = (
         not getattr(chamado, 'atendente_id', None)
         and not getattr(chamado, 'atribuido_usuario_id', None)
     )
-    chamado.atendente_id = user.id
+    atribuido = getattr(chamado, 'atribuido_usuario_id', None)
+    chamado.atendente_id = atribuido or user.id
     chamado.atendendo_em = now_brasilia()
     chamado.retomar_toque_em = None
     chamado.abertura_atendimento_id = (
@@ -567,8 +575,15 @@ def _liberar_sessao_atendimento(chamado, user):
     """
     if not user or not getattr(chamado, 'atendente_id', None):
         return True
+    atribuido = getattr(chamado, 'atribuido_usuario_id', None)
     if chamado.atendente_id != user.id:
-        return False
+        if not (atribuido and _pode_tomar_chamado(chamado, user)):
+            return False
+        chamado.atendendo_em = None
+        chamado.abertura_atendimento_id = None
+        chamado.atendente_id = atribuido
+        db.session.commit()
+        return True
     chamado.atendendo_em = None
     devolver = _deve_devolver_a_mesa(chamado)
     chamado.abertura_atendimento_id = None
@@ -2533,7 +2548,37 @@ def _snapshot_indicador(chamado):
         'conclusao': chamado.data_conclusao,
         'mantenedor': atendente.nome if atendente else 'Sem mantenedor',
         'venc_solucao': info['venc_solucao'] if info else None,
+        'prazo_horas': prazo_execucao_do_chamado(chamado),
     }
+
+
+def _chamados_indicadores_dashboard(args, mesa_filtro):
+    """Chamados do período para os gráficos, fora da fila pessoal.
+
+    Execução e atendimentos por mantenedor contam o técnico que atendeu,
+    mesmo quando o chamado foi atribuído a outra pessoa.
+    """
+    hoje = now_brasilia().date()
+    inicio = _parse_data_filtro(args.get('ind_de'), hoje - timedelta(days=29))
+    fim = _parse_data_filtro(args.get('ind_ate'), hoje)
+    if inicio > fim:
+        inicio, fim = fim, inicio
+    ini_dt = datetime.combine(inicio, datetime.min.time())
+    fim_dt = datetime.combine(fim + timedelta(days=1), datetime.min.time())
+    q = (
+        Chamado.query.options(
+            joinedload(Chamado.cliente),
+            joinedload(Chamado.atendente),
+            joinedload(Chamado.equipamento_cadastro),
+            joinedload(Chamado.contrato),
+        )
+        .filter(Chamado.data_criacao >= ini_dt, Chamado.data_criacao < fim_dt)
+    )
+    if not mesa_filtro:
+        mesa_filtro = args.get('ind_mesa', type=int) or args.get('mesa', type=int)
+    if mesa_filtro:
+        q = q.filter(Chamado.mesa_id == mesa_filtro)
+    return q.all()
 
 
 def _indicadores_dashboard(chamados, args):
@@ -2555,12 +2600,63 @@ def _indicadores_dashboard(chamados, args):
     return dados
 
 
+def _texto_arg(args, *chaves):
+    for chave in chaves:
+        bruto = args.get(chave)
+        if bruto is None:
+            continue
+        texto = str(bruto).strip()
+        if texto:
+            return texto
+    return ''
+
+
+class _ArgsDashboard(dict):
+    """request.args com .get(type=) para os filtros compartilhados do dashboard."""
+
+    def get(self, key, default=None, type=None):
+        val = dict.get(self, key, default)
+        if type is not None and val not in (None, ''):
+            try:
+                return type(val)
+            except (TypeError, ValueError):
+                return default
+        return val
+
+
+def _filtro_dashboard_args(args):
+    """Um período, uma mesa, serviço e tipo para todos os gráficos."""
+    hoje = now_brasilia().date()
+    chaves = (
+        'mesa', 'de', 'ate', 'tecnico',
+        'ind_de', 'ind_ate', 'ind_servico', 'ind_tipo', 'ind_mesa',
+    )
+    data = {}
+    for chave in chaves:
+        valor = args.get(chave)
+        if valor not in (None, ''):
+            data[chave] = valor
+    if not data.get('ind_de') and data.get('de'):
+        data['ind_de'] = data['de']
+    if not data.get('ind_ate') and data.get('ate'):
+        data['ind_ate'] = data['ate']
+    if not data.get('ind_de'):
+        data['ind_de'] = (hoje - timedelta(days=29)).isoformat()
+    if not data.get('ind_ate'):
+        data['ind_ate'] = hoje.isoformat()
+    if not data.get('ind_mesa') and data.get('mesa'):
+        data['ind_mesa'] = str(data['mesa'])
+    return _ArgsDashboard(data)
+
+
 def _grafico_finalizados_dashboard(args, mesa_filtro):
     """Finalizados no período, agrupados por dia/semana/mês e por técnico."""
     hoje = now_brasilia().date()
-    informou_de = bool((args.get('de') or '').strip())
-    inicio = _parse_data_filtro(args.get('de'), hoje - timedelta(days=29))
-    fim = _parse_data_filtro(args.get('ate'), hoje)
+    de_txt = _texto_arg(args, 'ind_de', 'de')
+    ate_txt = _texto_arg(args, 'ind_ate', 'ate')
+    informou_de = bool(de_txt or ate_txt)
+    inicio = _parse_data_filtro(de_txt, hoje - timedelta(days=29))
+    fim = _parse_data_filtro(ate_txt, hoje)
     if not informou_de:
         qmin = db.session.query(func.min(Chamado.data_conclusao)).filter(
             Chamado.status.in_(STATUS_FECHADOS),
@@ -2575,11 +2671,16 @@ def _grafico_finalizados_dashboard(args, mesa_filtro):
     if inicio > fim:
         inicio, fim = fim, inicio
     tecnico_id = args.get('tecnico', type=int)
+    if not mesa_filtro:
+        mesa_filtro = args.get('ind_mesa', type=int) or args.get('mesa', type=int)
+    servico = _texto_arg(args, 'ind_servico')
+    tipo = _texto_arg(args, 'ind_tipo')
     q = (
         Chamado.query.options(
             joinedload(Chamado.atendente),
             joinedload(Chamado.mesa),
             joinedload(Chamado.cliente),
+            joinedload(Chamado.equipamento_cadastro),
         )
         .filter(Chamado.status.in_(STATUS_FECHADOS))
     )
@@ -2667,6 +2768,13 @@ def _grafico_finalizados_dashboard(args, mesa_filtro):
     for chamado, conclusao in rows:
         if tecnico_id and chamado.atendente_id != tecnico_id:
             continue
+        if servico and (chamado.tipo_servico or '').strip() != servico:
+            continue
+        if tipo:
+            equipamento = chamado.equipamento_cadastro
+            tipo_item = (equipamento.tipo_recurso or '').strip() if equipamento is not None else ''
+            if tipo_item != tipo:
+                continue
         nome = chamado.atendente.nome if chamado.atendente else 'Sem técnico'
         resumo = _resumo_finalizado(chamado, conclusao, nome)
         por_periodo[chave(conclusao)] += 1
@@ -2745,7 +2853,8 @@ def dashboard():
         .all()
     )
     mesas = mesas_ativas()
-    mesa_filtro = request.args.get('mesa', type=int)
+    filtro_args = _filtro_dashboard_args(request.args)
+    mesa_filtro = filtro_args.get('ind_mesa', type=int)
     if mesa_filtro:
         visiveis = [c for c in visiveis if c.mesa_id == mesa_filtro]
     abertos = [c for c in visiveis if not status_fechado(c.status)]
@@ -2778,7 +2887,7 @@ def dashboard():
                 'url': url_for('main.listar_chamados', atender=a.chamado_id),
             })
     tickets_index = [{'id': c.id, 'numero': c.numero_chamado} for c in visiveis]
-    graf, tecnicos_graf = _grafico_finalizados_dashboard(request.args, mesa_filtro)
+    graf, tecnicos_graf = _grafico_finalizados_dashboard(filtro_args, mesa_filtro)
     dia_painel = _parse_dia_painel(request.args.get('dia'))
     from chamados_avaliacao import montar_atendimento_dia, montar_calendario, relatorio_avaliacoes
     av_de, av_ate, av_tec, av_uni = _filtros_avaliacao(request.args)
@@ -2823,7 +2932,10 @@ def dashboard():
         mesa_filtro=mesa_filtro,
         graf=graf,
         tecnicos_graf=tecnicos_graf,
-        indicadores=_indicadores_dashboard(visiveis, request.args),
+        indicadores=_indicadores_dashboard(
+            _chamados_indicadores_dashboard(filtro_args, mesa_filtro),
+            filtro_args,
+        ),
         atendimento=atendimento,
         calendario=calendario,
         avaliacoes=avaliacoes,
@@ -3111,13 +3223,29 @@ def editar_chamado(id):
                 _marcar_conclusao(chamado)
 
             user = Usuario.query.get(session['user_id'])
+            raw_tec = (request.form.get('tecnico_id') or '').strip()
+            if raw_tec:
+                if not usuario_pode_atribuir_chamado(user):
+                    raise ValueError(
+                        'Você não tem permissão para vincular o chamado a outro técnico.'
+                    )
+                tec = _tecnico_cadastrado_com_acesso(
+                    raw_tec, 'Selecione o técnico do encaminhamento.',
+                )
+                chamado.atribuido_usuario_id = tec.usuario_id
+                chamado.atendente_id = tec.usuario_id
+            elif getattr(chamado, 'atribuido_usuario_id', None):
+                chamado.atendente_id = chamado.atribuido_usuario_id
+            aviso_usuario = user
+            if getattr(chamado, 'atribuido_usuario_id', None):
+                aviso_usuario = Usuario.query.get(chamado.atribuido_usuario_id) or user
             aplicar_automacoes(chamado, 'status', user, status_anterior=status_antes)
 
             db.session.commit()
             if status_fechado(chamado.status) and not status_fechado(status_antes):
                 _avisar_finalizacao_ticket(
                     chamado,
-                    user,
+                    aviso_usuario,
                     chamado.atendimento_notas or chamado.observacoes,
                 )
             if reagendou:
@@ -3133,11 +3261,22 @@ def editar_chamado(id):
             flash(f'Erro ao atualizar chamado: {str(e)}', 'error')
             db.session.rollback()
 
+    editor = Usuario.query.get(session['user_id'])
+    pode_atribuir = usuario_pode_atribuir_chamado(editor)
+    tecnico_vinculado_id = _tecnico_id_do_usuario(
+        getattr(chamado, 'atribuido_usuario_id', None)
+    )
     return render_template(
         'editar_chamado.html',
         chamado=chamado,
         clientes=clientes,
         mesas=mesas_ativas(),
+        pode_atribuir=pode_atribuir,
+        tecnicos_destino=_tecnicos_para_atribuir() if pode_atribuir else [],
+        tecnico_vinculado_id=tecnico_vinculado_id,
+        tecnico_vinculado_nome=(
+            chamado.atribuido.nome if getattr(chamado, 'atribuido', None) else ''
+        ),
     )
 
 @main.route('/clientes')
@@ -3500,6 +3639,13 @@ def atender_chamado(id):
                 return jsonify({'ok': False, 'message': str(exc)}), 400
             credito_id = tec_fin.usuario_id
             aviso_usuario = Usuario.query.get(credito_id) or user
+        elif (
+            getattr(chamado, 'atribuido_usuario_id', None)
+            and chamado.atribuido_usuario_id != user.id
+            and not usuario_pode_atribuir_chamado(user)
+        ):
+            credito_id = chamado.atribuido_usuario_id
+            aviso_usuario = Usuario.query.get(credito_id) or user
 
     tecnico_dest = (request.form.get('tecnico_destino_id') or '').strip()
     if acao == 'encaminhar' and tecnico_dest and not aguardar_peca:
@@ -3564,6 +3710,8 @@ def atender_chamado(id):
         else:
             chamado.status = STATUS_ATENDIDO
             chamado.atendente_id = credito_id
+            if credito_id != user.id:
+                chamado.atribuido_usuario_id = credito_id
     else:
         if aguardar_peca:
             chamado.status = STATUS_AGUARDAR_PECA
@@ -3674,9 +3822,21 @@ def atender_chamado(id):
         msg = f'Atendido e devolvido para {chamado.setor_destino}.'
     elif acao == 'finalizar':
         if aviso_usuario and aviso_usuario.id != user.id:
-            msg = 'Chamado finalizado. A contagem do atendimento ficou com %s.' % (
-                aviso_usuario.nome or 'o técnico escolhido',
+            msg = 'Chamado finalizado. %s recebeu este atendimento finalizado.' % (
+                aviso_usuario.nome or 'O técnico escolhido',
             )
+            try:
+                from whatsapp_chamados import notificar_tecnico_atendimento_finalizado
+                aviso_tecnico = notificar_tecnico_atendimento_finalizado(chamado)
+            except Exception as exc:
+                print(f'Falha ao avisar técnico do atendimento finalizado: {exc}')
+                aviso_tecnico = {'ok': False, 'error': str(exc)}
+            if aviso_tecnico.get('ok'):
+                msg += ' O técnico foi avisado no WhatsApp.'
+            elif aviso_tecnico.get('skipped'):
+                msg += ' O técnico não tem WhatsApp cadastrado.'
+            else:
+                msg += ' O aviso por WhatsApp ao técnico não foi enviado.'
         else:
             msg = 'Chamado finalizado.'
     elif chamado.status == STATUS_REAGENDADO and getattr(chamado, 'data_reagendamento', None):
@@ -5006,6 +5166,9 @@ def _dados_equipamento_form(data):
         'ip': ip or None,
         'is_agente': data.get('is_agente') in (True, 1, '1', 'on', 'true', 'sim'),
         'em_estoque': data.get('em_estoque') in (True, 1, '1', 'on', 'true', 'sim'),
+        'prazo_execucao_horas': normalizar_prazo_execucao(
+            data.get('prazo_execucao_horas') or data.get('prazo_execucao')
+        ),
         'atualizado_em': datetime.utcnow(),
     }
 
@@ -5091,6 +5254,7 @@ def api_equipamento(id):
         equipamento.data_compra = campos['data_compra']
         equipamento.cliente_id = campos['cliente_id']
         equipamento.tipo_equipamento = campos['tipo_equipamento']
+        equipamento.prazo_execucao_horas = campos['prazo_execucao_horas']
         db.session.commit()
         return jsonify({
             'ok': True,
@@ -5347,6 +5511,7 @@ def editar_equipamento(id):
         equipamento.data_compra = campos['data_compra']
         equipamento.cliente_id = campos['cliente_id']
         equipamento.tipo_equipamento = campos['tipo_equipamento']
+        equipamento.prazo_execucao_horas = campos['prazo_execucao_horas']
         db.session.commit()
         flash('Equipamento atualizado com sucesso!', 'success')
         return redirect(url_for('main.listar_equipamentos'))

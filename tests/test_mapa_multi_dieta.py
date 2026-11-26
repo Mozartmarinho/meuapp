@@ -216,6 +216,48 @@ class MapaMultiDietaTest(unittest.TestCase):
         ]
         self.assertEqual(sorted(nomes), ['João da Silva', 'Maria Souza'])
 
+    def test_lve_formula_enteral_suplemento_sao_lancamentos_separados(self):
+        from nutricao_service import separar_lancamentos_uma, apagar_lancamento_uma
+
+        src = self._inserir_principal()
+        src.lve = 'LVE 500ML'
+        src.formula_infantil = 'NAN 1'
+        src.enteral = 'IMPACT'
+        src.suplementos = 'FORTIDRINK'
+        src.fl_almoco = True
+        db.session.commit()
+
+        separar_lancamentos_uma(date.today())
+        db.session.refresh(src)
+        self.assertFalse(src.lve)
+        self.assertFalse(src.formula_infantil)
+        self.assertFalse(src.enteral)
+        self.assertFalse(src.suplementos)
+        self.assertTrue(src.fl_almoco)
+        self.assertTrue(src.ativo)
+
+        linhas = NutMapaRefeicao.query.filter_by(
+            paciente_id=self.pac.id, data_refeicao=date.today(), ativo=True,
+        ).all()
+        por_tipo = {r.tipo_lancamento: r for r in linhas}
+        self.assertEqual(set(por_tipo), {
+            'principal', 'lve', 'formula', 'enteral', 'suplemento',
+        })
+        self.assertEqual(por_tipo['lve'].lve, 'LVE 500ML')
+        self.assertFalse(por_tipo['lve'].fl_desjejum)
+        self.assertFalse(por_tipo['lve'].fl_almoco)
+        self.assertIsNone(por_tipo['formula'].substituicoes)
+
+        apagar_lancamento_uma(por_tipo['lve'], usuario='teste')
+        db.session.commit()
+        self.assertFalse(por_tipo['lve'].ativo)
+        db.session.refresh(src)
+        self.assertTrue(src.ativo)
+        self.assertEqual(
+            NutMapaRefeicao.query.filter_by(paciente_id=self.pac.id, ativo=True).count(),
+            4,
+        )
+
 
 if __name__ == '__main__':
     unittest.main()

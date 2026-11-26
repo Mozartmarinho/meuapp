@@ -111,6 +111,16 @@ def montar_email_visualizacao_ticket(chamado, opener, url_detalhe: str):
     mesa = _esc(chamado.mesa.nome if getattr(chamado, 'mesa', None) else '—')
     setor = _esc(getattr(chamado, 'setor_destino', None) or '—')
     prioridade = _esc(getattr(chamado, 'prioridade', None) or '—')
+    from models import frase_prazo_execucao, prazo_execucao_do_chamado
+    prazo_frase = frase_prazo_execucao(prazo_execucao_do_chamado(chamado))
+    prazo_html = ''
+    prazo_linha = ''
+    if prazo_frase:
+        prazo_html = (
+            '<p style="margin:12px 0;"><strong>Prazo de execução</strong><br>'
+            f'{_esc(prazo_frase)}</p>'
+        )
+        prazo_linha = f'{prazo_frase}\n'
     recurso = '—'
     sol_nome = _esc(opener.nome if opener else '—')
     sol_email = _esc(opener.email if opener else '')
@@ -135,6 +145,7 @@ def montar_email_visualizacao_ticket(chamado, opener, url_detalhe: str):
       <p style="margin:12px 0;"><strong>Mesa</strong><br>{mesa}</p>
       <p style="margin:12px 0;"><strong>Área responsável</strong><br>{setor}</p>
       <p style="margin:12px 0;"><strong>Prioridade</strong><br>{prioridade}</p>
+      {prazo_html}
       <p style="margin:12px 0;"><strong>Recurso</strong><br>{recurso}</p>
       <p style="margin:12px 0;"><strong>Solicitante</strong><br>{solicitante}</p>
       <p style="margin:12px 0;"><strong>Responsável</strong><br>{responsavel}</p>
@@ -155,6 +166,7 @@ def montar_email_visualizacao_ticket(chamado, opener, url_detalhe: str):
         f'Mesa: {chamado.mesa.nome if getattr(chamado, "mesa", None) else "—"}\n'
         f'Área responsável: {getattr(chamado, "setor_destino", None) or "—"}\n'
         f'Prioridade: {getattr(chamado, "prioridade", None) or "—"}\n'
+        f'{prazo_linha}'
         f'Recurso: —\n'
         f'Solicitante: {sol_nome} ({sol_email})\n'
         f'Responsável: {sol_nome}\n\n'

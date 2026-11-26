@@ -235,6 +235,7 @@ def garantir_chamado_ocorrencia(eq, prev, dia, hoje=None):
         equipamento_id=eq.id,
         patrimonio=eq.patrimonio,
         equipamento=eq.nome_equipamento,
+        prazo_execucao_horas=eq.prazo_execucao_horas,
         data_reagendamento=dia if futuro else None,
         data_criacao=now_brasilia(),
     )

@@ -5,8 +5,9 @@ import re
 import unicodedata
 from models import db, now_brasilia, fmt_brasilia
 from models_nutricao import (
-    NutClinica, NutGrupoClinica, NutEnfermaria, NutLeito, NutDieta, NutDietaExcluida,
+    NutClinica, NutGrupoClinica, NutEnfermaria, NutLeito,     NutDieta, NutDietaExcluida,
     NutGrupoDieta, NutGrupoDietaExcluido, NutCategoriaDieta, NutPaciente, NutMapaRefeicao, NutCardapio,
+    NutItemCardapio, CAMPOS_ITEM_CARDAPIO,
     NutTabelaNutrientes, NutAlimento, NutAlimentoNutriente, NutPratoLiquido,
     NutEstoqueLocal, NutUnidadeMedida, NutGrupoProduto, NutProduto, NutFornecedor,
     NutEtiqueta, NutEtiquetaCampo, NutPrecoRefeicao, NutTipoRefeicao, NutPrecoDietaTipo,
@@ -1654,6 +1655,7 @@ def find_cardapio_for_meal(dieta, meal, data_ref=None, dieta_id=None, exigir_die
 
     best = None
     best_key = None
+    tipo_esperado = _TIPO_CARDAPIO_POR_REFEICAO.get(meal)
 
     def _considerar(entry, score):
         nonlocal best, best_key
@@ -1662,6 +1664,9 @@ def find_cardapio_for_meal(dieta, meal, data_ref=None, dieta_id=None, exigir_die
         if best_key is None or key > best_key:
             best_key = key
             best = entry
+
+    if tipo_esperado:
+        entries = [e for e in entries if (e[5] or '') == tipo_esperado]
 
     for entry in entries:
         if dieta_id_int and entry[0] and entry[0] == dieta_id_int:
@@ -1718,6 +1723,120 @@ _EXTRAS_ALIAS = {
     'docinho_salada': ('salada',),
     'vitamina_suco': ('vitamina',),
 }
+_TIPOS_ITEM_CARDAPIO = ('pequenas', 'grandes', 'liquidas')
+
+
+def _grupo_canonico_item(grupo):
+    grupo = _norm_txt(grupo)
+    if re.match(r'^PRATO\s+\d+$', grupo):
+        return 'PRATO'
+    return grupo
+
+
+def campos_grupo_item_cardapio(tipo, grupo):
+    """Campos do cardápio que alimentam a busca daquele item. Não cruza refeições."""
+    tipo = (tipo or '').strip().lower()
+    grupo = _grupo_canonico_item(grupo)
+    if tipo not in _TIPOS_ITEM_CARDAPIO or not grupo:
+        return []
+    for nome, _rotulo, campos in _SETORES_POR_TIPO_CARDAPIO.get(tipo, ()):
+        if _norm_txt(nome) == grupo:
+            return list(campos)
+    return []
+
+
+def _lembrar_nome_item(destino, nome, item_id=None, grupo=''):
+    texto = _norm_txt(nome)
+    if not texto or texto in destino:
+        return
+    destino[texto] = {'id': item_id, 'nome': texto, 'grupo': grupo}
+
+
+def list_itens_tema_cardapio(tema, tipo):
+    """Itens cadastrados no cardápio: inclusão avulsa e histórico já salvo."""
+    tipo = (tipo or '').strip().lower()
+    grupo = _grupo_canonico_item(tema)
+    campos = campos_grupo_item_cardapio(tipo, grupo)
+    if not campos:
+        return []
+    vistos = {}
+    for row in _q(NutItemCardapio).filter(
+        NutItemCardapio.ativo.is_(True),
+        NutItemCardapio.tipo == tipo,
+        NutItemCardapio.grupo == grupo,
+    ).all():
+        _lembrar_nome_item(vistos, row.nome, row.id, grupo)
+    chaves = CAMPOS_ITEM_CARDAPIO.get(tipo, ())
+    idxs = [i for i, chave in enumerate(chaves, 1) if chave in campos]
+    colunas = [NutCardapio.itens] + [getattr(NutCardapio, f'item_{i}') for i in idxs]
+    historico = (
+        _q(NutCardapio)
+        .filter(NutCardapio.ativo.is_(True), NutCardapio.tipo == tipo)
+        .with_entities(*colunas)
+        .all()
+    )
+    for rec in historico:
+        for valor in rec[1:]:
+            _lembrar_nome_item(vistos, valor, None, grupo)
+        bruto = rec[0]
+        if not bruto:
+            continue
+        try:
+            data = json.loads(bruto) if isinstance(bruto, str) else {}
+        except (TypeError, ValueError):
+            data = {}
+        if not isinstance(data, dict):
+            continue
+        for campo in campos:
+            for nome in _vals_prato(data.get(campo)) + _vals_prato(data.get(f'{campo}_extras')):
+                _lembrar_nome_item(vistos, nome, None, grupo)
+            for alias in _EXTRAS_ALIAS.get(campo, ()):
+                for nome in _vals_prato(data.get(alias)) + _vals_prato(data.get(f'{alias}_extras')):
+                    _lembrar_nome_item(vistos, nome, None, grupo)
+    out = list(vistos.values())
+    out.sort(key=lambda item: (item.get('nome') or '', item.get('id') or 0))
+    return out
+
+
+def list_itens_temas_cardapio(temas, tipo):
+    out = {}
+    for tema in temas or []:
+        t = (tema or '').strip()
+        if not t or t in out:
+            continue
+        out[t] = list_itens_tema_cardapio(t, tipo)
+    return out
+
+
+def criar_item_cardapio(nome, tema, tipo):
+    """Grava o item do cardápio sem criar produto."""
+    nome = _norm_txt(nome)
+    tipo = (tipo or '').strip().lower()
+    grupo = _grupo_canonico_item(tema)
+    if not nome:
+        return None, 'Informe o nome'
+    if tipo not in _TIPOS_ITEM_CARDAPIO or not campos_grupo_item_cardapio(tipo, grupo):
+        return None, 'Grupo inválido'
+    existente = _q(NutItemCardapio).filter(
+        NutItemCardapio.tipo == tipo,
+        NutItemCardapio.grupo == grupo,
+        NutItemCardapio.nome == nome,
+    ).first()
+    if existente:
+        if not existente.ativo:
+            existente.ativo = True
+            db.session.flush()
+        return existente, None
+    row = NutItemCardapio(
+        cliente_id=write_cliente_id(),
+        tipo=tipo,
+        grupo=grupo,
+        nome=nome,
+        ativo=True,
+    )
+    db.session.add(row)
+    db.session.flush()
+    return row, None
 
 
 def _nomes_itens_campo(itens, campo):
@@ -1737,6 +1856,11 @@ def opcoes_itens_refeicao(mapa_row, meal):
     meal = str(meal or '').strip().lower()
     if meal not in MEALS_SUBST:
         return {'ok': False, 'error': 'Refeição inválida'}
+    if eh_lancamento_uma(getattr(mapa_row, 'tipo_lancamento', None)):
+        return {
+            'ok': False,
+            'error': 'LVE, fórmula infantil, enteral e suplemento não usam o cardápio.',
+        }
     dieta = (getattr(mapa_row, 'dieta', None) or '').strip()
     data_ref = getattr(mapa_row, 'data_refeicao', None)
     lanc = info_lancamento_refeicoes(data_ref)
@@ -1756,16 +1880,13 @@ def opcoes_itens_refeicao(mapa_row, meal):
     )
     itens = {}
     tipo = _TIPO_CARDAPIO_POR_REFEICAO.get(meal, 'pequenas')
-    if card is not None:
-        if (card.tipo or '').strip():
-            tipo = card.tipo.strip()
+    if card is not None and (card.tipo or '').strip() == tipo:
         if card.itens is not None:
             itens = card.itens or {}
         elif card.id:
             row = NutCardapio.query.get(card.id)
-            if row is not None:
+            if row is not None and (row.tipo or '').strip() == tipo:
                 itens = row.get_itens() or {}
-                tipo = (row.tipo or tipo or '').strip() or tipo
     if tipo not in _SETORES_POR_TIPO_CARDAPIO:
         tipo = _TIPO_CARDAPIO_POR_REFEICAO.get(meal, 'pequenas')
 
@@ -1781,7 +1902,7 @@ def opcoes_itens_refeicao(mapa_row, meal):
                 vistos.add(chave)
                 da_dieta.append(nome)
         catalogo = []
-        for prod in list_produtos_tema_cardapio(grupo):
+        for prod in list_produtos_tema_cardapio(grupo, tipo=tipo):
             nome = (prod.get('nome') or '').strip()
             chave = _norm_txt(nome)
             if not chave or chave in vistos:
@@ -1835,6 +1956,7 @@ def get_mapa_substituicoes(mapa_row):
 
     refeicoes = {}
     subs_view = {}
+    sem_cardapio = eh_lancamento_uma(getattr(mapa_row, 'tipo_lancamento', None))
     for meal in MEALS_SUBST:
         info = lanc[meal]
         dest_iso = info['data_destino']
@@ -1843,7 +1965,9 @@ def get_mapa_substituicoes(mapa_row):
         subs_meal = (subs_por_data.get(dest_iso) or subs_hoje).get(meal) or {
             'pares': [], 'justificativa': ''
         }
-        card = find_cardapio_for_meal(dieta, meal, data_meal, dieta_id=getattr(mapa_row, 'dieta_id', None))
+        card = None if sem_cardapio else find_cardapio_for_meal(
+            dieta, meal, data_meal, dieta_id=getattr(mapa_row, 'dieta_id', None),
+        )
         pratos = list(card.pratos) if card else []
         pares = subs_meal.get('pares') or []
         refeicoes[meal] = {
@@ -1887,6 +2011,7 @@ def get_mapa_substituicoes(mapa_row):
         'substituicoes': subs_view,
         'lancamento': lanc,
         'refeicoes_adiadas': adiadas,
+        'sem_cardapio': sem_cardapio,
         'aviso_geral': (
             'Há refeições após a hora limite: as alterações serão salvas no dia seguinte.'
             if adiadas else ''
@@ -1896,6 +2021,14 @@ def get_mapa_substituicoes(mapa_row):
 
 def save_mapa_substituicoes(mapa_row, payload, usuario=None):
     """Persiste substituições respeitando hora limite (adia para o dia seguinte)."""
+    if eh_lancamento_uma(getattr(mapa_row, 'tipo_lancamento', None)):
+        return {
+            'erro': 'LVE, fórmula infantil, enteral e suplemento não usam o cardápio.',
+            'substituicoes': {},
+            'meals_salvos': [],
+            'meals_adiados': [],
+            'aviso': '',
+        }
     data_ref = mapa_row.data_refeicao or date.today()
     lanc = info_lancamento_refeicoes(data_ref)
     incoming = None
@@ -2216,8 +2349,63 @@ def _produto_do_nome_uma(nome, produto=''):
     return ''
 
 
+def desvincular_lve_da_dieta(cid, nome):
+    """LVE não é dieta. Remove a dieta espelhada com o mesmo nome."""
+    nome = (nome or '').strip().upper()
+    if not nome or cid is None:
+        return 0
+    dietas = NutDieta.query.filter(
+        NutDieta.cliente_id == cid,
+        db.func.upper(NutDieta.nome) == nome,
+        db.func.lower(NutDieta.categoria) == 'lve',
+    ).all()
+    for dieta in dietas:
+        cards = NutCardapio.query.filter(
+            db.or_(
+                NutCardapio.dieta_id == dieta.id,
+                db.and_(
+                    NutCardapio.cliente_id == cid,
+                    NutCardapio.dieta_id.is_(None),
+                    db.func.upper(NutCardapio.dieta) == nome,
+                ),
+            )
+        ).all()
+        for card in cards:
+            db.session.delete(card)
+        NutMapaRefeicao.query.filter_by(dieta_id=dieta.id).update(
+            {NutMapaRefeicao.dieta_id: None}, synchronize_session=False
+        )
+        db.session.delete(dieta)
+    return len(dietas)
+
+
+def desvincular_lves_das_dietas(cid):
+    """Tira do cadastro de dietas todo LVE já gravado deste cliente."""
+    if cid is None:
+        return 0
+    itens = NutUmaItem.query.filter(_chave_uma(cid), NutUmaItem.tipo == 'lve').all()
+    total = 0
+    for item in itens:
+        total += desvincular_lve_da_dieta(cid, item.nome)
+    return total
+
+
+def apagar_cadastro_lve(row):
+    """Apaga o LVE. Não desativa e não deixa dieta com o mesmo nome."""
+    if row is None:
+        return None
+    if (row.tipo or '').strip().lower() != 'lve':
+        raise ValueError('Só o cadastro de LVE é apagado por aqui')
+    desvincular_lve_da_dieta(row.cliente_id, row.nome)
+    db.session.delete(row)
+    return row
+
+
 def _espelhar_uma_item(cid, tipo, nome, sistema, manipulado, grupo='', atualizar=False):
-    """Leva o item para o cadastro que o sistema já usa (prato ou dieta)."""
+    """Leva fórmula, enteral e suplemento para o cadastro de dieta. LVE fica de fora."""
+    if (tipo or '').strip().lower() == 'lve':
+        desvincular_lve_da_dieta(cid, nome)
+        return
     nome = (nome or '').strip().upper()
     if not nome or tipo == 'prato':
         if nome and not NutPratoLiquido.query.filter_by(cliente_id=cid, nome=nome).first():
@@ -3105,12 +3293,28 @@ def _catalogo_produtos_cardapio():
     return por_nome
 
 
-def list_produtos_tema_cardapio(tema):
+# Sobremesa existe nas refeições pequenas e nas grandes. O grupo guarda o tipo.
+_GRUPOS_CARDAPIO_POR_TIPO = {'SOBREMESA'}
+
+
+def grupo_produto_cardapio(tema, tipo=None):
+    """Nome do grupo de estoque. Sobremesa de desjejum não entra no almoço."""
+    tema = _norm_txt(tema)
+    tipo = (tipo or '').strip().lower()
+    if tema in _GRUPOS_CARDAPIO_POR_TIPO and tipo in ('pequenas', 'grandes', 'liquidas'):
+        return f'{tema} · {tipo.upper()}'
+    return tema
+
+
+def list_produtos_tema_cardapio(tema, tipo=None):
     tema = _norm_txt(tema)
     if not tema:
         return []
     catalogo = _catalogo_produtos_cardapio()
-    nomes = nomes_grupo_tema_cardapio(tema, variantes_prato=True)
+    grupo = grupo_produto_cardapio(tema, tipo)
+    nomes = nomes_grupo_tema_cardapio(grupo, variantes_prato=(grupo == tema))
+    if grupo != tema:
+        nomes = {_norm_txt(grupo)}
     seen = set()
     out = []
     for nome_grupo in nomes:
@@ -3124,20 +3328,21 @@ def list_produtos_tema_cardapio(tema):
     return out
 
 
-def list_produtos_temas_cardapio(temas):
+def list_produtos_temas_cardapio(temas, tipo=None):
     _catalogo_produtos_cardapio()
     out = {}
     for tema in temas or []:
         t = _norm_txt(tema)
         if not t or t in out:
             continue
-        out[t] = list_produtos_tema_cardapio(t)
+        out[t] = list_produtos_tema_cardapio(t, tipo=tipo)
     return out
 
 
-def criar_produto_tema_cardapio(nome, tema):
+def criar_produto_tema_cardapio(nome, tema, tipo=None):
     nome = _norm_txt(nome)
-    tema = _norm_txt(tema)
+    tema_livre = _norm_txt(tema)
+    tema = grupo_produto_cardapio(tema_livre, tipo)
     if not nome:
         return None, 'Informe o nome'
     if not tema:
@@ -3915,11 +4120,26 @@ def paciente_from_payload(d, paciente=None):
     return paciente
 
 
-TIPOS_LANCAMENTO_MAPA = ('principal', 'adicional', 'substituicao')
+TIPOS_LANCAMENTO_MAPA = (
+    'principal', 'adicional', 'substituicao',
+    'lve', 'formula', 'enteral', 'suplemento',
+)
+TIPOS_LANCAMENTO_DIETA = ('principal', 'adicional', 'substituicao')
+TIPOS_LANCAMENTO_UMA = ('lve', 'formula', 'enteral', 'suplemento')
+CAMPOS_UMA_POR_TIPO = {
+    'lve': 'lve',
+    'formula': 'formula_infantil',
+    'enteral': 'enteral',
+    'suplemento': 'suplementos',
+}
 ROTULOS_TIPO_LANCAMENTO = {
     'principal': 'Principal',
     'adicional': 'Adicional',
     'substituicao': 'Substituição',
+    'lve': 'LVE',
+    'formula': 'Fórm. infantil',
+    'enteral': 'Enteral',
+    'suplemento': 'Suplemento',
 }
 
 
@@ -3935,6 +4155,14 @@ def normalizar_tipo_lancamento(valor, default='principal'):
         'substituicao': 'substituicao',
         'substituição': 'substituicao',
         'subst': 'substituicao',
+        'lve': 'lve',
+        'formula': 'formula',
+        'formula_infantil': 'formula',
+        'fórmula': 'formula',
+        'enteral': 'enteral',
+        'interal': 'enteral',
+        'suplemento': 'suplemento',
+        'suplementos': 'suplemento',
     }
     return aliases.get(raw, default if default in TIPOS_LANCAMENTO_MAPA else 'principal')
 
@@ -3944,9 +4172,19 @@ def rotulo_tipo_lancamento(tipo):
 
 
 def ordem_tipo_lancamento(tipo):
-    return {'principal': 0, 'substituicao': 1, 'adicional': 2}.get(
-        normalizar_tipo_lancamento(tipo), 9
-    )
+    return {
+        'principal': 0,
+        'substituicao': 1,
+        'adicional': 2,
+        'suplemento': 3,
+        'enteral': 4,
+        'formula': 5,
+        'lve': 6,
+    }.get(normalizar_tipo_lancamento(tipo), 9)
+
+
+def eh_lancamento_uma(tipo):
+    return normalizar_tipo_lancamento(tipo) in TIPOS_LANCAMENTO_UMA
 
 
 def resolver_dieta_mapa(dieta_id=None, dieta_nome=None):
@@ -3974,6 +4212,219 @@ def garantir_grupo_lancamento(row):
         return row
     if row.id and not row.lancamento_grupo_id:
         row.lancamento_grupo_id = row.id
+    return row
+
+
+def _mesmo_paciente_mapa(a, b):
+    if not a or not b:
+        return False
+    if a.paciente_id and b.paciente_id and int(a.paciente_id) == int(b.paciente_id):
+        return True
+    return _chave_linha_mapa(a) == _chave_linha_mapa(b) and bool(
+        (a.prontuario or a.nome or a.leito)
+    )
+
+
+def _buscar_irmao_uma(row, tipo_uma, candidatos):
+    for outro in candidatos:
+        if outro is row or not getattr(outro, 'ativo', True):
+            continue
+        if outro.data_refeicao != row.data_refeicao:
+            continue
+        if normalizar_tipo_lancamento(getattr(outro, 'tipo_lancamento', None)) != tipo_uma:
+            continue
+        if _mesmo_paciente_mapa(row, outro):
+            return outro
+    return None
+
+
+def _novo_lancamento_uma(src, tipo_uma, texto):
+    """Lançamento só de LVE, fórmula, enteral ou suplemento, sem cardápio."""
+    campo = CAMPOS_UMA_POR_TIPO[tipo_uma]
+    agora = now_brasilia()
+    linha = NutMapaRefeicao(
+        cliente_id=getattr(src, 'cliente_id', None) or write_cliente_id(),
+        data_refeicao=src.data_refeicao,
+        paciente_id=src.paciente_id,
+        adm=src.adm,
+        leito=src.leito,
+        prontuario=src.prontuario,
+        nome=src.nome,
+        idade=src.idade,
+        diagnostico=src.diagnostico,
+        dieta=src.dieta,
+        dieta_id=getattr(src, 'dieta_id', None),
+        tipo_lancamento=tipo_uma,
+        observacoes=None,
+        clinica=src.clinica,
+        enfermaria=src.enfermaria,
+        fl_desjejum=False,
+        fl_colacao=False,
+        fl_almoco=False,
+        fl_merenda=False,
+        fl_jantar=False,
+        fl_ceia=False,
+        obs_etiqueta=None,
+        extras=None,
+        suplementos=None,
+        enteral=None,
+        formula_infantil=None,
+        lve=None,
+        substituicoes=None,
+        data_inclusao=agora,
+        usuario_alteracao=(getattr(src, 'usuario_alteracao', None) or 'sistema')[:80],
+        data_atualizacao=agora,
+        data_saida=None,
+        motivo_saida=None,
+        hospital_transferencia=None,
+        ativo=True,
+    )
+    setattr(linha, campo, texto)
+    return linha
+
+
+def _desligar_cardapio_uma(row):
+    """Lançamento de LVE/fórmula/enteral/suplemento não carrega refeição nem cardápio."""
+    mudou = False
+    for flag in MEAL_FLAG_FIELD.values():
+        if getattr(row, flag, False):
+            setattr(row, flag, False)
+            mudou = True
+    if (getattr(row, 'substituicoes', None) or '').strip():
+        row.substituicoes = None
+        mudou = True
+    return mudou
+
+
+def separar_lancamentos_uma(data_ref):
+    """Tira LVE, fórmula infantil, enteral e suplemento da linha do cardápio.
+
+    Cada um vira um lançamento próprio, que pode ser apagado sem dar alta
+    e sem alterar o cardápio da dieta.
+    """
+    if not data_ref:
+        return 0
+    rows = list(
+        apply_cliente_filter(
+            NutMapaRefeicao.query.filter_by(data_refeicao=data_ref, ativo=True),
+            NutMapaRefeicao,
+        ).all()
+    )
+    mudou = 0
+    for row in list(rows):
+        tipo = normalizar_tipo_lancamento(getattr(row, 'tipo_lancamento', None))
+        if tipo in TIPOS_LANCAMENTO_UMA:
+            if _desligar_cardapio_uma(row):
+                mudou += 1
+            continue
+        if tipo not in TIPOS_LANCAMENTO_DIETA:
+            continue
+        for tipo_uma, campo in CAMPOS_UMA_POR_TIPO.items():
+            texto = (getattr(row, campo, None) or '').strip()
+            if not texto:
+                continue
+            irmao = _buscar_irmao_uma(row, tipo_uma, rows)
+            if irmao is None:
+                irmao = _novo_lancamento_uma(row, tipo_uma, texto)
+                db.session.add(irmao)
+                db.session.flush()
+                garantir_grupo_lancamento(irmao)
+                rows.append(irmao)
+            elif not (getattr(irmao, campo, None) or '').strip():
+                setattr(irmao, campo, texto)
+            setattr(row, campo, None)
+            mudou += 1
+    if mudou:
+        db.session.commit()
+    return mudou
+
+
+def aplicar_campos_uma_independentes(row, dados, usuario=None, apagar_vazio=False):
+    """Grava LVE, fórmula, enteral e suplemento fora da linha do cardápio.
+
+    Campo vazio na própria linha U.M.A. apaga esse lançamento.
+    Na linha da dieta, o vazio só apaga se apagar_vazio=True (tela da U.M.A.).
+    """
+    if not row or not isinstance(dados, dict):
+        return row
+    tipo_row = normalizar_tipo_lancamento(getattr(row, 'tipo_lancamento', None))
+    candidatos = list(
+        apply_cliente_filter(
+            NutMapaRefeicao.query.filter_by(data_refeicao=row.data_refeicao, ativo=True),
+            NutMapaRefeicao,
+        ).all()
+    )
+    if row not in candidatos:
+        candidatos.append(row)
+    for tipo_uma, campo in CAMPOS_UMA_POR_TIPO.items():
+        if campo not in dados:
+            continue
+        bruto = dados.get(campo)
+        valor = (str(bruto).strip() if bruto is not None else '') or None
+        if tipo_row == tipo_uma:
+            setattr(row, campo, valor)
+            if not valor:
+                _aplicar_baixa_linha(
+                    row,
+                    motivo='Lançamento apagado',
+                    usuario=usuario,
+                    data_saida=row.data_refeicao,
+                )
+            else:
+                _desligar_cardapio_uma(row)
+            continue
+        if tipo_row in TIPOS_LANCAMENTO_DIETA:
+            setattr(row, campo, None)
+        if not valor:
+            if apagar_vazio:
+                irmao = _buscar_irmao_uma(row, tipo_uma, candidatos)
+                if irmao is not None:
+                    apagar_lancamento_uma(irmao, usuario=usuario)
+            continue
+        irmao = _buscar_irmao_uma(row, tipo_uma, candidatos)
+        if irmao is None:
+            irmao = _novo_lancamento_uma(row, tipo_uma, valor)
+            irmao.usuario_alteracao = (usuario or 'sistema')[:80]
+            db.session.add(irmao)
+            db.session.flush()
+            garantir_grupo_lancamento(irmao)
+            candidatos.append(irmao)
+        else:
+            setattr(irmao, campo, valor)
+            _desligar_cardapio_uma(irmao)
+            if usuario:
+                irmao.usuario_alteracao = usuario[:80]
+    return row
+
+
+def apagar_lancamento_uma(row, usuario=None):
+    """Apaga só este lançamento de LVE, fórmula, enteral ou suplemento."""
+    if not row or not eh_lancamento_uma(getattr(row, 'tipo_lancamento', None)):
+        raise ValueError('Este lançamento não é de LVE, fórmula, enteral ou suplemento')
+    _aplicar_baixa_linha(
+        row,
+        motivo='Lançamento apagado',
+        usuario=usuario,
+        data_saida=row.data_refeicao or date.today(),
+    )
+    gid = getattr(row, 'lancamento_grupo_id', None)
+    if gid and row.data_refeicao:
+        futuros = (
+            NutMapaRefeicao.query.filter(
+                NutMapaRefeicao.lancamento_grupo_id == gid,
+                NutMapaRefeicao.ativo.is_(True),
+                NutMapaRefeicao.id != row.id,
+                NutMapaRefeicao.data_refeicao > row.data_refeicao,
+            )
+            .all()
+        )
+        for futuro in futuros:
+            _aplicar_baixa_linha(
+                futuro,
+                motivo='Lançamento apagado',
+                usuario=usuario,
+                data_saida=futuro.data_refeicao,
+            )
     return row
 
 

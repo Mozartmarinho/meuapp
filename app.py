@@ -371,6 +371,7 @@ def ensure_chamados_schema():
             'canal_abertura': 'VARCHAR(20) NULL',
             'contato_abertura': 'VARCHAR(120) NULL',
             'atribuido_usuario_id': 'INT NULL',
+            'prazo_execucao_horas': 'INT NULL',
         }
         for col, ddl in extras.items():
             if col not in cols:
@@ -507,6 +508,7 @@ def ensure_equipamentos_schema():
             'is_agente': 'TINYINT(1) NOT NULL DEFAULT 0',
             'em_estoque': 'TINYINT(1) NOT NULL DEFAULT 0',
             'atualizado_em': 'DATETIME NULL',
+            'prazo_execucao_horas': 'INT NULL',
         }
         for col, ddl in extras.items():
             if col not in cols:

@@ -19,6 +19,7 @@ const HEADLESS = process.env.PESAGEM_WA_HEADLESS !== '0';
 
 let Client = null;
 let LocalAuth = null;
+let MessageMedia = null;
 let puppeteer = null;
 let client = null;
 let state = 'connecting';
@@ -29,6 +30,7 @@ let starting = false;
 let loggingOut = false;
 let startError = null;
 let startAttempts = 0;
+let recovering = false;
 
 function writePid() {
   try {
@@ -65,6 +67,7 @@ function loadLibs() {
   const wweb = require('whatsapp-web.js');
   Client = wweb.Client;
   LocalAuth = wweb.LocalAuth;
+  MessageMedia = wweb.MessageMedia;
   try {
     puppeteer = require('puppeteer');
   } catch (err) {
@@ -332,9 +335,66 @@ function contextDestroyed(msg) {
     low.includes('execution context was destroyed')
     || low.includes('session closed')
     || low.includes('target closed')
+    || low.includes('detached frame')
     || low.includes('navigating frame was detached')
     || low.includes('protocol error')
   );
+}
+
+function waitUntilOpen(timeoutMs) {
+  const start = Date.now();
+  return new Promise((resolve) => {
+    const tick = () => {
+      if (client && state === 'open' && !starting) return resolve(true);
+      if (Date.now() - start >= timeoutMs) return resolve(!!(client && state === 'open'));
+      setTimeout(tick, 500);
+    };
+    tick();
+  });
+}
+
+async function recoverClient() {
+  if (recovering || loggingOut) return waitUntilOpen(70000);
+  recovering = true;
+  console.log('religando WhatsApp sem apagar a sessão');
+  try {
+    state = 'close';
+    user = null;
+    await destroyClient();
+    startAttempts = 0;
+    starting = false;
+    await startClient();
+    return waitUntilOpen(70000);
+  } finally {
+    recovering = false;
+  }
+}
+
+async function deliverMessage(to, content, options) {
+  if (!client || state !== 'open') {
+    const err = new Error('WhatsApp não está conectado. Leia o QR Code.');
+    err.statusCode = 409;
+    throw err;
+  }
+  if (options) return client.sendMessage(to, content, options);
+  return client.sendMessage(to, content);
+}
+
+async function sendWithRecovery(to, content, options) {
+  try {
+    return await deliverMessage(to, content, options);
+  } catch (err) {
+    const msg = String(err && err.message ? err.message : err);
+    if (!contextDestroyed(msg)) throw err;
+    console.error('envio interrompido, religando:', msg);
+    const ok = await recoverClient();
+    if (!ok) {
+      const again = new Error('WhatsApp não está conectado. Leia o QR Code.');
+      again.statusCode = 409;
+      throw again;
+    }
+    return deliverMessage(to, content, options);
+  }
 }
 
 async function destroyClient() {
@@ -684,7 +744,28 @@ const server = http.createServer(async (req, res) => {
       const to = toJid(body.to);
       const text = String(body.text || '').trim();
       if (!text) return json(res, 400, { ok: false, error: 'Mensagem vazia' });
-      const sent = await client.sendMessage(to, text);
+      const sent = await sendWithRecovery(to, text);
+      const id = sent && sent.id && (sent.id.id || sent.id._serialized);
+      return json(res, 200, { ok: true, id: id || null });
+    }
+    if (req.method === 'POST' && url === '/send-document') {
+      loadLibs();
+      const body = await readBody(req);
+      await hydrateStatus();
+      if (!client || state !== 'open') {
+        return json(res, 409, { ok: false, error: 'WhatsApp não está conectado. Leia o QR Code.' });
+      }
+      if (!MessageMedia) {
+        return json(res, 500, { ok: false, error: 'Envio de arquivo indisponível' });
+      }
+      const to = toJid(body.to);
+      const data = String(body.data || '').replace(/\s/g, '');
+      const filename = String(body.filename || 'documento.pdf').replace(/[\\/]/g, '').slice(0, 120);
+      const mimetype = String(body.mimetype || 'application/pdf');
+      const caption = String(body.caption || '').trim();
+      if (!data) return json(res, 400, { ok: false, error: 'Arquivo vazio' });
+      const media = new MessageMedia(mimetype, data, filename || 'documento.pdf');
+      const sent = await sendWithRecovery(to, media, caption ? { caption: caption } : undefined);
       const id = sent && sent.id && (sent.id.id || sent.id._serialized);
       return json(res, 200, { ok: true, id: id || null });
     }
@@ -723,14 +804,11 @@ process.on('SIGTERM', shutdown);
 process.on('unhandledRejection', (err) => {
   const msg = String(err && err.message ? err.message : err);
   console.error('unhandledRejection', msg);
-  if (shuttingDown || starting || client || loggingOut) return;
+  if (shuttingDown || loggingOut || recovering || starting) return;
   if (!contextDestroyed(msg)) return;
-  console.log('religando WhatsApp sem apagar a sessão');
-  setTimeout(() => {
-    startClient().catch((retryErr) => {
-      console.error('startClient retry', retryErr && retryErr.message ? retryErr.message : retryErr);
-    });
-  }, 1500);
+  recoverClient().catch((retryErr) => {
+    console.error('recover', retryErr && retryErr.message ? retryErr.message : retryErr);
+  });
 });
 
 server.listen(PORT, HOST, () => {

@@ -290,6 +290,7 @@ class Chamado(db.Model):
     patrimonio = db.Column(db.String(50), nullable=True)
     equipamento_id = db.Column(db.Integer, db.ForeignKey('equipamentos.id'), nullable=True)
     equipamento_cadastro = db.relationship('Equipamento', foreign_keys=[equipamento_id])
+    prazo_execucao_horas = db.Column(db.Integer, nullable=True)
     # Obrigatório no MySQL deste servidor
     tecnico_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
     tecnico = db.relationship('Usuario', foreign_keys=[tecnico_id], backref='chamados_tecnico')
@@ -350,6 +351,7 @@ class Chamado(db.Model):
             'equipamento': self.equipamento,
             'patrimonio': self.patrimonio,
             'equipamento_id': self.equipamento_id,
+            'prazo_execucao_horas': self.prazo_execucao_horas,
             'atendimento_notas': self.atendimento_notas,
             'atendente_id': self.atendente_id,
             'atendente': self.atendente.nome if self.atendente else None,
@@ -695,6 +697,7 @@ class Equipamento(db.Model):
     usuario_equipamento = db.Column(db.String(120))
     ip = db.Column(db.String(45))
     is_agente = db.Column(db.Boolean, default=False, nullable=False)
+    prazo_execucao_horas = db.Column(db.Integer, nullable=True)
 
     preventiva = db.relationship(
         'EquipamentoPreventiva',
@@ -750,6 +753,7 @@ class Equipamento(db.Model):
             'usuario_equipamento': self.usuario_equipamento or '',
             'ip': self.ip or '',
             'is_agente': bool(self.is_agente),
+            'prazo_execucao_horas': self.prazo_execucao_horas,
             'atualizado_em': self.atualizado_em.strftime('%d/%m/%Y %H:%M') if self.atualizado_em else None,
             **self._dict_preventiva_termo(),
         }
@@ -1335,6 +1339,48 @@ class ConhecimentoPasta(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(80), nullable=False, unique=True)
+
+
+PRAZOS_EXECUCAO_HORAS = (4, 12, 24, 48, 72)
+
+
+def normalizar_prazo_execucao(valor):
+    """Horas de execução do equipamento: 4, 12, 24, 48 ou 72. Vazio fica sem prazo."""
+    if valor is None or str(valor).strip() == '':
+        return None
+    try:
+        horas = int(valor)
+    except (TypeError, ValueError):
+        raise ValueError('Prazo de execução inválido.')
+    if horas not in PRAZOS_EXECUCAO_HORAS:
+        raise ValueError('Prazo de execução deve ser 4, 12, 24, 48 ou 72 horas.')
+    return horas
+
+
+def prazo_execucao_do_chamado(chamado):
+    """Prazo gravado na abertura; se o chamado antigo não tiver, usa o do equipamento."""
+    if chamado is None:
+        return None
+    proprio = getattr(chamado, 'prazo_execucao_horas', None)
+    if proprio:
+        try:
+            return int(proprio)
+        except (TypeError, ValueError):
+            pass
+    eq = getattr(chamado, 'equipamento_cadastro', None)
+    horas = getattr(eq, 'prazo_execucao_horas', None) if eq is not None else None
+    if not horas:
+        return None
+    try:
+        return int(horas)
+    except (TypeError, ValueError):
+        return None
+
+
+def frase_prazo_execucao(horas):
+    if not horas:
+        return ''
+    return 'Prazo de execução: %s horas.' % int(horas)
 
 
 def normalizar_prioridade(valor):

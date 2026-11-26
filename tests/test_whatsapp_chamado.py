@@ -424,6 +424,54 @@ class WhatsAppChamadoTest(unittest.TestCase):
         self.assertNotIn('Sup Elétrica', nomes)
         self.assertIn('Informática', montar_mensagem_abertura(chamado))
 
+    def test_abertura_informa_prazo_ao_cliente(self):
+        from email_service import montar_email_visualizacao_ticket
+        from whatsapp_chamados import _msg_ticket_aberto
+        self.eq.prazo_execucao_horas = 24
+        chamado = Chamado(
+            numero_chamado='OS777001',
+            cliente_id=self.cli.id,
+            tipo_servico='Manutenção corretiva',
+            descricao='Bomba parou',
+            status='Pendente',
+            tecnico_id=self.user_id,
+            setor_tecnico_id=self.setor.id,
+            mesa_id=self.mesa.id,
+            patrimonio='PAT-100',
+            equipamento_id=self.eq.id,
+            equipamento=self.eq.nome_equipamento,
+            prazo_execucao_horas=24,
+        )
+        db.session.add(chamado)
+        db.session.commit()
+        self.assertIn('Prazo de execução: 24 horas.', montar_mensagem_abertura(chamado))
+        usuario = WhatsAppChamadoUsuario(
+            telefone='21988880000',
+            nome='Maria',
+            cliente_id=self.cli.id,
+            setor_id=self.setor.id,
+            etapa='idle',
+        )
+        db.session.add(usuario)
+        db.session.commit()
+        self.assertIn('Prazo de execução: 24 horas.', _msg_ticket_aberto(usuario, chamado))
+        opener = Usuario.query.get(self.user_id)
+        _assunto, texto, html = montar_email_visualizacao_ticket(chamado, opener, 'http://local/chamados/1')
+        self.assertIn('Prazo de execução: 24 horas.', texto)
+        self.assertIn('Prazo de execução: 24 horas.', html)
+        r = self.client.post('/novo_chamado', data={
+            'cliente_id': str(self.cli.id),
+            'descricao': 'Troca da bomba',
+            'patrimonio': 'PAT-100',
+            'equipamento_id': str(self.eq.id),
+            'setor_tecnico_id': str(self.setor.id),
+            'prioridade': 'Normal',
+        }, follow_redirects=True)
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        gravado = Chamado.query.filter_by(descricao='Troca da bomba').first()
+        self.assertIsNotNone(gravado)
+        self.assertEqual(gravado.prazo_execucao_horas, 24)
+
     def test_adicionar_mesa_pelo_cadastro(self):
         html = self.client.get('/tecnicos').get_data(as_text=True)
         self.assertIn('tabMesas', html)
