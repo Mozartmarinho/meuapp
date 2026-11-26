@@ -79,20 +79,38 @@ def saudacao(agora=None):
 
 
 LINK_SISTEMA_CHAMADOS = 'www.sistemas.saogeraldoservice.com'
+MENSAGEM_ENCAMINHAMENTO_TECNICO_PADRAO = (
+    '{saudacao}, um chamado foi vinculado no seu perfil do sistema de chamados da São Geraldo Service, '
+    'entre no sistema atraves do link %s e gerencie seu atendimento.'
+) % LINK_SISTEMA_CHAMADOS
 
 
-def montar_mensagem_atribuicao_tecnico(agora=None):
-    return (
-        '%s, um chamado foi vinculado no seu perfil do sistema de chamados da São Geraldo Service, '
-        'entre no sistema atraves do link %s e gerencie seu atendimento.'
-        % (saudacao(agora), LINK_SISTEMA_CHAMADOS)
-    )
+def mensagem_encaminhamento_tecnico_efetiva(cfg=None):
+    cfg = cfg or config_ativa()
+    texto = (getattr(cfg, 'mensagem_encaminhamento_tecnico', None) or '').strip()
+    return texto or MENSAGEM_ENCAMINHAMENTO_TECNICO_PADRAO
+
+
+def aviso_tecnico_ligado(cfg=None):
+    cfg = cfg or config_ativa()
+    valor = getattr(cfg, 'aviso_tecnico_ativo', True)
+    if valor is None:
+        return True
+    return bool(valor)
+
+
+def montar_mensagem_atribuicao_tecnico(agora=None, template=None):
+    if template is None:
+        texto = mensagem_encaminhamento_tecnico_efetiva()
+    else:
+        texto = (template or '').strip() or MENSAGEM_ENCAMINHAMENTO_TECNICO_PADRAO
+    return texto.replace('{saudacao}', saudacao(agora))
 
 
 def config_ativa():
     row = WhatsAppChamadoConfig.query.order_by(WhatsAppChamadoConfig.id.asc()).first()
     if not row:
-        row = WhatsAppChamadoConfig(ativo=True)
+        row = WhatsAppChamadoConfig(ativo=True, aviso_tecnico_ativo=True)
         db.session.add(row)
         db.session.commit()
     return row
@@ -549,6 +567,8 @@ def destinos_aviso_abertura(chamado):
 
 def notificar_tecnico_atribuido(chamado, sender=None, agora=None):
     """Avisa o técnico no WhatsApp quando o chamado é vinculado ao perfil dele."""
+    if not aviso_tecnico_ligado():
+        return {'ok': False, 'skipped': True, 'disabled': True}
     if not chamado or not getattr(chamado, 'atribuido_usuario_id', None):
         return {'ok': False, 'skipped': True}
     tec = (

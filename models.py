@@ -1098,11 +1098,13 @@ class ChamadoAutomacao(db.Model):
 
 
 class WhatsAppChamadoConfig(db.Model):
-    """Liga/desliga o atendimento de mensagens no número logado."""
+    """Liga/desliga o atendimento e a mensagem enviada ao técnico."""
     __tablename__ = 'whatsapp_chamado_config'
 
     id = db.Column(db.Integer, primary_key=True)
     ativo = db.Column(db.Boolean, default=True, nullable=False)
+    aviso_tecnico_ativo = db.Column(db.Boolean, default=True, nullable=False)
+    mensagem_encaminhamento_tecnico = db.Column(db.Text)
     atualizado_em = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 

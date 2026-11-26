@@ -190,6 +190,19 @@ class NutDietaExcluida(db.Model):
     data_exclusao = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class NutGrupoDietaExcluido(db.Model):
+    """Nomes removidos do cadastro para o seed não recriar o grupo."""
+    __tablename__ = 'nut_grupos_dieta_excluidos'
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'nome', name='uq_nut_grupos_dieta_excluidos_cliente_nome'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True)
+    nome = db.Column(db.String(80), nullable=False)
+    data_exclusao = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 class NutGrupoDieta(db.Model):
     """Grupo visual de dietas (ex.: DIETAS ORAIS, LACTÁRIO)."""
     __tablename__ = 'nut_grupos_dieta'

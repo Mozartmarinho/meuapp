@@ -33,6 +33,20 @@
     </section>
   </div>
 
+  <section class="mdk-card wa-msg-tecnico">
+    <h3>Mensagem encaminhamento técnico</h3>
+    <p class="mdk-empty" style="text-align:left;padding:0 0 0.7rem">Texto enviado no WhatsApp do técnico quando o chamado é encaminhado para ele. Use <code>{saudacao}</code> para Bom dia, Boa tarde ou Boa noite.</p>
+    <label class="wa-toggle">
+      <input type="checkbox" id="waAvisoTecnico" {% if aviso_tecnico_ativo %}checked{% endif %}>
+      Enviar mensagem ao encaminhar para o técnico
+    </label>
+    <label class="wa-msg-label" for="waMensagemTecnico">Mensagem</label>
+    <textarea id="waMensagemTecnico" rows="4" maxlength="2000">{{ mensagem_tecnico }}</textarea>
+    <div class="wa-msg-actions">
+      <button type="button" class="mdk-btn mdk-btn-teal" id="waSalvarMensagem">Salvar</button>
+    </div>
+  </section>
+
   <section class="mdk-card" style="padding:0;overflow:visible;">
     <div class="wa-dest-head">
       <div>
@@ -84,6 +98,10 @@
 .wa-toggle { display:flex; align-items:center; gap:0.45rem; font-size:0.84rem; color:#0f2a5c; }
 .wa-fluxo { margin:0; padding-left:1.15rem; font-size:0.8rem; color:#334155; line-height:1.45; }
 .wa-dest-head { padding:1rem 1.15rem 0.5rem; }
+.wa-msg-tecnico { margin-bottom:0.8rem; }
+.wa-msg-label { display:block; margin:0.75rem 0 0.35rem; font-size:0.84rem; color:#0f2a5c; font-weight:600; }
+#waMensagemTecnico { width:100%; box-sizing:border-box; border:1px solid #cbd5e1; border-radius:8px; padding:0.65rem 0.75rem; font:inherit; font-size:0.86rem; color:#0f172a; resize:vertical; }
+.wa-msg-actions { margin-top:0.7rem; }
 </style>
 {% endblock %}
 {% block scripts %}
@@ -115,19 +133,53 @@ async function atualizarStatus() {
     setPill('unavailable', 'Falha ao consultar o WhatsApp.');
   }
 }
+async function salvarConfigWhatsapp(body, checkbox) {
+  const r = await fetch('/api/chamados/whatsapp/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const j = await r.json();
+  if (!r.ok || j.ok === false) throw new Error((j && j.error) || 'Falha');
+  if (typeof j.aviso_tecnico_ativo === 'boolean') {
+    document.getElementById('waAvisoTecnico').checked = j.aviso_tecnico_ativo;
+  }
+  if (j.mensagem_encaminhamento_tecnico) {
+    document.getElementById('waMensagemTecnico').value = j.mensagem_encaminhamento_tecnico;
+  }
+  return j;
+}
 document.getElementById('waAtivo').addEventListener('change', async function () {
   try {
-    const r = await fetch('/api/chamados/whatsapp/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ativo: this.checked }),
-    });
-    const j = await r.json();
-    if (!r.ok || j.ok === false) throw new Error(j.error || 'Falha');
+    await salvarConfigWhatsapp({ ativo: this.checked }, this);
     if (window.showToast) showToast(this.checked ? 'Atendimento ligado' : 'Atendimento desligado', 'success');
   } catch (e) {
     this.checked = !this.checked;
     if (window.showToast) showToast('Não foi possível salvar', 'error');
+  }
+});
+document.getElementById('waAvisoTecnico').addEventListener('change', async function () {
+  try {
+    await salvarConfigWhatsapp({ aviso_tecnico_ativo: this.checked });
+    if (window.showToast) showToast(this.checked ? 'Aviso ao técnico ligado' : 'Aviso ao técnico desligado', 'success');
+  } catch (e) {
+    this.checked = !this.checked;
+    if (window.showToast) showToast('Não foi possível salvar', 'error');
+  }
+});
+document.getElementById('waSalvarMensagem').addEventListener('click', async function () {
+  const btn = this;
+  btn.disabled = true;
+  try {
+    await salvarConfigWhatsapp({
+      aviso_tecnico_ativo: document.getElementById('waAvisoTecnico').checked,
+      mensagem_encaminhamento_tecnico: document.getElementById('waMensagemTecnico').value,
+    });
+    if (window.showToast) showToast('Mensagem salva', 'success');
+  } catch (e) {
+    if (window.showToast) showToast(e.message || 'Não foi possível salvar', 'error');
+  } finally {
+    btn.disabled = false;
   }
 });
 async function excluirUsuario(id) {

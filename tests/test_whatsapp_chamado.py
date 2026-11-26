@@ -132,7 +132,34 @@ class WhatsAppChamadoTest(unittest.TestCase):
         html = r.get_data(as_text=True)
         self.assertIn('Conf. Mensagem WhatsApp', html)
         self.assertIn('Cadastro de usuário WhatsApp', html)
+        self.assertIn('Mensagem encaminhamento técnico', html)
+        self.assertIn('um chamado foi vinculado', html)
+        self.assertIn('id="waMensagemTecnico"', html)
+        self.assertIn('id="waAvisoTecnico"', html)
         self.assertIn('defeito', html.lower())
+
+    def test_salva_mensagem_encaminhamento_tecnico(self):
+        from models import WhatsAppChamadoConfig
+        from whatsapp_chamados import config_ativa, montar_mensagem_atribuicao_tecnico
+        cfg = config_ativa()
+        cfg.mensagem_encaminhamento_tecnico = None
+        cfg.aviso_tecnico_ativo = True
+        db.session.commit()
+        r = self.client.post('/api/chamados/whatsapp/config', json={
+            'aviso_tecnico_ativo': False,
+            'mensagem_encaminhamento_tecnico': '{saudacao}, texto do agente para o técnico.',
+        })
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        body = r.get_json()
+        self.assertTrue(body.get('ok'))
+        self.assertFalse(body.get('aviso_tecnico_ativo'))
+        self.assertIn('texto do agente para o técnico.', body.get('mensagem_encaminhamento_tecnico') or '')
+        texto = montar_mensagem_atribuicao_tecnico(datetime(2026, 11, 25, 9, 0))
+        self.assertEqual(texto, 'Bom dia, texto do agente para o técnico.')
+        cfg = WhatsAppChamadoConfig.query.first()
+        cfg.aviso_tecnico_ativo = True
+        cfg.mensagem_encaminhamento_tecnico = None
+        db.session.commit()
 
     def test_fluxo_novo_abre_ticket(self):
         phone = '21988880000'

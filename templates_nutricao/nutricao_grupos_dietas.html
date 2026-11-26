@@ -41,7 +41,7 @@
               title="Editar">
               <i class="fas fa-edit"></i>
             </button>
-            <button class="btn btn-ghost btn-sm" type="button" onclick="excluirGrupo({{ g.id }})" title="Desativar">
+            <button class="btn btn-ghost btn-sm" type="button" onclick="excluirGrupo({{ g.id }})" title="Excluir">
               <i class="fas fa-trash"></i>
             </button>
           </td>
@@ -170,11 +170,11 @@ async function toggleGrupoAtivo(id, ativo){
 }
 
 async function excluirGrupo(id){
-  if (!confirm('Desativar este grupo de dieta?')) return;
+  if (!confirm('Excluir este grupo de dieta? Ele sai do cadastro.')) return;
   const r = await fetch(`/nutricao/api/grupos-dietas/${id}`, { method: 'DELETE' });
   const j = await r.json();
-  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao desativar','error'); return; }
-  showToast('Grupo desativado','success');
+  if (!r.ok || j.ok === false){ showToast((j && j.error) || 'Falha ao excluir','error'); return; }
+  showToast('Grupo excluído','success');
   setTimeout(() => location.reload(), 450);
 }
 </script>

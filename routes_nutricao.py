@@ -67,7 +67,9 @@ from nutricao_service import (
     normalizar_hora_limite,
     list_cardapios,
     excluir_dieta_e_cardapios,
+    excluir_grupo_dieta,
     liberar_dieta_excluida,
+    liberar_grupo_dieta_excluido,
     list_tabelas_nutrientes,
     list_alimentos,
     import_tabela_fdc,
@@ -2221,6 +2223,7 @@ def api_grupos_dietas():
             exists.ativo = bool(d.get('ativo', True))
             if 'ordem' in d and ordem > 0:
                 exists.ordem = ordem
+            liberar_grupo_dieta_excluido(nome, exists.cliente_id)
             db.session.commit()
             return jsonify({'ok': True, 'id': exists.id, 'grupo': exists.to_dict()})
         if ordem <= 0:
@@ -2233,6 +2236,7 @@ def api_grupos_dietas():
         )
         _tag_cliente(row)
         db.session.add(row)
+        liberar_grupo_dieta_excluido(nome, row.cliente_id)
         db.session.commit()
         return jsonify({'ok': True, 'id': row.id, 'grupo': row.to_dict()})
     somente = str(request.args.get('ativos', '')).lower() in ('1', 'true', 'sim')
@@ -2246,8 +2250,15 @@ def api_grupo_dieta_ops(gid):
         return jsonify({'ok': False, 'error': 'Grupo não encontrado'}), 404
 
     if request.method == 'DELETE':
-        row.ativo = False
-        db.session.commit()
+        try:
+            excluir_grupo_dieta(row)
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            return jsonify({
+                'ok': False,
+                'error': 'Não foi possível excluir o grupo porque ele ainda está em uso.',
+            }), 409
         return jsonify({'ok': True})
 
     d = request.get_json(force=True) or {}
@@ -2263,6 +2274,7 @@ def api_grupo_dieta_ops(gid):
             return jsonify({'ok': False, 'error': 'Já existe grupo com este nome'}), 400
         antigo = (row.nome or '').strip().upper()
         row.nome = nome
+        liberar_grupo_dieta_excluido(nome, row.cliente_id)
         # Mantém dieta.grupo (string) alinhado para preços/mapa
         if antigo and antigo != nome:
             scoped_query(NutDieta).filter(

@@ -919,6 +919,7 @@ def ensure_estoque_schema():
 
 
 def ensure_whatsapp_chamado_schema():
+    from sqlalchemy import inspect, text
     from models import (
         WhatsAppChamadoConfig,
         WhatsAppChamadoUsuario,
@@ -928,8 +929,23 @@ def ensure_whatsapp_chamado_schema():
         WhatsAppChamadoConfig.__table__.create(db.engine, checkfirst=True)
         WhatsAppChamadoUsuario.__table__.create(db.engine, checkfirst=True)
         WhatsAppChamadoLog.__table__.create(db.engine, checkfirst=True)
+        insp = inspect(db.engine)
+        if 'whatsapp_chamado_config' in set(insp.get_table_names()):
+            cols = {c['name'] for c in insp.get_columns('whatsapp_chamado_config')}
+            if 'aviso_tecnico_ativo' not in cols:
+                db.session.execute(text(
+                    'ALTER TABLE whatsapp_chamado_config '
+                    'ADD COLUMN aviso_tecnico_ativo BOOLEAN NOT NULL DEFAULT 1'
+                ))
+                db.session.commit()
+            if 'mensagem_encaminhamento_tecnico' not in cols:
+                db.session.execute(text(
+                    'ALTER TABLE whatsapp_chamado_config '
+                    'ADD COLUMN mensagem_encaminhamento_tecnico TEXT NULL'
+                ))
+                db.session.commit()
         if not WhatsAppChamadoConfig.query.first():
-            db.session.add(WhatsAppChamadoConfig(ativo=True))
+            db.session.add(WhatsAppChamadoConfig(ativo=True, aviso_tecnico_ativo=True))
             db.session.commit()
     except Exception:
         db.session.rollback()

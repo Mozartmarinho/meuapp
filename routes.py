@@ -3660,7 +3660,9 @@ def atender_chamado(id):
         except Exception as exc:
             print(f'Falha ao avisar técnico no WhatsApp: {exc}')
             aviso_tecnico = {'ok': False, 'error': str(exc)}
-        if aviso_tecnico.get('ok'):
+        if aviso_tecnico.get('disabled'):
+            pass
+        elif aviso_tecnico.get('ok'):
             msg += ' O técnico foi avisado no WhatsApp.'
         elif aviso_tecnico.get('skipped'):
             msg += ' O técnico não tem WhatsApp cadastrado.'
@@ -6087,7 +6089,11 @@ def equipamentos_por_cliente(cliente_ref):
 @main.route('/chamados/whatsapp-mensagem')
 @login_required
 def whatsapp_mensagem():
-    from whatsapp_chamados import config_ativa
+    from whatsapp_chamados import (
+        aviso_tecnico_ligado,
+        config_ativa,
+        mensagem_encaminhamento_tecnico_efetiva,
+    )
     cfg = config_ativa()
     usuarios = WhatsAppChamadoUsuario.query.order_by(
         WhatsAppChamadoUsuario.atualizado_em.desc()
@@ -6095,6 +6101,8 @@ def whatsapp_mensagem():
     return render_template(
         'whatsapp_mensagem.html',
         config=cfg,
+        aviso_tecnico_ativo=aviso_tecnico_ligado(cfg),
+        mensagem_tecnico=mensagem_encaminhamento_tecnico_efetiva(cfg),
         usuarios=[u.to_dict() for u in usuarios],
         clientes=[{'id': c.id, 'nome': c.nome} for c in _clientes_para_chamados()],
         setores=[{'id': s.id, 'nome': s.nome} for s in ChamadoSetor.query.filter_by(ativo=True).order_by(ChamadoSetor.nome).all()],
@@ -6116,13 +6124,29 @@ def api_chamados_whatsapp_status():
 @main.route('/api/chamados/whatsapp/config', methods=['POST'])
 @login_required
 def api_chamados_whatsapp_config():
-    from whatsapp_chamados import config_ativa
+    from whatsapp_chamados import (
+        aviso_tecnico_ligado,
+        config_ativa,
+        mensagem_encaminhamento_tecnico_efetiva,
+    )
     cfg = config_ativa()
     data = request.get_json(silent=True) or {}
     if 'ativo' in data:
         cfg.ativo = bool(data.get('ativo'))
-        db.session.commit()
-    return jsonify({'ok': True, 'ativo': bool(cfg.ativo)})
+    if 'aviso_tecnico_ativo' in data:
+        cfg.aviso_tecnico_ativo = bool(data.get('aviso_tecnico_ativo'))
+    if 'mensagem_encaminhamento_tecnico' in data:
+        texto = (data.get('mensagem_encaminhamento_tecnico') or '').strip()
+        if len(texto) > 2000:
+            return jsonify({'ok': False, 'error': 'Mensagem muito longa (máximo 2000 caracteres).'}), 400
+        cfg.mensagem_encaminhamento_tecnico = texto or None
+    db.session.commit()
+    return jsonify({
+        'ok': True,
+        'ativo': bool(cfg.ativo),
+        'aviso_tecnico_ativo': aviso_tecnico_ligado(cfg),
+        'mensagem_encaminhamento_tecnico': mensagem_encaminhamento_tecnico_efetiva(cfg),
+    })
 
 
 @main.route('/api/chamados/whatsapp/usuarios/<int:uid>', methods=['DELETE'])

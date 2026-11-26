@@ -6,7 +6,7 @@ import unicodedata
 from models import db, now_brasilia, fmt_brasilia
 from models_nutricao import (
     NutClinica, NutGrupoClinica, NutEnfermaria, NutLeito, NutDieta, NutDietaExcluida,
-    NutGrupoDieta, NutCategoriaDieta, NutPaciente, NutMapaRefeicao, NutCardapio,
+    NutGrupoDieta, NutGrupoDietaExcluido, NutCategoriaDieta, NutPaciente, NutMapaRefeicao, NutCardapio,
     NutTabelaNutrientes, NutAlimento, NutAlimentoNutriente, NutPratoLiquido,
     NutEstoqueLocal, NutUnidadeMedida, NutGrupoProduto, NutProduto, NutFornecedor,
     NutEtiqueta, NutEtiquetaCampo, NutPrecoRefeicao, NutTipoRefeicao, NutPrecoDietaTipo,
@@ -343,6 +343,8 @@ def _seed_grupos_dieta():
 
     cid = ensure_cliente_hfb().id
     for nome, ordem in nomes_seed:
+        if grupo_foi_excluido(nome, cid):
+            continue
         row = NutGrupoDieta.query.filter(
             NutGrupoDieta.cliente_id == cid,
             db.func.upper(NutGrupoDieta.nome) == nome,
@@ -366,7 +368,7 @@ def _seed_grupos_dieta():
     next_ordem = ((last.ordem or 0) + 10) if last else 110
     for (grupo,) in existentes:
         nome = (grupo or '').strip().upper()
-        if not nome:
+        if not nome or grupo_foi_excluido(nome, cid):
             continue
         if NutGrupoDieta.query.filter(
             NutGrupoDieta.cliente_id == cid,
@@ -822,6 +824,11 @@ def _ensure_nutricao_columns(force=False):
         db.session.rollback()
 
     try:
+        NutGrupoDietaExcluido.__table__.create(db.engine, checkfirst=True)
+    except Exception:
+        db.session.rollback()
+
+    try:
         NutCategoriaDieta.__table__.create(db.engine, checkfirst=True)
     except Exception:
         db.session.rollback()
@@ -984,6 +991,73 @@ def marcar_dieta_excluida(nome, cliente_id=None):
     if q.first():
         return
     db.session.add(NutDietaExcluida(nome=nome, cliente_id=cliente_id))
+
+
+def _ensure_grupos_excluidos_table():
+    try:
+        NutGrupoDietaExcluido.__table__.create(db.engine, checkfirst=True)
+    except Exception:
+        db.session.rollback()
+
+
+def _cliente_grupo_excluido(cliente_id):
+    if cliente_id is not None:
+        return cliente_id
+    try:
+        return ensure_cliente_hfb().id
+    except Exception:
+        return None
+
+
+def grupo_foi_excluido(nome, cliente_id=None):
+    """True se o grupo foi apagado na lixeira e o seed não deve recriar."""
+    nome = (nome or '').strip().upper()
+    if not nome:
+        return False
+    _ensure_grupos_excluidos_table()
+    q = NutGrupoDietaExcluido.query.filter(db.func.upper(NutGrupoDietaExcluido.nome) == nome)
+    cid = _cliente_grupo_excluido(cliente_id)
+    if cid is not None:
+        q = q.filter(db.or_(
+            NutGrupoDietaExcluido.cliente_id == cid,
+            NutGrupoDietaExcluido.cliente_id.is_(None),
+        ))
+    return q.first() is not None
+
+
+def marcar_grupo_dieta_excluido(nome, cliente_id=None):
+    nome = (nome or '').strip().upper()
+    if not nome:
+        return
+    _ensure_grupos_excluidos_table()
+    cid = _cliente_grupo_excluido(cliente_id)
+    if grupo_foi_excluido(nome, cid):
+        return
+    db.session.add(NutGrupoDietaExcluido(nome=nome, cliente_id=cid))
+
+
+def liberar_grupo_dieta_excluido(nome, cliente_id=None):
+    """Permite cadastrar de novo um grupo que tinha sido excluído."""
+    nome = (nome or '').strip().upper()
+    if not nome:
+        return
+    _ensure_grupos_excluidos_table()
+    q = NutGrupoDietaExcluido.query.filter(db.func.upper(NutGrupoDietaExcluido.nome) == nome)
+    cid = _cliente_grupo_excluido(cliente_id)
+    if cid is not None:
+        q = q.filter(db.or_(
+            NutGrupoDietaExcluido.cliente_id == cid,
+            NutGrupoDietaExcluido.cliente_id.is_(None),
+        ))
+    q.delete(synchronize_session=False)
+
+
+def excluir_grupo_dieta(row):
+    """Apaga o grupo do cadastro e impede o seed de recriá-lo."""
+    nome = (row.nome or '').strip().upper()
+    marcar_grupo_dieta_excluido(nome, getattr(row, 'cliente_id', None))
+    db.session.delete(row)
+    return nome
 
 
 def liberar_dieta_excluida(nome, cliente_id=None):
@@ -2425,6 +2499,7 @@ def salvar_opcao_uma(cid, tipo, campo, nome):
         raise ValueError('Informe o nome')
     lista = _lista_opcao_uma(tipo, campo)
     if lista == 'grupo':
+        liberar_grupo_dieta_excluido(nome, cid)
         row = _grupo_dieta_por_nome(cid, nome)
         if row:
             row.ativo = True
@@ -3767,7 +3842,7 @@ def seed_nutricao(force=False):
 
     # Backfill cliente_id on any seed rows still NULL
     for model in (
-        NutClinica, NutGrupoClinica, NutEnfermaria, NutDieta, NutDietaExcluida, NutGrupoDieta, NutCategoriaDieta, NutPaciente, NutMapaRefeicao,
+        NutClinica, NutGrupoClinica, NutEnfermaria, NutDieta, NutDietaExcluida, NutGrupoDieta, NutGrupoDietaExcluido, NutCategoriaDieta, NutPaciente, NutMapaRefeicao,
         NutCardapio, NutTabelaNutrientes, NutPratoLiquido, NutEstoqueLocal, NutUnidadeMedida,
         NutGrupoProduto, NutProduto, NutFornecedor, NutEtiqueta, NutPrecoRefeicao, NutTipoRefeicao,
         NutViaAdministracao, NutUmaItem,

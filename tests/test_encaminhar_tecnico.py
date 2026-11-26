@@ -39,11 +39,13 @@ class EncaminharTecnicoTest(unittest.TestCase):
         cls.ctx.pop()
 
     def setUp(self):
+        from models import WhatsAppChamadoConfig
         ChamadoAtendimento.query.delete()
         Chamado.query.delete()
         ChamadoTecnico.query.delete()
         Usuario.query.delete()
         Cliente.query.delete()
+        WhatsAppChamadoConfig.query.delete()
         db.session.commit()
         self.cli = Cliente(nome='Hospital Teste', ativo=True, habilitado_chamados=True)
         db.session.add(self.cli)
@@ -314,6 +316,78 @@ class EncaminharTecnicoTest(unittest.TestCase):
         self.assertEqual(chamado.atribuido_usuario_id, bruno.id)
         self.assertEqual(enviados, [])
         self.assertIn('não tem WhatsApp', (ok.get_json() or {}).get('message', ''))
+
+    def test_aviso_desligado_nao_envia_whatsapp(self):
+        from whatsapp_chamados import config_ativa
+        ana = self._tecnico('Ana Técnica', 'ana-off@example.com')
+        bruno = self._tecnico('Bruno Técnico', 'bruno-off@example.com')
+        opener = self._usuario('Solicitante', 'abre-off@example.com')
+        tec_ana = ChamadoTecnico.query.filter_by(usuario_id=ana.id).one()
+        tec_bruno = ChamadoTecnico.query.filter_by(usuario_id=bruno.id).one()
+        tec_ana.pode_atribuir = True
+        tec_bruno.whatsapp = '21988887777'
+        cfg = config_ativa()
+        cfg.aviso_tecnico_ativo = False
+        db.session.commit()
+        chamado = self._chamado(opener, 'OS000022')
+        enviados = []
+
+        def fake(to, texto):
+            enviados.append((to, texto))
+            return {'ok': True}
+
+        with patch('whatsapp_pesagem.send_whatsapp', fake):
+            ok = self._login(ana).post(
+                '/api/chamados/%s/atender' % chamado.id,
+                data={
+                    'acao': 'encaminhar',
+                    'tecnico_destino_id': str(tec_bruno.id),
+                    'instrucoes': 'Ver no local',
+                },
+            )
+        self.assertEqual(ok.status_code, 200, ok.get_json())
+        db.session.refresh(chamado)
+        self.assertEqual(chamado.atribuido_usuario_id, bruno.id)
+        self.assertEqual(enviados, [])
+        msg = (ok.get_json() or {}).get('message', '')
+        self.assertNotIn('WhatsApp', msg)
+
+    def test_mensagem_personalizada_vai_no_whatsapp(self):
+        from whatsapp_chamados import config_ativa
+        ana = self._tecnico('Ana Técnica', 'ana-msg@example.com')
+        bruno = self._tecnico('Bruno Técnico', 'bruno-msg@example.com')
+        opener = self._usuario('Solicitante', 'abre-msg@example.com')
+        tec_ana = ChamadoTecnico.query.filter_by(usuario_id=ana.id).one()
+        tec_bruno = ChamadoTecnico.query.filter_by(usuario_id=bruno.id).one()
+        tec_ana.pode_atribuir = True
+        tec_bruno.whatsapp = '21977776666'
+        cfg = config_ativa()
+        cfg.aviso_tecnico_ativo = True
+        cfg.mensagem_encaminhamento_tecnico = '{saudacao}, há um chamado no seu perfil.'
+        db.session.commit()
+        chamado = self._chamado(opener, 'OS000023')
+        enviados = []
+
+        def fake(to, texto):
+            enviados.append((to, texto))
+            return {'ok': True}
+
+        with patch('whatsapp_pesagem.send_whatsapp', fake):
+            ok = self._login(ana).post(
+                '/api/chamados/%s/atender' % chamado.id,
+                data={
+                    'acao': 'encaminhar',
+                    'tecnico_destino_id': str(tec_bruno.id),
+                    'instrucoes': 'Ver no local',
+                },
+            )
+        self.assertEqual(ok.status_code, 200, ok.get_json())
+        self.assertEqual(len(enviados), 1)
+        destino, texto = enviados[0]
+        self.assertIn('21977776666', destino)
+        self.assertIn('há um chamado no seu perfil.', texto)
+        self.assertTrue(texto.startswith(('Bom dia', 'Boa tarde', 'Boa noite')))
+        self.assertIn('avisado no WhatsApp', (ok.get_json() or {}).get('message', ''))
 
     def test_finalizar_como_outro_tecnico_conta_para_ele(self):
         ana = self._tecnico('Ana Técnica', 'ana-fim@example.com')
