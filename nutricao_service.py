@@ -583,6 +583,10 @@ def _ensure_nutricao_columns(force=False):
                 db.session.execute(text("ALTER TABLE nut_pacientes ADD COLUMN motivo_saida VARCHAR(40)"))
             if 'enfermaria' not in cols:
                 db.session.execute(text("ALTER TABLE nut_pacientes ADD COLUMN enfermaria VARCHAR(120)"))
+            if 'excluido' not in cols:
+                db.session.execute(text(
+                    "ALTER TABLE nut_pacientes ADD COLUMN excluido BOOLEAN DEFAULT 0"
+                ))
             db.session.commit()
             _ensure_index('nut_pacientes', 'ix_nut_pacientes_nome', ('nome',))
             _ensure_index('nut_pacientes', 'ix_nut_pacientes_prontuario', ('prontuario',))
@@ -5471,6 +5475,78 @@ def baixar_acompanhantes_do_paciente(paciente_id, motivo=None, data_saida=None):
         row.motivo_saida = motivo
         row.data_atualizacao = now_brasilia()
     return len(rows)
+
+
+def _fechar_mapa_do_paciente(paciente_id, usuario=None, motivo='Exclusão cadastro'):
+    """Tira o paciente do mapa de hoje em diante, sem reescrever os dias anteriores.
+
+    Se ele ainda estiver só no histórico, grava uma baixa hoje no mesmo lançamento
+    para o mapa não copiá-lo de novo nos dias seguintes.
+    """
+    if not paciente_id:
+        return
+    hoje = date.today()
+    motivo = ((motivo or 'Exclusão cadastro').strip() or 'Exclusão cadastro')[:40]
+    linhas = NutMapaRefeicao.query.filter_by(paciente_id=paciente_id).all()
+    if not linhas:
+        return
+
+    def _grupo(row):
+        if row.id and not row.lancamento_grupo_id:
+            garantir_grupo_lancamento(row)
+        if row.lancamento_grupo_id:
+            return ('g', int(row.lancamento_grupo_id))
+        return ('id', row.id)
+
+    grupos = {}
+    for row in linhas:
+        grupos.setdefault(_grupo(row), []).append(row)
+
+    for rows in grupos.values():
+        for row in rows:
+            no_prazo = row.data_refeicao is None or row.data_refeicao >= hoje
+            if row.ativo and no_prazo and not _linha_com_baixa(row):
+                _aplicar_baixa_linha(row, motivo=motivo, usuario=usuario, data_saida=hoje)
+        fechado = any(
+            r.data_refeicao and r.data_refeicao >= hoje and _linha_com_baixa(r)
+            for r in rows
+        )
+        if fechado:
+            continue
+        fontes = [
+            r for r in rows
+            if r.data_refeicao and r.data_refeicao < hoje and _linha_mapa_ativa_para_copia(r)
+        ]
+        if not fontes:
+            continue
+        src = max(fontes, key=lambda r: (r.data_refeicao, r.id or 0))
+        garantir_grupo_lancamento(src)
+        clone = _clonar_linha_mapa(src, hoje, usuario=usuario)
+        db.session.add(clone)
+        db.session.flush()
+        garantir_grupo_lancamento(clone)
+        _aplicar_baixa_linha(clone, motivo=motivo, usuario=usuario, data_saida=hoje)
+
+
+def excluir_paciente_cadastro(paciente, usuario=None):
+    """Apaga o paciente do cadastro. Alta (ativo=False) continua visível; este some da lista."""
+    if not paciente:
+        return None
+    hoje = date.today()
+    paciente.excluido = True
+    paciente.ativo = False
+    paciente.data_saida = paciente.data_saida or hoje
+    if not (paciente.motivo_saida or '').strip():
+        paciente.motivo_saida = 'Exclusão cadastro'
+    if not paciente.hora_saida:
+        paciente.hora_saida = datetime.now().strftime('%H:%M:%S')
+    _fechar_mapa_do_paciente(paciente.id, usuario=usuario, motivo='Exclusão cadastro')
+    baixar_acompanhantes_do_paciente(
+        paciente.id,
+        motivo='Exclusão cadastro',
+        data_saida=paciente.data_saida,
+    )
+    return paciente
 
 
 def registrar_saida_mapa(row, motivo, usuario=None, data_saida=None, hospital_transferencia=None):

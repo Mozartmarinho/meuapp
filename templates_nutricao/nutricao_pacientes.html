@@ -31,7 +31,7 @@
           <th>Leito</th>
           <th>Dieta</th>
           <th>Diagnóstico</th>
-          <th style="width:72px">Ações</th>
+          <th style="width:96px">Ações</th>
         </tr>
       </thead>
       <tbody id="tabelaPacientesBody">
@@ -62,7 +62,7 @@
             <button class="btn btn-ghost btn-sm" type="button" onclick="editarPacienteLinha(this)" title="Editar">
               <i class="fas fa-edit"></i>
             </button>
-            <button class="btn btn-ghost btn-sm" type="button" onclick="excluirPaciente({{ p.id }})" title="Excluir">
+            <button class="btn btn-ghost btn-sm btn-apagar" type="button" onclick="excluirPaciente({{ p.id }})" title="Apagar">
               <i class="fas fa-trash"></i>
             </button>
           </td>
@@ -130,6 +130,7 @@
   padding: 0.12rem 0.28rem;
   line-height: 1.15;
 }
+.paciente-cadastro .paciente-acoes .btn-apagar { color: #b91c1c; }
 #modalOverlay .modal-dialog { max-width: 512px; }
 #modalOverlay .modal-header { padding: 0.92rem 1rem 0; gap: 0.6rem; }
 #modalOverlay .modal-header h2 { font-size: 0.96rem; }
@@ -340,15 +341,23 @@ async function salvarPacientePopup(){
 }
 
 async function excluirPaciente(id){
-  if (!confirm('Excluir este paciente?')) return;
+  if (!confirm('Apagar este paciente do cadastro? Ele sai desta lista e do mapa de hoje em diante.')) return;
   const r = await fetch(`/nutricao/api/pacientes/${id}`, { method:'DELETE' });
-  const j = await r.json();
+  let j = {};
+  try { j = await r.json(); } catch (e) { j = {}; }
   if (!r.ok || j.ok === false){
-    showToast((j && j.error) || 'Falha ao excluir','error');
+    showToast((j && (j.error || j.message)) || 'Falha ao apagar','error');
     return;
   }
-  showToast('Paciente excluído','success');
-  setTimeout(() => location.reload(), 500);
+  const tr = document.querySelector('#tabelaPacientesBody tr[data-id="' + id + '"]');
+  if (tr) tr.remove();
+  if (!document.querySelector('#tabelaPacientesBody tr[data-id]')) {
+    const tbody = document.getElementById('tabelaPacientesBody');
+    if (tbody) {
+      tbody.innerHTML = '<tr id="linhaVazia"><td colspan="11" style="text-align:center;color:#6B7280;">Nenhum paciente cadastrado.</td></tr>';
+    }
+  }
+  showToast('Paciente apagado','success');
 }
 </script>
 {% endblock %}

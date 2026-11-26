@@ -274,6 +274,8 @@ class NutPaciente(db.Model):
     altura_cm = db.Column(db.Float)
     peso_kg = db.Column(db.Float)
     ativo = db.Column(db.Boolean, default=True)
+    # Alta (ativo=False) continua no cadastro. Apagar marca excluido e some da lista.
+    excluido = db.Column(db.Boolean, default=False, index=True)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
 
     def idade(self, ref=None):
@@ -316,6 +318,7 @@ class NutPaciente(db.Model):
             'idade': self.idade(),
             'imc': self.imc(),
             'ativo': self.ativo,
+            'excluido': bool(self.excluido),
         }
 
 

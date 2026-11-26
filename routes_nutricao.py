@@ -53,7 +53,7 @@ from nutricao_service import (
     eh_lancamento_uma,
     invalidar_cache_cardapios,
     invalidar_cache_produtos_cardapio,
-    baixar_acompanhantes_do_paciente,
+    excluir_paciente_cadastro,
     paciente_ativo_no_mapa,
     MSG_ACOMP_SO_SAIDA_MAPA,
     garantir_acompanhantes_do_dia,
@@ -455,7 +455,10 @@ def fmt_data(d):
 
 
 def _list_pacientes_db(ativos_only=True, q=None, limit=50):
-    query = scoped_query(NutPaciente)
+    query = scoped_query(NutPaciente).filter(db.or_(
+        NutPaciente.excluido.is_(None),
+        NutPaciente.excluido.is_(False),
+    ))
     if ativos_only:
         query = query.filter_by(ativo=True)
     termo = (q or '').strip()
@@ -654,13 +657,7 @@ def api_paciente(pid):
     if not p:
         return jsonify({'ok': False, 'error': 'Não encontrado'}), 404
     if request.method == 'DELETE':
-        p.ativo = False
-        p.data_saida = p.data_saida or date.today()
-        baixar_acompanhantes_do_paciente(
-            p.id,
-            motivo=p.motivo_saida or 'Exclusão paciente',
-            data_saida=p.data_saida,
-        )
+        excluir_paciente_cadastro(p, usuario=_usuario_sessao())
         db.session.commit()
         return jsonify({'ok': True})
     d = request.get_json(force=True) or {}
