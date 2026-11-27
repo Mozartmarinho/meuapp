@@ -12,6 +12,7 @@ from models_nutricao import (
     NutEstoqueLocal, NutUnidadeMedida, NutGrupoProduto, NutProduto, NutFornecedor,
     NutEtiqueta, NutEtiquetaCampo, NutPrecoRefeicao, NutTipoRefeicao, NutPrecoDietaTipo,
     NutRefeicaoAcompanhante, NutRefeicaoFuncionario,
+    NutAvaliacaoNutricional, NutEvolucaoPaciente,
     NutViaAdministracao, NutUmaItem, NutUmaOpcao, NutConfigUma,
     limpar_indice_nome,
 )
@@ -628,10 +629,15 @@ def _ensure_nutricao_columns(force=False):
                 db.session.execute(text(
                     "ALTER TABLE nut_pacientes ADD COLUMN codigo_legado INT NULL"
                 ))
+            if 'unificado_em_id' not in cols:
+                db.session.execute(text(
+                    "ALTER TABLE nut_pacientes ADD COLUMN unificado_em_id INT NULL"
+                ))
             db.session.commit()
             _ensure_index('nut_pacientes', 'ix_nut_pacientes_nome', ('nome',))
             _ensure_index('nut_pacientes', 'ix_nut_pacientes_prontuario', ('prontuario',))
             _ensure_index('nut_pacientes', 'ix_nut_pacientes_codigo_legado', ('cliente_id', 'codigo_legado'))
+            _ensure_index('nut_pacientes', 'ix_nut_pacientes_unificado_em', ('unificado_em_id',))
         if 'nut_produtos' in tables:
             cols = {c['name'] for c in insp.get_columns('nut_produtos')}
             alteracoes = {
@@ -5601,6 +5607,210 @@ def _fechar_mapa_do_paciente(paciente_id, usuario=None, motivo='Exclusão cadast
         db.session.flush()
         garantir_grupo_lancamento(clone)
         _aplicar_baixa_linha(clone, motivo=motivo, usuario=usuario, data_saida=hoje)
+
+
+def _texto_cadastro(valor):
+    if valor is None:
+        return ''
+    return str(valor).strip()
+
+
+def _campo_vazio(valor):
+    if valor is None:
+        return True
+    if isinstance(valor, str):
+        return not valor.strip()
+    return False
+
+
+def _completar_cadastro_principal(principal, duplicados):
+    """O principal guarda o que já tem e recebe o que só existia nos outros."""
+    campos = (
+        'sexo', 'nascimento', 'prontuario', 'clinica', 'enfermaria', 'leito',
+        'dieta', 'altura_cm', 'peso_kg', 'codigo_legado',
+    )
+    for campo in campos:
+        if not _campo_vazio(getattr(principal, campo)):
+            continue
+        for dup in duplicados:
+            valor = getattr(dup, campo)
+            if not _campo_vazio(valor):
+                setattr(principal, campo, valor)
+                break
+    for campo in ('diagnostico', 'observacoes'):
+        base = _texto_cadastro(getattr(principal, campo))
+        extras = []
+        for dup in duplicados:
+            extra = _texto_cadastro(getattr(dup, campo))
+            if extra and extra != base and extra not in extras:
+                extras.append(extra)
+        if extras:
+            setattr(principal, campo, '\n'.join([base] + extras).strip() if base else '\n'.join(extras))
+    admissoes = [principal.admissao] + [dup.admissao for dup in duplicados]
+    admissoes = [dia for dia in admissoes if dia]
+    if admissoes:
+        principal.admissao = min(admissoes)
+
+
+def _assumir_internacao_se_preciso(principal, duplicados):
+    """Se algum cadastro ainda está internado, o principal continua no sistema."""
+    def internado(pac):
+        return bool(pac.ativo) and not bool(pac.excluido)
+
+    if internado(principal):
+        principal.excluido = False
+        principal.data_saida = None
+        principal.hora_saida = None
+        principal.motivo_saida = None
+        return
+    ativos = [dup for dup in duplicados if internado(dup)]
+    if not ativos:
+        principal.ativo = False
+        if not principal.data_saida:
+            saidas = [dup.data_saida for dup in duplicados if dup.data_saida]
+            if saidas:
+                principal.data_saida = max(saidas)
+        return
+    atual = max(ativos, key=lambda pac: ((pac.admissao or date.min), pac.id or 0))
+    for campo in ('clinica', 'enfermaria', 'leito', 'dieta'):
+        valor = getattr(atual, campo)
+        if not _campo_vazio(valor):
+            setattr(principal, campo, valor)
+    principal.ativo = True
+    principal.excluido = False
+    principal.data_saida = None
+    principal.hora_saida = None
+    principal.motivo_saida = None
+
+
+def unificar_pacientes(principal, duplicados, usuario=None):
+    """Leva mapa, acompanhante, avaliação e evolução para o principal e some com o resto.
+
+    Os outros cadastros ficam excluídos: não entram em lista, relatório nem marcação.
+    """
+    if not principal:
+        raise ValueError('Escolha o paciente principal.')
+    outros = []
+    vistos = set()
+    for dup in duplicados or []:
+        if not dup or dup.id == principal.id or dup.id in vistos:
+            continue
+        if bool(dup.excluido) or bool(principal.excluido):
+            raise ValueError('Paciente já unificado não entra de novo.')
+        if (
+            dup.cliente_id and principal.cliente_id
+            and int(dup.cliente_id) != int(principal.cliente_id)
+        ):
+            raise ValueError('Os pacientes precisam ser do mesmo hospital.')
+        vistos.add(dup.id)
+        outros.append(dup)
+    if not outros:
+        raise ValueError('Leve ao menos dois pacientes para unificar.')
+
+    _completar_cadastro_principal(principal, outros)
+    _assumir_internacao_se_preciso(principal, outros)
+    principal.excluido = False
+
+    hoje = date.today()
+    hora = datetime.now().strftime('%H:%M:%S')
+    for dup in outros:
+        NutMapaRefeicao.query.filter_by(paciente_id=dup.id).update({
+            NutMapaRefeicao.paciente_id: principal.id,
+            NutMapaRefeicao.nome: principal.nome,
+            NutMapaRefeicao.prontuario: principal.prontuario,
+        }, synchronize_session=False)
+        NutRefeicaoAcompanhante.query.filter_by(paciente_id=dup.id).update({
+            NutRefeicaoAcompanhante.paciente_id: principal.id,
+        }, synchronize_session=False)
+        NutAvaliacaoNutricional.query.filter_by(paciente_id=dup.id).update({
+            NutAvaliacaoNutricional.paciente_id: principal.id,
+        }, synchronize_session=False)
+        NutEvolucaoPaciente.query.filter_by(paciente_id=dup.id).update({
+            NutEvolucaoPaciente.paciente_id: principal.id,
+        }, synchronize_session=False)
+        dup.excluido = True
+        dup.ativo = False
+        dup.unificado_em_id = principal.id
+        dup.data_saida = dup.data_saida or hoje
+        dup.motivo_saida = 'Unificação'
+        if not dup.hora_saida:
+            dup.hora_saida = hora
+    return principal
+
+
+def chave_nome_unificacao(nome):
+    """Nome comparável: sem acento, sem caixa e com um espaço só entre as palavras."""
+    texto = unicodedata.normalize('NFD', str(nome or ''))
+    texto = ''.join(c for c in texto if unicodedata.category(c) != 'Mn')
+    texto = texto.casefold()
+    texto = re.sub(r'\s+', ' ', texto).strip()
+    return texto
+
+
+def escolher_principal_unificacao(membros, contagem_mapa=None):
+    """Internado, prontuário, mais linhas de mapa e, por fim, o menor id."""
+    contagem_mapa = contagem_mapa or {}
+
+    def ordem(pac):
+        internado = bool(pac.ativo) and not bool(getattr(pac, 'excluido', False))
+        tem_prontuario = bool(_texto_cadastro(getattr(pac, 'prontuario', None)))
+        mapas = int(contagem_mapa.get(pac.id, 0) or 0)
+        return (0 if internado else 1, 0 if tem_prontuario else 1, -mapas, pac.id or 0)
+
+    return min(membros, key=ordem)
+
+
+def listar_grupos_duplicados_nascimento():
+    """Grupos com o mesmo hospital, o mesmo nome e a mesma data de nascimento.
+
+    Sem nascimento não entra. Quem já foi excluído também não.
+    """
+    from sqlalchemy import func
+    pacientes = (
+        NutPaciente.query
+        .filter(NutPaciente.nascimento.isnot(None))
+        .filter(db.or_(NutPaciente.excluido.is_(None), NutPaciente.excluido.is_(False)))
+        .all()
+    )
+    contagem = dict(
+        db.session.query(NutMapaRefeicao.paciente_id, func.count(NutMapaRefeicao.id))
+        .filter(NutMapaRefeicao.paciente_id.isnot(None))
+        .group_by(NutMapaRefeicao.paciente_id)
+        .all()
+    )
+    agrupados = {}
+    for pac in pacientes:
+        nome = chave_nome_unificacao(pac.nome)
+        if not nome or not pac.nascimento:
+            continue
+        chave = (pac.cliente_id, nome, pac.nascimento)
+        agrupados.setdefault(chave, []).append(pac)
+    grupos = []
+    for (cliente_id, nome, nascimento), membros in agrupados.items():
+        if len(membros) < 2:
+            continue
+        principal = escolher_principal_unificacao(membros, contagem)
+        outros = [pac for pac in membros if pac.id != principal.id]
+        grupos.append({
+            'cliente_id': cliente_id,
+            'nome': nome,
+            'nascimento': nascimento,
+            'principal': principal,
+            'outros': outros,
+            'contagem_mapa': contagem,
+        })
+    grupos.sort(key=lambda g: (g['cliente_id'] or 0, g['nome'], g['nascimento'], g['principal'].id or 0))
+    return grupos
+
+
+def aplicar_unificacao_duplicados(usuario='unificacao'):
+    """Unifica cada grupo duplicado. Não grava sozinho: quem chama dá o commit."""
+    grupos = listar_grupos_duplicados_nascimento()
+    desativados = 0
+    for grupo in grupos:
+        unificar_pacientes(grupo['principal'], grupo['outros'], usuario=usuario)
+        desativados += len(grupo['outros'])
+    return {'grupos': len(grupos), 'desativados': desativados}
 
 
 def excluir_paciente_cadastro(paciente, usuario=None):

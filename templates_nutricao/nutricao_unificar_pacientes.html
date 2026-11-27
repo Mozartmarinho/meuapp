@@ -1,0 +1,367 @@
+{% extends "base_nutricao.html" %}
+{% block content %}
+<div class="unificar-pacientes">
+  <div class="page-header">
+    <h1>Unificar paciente</h1>
+    <p>Escolha os cadastros iguais, marque o principal e una. O histórico vai para ele. Os demais saem do sistema.</p>
+  </div>
+
+  <div id="unificarAviso" class="unificar-aviso" hidden></div>
+
+  <div class="unificar-layout">
+    <section class="card unificar-painel">
+      <div class="unificar-painel-topo">
+        <h2>Cadastro de pacientes</h2>
+        <div class="toolbar-search">
+          <i class="fas fa-search"></i>
+          <input type="search" id="buscaUnificar" placeholder="Nome, prontuário ou leito" autocomplete="off">
+        </div>
+      </div>
+      <div class="table-container unificar-grade">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Prontuário</th>
+              <th>Admissão</th>
+              <th>Nascimento</th>
+              <th>Clínica</th>
+              <th>Leito</th>
+            </tr>
+          </thead>
+          <tbody id="gradeEsquerda"></tbody>
+        </table>
+      </div>
+      <div class="unificar-rodape">
+        <span id="contadorEsquerda">0 pacientes</span>
+        <nav class="pac-pager" aria-label="Páginas do cadastro">
+          <button class="btn btn-ghost btn-sm" type="button" id="paginaAnterior" title="Página anterior">‹</button>
+          <span id="paginaLabel">1 / 1</span>
+          <button class="btn btn-ghost btn-sm" type="button" id="paginaProxima" title="Próxima página">›</button>
+        </nav>
+      </div>
+    </section>
+
+    <div class="unificar-setas">
+      <button class="btn btn-primary" type="button" id="btnAdicionar" title="Adicionar à unificação" aria-label="Adicionar à unificação">
+        <i class="fas fa-chevron-right"></i>
+      </button>
+      <button class="btn btn-ghost" type="button" id="btnRemover" title="Remover da unificação" aria-label="Remover da unificação">
+        <i class="fas fa-chevron-left"></i>
+      </button>
+    </div>
+
+    <section class="card unificar-painel">
+      <div class="unificar-painel-topo">
+        <h2>Pacientes para unificar</h2>
+      </div>
+      <div class="table-container unificar-grade">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Principal</th>
+              <th>Nome</th>
+              <th>Prontuário</th>
+              <th>Admissão</th>
+              <th>Nascimento</th>
+              <th>Leito</th>
+            </tr>
+          </thead>
+          <tbody id="gradeDireita"></tbody>
+        </table>
+      </div>
+      <div class="unificar-rodape unificar-rodape-acao">
+        <span id="contadorDireita">Nenhum paciente</span>
+        <button class="btn btn-primary" type="button" id="btnUnificar" disabled>Unificar</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+<style>
+.unificar-pacientes .page-header { margin-bottom: 1rem; }
+.unificar-pacientes .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
+.unificar-pacientes .page-header p { font-size: 0.76rem; margin-top: 0.2rem; max-width: 46rem; }
+.unificar-aviso {
+  margin-bottom: 0.8rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.35rem;
+  font-size: 0.78rem;
+}
+.unificar-aviso.erro { background: #fef2f2; color: #991b1b; }
+.unificar-aviso.ok { background: #ecfdf3; color: #166534; }
+.unificar-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: stretch;
+}
+.unificar-painel { padding: 0.75rem; margin-bottom: 0; display: flex; flex-direction: column; min-width: 0; }
+.unificar-painel-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.55rem;
+}
+.unificar-painel h2 { margin: 0; font-size: 0.92rem; }
+.unificar-pacientes .toolbar-search {
+  gap: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  max-width: 240px;
+  flex: 1 1 180px;
+}
+.unificar-pacientes .toolbar-search input {
+  font-size: 0.72rem;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  width: 100%;
+  min-width: 0;
+}
+.unificar-grade { max-height: 62vh; overflow: auto; }
+.unificar-pacientes .data-table { font-size: 0.78rem; }
+.unificar-pacientes .data-table th,
+.unificar-pacientes .data-table td {
+  padding: 0.28rem 0.5rem;
+  font-size: 0.74rem;
+  line-height: 1.2;
+  vertical-align: middle;
+}
+.unificar-pacientes .data-table tbody tr { cursor: pointer; }
+.unificar-pacientes .data-table tr.selecionada { background: rgba(27, 79, 156, 0.12); }
+.unificar-pacientes .linha-vazia { text-align: center; color: #6b7280; cursor: default; }
+.unificar-setas {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.55rem;
+}
+.unificar-setas .btn { width: 2.4rem; height: 2.4rem; padding: 0; }
+.unificar-rodape {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-top: 0.55rem;
+  font-size: 0.75rem;
+  color: #374151;
+}
+.unificar-rodape-acao { justify-content: flex-end; }
+.unificar-pacientes .pac-pager { display: flex; align-items: center; gap: 0.35rem; }
+.unificar-pacientes .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+@media (max-width: 900px) {
+  .unificar-layout { grid-template-columns: 1fr; }
+  .unificar-setas { flex-direction: row; justify-content: center; }
+  .unificar-setas .fa-chevron-right { transform: rotate(90deg); }
+  .unificar-setas .fa-chevron-left { transform: rotate(90deg); }
+}
+</style>
+
+<script>
+(function () {
+  const esquerdaBody = document.getElementById('gradeEsquerda');
+  const direitaBody = document.getElementById('gradeDireita');
+  const busca = document.getElementById('buscaUnificar');
+  const aviso = document.getElementById('unificarAviso');
+  const btnUnificar = document.getElementById('btnUnificar');
+  let pagina = 1;
+  let paginas = 1;
+  let total = 0;
+  let selecionadoEsquerda = null;
+  let selecionadoDireita = null;
+  let principalId = null;
+  const direita = new Map();
+  let timerBusca = null;
+
+  function esc(valor) {
+    return String(valor == null ? '' : valor)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function fmtData(iso) {
+    if (!iso) return '-';
+    const p = String(iso).slice(0, 10).split('-');
+    return p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0]) : iso;
+  }
+
+  function mostrarAviso(texto, tipo) {
+    aviso.hidden = !texto;
+    aviso.className = 'unificar-aviso ' + (tipo || '');
+    aviso.textContent = texto || '';
+  }
+
+  function atualizarBotao() {
+    btnUnificar.disabled = direita.size < 2 || !principalId || !direita.has(principalId);
+  }
+
+  function renderDireita() {
+    const linhas = Array.from(direita.values());
+    if (!linhas.length) {
+      direitaBody.innerHTML = '<tr class="linha-vazia"><td colspan="6">Nenhum paciente nesta lista.</td></tr>';
+    } else {
+      direitaBody.innerHTML = linhas.map(function (p) {
+        const sel = p.id === selecionadoDireita ? ' selecionada' : '';
+        const marcado = p.id === principalId ? ' checked' : '';
+        return '<tr class="' + sel.trim() + '" data-id="' + p.id + '">' +
+          '<td><input type="radio" name="principal" value="' + p.id + '"' + marcado + ' aria-label="Principal"></td>' +
+          '<td><strong>' + esc(p.nome) + '</strong></td>' +
+          '<td>' + esc(p.prontuario || '-') + '</td>' +
+          '<td>' + esc(fmtData(p.admissao)) + '</td>' +
+          '<td>' + esc(fmtData(p.nascimento)) + '</td>' +
+          '<td>' + esc(p.leito || '-') + '</td></tr>';
+      }).join('');
+    }
+    document.getElementById('contadorDireita').textContent = linhas.length
+      ? (linhas.length + (linhas.length === 1 ? ' paciente' : ' pacientes'))
+      : 'Nenhum paciente';
+    atualizarBotao();
+  }
+
+  function renderEsquerda(lista) {
+    const visiveis = (lista || []).filter(function (p) { return !direita.has(p.id); });
+    if (!visiveis.length) {
+      esquerdaBody.innerHTML = '<tr class="linha-vazia"><td colspan="6">Nenhum paciente neste cadastro.</td></tr>';
+    } else {
+      esquerdaBody.innerHTML = visiveis.map(function (p) {
+        const sel = p.id === selecionadoEsquerda ? ' selecionada' : '';
+        return '<tr class="' + sel.trim() + '" data-id="' + p.id + '"' +
+          ' data-json="' + esc(JSON.stringify(p)) + '">' +
+          '<td><strong>' + esc(p.nome) + '</strong></td>' +
+          '<td>' + esc(p.prontuario || '-') + '</td>' +
+          '<td>' + esc(fmtData(p.admissao)) + '</td>' +
+          '<td>' + esc(fmtData(p.nascimento)) + '</td>' +
+          '<td>' + esc(p.clinica || '-') + '</td>' +
+          '<td>' + esc(p.leito || '-') + '</td></tr>';
+      }).join('');
+    }
+    document.getElementById('contadorEsquerda').textContent = total + (total === 1 ? ' paciente' : ' pacientes');
+    document.getElementById('paginaLabel').textContent = pagina + ' / ' + paginas;
+  }
+
+  async function carregar() {
+    const params = new URLSearchParams({
+      q: busca.value || '',
+      incluir_inativos: '1',
+      page: String(pagina),
+      page_size: '50',
+    });
+    const r = await fetch('/nutricao/api/pacientes?' + params.toString());
+    const j = await r.json();
+    if (!j.ok) {
+      mostrarAviso(j.error || 'Não foi possível carregar o cadastro.', 'erro');
+      return;
+    }
+    pagina = j.page || 1;
+    paginas = j.pages || 1;
+    total = j.total || 0;
+    renderEsquerda(j.pacientes || []);
+  }
+
+  function pacienteDaLinha(tr) {
+    try { return JSON.parse(tr.getAttribute('data-json')); }
+    catch (e) { return null; }
+  }
+
+  function adicionarSelecionado() {
+    const tr = esquerdaBody.querySelector('tr.selecionada');
+    const pac = tr ? pacienteDaLinha(tr) : null;
+    if (!pac) {
+      mostrarAviso('Selecione um paciente na lista da esquerda.', 'erro');
+      return;
+    }
+    mostrarAviso('');
+    if (!direita.has(pac.id)) direita.set(pac.id, pac);
+    if (!principalId || !direita.has(principalId)) principalId = pac.id;
+    selecionadoEsquerda = null;
+    selecionadoDireita = pac.id;
+    renderDireita();
+    carregar();
+  }
+
+  function removerSelecionado() {
+    if (!selecionadoDireita || !direita.has(selecionadoDireita)) {
+      mostrarAviso('Selecione um paciente na lista da direita.', 'erro');
+      return;
+    }
+    mostrarAviso('');
+    direita.delete(selecionadoDireita);
+    if (principalId === selecionadoDireita) {
+      const primeiro = direita.keys().next();
+      principalId = primeiro.done ? null : primeiro.value;
+    }
+    selecionadoDireita = null;
+    renderDireita();
+    carregar();
+  }
+
+  esquerdaBody.addEventListener('click', function (ev) {
+    const tr = ev.target.closest('tr');
+    if (!tr || tr.classList.contains('linha-vazia')) return;
+    selecionadoEsquerda = Number(tr.getAttribute('data-id'));
+    esquerdaBody.querySelectorAll('tr').forEach(function (linha) {
+      linha.classList.toggle('selecionada', linha === tr);
+    });
+  });
+  esquerdaBody.addEventListener('dblclick', function (ev) {
+    const tr = ev.target.closest('tr');
+    if (!tr || tr.classList.contains('linha-vazia')) return;
+    tr.classList.add('selecionada');
+    adicionarSelecionado();
+  });
+  direitaBody.addEventListener('click', function (ev) {
+    const tr = ev.target.closest('tr');
+    if (!tr || tr.classList.contains('linha-vazia')) return;
+    selecionadoDireita = Number(tr.getAttribute('data-id'));
+    if (ev.target.name === 'principal') principalId = selecionadoDireita;
+    renderDireita();
+  });
+  document.getElementById('btnAdicionar').addEventListener('click', adicionarSelecionado);
+  document.getElementById('btnRemover').addEventListener('click', removerSelecionado);
+  document.getElementById('paginaAnterior').addEventListener('click', function () {
+    if (pagina > 1) { pagina -= 1; carregar(); }
+  });
+  document.getElementById('paginaProxima').addEventListener('click', function () {
+    if (pagina < paginas) { pagina += 1; carregar(); }
+  });
+  busca.addEventListener('input', function () {
+    clearTimeout(timerBusca);
+    timerBusca = setTimeout(function () { pagina = 1; carregar(); }, 250);
+  });
+
+  btnUnificar.addEventListener('click', async function () {
+    const linhas = Array.from(direita.values());
+    const principal = direita.get(principalId);
+    if (linhas.length < 2 || !principal) return;
+    const outros = linhas.filter(function (p) { return p.id !== principal.id; });
+    const nomes = outros.map(function (p) { return p.nome; }).join(', ');
+    const pergunta = 'Unificar ' + linhas.length + ' cadastros em ' + principal.nome +
+      '? ' + nomes + ' deixam de aparecer no cadastro, nos relatórios e nas marcações. Os dados passam para o principal.';
+    if (!confirm(pergunta)) return;
+    btnUnificar.disabled = true;
+    const r = await fetch('/nutricao/api/unificar-pacientes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ principal_id: principal.id, ids: linhas.map(function (p) { return p.id; }) }),
+    });
+    const j = await r.json();
+    if (!j.ok) {
+      mostrarAviso(j.error || 'Não foi possível unificar.', 'erro');
+      atualizarBotao();
+      return;
+    }
+    direita.clear();
+    principalId = null;
+    selecionadoDireita = null;
+    renderDireita();
+    mostrarAviso('Pacientes unificados em ' + (j.paciente && j.paciente.nome ? j.paciente.nome : principal.nome) + '.', 'ok');
+    carregar();
+  });
+
+  carregar();
+})();
+</script>
+{% endblock %}

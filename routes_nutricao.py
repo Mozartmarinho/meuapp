@@ -54,6 +54,7 @@ from nutricao_service import (
     invalidar_cache_cardapios,
     invalidar_cache_produtos_cardapio,
     excluir_paciente_cadastro,
+    unificar_pacientes,
     paciente_ativo_no_mapa,
     MSG_ACOMP_SO_SAIDA_MAPA,
     garantir_acompanhantes_do_dia,
@@ -146,6 +147,8 @@ def _chaves_menu_nutricao(path, method):
         'cadastro_uma_suplemento', 'cadastro_uma_lve',
     )
     regras = (
+        ('/nutricao/api/unificar-pacientes', ('cadastro_pacientes',), ('cadastro_pacientes',)),
+        ('/nutricao/unificar-pacientes', ('cadastro_pacientes',), ('cadastro_pacientes',)),
         ('/nutricao/api/pacientes', ('cadastro_pacientes', 'mapa_refeicoes'), ('cadastro_pacientes', 'mapa_refeicoes')),
         ('/nutricao/pacientes', ('cadastro_pacientes',), ('cadastro_pacientes',)),
         ('/nutricao/api/refeicao-acompanhantes', ('refeicao_acompanhante', 'mapa_refeicoes'), ('refeicao_acompanhante', 'mapa_refeicoes')),
@@ -674,7 +677,10 @@ def dashboard():
         clinicas=_list_clinicas_db(somente_ativas=True),
         enfermarias=list_enfermarias(somente_ativas=True),
         dietas=_list_dietas_db(),
-        total_pacientes=scoped_query(NutPaciente).filter_by(ativo=True).count(),
+        total_pacientes=scoped_query(NutPaciente).filter(
+            NutPaciente.ativo.is_(True),
+            db.or_(NutPaciente.excluido.is_(None), NutPaciente.excluido.is_(False)),
+        ).count(),
         total_dietas=scoped_query(NutDieta).filter_by(ativo=True).count(),
         total_clinicas=scoped_query(NutClinica).filter_by(ativo=True).count(),
         alertas_estoque=[],
@@ -832,6 +838,52 @@ def api_paciente(pid):
     if linhas:
         db.session.commit()
     return jsonify({'ok': True, 'paciente': p.to_dict()})
+
+
+@nutricao.route('/nutricao/unificar-pacientes')
+def unificar_pacientes_page():
+    seed_nutricao()
+    return render_template(
+        'nutricao_unificar_pacientes.html',
+        **active('cadastro_unificar_paciente'),
+    )
+
+
+@nutricao.route('/nutricao/api/unificar-pacientes', methods=['POST'])
+def api_unificar_pacientes():
+    dados = request.get_json(force=True) or {}
+    try:
+        principal_id = int(dados.get('principal_id'))
+        ids = []
+        for item in dados.get('ids') or []:
+            pid = int(item)
+            if pid not in ids:
+                ids.append(pid)
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'Selecione os pacientes para unificar.'}), 400
+    if principal_id not in ids or len(ids) < 2:
+        return jsonify({
+            'ok': False,
+            'error': 'Marque o principal e leve ao menos dois pacientes para a lista da direita.',
+        }), 400
+    principal = _get_scoped(NutPaciente, principal_id)
+    if not principal or principal.excluido:
+        return jsonify({'ok': False, 'error': 'Paciente principal não encontrado.'}), 404
+    outros = []
+    for pid in ids:
+        if pid == principal_id:
+            continue
+        pac = _get_scoped(NutPaciente, pid)
+        if not pac or pac.excluido:
+            return jsonify({'ok': False, 'error': 'Um dos pacientes não está mais no cadastro.'}), 400
+        outros.append(pac)
+    try:
+        unificar_pacientes(principal, outros, usuario=_usuario_sessao())
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+    return jsonify({'ok': True, 'paciente': principal.to_dict()})
 
 
 # ---- REFEIÇÃO ACOMPANHANTE ----

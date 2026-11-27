@@ -176,6 +176,21 @@ def pacientes_do_mapa(data_ref, modo='ambos'):
     return saida
 
 
+def _paciente_vigente(paciente):
+    """Unificado deixa de existir: evolução e análise seguem o cadastro principal."""
+    visto = set()
+    atual = paciente
+    while atual and getattr(atual, 'excluido', False) and getattr(atual, 'unificado_em_id', None):
+        if atual.id in visto:
+            break
+        visto.add(atual.id)
+        seguinte = NutPaciente.query.get(atual.unificado_em_id)
+        if not seguinte or seguinte.id == atual.id:
+            break
+        atual = seguinte
+    return atual
+
+
 def contexto_paciente(mapa_id=None, paciente_id=None):
     linha = _linha_mapa(mapa_id)
     paciente = None
@@ -186,6 +201,7 @@ def contexto_paciente(mapa_id=None, paciente_id=None):
             paciente = NutPaciente.query.get(int(paciente_id))
         except (TypeError, ValueError):
             paciente = None
+    paciente = _paciente_vigente(paciente)
     if not linha and not paciente:
         return None
     sexo = (paciente.sexo if paciente else '') or ''

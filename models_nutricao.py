@@ -296,6 +296,8 @@ class NutPaciente(db.Model):
     ativo = db.Column(db.Boolean, default=True)
     # Alta (ativo=False) continua no cadastro. Apagar marca excluido e some da lista.
     excluido = db.Column(db.Boolean, default=False, index=True)
+    # Paciente absorvido por unificação. O cadastro some; o id aponta para quem ficou.
+    unificado_em_id = db.Column(db.Integer, nullable=True, index=True)
     # Código do paciente no sistema de origem (planilha PACIENTES).
     codigo_legado = db.Column(db.Integer, index=True)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)

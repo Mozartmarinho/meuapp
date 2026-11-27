@@ -23,7 +23,7 @@
         } catch (e) { /* ignore */ }
     })();
     </script>
-    {% set cadastro_pages = active_page in ['cadastro_pacientes','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_categorias','cadastro_grupos_dietas','cadastro_dietas','cadastro_vias','cadastro_uma_formula','cadastro_uma_enteral','cadastro_uma_suplemento','cadastro_uma_lve','cadastro_tipos_refeicao','cadastro_cardapios','cadastro_precos_refeicoes','cadastro_nutricional','cadastro_pratos_liquidos','cadastro_produtos','cadastro_fornecedores','cadastro_etiquetas'] %}
+    {% set cadastro_pages = active_page in ['cadastro_pacientes','cadastro_unificar_paciente','cadastro_clinicas','cadastro_enfermarias','cadastro_leitos','cadastro_categorias','cadastro_grupos_dietas','cadastro_dietas','cadastro_vias','cadastro_uma_formula','cadastro_uma_enteral','cadastro_uma_suplemento','cadastro_uma_lve','cadastro_tipos_refeicao','cadastro_cardapios','cadastro_precos_refeicoes','cadastro_nutricional','cadastro_pratos_liquidos','cadastro_produtos','cadastro_fornecedores','cadastro_etiquetas'] %}
     {% set impressoes_pages = active_page in ['relatorio_mapa_uma','impressao_etiquetas','impressao_mapa','impressao_mapa_distribuicao','totalizacao_dietas_refeicoes','totalizacao_substituicoes','totalizacao_consumo','cardapio_servido'] %}
     {% set financeiro_pages = active_page in ['relatorios','faturamento','faturamento_valores'] %}
     <header class="app-topbar">
@@ -88,6 +88,12 @@
                         <a href="{{ url_for('nutricao.pacientes') }}" class="{% if active_page == 'cadastro_pacientes' or active_page == 'pacientes' %}active{% endif %}" title="Pacientes">
                             <i class="fas fa-user-injured menu-icon"></i>
                             <span class="menu-label">Pacientes</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('nutricao.unificar_pacientes_page') }}" class="{% if active_page == 'cadastro_unificar_paciente' %}active{% endif %}" title="Unificar paciente">
+                            <i class="fas fa-compress-arrows-alt menu-icon"></i>
+                            <span class="menu-label">Unificar paciente</span>
                         </a>
                     </li>
                     {% endif %}
