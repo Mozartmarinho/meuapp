@@ -3153,7 +3153,7 @@ function destacarPacienteSelecionado(id){
 
 function agendarBuscaPaciente(delay){
   clearTimeout(buscaPacienteTimer);
-  buscaPacienteTimer = setTimeout(buscarPacientesPorNome, delay == null ? 280 : delay);
+  buscaPacienteTimer = setTimeout(buscarPacientesPorNome, delay == null ? 120 : delay);
 }
 
 function htmlCadastrarPaciente(q){
@@ -3181,9 +3181,17 @@ async function buscarPacientesPorNome(){
     box.innerHTML = '<div class="busca-pac-vazio">Digite o nome ou o prontuário para filtrar o cadastro.</div>';
     return;
   }
-  box.innerHTML = '<div class="busca-pac-vazio">Buscando...</div>';
+  if (!box.querySelector('.busca-pac-item')) {
+    box.innerHTML = '<div class="busca-pac-vazio">Buscando...</div>';
+  }
+  if (window._buscaPacAbort) window._buscaPacAbort.abort();
+  const ctrl = new AbortController();
+  window._buscaPacAbort = ctrl;
   try {
-    const r = await fetch('/nutricao/api/pacientes?q=' + encodeURIComponent(q) + '&limit=30', { sgSkipLoading: true });
+    const r = await fetch('/nutricao/api/pacientes?q=' + encodeURIComponent(q) + '&limit=30&rapida=1', {
+      sgSkipLoading: true,
+      signal: ctrl.signal,
+    });
     if (seq !== window._buscaPacSeq) return;
     const j = await r.json();
     if (!r.ok || (j && j.ok === false)) throw new Error((j && j.error) || 'falha');
@@ -3201,7 +3209,7 @@ async function buscarPacientesPorNome(){
     box.innerHTML = lista.map(p => `
       <button type="button" class="busca-pac-item${pacienteSelecionadoInserir && String(pacienteSelecionadoInserir.id) === String(p.id) ? ' selected' : ''}" data-pac-id="${p.id}" onclick="selecionarPacienteInserir(${p.id})">
         <strong>${esc(p.nome)}</strong>
-        <small>Pront: ${esc(p.prontuario || '-')} · Idade: ${p.idade != null ? p.idade : '-'} · ${esc(p.clinica || '')}</small>
+        <small>Pront: ${esc(p.prontuario || '-')} · Admissão: ${esc(formatDateBR(p.admissao))} · Idade: ${p.idade != null ? p.idade : '-'} · ${esc(p.clinica || '')}</small>
       </button>
     `).join('') + `
       <div class="busca-pac-vazio">
@@ -3211,7 +3219,7 @@ async function buscarPacientesPorNome(){
         </div>
       </div>`;
   } catch (e) {
-    if (seq !== window._buscaPacSeq) return;
+    if ((e && e.name === 'AbortError') || seq !== window._buscaPacSeq) return;
     box.innerHTML = htmlCadastrarPaciente(q).replace('Nenhum paciente encontrado', 'Não foi possível buscar. Cadastre ou tente de novo');
   }
 }

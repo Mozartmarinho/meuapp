@@ -499,6 +499,75 @@ def _list_pacientes_db(ativos_only=True, q=None, limit=50, offset=0):
     return [p.to_dict() for p in query.all()]
 
 
+def _normalizar_termo_busca(termo):
+    return ' '.join((termo or '').split())
+
+
+def _padrao_prefixo(termo):
+    """Prefixo escapado para LIKE usar o índice de nome ou prontuário."""
+    texto = _normalizar_termo_busca(termo)
+    if not texto:
+        return None
+    texto = texto.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+    return texto + '%'
+
+
+def _busca_rapida_pacientes(q, limit=30):
+    """Autocomplete do mapa: prefixo no índice, sem COUNT e sem varrer o cadastro.
+
+    O ilike do SQLAlchemy vira lower(coluna) LIKE lower('%termo%'). As duas
+    coisas impedem o índice e, com o COUNT da paginação, cada tecla lia a
+    tabela inteira. Aqui o MySQL usa o índice (collation já ignora maiúsculas)
+    e para nos primeiros resultados.
+    """
+    termo = _normalizar_termo_busca(q)
+    prefixo = _padrao_prefixo(termo)
+    if not prefixo:
+        return []
+    try:
+        limite = int(limit or 30)
+    except (TypeError, ValueError):
+        limite = 30
+    limite = min(max(limite, 1), 50)
+    base = scoped_query(NutPaciente).filter(db.or_(
+        NutPaciente.excluido.is_(None),
+        NutPaciente.excluido.is_(False),
+    ))
+
+    def por_prefixo(coluna):
+        return (
+            base.filter(coluna.like(prefixo, escape='\\'))
+            .order_by(NutPaciente.nome, NutPaciente.id)
+            .limit(limite)
+            .all()
+        )
+
+    so_digitos = termo.isdigit()
+    primeira, segunda = (
+        (NutPaciente.prontuario, NutPaciente.nome)
+        if so_digitos else
+        (NutPaciente.nome, NutPaciente.prontuario)
+    )
+    rows = por_prefixo(primeira)
+    if len(rows) < limite:
+        ids = {p.id for p in rows}
+        for p in por_prefixo(segunda):
+            if p.id not in ids:
+                rows.append(p)
+            if len(rows) >= limite:
+                break
+    # Sobrenome: só quando o começo do nome não achou ninguém.
+    if not rows and len(termo) >= 3 and not so_digitos:
+        contem = '%' + prefixo
+        rows = (
+            base.filter(NutPaciente.nome.like(contem, escape='\\'))
+            .limit(limite)
+            .all()
+        )
+        rows.sort(key=lambda p: ((p.nome or '').upper(), p.id or 0))
+    return [p.to_dict() for p in rows[:limite]]
+
+
 def _pagina_pacientes(ativos_only=True, q=None, page=1, page_size=None):
     """Página do cadastro. O tamanho da página é um grupo de pacientes."""
     try:
@@ -703,6 +772,13 @@ def api_pacientes():
             payload['linha'] = linha.to_dict()
         return jsonify(payload)
     q = request.args.get('q') or request.args.get('nome') or ''
+    if str(request.args.get('rapida') or '').lower() in ('1', 'true', 'sim'):
+        return jsonify({
+            'ok': True,
+            'pacientes': _busca_rapida_pacientes(
+                q, limit=request.args.get('limit', type=int) or 30,
+            ),
+        })
     limit = request.args.get('page_size', type=int) or request.args.get('limit', type=int) or 40
     incluir = str(request.args.get('incluir_inativos') or '').lower() in ('1', 'true', 'sim')
     pagina = _pagina_pacientes(
