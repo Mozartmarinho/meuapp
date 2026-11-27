@@ -1625,7 +1625,7 @@ function renderSlotGrade(slot){
       data-enteral="${esc(l.enteral)}" data-formula_infantil="${esc(l.formula_infantil)}" data-lve="${esc(l.lve)}">
       <td class="cell-acoes">${acoes}</td>
       <td class="cell-enfermaria" title="${esc(enfermaria)}">${esc(enfermaria) || '-'}</td>
-      <td>${vago ? '-' : (l.adm || '-')}</td>
+      <td>${vago ? '-' : formatDateBR(l.adm)}</td>
       <td class="cell-leito">${esc(leito) || '-'}</td>
       <td>${vago ? '' : (l.prontuario || '-')}</td>
       <td class="cell-nome" title="${esc(l.nome)}">${vago ? '' : (l.nome || '-')}</td>

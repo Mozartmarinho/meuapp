@@ -59,7 +59,7 @@
             data-dieta="{{ p.dieta or '' }}"
             data-diagnostico="{{ p.diagnostico or '' }}"
             data-observacoes="{{ p.observacoes or '' }}">
-          <td>{{ p.admissao or '-' }}</td>
+          <td>{% if p.admissao and p.admissao|length >= 10 %}{{ p.admissao[8:10] }}/{{ p.admissao[5:7] }}/{{ p.admissao[0:4] }}{% else %}{{ p.admissao or '-' }}{% endif %}</td>
           <td>{{ p.prontuario or '-' }}</td>
           <td><strong>{{ p.nome }}</strong></td>
           <td>{{ p.sexo_label or p.sexo or '-' }}</td>
@@ -214,6 +214,13 @@ const pacEstado = {
 };
 let buscaPacTimer = null;
 
+function formatAdmBR(iso){
+  const s = String(iso || '').slice(0, 10);
+  const p = s.split('-');
+  if (p.length !== 3 || p[0].length !== 4) return iso || '-';
+  return p[2] + '/' + p[1] + '/' + p[0];
+}
+
 function linhaPacienteHtml(p){
   const adm = p.admissao || '';
   const nasc = (p.nascimento || '').slice(0, 10);
@@ -230,7 +237,7 @@ function linhaPacienteHtml(p){
       data-dieta="${escPac(p.dieta || '')}"
       data-diagnostico="${escPac(p.diagnostico || '')}"
       data-observacoes="${escPac(obs)}">
-    <td>${escPac(adm) || '-'}</td>
+    <td>${escPac(adm ? formatAdmBR(adm) : '-')}</td>
     <td>${escPac(p.prontuario) || '-'}</td>
     <td><strong>${escPac(p.nome)}</strong></td>
     <td>${escPac(p.sexo_label || p.sexo) || '-'}</td>

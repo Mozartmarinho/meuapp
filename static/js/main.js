@@ -139,6 +139,50 @@ function formatarMoeda(valor) {
     }).format(valor);
 }
 
+(function forcarCaixaAltaCadastro() {
+    var tiposIgnorados = {
+        password: 1, email: 1, url: 1, search: 1, hidden: 1, file: 1,
+        date: 1, time: 1, 'datetime-local': 1, month: 1, week: 1,
+        number: 1, color: 1, range: 1, checkbox: 1, radio: 1,
+        button: 1, submit: 1, reset: 1, tel: 1
+    };
+
+    function deveMaiuscula(el) {
+        if (!el || el.readOnly || el.disabled) return false;
+        var tag = el.tagName;
+        if (tag !== 'INPUT' && tag !== 'TEXTAREA') return false;
+        if (el.dataset && (el.dataset.keepCase === '1' || el.dataset.caixa === 'normal')) return false;
+        if (el.classList && (el.classList.contains('sg-combo-input') || el.classList.contains('no-uppercase'))) return false;
+        if (tag === 'INPUT') {
+            var type = (el.getAttribute('type') || 'text').toLowerCase();
+            if (tiposIgnorados[type]) return false;
+        }
+        var nome = ((el.name || '') + ' ' + (el.id || '')).toLowerCase();
+        if (/senha|password|email|e-mail|token/.test(nome)) return false;
+        return true;
+    }
+
+    function aplicar(el) {
+        if (!deveMaiuscula(el)) return;
+        var upper = el.value.toLocaleUpperCase('pt-BR');
+        if (upper === el.value) return;
+        var start = el.selectionStart;
+        var end = el.selectionEnd;
+        el.value = upper;
+        if (typeof start === 'number' && el.setSelectionRange) {
+            try { el.setSelectionRange(start, end); } catch (err) { /* ignore */ }
+        }
+    }
+
+    document.addEventListener('input', function (e) {
+        if (e.isComposing) return;
+        aplicar(e.target);
+    }, true);
+    document.addEventListener('compositionend', function (e) {
+        aplicar(e.target);
+    }, true);
+})();
+
 document.querySelectorAll('form').forEach(form => {
     form.addEventListener('submit', function(e) {
         if (this.dataset.submitting) {
