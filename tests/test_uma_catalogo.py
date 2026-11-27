@@ -139,6 +139,18 @@ class UmaCatalogoTest(unittest.TestCase):
         self.assertEqual(dieta.categoria, 'formula')
         self.assertEqual(dieta.grupo, 'FORMULAS INFANTIS')
 
+        outra = salvar_cadastro_uma(base.cliente_id, {
+            'tipo': 'formula',
+            'nome': 'FORMULA TESTE 1:30',
+            'diluicao': '1:30',
+            'unidade': 'ML',
+            'produto_principal': 'NAN 1',
+            'coluna_faturamento': 'LACTENTES 0 A 6 MESES',
+        })
+        db.session.commit()
+        self.assertNotEqual(outra.id, row.id)
+        self.assertEqual(outra.produto_principal, 'NAN 1')
+
         texto = _linha_legivel_uma({
             'formula': 'FORMULA TESTE 1:30',
             'diluicao': '1:30',
@@ -189,6 +201,7 @@ class UmaCatalogoTest(unittest.TestCase):
             ('lve', 'grupo', 'GRUPO LVE TESTE'),
             ('lve', 'coluna', 'COLUNA LVE TESTE'),
             ('formula', 'grupo', 'GRUPO FORMULA TESTE'),
+            ('formula', 'coluna', 'COLUNA FORMULA TESTE'),
             ('enteral', 'coluna', 'COLUNA ENTERAL TESTE'),
         )
         for tipo, campo, nome in casos:
@@ -203,7 +216,7 @@ class UmaCatalogoTest(unittest.TestCase):
         enteral = client.get('/nutricao/cadastro-uma?tipo=enteral').get_data(as_text=True)
         formula = client.get('/nutricao/cadastro-uma?tipo=formula').get_data(as_text=True)
         lve = client.get('/nutricao/cadastro-uma?tipo=lve').get_data(as_text=True)
-        for pagina in (suplemento, enteral, formula):
+        for pagina in (suplemento, enteral):
             self.assertIn('btnAddGrupo', pagina)
             self.assertIn('btnAddColuna', pagina)
             self.assertIn('GRUPO TOTAL TESTE', pagina)
@@ -212,6 +225,14 @@ class UmaCatalogoTest(unittest.TestCase):
             self.assertIn('COLUNA ENTERAL TESTE', pagina)
             self.assertNotIn('GRUPO LVE TESTE', pagina)
             self.assertNotIn('COLUNA LVE TESTE', pagina)
+        self.assertIn('LACTENTES 0 A 6 MESES', formula)
+        self.assertIn('ELEMENTARES', formula)
+        self.assertIn('COLUNA FORMULA TESTE', formula)
+        self.assertIn('GRUPO FORMULA TESTE', formula)
+        self.assertNotIn('BÁSICAS', formula)
+        self.assertNotIn('COLUNA TOTAL TESTE', formula)
+        self.assertNotIn('COLUNA LVE TESTE', formula)
+        self.assertNotIn('COLUNA FORMULA TESTE', suplemento)
         self.assertIn('GRUPO LVE TESTE', lve)
         self.assertIn('COLUNA LVE TESTE', lve)
         self.assertIn('MISTURA NUTRITIVA S/LACTOSE', lve)

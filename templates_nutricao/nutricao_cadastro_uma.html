@@ -219,7 +219,7 @@
           <input class="form-control" id="fComposicao">
         </div>
 
-        <fieldset class="uma-box">
+        <fieldset class="uma-box so-componentes">
           <legend>Componentes e fórmulas</legend>
           <div class="uma-grid-scroll">
             <table class="uma-grid">
@@ -462,7 +462,7 @@
 .uma-flag { width: 42px; text-align: center; }
 .tipo-formula .so-suplemento, .tipo-formula .so-lve,
 .tipo-enteral .so-formula, .tipo-enteral .so-suplemento, .tipo-enteral .so-lve,
-.tipo-suplemento .so-formula, .tipo-suplemento .so-produto, .tipo-suplemento .so-fechado, .tipo-suplemento .so-lve,
+.tipo-suplemento .so-formula, .tipo-suplemento .so-produto, .tipo-suplemento .so-fechado, .tipo-suplemento .so-lve, .tipo-suplemento .so-composicao, .tipo-suplemento .so-componentes,
 .tipo-lve .so-formula, .tipo-lve .so-produto, .tipo-lve .so-fechado, .tipo-lve .so-suplemento, .tipo-lve .so-disponivel, .tipo-lve .so-composicao { display: none; }
 body.modal-open { overflow: hidden; }
 @media print {
@@ -509,13 +509,29 @@ function compVazio(){
   return { componente:'', formula:'', und:false, vol:false, codigo:'', un:'' };
 }
 
+function compLinha(componente, un, vol){
+  return { componente: componente, formula:'', und:false, vol: !!vol, codigo:'', un: un || '' };
+}
+
+function componentesIniciais(){
+  if (TIPO === 'formula') return [compLinha('ÁGUA', '', true), compLinha('FÓRMULA', 'G', true)];
+  if (TIPO === 'enteral') return [compLinha('DIETA', 'ML', true), compLinha('ÁGUA', '', true)];
+  if (TIPO === 'lve') return [
+    compLinha('VOL. ÁGUA', '', false),
+    compLinha('LEITE EM PÓ', '', true),
+    compLinha('AÇÚCAR', '', true),
+    compLinha('FARINHA', '', true)
+  ];
+  return [compVazio()];
+}
+
 function blank(){
   return {
     id: null, nome: '', diluicao: '', unidade: TIPO === 'lve' ? 'ML' : '',
     produto_disponivel: true, produto_principal: '', coluna_faturamento: '',
     grupo: '', quant_padrao: '', sistema_fechado: false, manipulado: false,
     ativo: true, cobranca: 'espelho_1', calorias: '', ptn: '', hc: '', lip: '',
-    fibras: '', composicao: '', componentes: [compVazio()]
+    fibras: '', composicao: '', componentes: componentesIniciais()
   };
 }
 
@@ -638,19 +654,24 @@ function chaveAtual(){
   return {
     nome: (fNome.value || '').trim().toUpperCase(),
     sistema: sistema,
-    manipulado: TIPO === 'suplemento' && !!document.getElementById('fManipulado').checked
+    manipulado: TIPO === 'suplemento' && !!document.getElementById('fManipulado').checked,
+    produto: (document.getElementById('fProduto').value || '').trim().toUpperCase(),
+    unidade: document.getElementById('fUnidade').value || ''
   };
 }
 
 function assinaturaAtual(){
   const chave = chaveAtual();
-  return chave.nome + '|' + chave.sistema + '|' + (chave.manipulado ? '1' : '0');
+  return chave.nome + '|' + chave.sistema + '|' + (chave.manipulado ? '1' : '0')
+    + '|' + chave.produto + '|' + chave.unidade;
 }
 
 function mesmoCadastro(item, chave){
   return (item.nome || '').toUpperCase() === chave.nome
     && (item.sistema || '') === chave.sistema
-    && !!item.manipulado === !!chave.manipulado;
+    && !!item.manipulado === !!chave.manipulado
+    && (item.produto_principal || '').toUpperCase() === chave.produto
+    && (item.unidade || '') === chave.unidade;
 }
 
 function conflitoNome(){

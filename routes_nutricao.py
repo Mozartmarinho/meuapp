@@ -454,7 +454,18 @@ def fmt_data(d):
     return f'{p[2]}/{p[1]}/{p[0]}' if len(p) == 3 else d
 
 
-def _list_pacientes_db(ativos_only=True, q=None, limit=50):
+def _pacientes_somente_ativos(q=None, incluir_inativos=False):
+    """Busca por nome traz também quem já teve alta. Lista inicial mostra só internados."""
+    if incluir_inativos:
+        return False
+    return not (q or '').strip()
+
+
+PACIENTES_POR_PAGINA = 50
+PACIENTES_SALTO_PAGINAS = 10
+
+
+def _query_pacientes(ativos_only=True, q=None):
     query = scoped_query(NutPaciente).filter(db.or_(
         NutPaciente.excluido.is_(None),
         NutPaciente.excluido.is_(False),
@@ -471,10 +482,49 @@ def _list_pacientes_db(ativos_only=True, q=None, limit=50):
             NutPaciente.enfermaria.ilike(like),
             NutPaciente.leito.ilike(like),
         ))
-    query = query.order_by(NutPaciente.nome)
+    return query, termo
+
+
+def _ordenar_pacientes(query, termo=None):
+    return query.order_by(NutPaciente.nome, NutPaciente.id)
+
+
+def _list_pacientes_db(ativos_only=True, q=None, limit=50, offset=0):
+    query, termo = _query_pacientes(ativos_only, q)
+    query = _ordenar_pacientes(query, termo)
+    if offset:
+        query = query.offset(offset)
     if limit:
         query = query.limit(limit)
     return [p.to_dict() for p in query.all()]
+
+
+def _pagina_pacientes(ativos_only=True, q=None, page=1, page_size=None):
+    """Página do cadastro. O tamanho da página é um grupo de pacientes."""
+    try:
+        tamanho = int(page_size or PACIENTES_POR_PAGINA)
+    except (TypeError, ValueError):
+        tamanho = PACIENTES_POR_PAGINA
+    tamanho = min(max(tamanho, 1), 200)
+    try:
+        pagina = int(page or 1)
+    except (TypeError, ValueError):
+        pagina = 1
+    pagina = max(pagina, 1)
+    query, _termo = _query_pacientes(ativos_only, q)
+    total = query.order_by(None).count()
+    paginas = max(1, (total + tamanho - 1) // tamanho) if total else 1
+    if pagina > paginas:
+        pagina = paginas
+    inicio = (pagina - 1) * tamanho
+    return {
+        'pacientes': _list_pacientes_db(ativos_only, q, limit=tamanho, offset=inicio),
+        'page': pagina,
+        'page_size': tamanho,
+        'total': total,
+        'pages': paginas,
+        'salto': PACIENTES_SALTO_PAGINAS,
+    }
 
 
 def _usuario_sessao():
@@ -583,9 +633,18 @@ def pacientes():
             if getattr(e, 'ativo', True)
         ]
         clinicas.append(item)
+    q = (request.args.get('q') or '').strip()
+    pagina = _pagina_pacientes(
+        False,
+        q=q,
+        page=request.args.get('page', type=int) or 1,
+        page_size=request.args.get('page_size', type=int) or PACIENTES_POR_PAGINA,
+    )
     return render_template(
         'nutricao_pacientes.html',
-        pacientes=_list_pacientes_db(False),
+        pacientes=pagina['pacientes'],
+        paginacao=pagina,
+        busca=q,
         clinicas=clinicas,
         dietas=_list_dietas_db(),
         **active('cadastro_pacientes')
@@ -644,10 +703,22 @@ def api_pacientes():
             payload['linha'] = linha.to_dict()
         return jsonify(payload)
     q = request.args.get('q') or request.args.get('nome') or ''
-    limit = request.args.get('limit', type=int) or 40
+    limit = request.args.get('page_size', type=int) or request.args.get('limit', type=int) or 40
+    incluir = str(request.args.get('incluir_inativos') or '').lower() in ('1', 'true', 'sim')
+    pagina = _pagina_pacientes(
+        _pacientes_somente_ativos(q, incluir_inativos=incluir),
+        q=q,
+        page=request.args.get('page', type=int) or 1,
+        page_size=limit,
+    )
     return jsonify({
         'ok': True,
-        'pacientes': _list_pacientes_db(True, q=q, limit=limit),
+        'pacientes': pagina['pacientes'],
+        'page': pagina['page'],
+        'page_size': pagina['page_size'],
+        'total': pagina['total'],
+        'pages': pagina['pages'],
+        'salto': pagina['salto'],
     })
 
 

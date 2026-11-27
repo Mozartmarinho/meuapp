@@ -9,11 +9,22 @@
 <div class="toolbar">
   <div class="toolbar-search">
     <i class="fas fa-search"></i>
-    <input type="text" id="buscaPaciente" placeholder="Buscar por nome, prontuário, clínica, enfermaria ou leito..." oninput="filtrarPacientes()">
+    <input type="text" id="buscaPaciente" value="{{ busca or '' }}" placeholder="Buscar por nome, prontuário, clínica, enfermaria ou leito..." oninput="filtrarPacientes()">
   </div>
-  <button class="btn btn-primary btn-sm" type="button" onclick="abrirPopupPaciente()">
-    <i class="fas fa-plus"></i> Adicionar Paciente
-  </button>
+  <div class="toolbar-acoes">
+    <nav class="pac-pager" id="pacPager" aria-label="Paginação de pacientes">
+      <button class="btn btn-ghost btn-sm" type="button" data-acao="primeira" title="Primeira página">«</button>
+      <button class="btn btn-ghost btn-sm" type="button" data-acao="voltar-bloco" title="Voltar {{ paginacao.salto }} páginas">−{{ paginacao.salto }}</button>
+      <button class="btn btn-ghost btn-sm" type="button" data-acao="anterior" title="Página anterior">‹</button>
+      <button class="btn btn-ghost btn-sm" type="button" data-acao="proxima" title="Próxima página">›</button>
+      <button class="btn btn-ghost btn-sm" type="button" data-acao="avancar-bloco" title="Avançar {{ paginacao.salto }} páginas">+{{ paginacao.salto }}</button>
+      <button class="btn btn-ghost btn-sm" type="button" data-acao="ultima" title="Última página">»</button>
+      <span class="pac-pager-contador" id="pacPagerContador">{{ paginacao.page }} / {{ paginacao.pages }}</span>
+    </nav>
+    <button class="btn btn-primary btn-sm" type="button" onclick="abrirPopupPaciente()">
+      <i class="fas fa-plus"></i> Adicionar Paciente
+    </button>
+  </div>
 </div>
 
 <div class="card" style="padding:0;overflow:hidden">
@@ -82,7 +93,15 @@
 .paciente-cadastro .page-header { margin-bottom: 1rem; }
 .paciente-cadastro .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
 .paciente-cadastro .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
-.paciente-cadastro .toolbar { gap: 0.6rem; margin-bottom: 0.8rem; }
+.paciente-cadastro .toolbar { gap: 0.6rem; margin-bottom: 0.8rem; flex-wrap: nowrap; }
+.paciente-cadastro .toolbar-acoes {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
 .paciente-cadastro .toolbar-search {
   gap: 0.4rem;
   padding: 0.44rem 0.68rem;
@@ -125,6 +144,26 @@
   gap: 0.08rem;
   white-space: nowrap;
 }
+.paciente-cadastro .pac-pager {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0;
+  margin: 0;
+}
+.paciente-cadastro .pac-pager .btn {
+  min-width: 2.2rem;
+  padding: 0.28rem 0.45rem;
+}
+.paciente-cadastro .pac-pager-contador {
+  min-width: 5.5rem;
+  text-align: right;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #374151;
+  font-variant-numeric: tabular-nums;
+}
 .paciente-cadastro .paciente-acoes .btn {
   flex-shrink: 0;
   padding: 0.12rem 0.28rem;
@@ -165,24 +204,126 @@ function escPac(v){
     .replace(/"/g, '&quot;');
 }
 
-function filtrarPacientes(){
-  const input = document.getElementById('buscaPaciente');
-  const q = (input && input.value || '').toLowerCase().trim();
-  document.querySelectorAll('#tabelaPacientesBody tr').forEach(tr => {
-    if (tr.id === 'linhaVazia') return;
-    const blob = [
-      tr.textContent || '',
-      tr.dataset.nome || '',
-      tr.dataset.prontuario || '',
-      tr.dataset.clinica || '',
-      tr.dataset.enfermaria || '',
-      tr.dataset.leito || '',
-      tr.dataset.dieta || '',
-      tr.dataset.diagnostico || ''
-    ].join(' ').toLowerCase();
-    tr.style.display = !q || blob.includes(q) ? '' : 'none';
+const pacEstado = {
+  q: {{ (busca or '') | tojson }},
+  page: {{ paginacao.page }},
+  pageSize: {{ paginacao.page_size }},
+  pages: {{ paginacao.pages }},
+  total: {{ paginacao.total }},
+  salto: {{ paginacao.salto }}
+};
+let buscaPacTimer = null;
+
+function linhaPacienteHtml(p){
+  const adm = p.admissao || '';
+  const nasc = (p.nascimento || '').slice(0, 10);
+  const obs = String(p.observacoes || '').replace(/\s+/g, ' ');
+  return `<tr data-id="${p.id}"
+      data-admissao="${escPac(adm)}"
+      data-prontuario="${escPac(p.prontuario || '')}"
+      data-nome="${escPac(p.nome || '')}"
+      data-sexo="${escPac(p.sexo || '')}"
+      data-nascimento="${escPac(nasc)}"
+      data-clinica="${escPac(p.clinica || '')}"
+      data-enfermaria="${escPac(p.enfermaria || '')}"
+      data-leito="${escPac(p.leito || '')}"
+      data-dieta="${escPac(p.dieta || '')}"
+      data-diagnostico="${escPac(p.diagnostico || '')}"
+      data-observacoes="${escPac(obs)}">
+    <td>${escPac(adm) || '-'}</td>
+    <td>${escPac(p.prontuario) || '-'}</td>
+    <td><strong>${escPac(p.nome)}</strong></td>
+    <td>${escPac(p.sexo_label || p.sexo) || '-'}</td>
+    <td>${escPac(nasc) || '-'}</td>
+    <td>${escPac(p.clinica) || '-'}</td>
+    <td>${escPac(p.enfermaria) || '-'}</td>
+    <td>${escPac(p.leito) || '-'}</td>
+    <td><span class="status status-info">${escPac(p.dieta) || '-'}</span></td>
+    <td>${escPac(p.diagnostico) || '-'}</td>
+    <td class="paciente-acoes">
+      <button class="btn btn-ghost btn-sm" type="button" onclick="editarPacienteLinha(this)" title="Editar">
+        <i class="fas fa-edit"></i>
+      </button>
+      <button class="btn btn-ghost btn-sm btn-apagar" type="button" onclick="excluirPaciente(${Number(p.id)})" title="Apagar">
+        <i class="fas fa-trash"></i>
+      </button>
+    </td>
+  </tr>`;
+}
+
+function atualizarPager(){
+  const contador = document.getElementById('pacPagerContador');
+  if (contador) contador.textContent = pacEstado.page + ' / ' + pacEstado.pages;
+  const pager = document.getElementById('pacPager');
+  if (!pager) return;
+  const noInicio = pacEstado.page <= 1;
+  const noFim = pacEstado.page >= pacEstado.pages;
+  pager.querySelectorAll('button').forEach(btn => {
+    const acao = btn.dataset.acao;
+    const paraTras = acao === 'primeira' || acao === 'anterior' || acao === 'voltar-bloco';
+    const paraFrente = acao === 'ultima' || acao === 'proxima' || acao === 'avancar-bloco';
+    btn.disabled = (paraTras && noInicio) || (paraFrente && noFim);
   });
 }
+
+function filtrarPacientes(){
+  clearTimeout(buscaPacTimer);
+  buscaPacTimer = setTimeout(function(){
+    const input = document.getElementById('buscaPaciente');
+    const q = (input && input.value || '').trim();
+    if (q === pacEstado.q) return;
+    pacEstado.q = q;
+    carregarPaginaPacientes(1);
+  }, 280);
+}
+
+async function carregarPaginaPacientes(page){
+  const tbody = document.getElementById('tabelaPacientesBody');
+  if (!tbody) return;
+  const destino = Math.max(1, page || 1);
+  const params = new URLSearchParams({
+    q: pacEstado.q || '',
+    page: String(destino),
+    page_size: String(pacEstado.pageSize || 50),
+    incluir_inativos: '1'
+  });
+  try {
+    const r = await fetch('/nutricao/api/pacientes?' + params.toString());
+    const j = await r.json();
+    if (!r.ok || j.ok === false){
+      if (typeof showToast === 'function') showToast((j && j.error) || 'Falha ao buscar pacientes', 'error');
+      return;
+    }
+    pacEstado.page = j.page || 1;
+    pacEstado.pages = j.pages || 1;
+    pacEstado.total = j.total || 0;
+    pacEstado.pageSize = j.page_size || pacEstado.pageSize;
+    const lista = j.pacientes || [];
+    tbody.innerHTML = lista.length
+      ? lista.map(linhaPacienteHtml).join('')
+      : '<tr id="linhaVazia"><td colspan="11" style="text-align:center;color:#6B7280;">Nenhum paciente encontrado.</td></tr>';
+    atualizarPager();
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('Falha ao buscar pacientes', 'error');
+  }
+}
+
+document.getElementById('pacPager')?.addEventListener('click', function(ev){
+  const btn = ev.target.closest('button[data-acao]');
+  if (!btn || btn.disabled) return;
+  const salto = pacEstado.salto || 10;
+  const atual = pacEstado.page || 1;
+  const mapa = {
+    primeira: 1,
+    'voltar-bloco': atual - salto,
+    anterior: atual - 1,
+    proxima: atual + 1,
+    'avancar-bloco': atual + salto,
+    ultima: pacEstado.pages || 1
+  };
+  carregarPaginaPacientes(mapa[btn.dataset.acao] || 1);
+});
+atualizarPager();
 
 function editarPacienteLinha(btn){
   const tr = btn.closest('tr');

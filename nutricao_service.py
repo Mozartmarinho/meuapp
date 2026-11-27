@@ -13,6 +13,7 @@ from models_nutricao import (
     NutEtiqueta, NutEtiquetaCampo, NutPrecoRefeicao, NutTipoRefeicao, NutPrecoDietaTipo,
     NutRefeicaoAcompanhante, NutRefeicaoFuncionario,
     NutViaAdministracao, NutUmaItem, NutUmaOpcao, NutConfigUma,
+    limpar_indice_nome,
 )
 from nutricao_seed_enfermarias import ENFERMARIAS_SEED, VINCULOS_CLINICA_ENFERMARIA_SEED
 from nutricao_seed_dietas import (
@@ -522,6 +523,42 @@ def _ensure_index(table, name, columns):
         db.session.rollback()
 
 
+def _garantir_unico_uma_item():
+    """O lactário repete o nome da fórmula quando o produto ou a unidade muda."""
+    from sqlalchemy import inspect, text
+    try:
+        if db.engine.dialect.name != 'mysql':
+            return
+        insp = inspect(db.engine)
+        if 'nut_uma_itens' not in set(insp.get_table_names()):
+            return
+        unicos = insp.get_unique_constraints('nut_uma_itens') or []
+        atual = next((u for u in unicos if u.get('name') == 'uq_nut_uma_item'), None)
+        cols = list((atual or {}).get('column_names') or [])
+        if 'produto_principal' in cols and 'unidade' in cols:
+            return
+        db.session.execute(text(
+            "UPDATE nut_uma_itens SET produto_principal = '' WHERE produto_principal IS NULL"
+        ))
+        db.session.execute(text(
+            "UPDATE nut_uma_itens SET unidade = '' WHERE unidade IS NULL"
+        ))
+        db.session.execute(text(
+            "UPDATE nut_uma_itens SET sistema = '' WHERE sistema IS NULL"
+        ))
+        db.session.execute(text(
+            "UPDATE nut_uma_itens SET papel = '' WHERE papel IS NULL"
+        ))
+        db.session.execute(text('ALTER TABLE nut_uma_itens DROP INDEX uq_nut_uma_item'))
+        db.session.execute(text(
+            'ALTER TABLE nut_uma_itens ADD UNIQUE KEY uq_nut_uma_item '
+            '(cliente_id, tipo, sistema, papel, manipulado, nome, produto_principal, unidade)'
+        ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 def _ensure_nutricao_columns(force=False):
     """Adiciona colunas novas em tabelas já existentes (create_all não altera).
 
@@ -587,9 +624,14 @@ def _ensure_nutricao_columns(force=False):
                 db.session.execute(text(
                     "ALTER TABLE nut_pacientes ADD COLUMN excluido BOOLEAN DEFAULT 0"
                 ))
+            if 'codigo_legado' not in cols:
+                db.session.execute(text(
+                    "ALTER TABLE nut_pacientes ADD COLUMN codigo_legado INT NULL"
+                ))
             db.session.commit()
             _ensure_index('nut_pacientes', 'ix_nut_pacientes_nome', ('nome',))
             _ensure_index('nut_pacientes', 'ix_nut_pacientes_prontuario', ('prontuario',))
+            _ensure_index('nut_pacientes', 'ix_nut_pacientes_codigo_legado', ('cliente_id', 'codigo_legado'))
         if 'nut_produtos' in tables:
             cols = {c['name'] for c in insp.get_columns('nut_produtos')}
             alteracoes = {
@@ -824,6 +866,8 @@ def _ensure_nutricao_columns(force=False):
                 db.session.commit()
     except Exception:
         db.session.rollback()
+
+    _garantir_unico_uma_item()
 
     try:
         NutDietaExcluida.__table__.create(db.engine, checkfirst=True)
@@ -2534,6 +2578,16 @@ COLUNAS_TOTALIZACAO_LVE = (
     'ISENTAS DE LACTOSE',
 )
 
+# Coluna do cadastro de fórmula infantil no lactário (faixa e tipo da fórmula).
+COLUNAS_TOTALIZACAO_FORMULA = COLUNAS_TOTALIZACAO_LVE + (
+    'HIPOALERGÊNICAS',
+    'ESPECIAIS À BASE DE PROTEÍNA DE SOJA',
+    'ESPECIAIS HIDROLISADAS',
+    'ELEMENTARES',
+    'CRIANÇA A PARTIR DE 12 MESES',
+    'SUPLEMENTO NUTRICIONAL',
+)
+
 
 def colunas_faturamento_uma(grupos=None):
     return unir_nomes_uma(list(COLUNAS_FATURAMENTO_UMA) + list(grupos or []))
@@ -2558,6 +2612,8 @@ def _lista_opcao_uma(tipo, campo):
         raise ValueError('Campo inválido')
     if tipo == 'lve':
         return 'grupo_lve' if campo == 'grupo' else 'coluna_lve'
+    if tipo == 'formula' and campo == 'coluna':
+        return 'coluna_formula'
     if campo == 'grupo':
         return 'grupo'
     return 'coluna'
@@ -2593,9 +2649,10 @@ def _nomes_seed_grupo_dieta():
     return nomes
 
 
-def _tipos_campo_uma(tipo):
-    if (tipo or '').strip().lower() == 'lve':
-        return ('lve',)
+def _tipos_campo_uma(tipo, campo='grupo'):
+    tipo = (tipo or '').strip().lower()
+    if tipo == 'lve' or (tipo == 'formula' and campo == 'coluna'):
+        return (tipo,)
     return ('formula', 'enteral', 'suplemento')
 
 
@@ -2616,6 +2673,8 @@ def listar_campo_uma(tipo, campo):
         base = GRUPOS_LVE
     elif lista == 'coluna_lve':
         base = COLUNAS_TOTALIZACAO_LVE
+    elif lista == 'coluna_formula':
+        base = COLUNAS_TOTALIZACAO_FORMULA
     else:
         grupos = [g['nome'] for g in list_grupos_dieta(somente_ativos=True)]
         base = colunas_faturamento_uma(grupos)
@@ -2654,7 +2713,7 @@ def _marcar_opcao_uma(cid, lista, nome, ativo):
 
 
 def _aplicar_renome_uma(cid, tipo, campo, atual, novo):
-    tipos = _tipos_campo_uma(tipo)
+    tipos = _tipos_campo_uma(tipo, campo)
     coluna = NutUmaItem.grupo if campo == 'grupo' else NutUmaItem.coluna_faturamento
     itens = NutUmaItem.query.filter(
         _chave_uma(cid),
@@ -2841,6 +2900,19 @@ def salvar_cadastro_uma(cid, d, row=None):
     sistema = _sistema_cadastro_uma(tipo, d, row)
     papel = 'dieta' if tipo == 'enteral' else ''
     manipulado = bool(d.get('manipulado')) if tipo == 'suplemento' else False
+    if tipo in ('formula', 'enteral'):
+        produto_principal = _txt_uma(
+            d.get('produto_principal') if 'produto_principal' in d else (row.produto_principal if row else ''),
+            200,
+        )
+    else:
+        produto_principal = ''
+    if 'unidade' in d:
+        unidade = _txt_uma(d.get('unidade'), 20)
+    elif row is not None:
+        unidade = row.unidade or ''
+    else:
+        unidade = ''
     conflito = NutUmaItem.query.filter(
         _chave_uma(cid),
         NutUmaItem.tipo == tipo,
@@ -2848,6 +2920,8 @@ def salvar_cadastro_uma(cid, d, row=None):
         NutUmaItem.papel == papel,
         NutUmaItem.manipulado == manipulado,
         NutUmaItem.nome == nome,
+        NutUmaItem.produto_principal == produto_principal,
+        NutUmaItem.unidade == unidade,
     )
     if row is not None:
         conflito = conflito.filter(NutUmaItem.id != row.id)
@@ -2867,10 +2941,9 @@ def salvar_cadastro_uma(cid, d, row=None):
     row.sistema = sistema
     row.papel = papel
     row.manipulado = manipulado
+    row.unidade = unidade
     if tipo == 'formula':
         row.diluicao = _txt_uma(d.get('diluicao'), 40)
-    if 'unidade' in d:
-        row.unidade = _txt_uma(d.get('unidade'), 20)
     if tipo == 'lve':
         row.ativo = bool(d.get('ativo', True))
         cobranca = (d.get('cobranca') or 'espelho_1').strip().lower()
@@ -2882,7 +2955,7 @@ def salvar_cadastro_uma(cid, d, row=None):
         row.produto_disponivel = bool(d.get('produto_disponivel', True))
         row.ativo = True
     if tipo in ('formula', 'enteral'):
-        row.produto_principal = _txt_uma(d.get('produto_principal'), 200)
+        row.produto_principal = produto_principal
         if row.produto_principal:
             row.produto = row.produto_principal[:200]
     if tipo in TIPOS_CADASTRO_UMA:
@@ -3147,6 +3220,8 @@ def _seed_uma(cid):
             via_oral=bool(via_oral),
             ativo=True,
         ))
+    if NutUmaItem.query.filter_by(cliente_id=cid).first():
+        return
     for item in itens_uma_seed():
         gravar_uma_item(
             cid,
@@ -4100,7 +4175,7 @@ def seed_nutricao(force=False):
 def paciente_from_payload(d, paciente=None):
     is_new = paciente is None
     paciente = paciente or NutPaciente()
-    paciente.nome = (d.get('nome') or '').strip()
+    paciente.nome = limpar_indice_nome((d.get('nome') or '').strip())
     paciente.sexo = normalizar_sexo(d.get('sexo'))
     paciente.nascimento = _parse_date(d.get('nascimento'))
     paciente.prontuario = (d.get('prontuario') or '').strip() or None

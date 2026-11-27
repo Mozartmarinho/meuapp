@@ -1,7 +1,27 @@
 """Modelos do módulo de Nutrição Hospitalar."""
 import json
+import re
 from datetime import datetime, date
 from models import db, now_brasilia, fmt_brasilia
+
+_PREFIXO_INDICE_NOME = re.compile(r'^\(\d+\)\s*')
+_SUFIXO_INDICE_NOME = re.compile(r'\s*\(\d+\)\s*$')
+
+
+def limpar_indice_nome(nome):
+    """Tira o índice numérico do nome, no início ou no fim.
+
+    "(2) MARIA SILVA" e "MARIA SILVA (2)" viram "MARIA SILVA".
+    Notas clínicas como "(MIGUEL)" ou "(UI-NEO 23)" permanecem.
+    """
+    original = (nome or '').strip()
+    texto = original
+    anterior = None
+    while texto and texto != anterior:
+        anterior = texto
+        texto = _PREFIXO_INDICE_NOME.sub('', texto).strip()
+        texto = _SUFIXO_INDICE_NOME.sub('', texto).strip()
+    return texto or original
 
 
 nut_clinica_enfermarias = db.Table(
@@ -276,6 +296,8 @@ class NutPaciente(db.Model):
     ativo = db.Column(db.Boolean, default=True)
     # Alta (ativo=False) continua no cadastro. Apagar marca excluido e some da lista.
     excluido = db.Column(db.Boolean, default=False, index=True)
+    # Código do paciente no sistema de origem (planilha PACIENTES).
+    codigo_legado = db.Column(db.Integer, index=True)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
 
     def idade(self, ref=None):
@@ -296,7 +318,7 @@ class NutPaciente(db.Model):
     def to_dict(self):
         return {
             'id': self.id,
-            'nome': self.nome,
+            'nome': limpar_indice_nome(self.nome),
             'sexo': self.sexo or '',
             'sexo_label': {'M': 'Masculino', 'F': 'Feminino', 'O': 'Outros'}.get(
                 (self.sexo or '').strip().upper(), self.sexo or ''
@@ -1331,6 +1353,7 @@ class NutUmaItem(db.Model):
     __table_args__ = (
         db.UniqueConstraint(
             'cliente_id', 'tipo', 'sistema', 'papel', 'manipulado', 'nome',
+            'produto_principal', 'unidade',
             name='uq_nut_uma_item',
         ),
     )

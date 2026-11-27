@@ -21,6 +21,12 @@
       <input type="text" id="buscaProd" placeholder="Buscar produto..." oninput="filtrarTabela('buscaProd','tabelaProdutos')">
     </div>
     <div class="toolbar-actions" style="display:flex;gap:0.4rem;align-items:center;margin-left:auto">
+      <label class="form-label" style="margin:0">Estoque</label>
+      <select class="form-control" id="selEstoque" style="width:auto;min-width:9rem" onchange="trocarEstoque()">
+        {% for e in estoques %}
+        <option value="{{ e.id }}" {% if estoque_id == e.id %}selected{% endif %}>{{ e.nome }}</option>
+        {% endfor %}
+      </select>
       <button class="btn btn-secondary" type="button" onclick="abrirModalGrupos()">Grupos</button>
       <button class="btn btn-primary" type="button" onclick="abrirModalProduto()">+ Novo Produto</button>
     </div>
@@ -459,6 +465,10 @@ function fmtNum(n){
 }
 function esc(s){
   return String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
+function trocarEstoque(){
+  const id = document.getElementById('selEstoque').value;
+  window.location.href = '/nutricao/estoque?estoque_id=' + encodeURIComponent(id);
 }
 function mudarAbaEst(aba, btn){
   document.querySelectorAll('#mainContent .tabs .tab').forEach(function(t){ t.classList.remove('active'); });
