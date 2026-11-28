@@ -15,6 +15,7 @@ from models_nutricao import NutMapaRefeicao  # noqa: E402
 from nutricao_service import (  # noqa: E402
     calcular_gotejamento_uma,
     config_uma_dict,
+    layout_etiqueta_impressao,
     relatorio_faturamento,
     salvar_config_uma,
     seed_nutricao,
@@ -86,6 +87,9 @@ class ConfigUmaTest(unittest.TestCase):
         self.assertIn('Água para lavagem dos frascos', html)
         self.assertIn('Método de gotejamento', html)
         self.assertIn('Validade das etiquetas', html)
+        self.assertIn('Configuração da etiqueta', html)
+        self.assertIn('Tachado duplo', html)
+        self.assertIn('Pimaco 6080', html)
         self.assertIn('Contínuo (vol/15)', html)
         api = self.client.get('/nutricao/api/config-uma')
         self.assertEqual(api.status_code, 200)
@@ -119,6 +123,50 @@ class ConfigUmaTest(unittest.TestCase):
         self.assertGreaterEqual(itens.get('ÁGUA MINERAL (COPO - 200ML)', 0), 1)
         db.session.delete(linha)
         db.session.commit()
+
+    def test_layout_etiqueta_grava_fonte(self):
+        cfg = salvar_config_uma({
+            'layout_etiquetas': {
+                'pimaco_6080': {
+                    'campos': [{
+                        'campo': 'nome',
+                        'prefixo': 'Paciente ',
+                        'x': 4,
+                        'y': 10,
+                        'w': 80,
+                        'fonte': 'Aptos',
+                        'estilo': 'negrito_italico',
+                        'tamanho': 12,
+                        'cor': '#112233',
+                        'sublinhado': 'duplo',
+                        'cor_sublinhado': '#ff0000',
+                        'maiusculas': True,
+                        'tachado': True,
+                    }, {
+                        'campo': 'NAO_EXISTE',
+                        'prefixo': 'sumir',
+                    }],
+                },
+                'ruim id': {'campos': []},
+            },
+        })
+        bloco = cfg['layout_etiquetas']['pimaco_6080']['campos']
+        self.assertEqual(len(bloco), 1)
+        self.assertEqual(bloco[0]['fonte'], 'Aptos')
+        self.assertEqual(bloco[0]['estilo'], 'negrito_italico')
+        self.assertTrue(bloco[0]['maiusculas'])
+        self.assertNotIn('ruim id', cfg['layout_etiquetas'])
+        impresso = layout_etiqueta_impressao('pimaco_6080')
+        self.assertEqual(len(impresso), 1)
+        css = impresso[0]['estilo_css']
+        self.assertIn('font-weight:700', css)
+        self.assertIn('font-style:italic', css)
+        self.assertIn('text-transform:uppercase', css)
+        self.assertIn('text-decoration-line:underline line-through', css)
+        self.assertIn('Aptos', css)
+        self.assertIsNone(layout_etiqueta_impressao('pimaco_6180'))
+        de_novo = config_uma_dict()
+        self.assertEqual(de_novo['layout_etiquetas']['pimaco_6080']['campos'][0]['fonte'], 'Aptos')
 
 
 if __name__ == '__main__':

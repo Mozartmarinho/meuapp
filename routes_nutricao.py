@@ -121,6 +121,9 @@ from nutricao_service import (
     aplicar_avisos_alta_mapa,
     registrar_saida_mapa,
     list_modelos_etiqueta_impressao,
+    CAMPOS_ETIQUETA,
+    FONTES_ETIQUETA,
+    layout_etiqueta_padrao,
     gerar_impressao_etiquetas,
     gerar_impressao_mapa,
     gerar_impressao_mapa_distribuicao,
@@ -3371,6 +3374,10 @@ def configuracoes_sistema():
         produtos=list_produtos(somente_ativos=True),
         estoques=list_estoques(somente_ativos=True),
         colunas=colunas_faturamento_uma(grupos),
+        modelos_etiqueta=list_modelos_etiqueta_impressao().get('modelos') or [],
+        campos_etiqueta=CAMPOS_ETIQUETA,
+        fontes_etiqueta=FONTES_ETIQUETA,
+        layout_padrao=layout_etiqueta_padrao(),
         **active('config_uma'),
     )
 
@@ -4061,7 +4068,7 @@ def impressao_etiquetas_imprimir():
     incluir_enfermaria = str(request.args.get('incluir_enfermaria', '')).lower() in ('1', 'true', 'sim')
     somente_alteradas = str(request.args.get('somente_alteradas', '')).lower() in ('1', 'true', 'sim')
     alteradas_desde = (request.args.get('alteradas_desde') or '').strip() or None
-    modelo_id = (request.args.get('modelo') or '6080').strip()
+    modelo_id = (request.args.get('modelo') or 'pimaco_6080').strip()
     seq_inicio = request.args.get('seq_inicio', type=int) or 1
 
     rel = gerar_impressao_etiquetas(

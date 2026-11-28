@@ -11,6 +11,8 @@ os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
 from nutricao_service import (  # noqa: E402
     _posicoes_etiquetas,
     _resolver_modelo_etiqueta,
+    _classificar_modelo_etiqueta,
+    list_modelos_etiqueta_impressao,
     GEOMETRIA_ETIQUETA,
 )
 
@@ -52,6 +54,42 @@ class Etiqueta6080LayoutTest(unittest.TestCase):
                 m['posicoes'][2]['left'] + m['label_w'],
                 m['page_w'] + 0.05,
             )
+
+    def test_rolos_e_6080_unico(self):
+        from app import create_app
+        from models import db
+        app = create_app()
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+        with app.app_context():
+            db.create_all()
+            self.assertEqual(_classificar_modelo_etiqueta('1 - PIMACO 6080 (7PT)'), 'pimaco_6080')
+            self.assertEqual(_classificar_modelo_etiqueta('PIMACO 6080 (6PT)'), 'pimaco_6080')
+            self.assertEqual(
+                _classificar_modelo_etiqueta('3 - ETIQUETADORA COZINHA (50X40) - DIETA'),
+                'eti_50x40',
+            )
+            cozinha = _resolver_modelo_etiqueta('custom_50x40')
+            self.assertEqual(cozinha['nome'], 'Etiqueta 50 x 40')
+            self.assertEqual(cozinha['label_w'], 50.0)
+            self.assertEqual(cozinha['label_h'], 40.0)
+            self.assertEqual(cozinha['por_pagina'], 1)
+            self.assertEqual(cozinha['page_css'], '50mm 40mm')
+
+            larga = _resolver_modelo_etiqueta('eti_100x50')
+            self.assertEqual(larga['nome'], 'Etiqueta 100 x 50')
+            self.assertEqual(larga['page_w'], 100.0)
+            self.assertEqual(larga['page_h'], 50.0)
+            self.assertEqual(larga['page_css'], '100mm 50mm')
+
+            quadrada = _resolver_modelo_etiqueta('eti_50x50')
+            self.assertEqual(quadrada['label_w'], 50.0)
+            self.assertEqual(quadrada['label_h'], 50.0)
+
+            nomes = [m['nome'] for m in list_modelos_etiqueta_impressao()['modelos']]
+            self.assertEqual(nomes.count('Pimaco 6080'), 1)
+            self.assertIn('Etiqueta 50 x 40', nomes)
+            self.assertIn('Etiqueta 100 x 50', nomes)
+            self.assertIn('Etiqueta 50 x 50', nomes)
 
     def test_posicoes_3x10(self):
         g = GEOMETRIA_ETIQUETA['6080']

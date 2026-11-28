@@ -5,7 +5,7 @@
   <title>Etiquetas — {{ r.horario_label }} {{ r.data_label }}</title>
   <style>
     @page {
-      size: {{ r.modelo.page or 'letter' }};
+      size: {{ r.modelo.page_css or 'letter' }};
       margin: 0;
     }
     * { box-sizing: border-box; }
@@ -60,60 +60,96 @@
       overflow: hidden;
       padding: {{ r.modelo.pad_t }}mm {{ r.modelo.pad_x }}mm {{ r.modelo.pad_b }}mm;
       font-size: {{ r.modelo.fonte }}pt;
-      line-height: 1.15;
+      line-height: 1.05;
       display: flex;
       flex-direction: column;
       justify-content: flex-start;
+      container-type: inline-size;
     }
     .label.empty { visibility: hidden; }
+    .label.livre { display: block; padding: 0; }
+    .eti-campo { margin: 0; padding: 0; }
     .row {
       display: flex;
       justify-content: space-between;
       align-items: baseline;
-      gap: 2mm;
+      gap: 1.6mm;
       width: 100%;
     }
-    .left {
-      flex: 1 1 auto;
+    .esq, .dir, .grade > span, .obs {
       min-width: 0;
       overflow: hidden;
       white-space: nowrap;
-      text-overflow: clip;
-      text-transform: uppercase;
     }
-    .right {
+    .esq { flex: 1 1 auto; }
+    .dir { flex: 0 0 auto; text-align: right; }
+    .miudo, .lbl { font-size: max(0.78em, 5pt); font-weight: 400; }
+    .clinica { font-size: 1.12em; font-weight: 700; }
+    .rule {
       flex: 0 0 auto;
-      white-space: nowrap;
-      text-align: right;
+      border-top: 1.5px solid #000;
+      margin: 0.45mm 0 0.35mm;
+      height: 0;
     }
-    .right-stack {
+    .grade {
+      display: grid;
+      grid-template-columns: 28% minmax(0, 1fr) auto;
+      align-items: baseline;
+      column-gap: 1.6mm;
+      width: 100%;
+      margin-top: 0.35mm;
+    }
+    .grade > :nth-child(3) { text-align: right; justify-self: end; }
+    .par {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0.35em;
+      max-width: 100%;
+      min-width: 0;
+    }
+    .grade > :nth-child(2) .par {
+      display: flex;
+      width: 100%;
+    }
+    .grade > :nth-child(2) .par .lbl {
+      flex: 0 1 auto;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .grade > :nth-child(2) .par .valor,
+    .grade > :nth-child(2) .par .nome {
       flex: 0 0 auto;
-      text-align: right;
+    }
+    .valor { font-size: 1.16em; font-weight: 700; }
+    .matr { font-size: 1em; font-weight: 700; }
+    .nome {
+      font-size: 1.45em;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .nome-cell { grid-column: 2 / 4; }
+    .dieta { grid-column: 2 / 4; text-align: left; }
+    @container (max-width: 82mm) {
+      .nome { font-size: 1.22em; }
+      .valor { font-size: 1.05em; }
+      .clinica { font-size: 1.02em; }
+      .grade {
+        grid-template-columns: 40% minmax(0, 1fr) auto;
+        column-gap: 1mm;
+        margin-top: 0.15mm;
+      }
+      .rule { margin: 0.25mm 0 0.15mm; }
+    }
+    .obs {
+      margin-top: 0.25mm;
+      font-size: max(0.8em, 5pt);
       line-height: 1.1;
-    }
-    .right-stack .data-hora {
-      white-space: nowrap;
-      font-size: {{ r.modelo.fonte_obs }}pt;
-    }
-    .line-full {
-      width: 100%;
-      overflow: hidden;
-      white-space: nowrap;
-      text-overflow: clip;
-      text-transform: uppercase;
-    }
-    .line-obs {
-      width: 100%;
-      overflow: hidden;
+      white-space: normal;
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
-      white-space: normal;
-      text-transform: uppercase;
-      font-size: {{ r.modelo.fonte_obs }}pt;
-      line-height: 1.1;
     }
-    .meal-line .left { text-transform: none; }
+    .obs .lbl { font-size: 1em; }
 
     @media screen {
       body { background: #e2e8f0; }
@@ -152,7 +188,7 @@
       · Filtro: {{ r.filtro_nome }}
     </div>
     <div class="hint">
-      Na impressão: papel {{ 'Carta' if r.modelo.page == 'letter' else 'A4' }}, margens Nenhuma, escala 100% (não ajustar à página).
+      Na impressão: papel {{ r.modelo.papel or 'Carta' }}, margens Nenhuma, escala 100% (não ajustar à página).
     </div>
   </div>
 
@@ -163,24 +199,47 @@
       {% for eti in pagina %}
         {% set pos = r.modelo.posicoes[loop.index0] %}
         {% if eti %}
-        <div class="label" style="top: {{ pos.top }}mm; left: {{ pos.left }}mm;">
-          <div class="row meal-line">
-            <span class="left">{{ eti.linha1_esq }}</span>
-            <span class="right-stack">
-              <div class="right">{{ eti.linha1_dir }}</div>
-              {% if eti.data_hora %}<div class="data-hora">{{ eti.data_hora }}</div>{% endif %}
+        <div class="label{% if r.layout is not none %} livre{% endif %}" style="top: {{ pos.top }}mm; left: {{ pos.left }}mm;">
+          {% if r.layout is not none %}
+            {% for c in r.layout %}
+            <div class="eti-campo" style="{{ c.estilo_css }}">{{ c.prefixo }}{% if c.campo != 'texto' %}{{ eti[c.campo] }}{% endif %}</div>
+            {% endfor %}
+          {% else %}
+          <div class="row">
+            <span class="esq clinica">{{ (eti.clinica or eti.setor)|upper }}</span>
+            <span class="dir miudo">{{ eti.linha1_dir }}</span>
+          </div>
+          <div class="row">
+            <span class="esq miudo">{{ eti.linha1_esq }}</span>
+            <span class="dir miudo">
+              {% if eti.data_hora %}<div>{{ eti.data_hora }}</div>{% endif %}
+              {% if eti.dn %}<div>DN: {{ eti.dn }}</div>{% endif %}
             </span>
           </div>
-          <div class="row">
-            <span class="left">{{ eti.setor }}</span>
-            <span class="right">{% if eti.leito %}L: {{ eti.leito }}{% endif %}</span>
+          <div class="rule"></div>
+          <div class="grade">
+            <span>
+              {% if eti.prontuario %}<span class="par"><span class="lbl">Matr:</span><span class="matr">{{ eti.prontuario }}</span></span>{% endif %}
+            </span>
+            <span class="par nome-cell"><span class="lbl">Paciente</span><span class="nome">{{ eti.nome|upper }}</span></span>
           </div>
-          <div class="row">
-            <span class="left">{{ eti.nome }}</span>
-            <span class="right">{% if eti.dn %}DN: {{ eti.dn }}{% endif %}</span>
+          <div class="grade">
+            <span class="par"><span class="lbl">I=</span><span class="valor">{{ eti.linha1_esq.split('-')[0]|upper }}</span></span>
+            <span>
+              {% if r.incluir_enfermaria and eti.enfermaria %}
+              <span class="par"><span class="lbl">Enfermaria:</span><span class="valor">{{ eti.enfermaria|upper }}</span></span>
+              {% endif %}
+            </span>
+            <span>
+              {% if eti.leito %}<span class="par"><span class="lbl">Leito</span><span class="valor">{{ eti.leito }}</span></span>{% endif %}
+            </span>
           </div>
-          <div class="line-full">{{ eti.dieta }}</div>
-          {% if eti.obs %}<div class="line-obs">{{ eti.obs }}</div>{% endif %}
+          <div class="grade">
+            <span class="lbl">T=</span>
+            <span class="valor dieta">{{ eti.dieta|upper }}</span>
+          </div>
+          {% if eti.obs %}<div class="obs"><span class="lbl">Obs:</span> {{ eti.obs }}</div>{% endif %}
+          {% endif %}
         </div>
         {% else %}
         <div class="label empty" style="top: {{ pos.top }}mm; left: {{ pos.left }}mm;"></div>

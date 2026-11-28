@@ -1,237 +1,246 @@
 {% extends "base_nutricao.html" %}
 {% block content %}
-<div class="eti-impressao">
-<div class="page-header">
-  <h1>Impressão de Etiquetas</h1>
-  <p>Gera etiquetas de dieta a partir do mapa de refeições</p>
-</div>
-
-<div class="card eti-panel">
-  <fieldset class="eti-box">
-    <legend>Horário</legend>
-    <div class="eti-horas">
-      <label><input type="radio" name="horario" value="desjejum" checked> Desjejum</label>
-      <label><input type="radio" name="horario" value="almoco"> Almoço</label>
-      <label><input type="radio" name="horario" value="jantar"> Jantar</label>
-      <label><input type="radio" name="horario" value="colacao"> Colação</label>
-      <label><input type="radio" name="horario" value="merenda"> Merenda</label>
-      <label><input type="radio" name="horario" value="ceia"> Ceia</label>
-    </div>
-  </fieldset>
-
-  <fieldset class="eti-box">
-    <legend>Opções</legend>
-    <div class="form-group eti-campo-data">
-      <label class="form-label" for="fData">Data:</label>
-      <input class="form-control" type="date" id="fData" value="{{ data_padrao }}">
-    </div>
-
-    <div class="eti-modo">
-      <span class="eti-inline-label">Modo:</span>
-      <label><input type="radio" name="modo" value="mapa" checked> Mapa de Refeições</label>
-      <label class="disabled" title="Etiqueta de leito sai do mapa. A quantidade sem paciente fica na totalização direta."><input type="radio" name="modo" value="totalizacao_direta" disabled> Totalização Direta</label>
-      <a href="{{ url_for('nutricao.totalizacao_direta') }}">Abrir totalização direta</a>
-    </div>
-
-    <div class="eti-inline-label eti-lbl-por">Imprimir por:</div>
-    <div class="eti-radios eti-radios-por">
-      <label><input type="radio" name="imprimirPor" value="clinica" checked onchange="atualizarFiltro()"> Clínica</label>
-      <label><input type="radio" name="imprimirPor" value="enfermaria" onchange="atualizarFiltro()"> Enfermaria</label>
-    </div>
-    <div class="form-group eti-campo-filtro">
-      <label class="form-label" id="lblFiltro" for="fFiltro">Clínica:</label>
-      <select class="form-control" id="fFiltro"></select>
-    </div>
-  </fieldset>
-
-  <div class="eti-checks">
-    <label>
-      <input type="checkbox" id="fSomenteAlt" onchange="toggleAltHora()">
-      Imprimir somente etiquetas alteradas a partir de horário específico
-    </label>
-    <div class="eti-alt-hora" id="boxAltHora" hidden>
-      <label class="form-label" for="fAltHora">A partir de:</label>
-      <input class="form-control" type="time" id="fAltHora" value="00:00">
-    </div>
-    <label>
-      <input type="checkbox" id="fIncluirEnf">
-      Incluir nome da enfermaria
-    </label>
+<div class="eti-gen">
+  <div class="page-header">
+    <h1>Impressão de etiquetas</h1>
+    <p>Defina os filtros e o modelo. A geração abre em seguida, pronta para imprimir.</p>
   </div>
 
-  <fieldset class="eti-box eti-muted">
-    <legend>Imprimir</legend>
-    <div class="eti-radios">
-      <label><input type="radio" name="tipoImp" value="etiquetas" checked> Etiquetas</label>
-      <label class="disabled"><input type="radio" name="tipoImp" value="excluidas" disabled> Dietas excluídas</label>
-      <label class="disabled"><input type="radio" name="tipoImp" value="ambos" disabled> Ambos</label>
-    </div>
-  </fieldset>
+  <section class="eti-card">
+    <header class="eti-card-head">
+      <h2>Filtros</h2>
+      <span>O que entra na geração</span>
+    </header>
 
-  <fieldset class="eti-box">
-    <legend>Ordenar por</legend>
-    <div class="eti-ordenar">
-      <label><input type="radio" name="ordenar" value="grupo_dieta_data" checked> Grupo; Dieta; Data; Clínica; Leito</label>
-      <label><input type="radio" name="ordenar" value="clinica_enfermaria_dieta"> Clínica; Enfermaria; Dieta</label>
-      <label><input type="radio" name="ordenar" value="data_clinica_leito_dieta"> Data; Clínica; Leito; Dieta</label>
-      <label><input type="radio" name="ordenar" value="clinica_enfermaria_leito"> Clínica; Enfermaria; Leito</label>
+    <div class="eti-field">
+      <span class="eti-label">Horário</span>
+      <div class="eti-pills">
+        <label><input type="radio" name="horario" value="desjejum" checked> Desjejum</label>
+        <label><input type="radio" name="horario" value="colacao"> Colação</label>
+        <label><input type="radio" name="horario" value="almoco"> Almoço</label>
+        <label><input type="radio" name="horario" value="merenda"> Merenda</label>
+        <label><input type="radio" name="horario" value="jantar"> Jantar</label>
+        <label><input type="radio" name="horario" value="ceia"> Ceia</label>
+      </div>
     </div>
-  </fieldset>
+
+    <div class="eti-grid">
+      <div class="eti-field">
+        <label class="eti-label" for="fData">Data</label>
+        <input class="form-control" type="date" id="fData" value="{{ data_padrao }}">
+      </div>
+      <div class="eti-field">
+        <span class="eti-label">Modo</span>
+        <div class="eti-pills">
+          <label><input type="radio" name="modo" value="mapa" checked> Mapa de refeições</label>
+          <label class="is-off" title="A etiqueta de leito sai do mapa. A quantidade sem paciente fica na totalização direta.">
+            <input type="radio" name="modo" value="totalizacao_direta" disabled> Totalização direta
+          </label>
+        </div>
+        <a class="eti-link" href="{{ url_for('nutricao.totalizacao_direta') }}">Abrir totalização direta</a>
+      </div>
+      <div class="eti-field">
+        <span class="eti-label">Imprimir por</span>
+        <div class="eti-pills">
+          <label><input type="radio" name="imprimirPor" value="clinica" checked onchange="atualizarFiltro()"> Clínica</label>
+          <label><input type="radio" name="imprimirPor" value="enfermaria" onchange="atualizarFiltro()"> Enfermaria</label>
+        </div>
+      </div>
+      <div class="eti-field">
+        <label class="eti-label" id="lblFiltro" for="fFiltro">Clínica</label>
+        <select class="form-control" id="fFiltro"></select>
+      </div>
+    </div>
+
+    <div class="eti-toggles">
+      <label class="eti-toggle">
+        <input type="checkbox" id="fSomenteAlt" onchange="toggleAltHora()">
+        <span>Somente etiquetas alteradas a partir de um horário</span>
+      </label>
+      <div class="eti-alt" id="boxAltHora" hidden>
+        <label class="eti-label" for="fAltHora">A partir de</label>
+        <input class="form-control" type="time" id="fAltHora" value="00:00">
+      </div>
+      <label class="eti-toggle">
+        <input type="checkbox" id="fIncluirEnf">
+        <span>Incluir nome da enfermaria</span>
+      </label>
+    </div>
+
+    <div class="eti-field eti-field-last">
+      <span class="eti-label">Imprimir</span>
+      <div class="eti-pills">
+        <label><input type="radio" name="tipoImp" value="etiquetas" checked> Etiquetas</label>
+        <label class="is-off"><input type="radio" name="tipoImp" value="excluidas" disabled> Dietas excluídas</label>
+        <label class="is-off"><input type="radio" name="tipoImp" value="ambos" disabled> Ambos</label>
+      </div>
+    </div>
+  </section>
+
+  <section class="eti-card">
+    <header class="eti-card-head">
+      <h2>Ordenar por</h2>
+      <span>Ordem das etiquetas na folha ou no rolo</span>
+    </header>
+    <div class="eti-sort">
+      <label><input type="radio" name="ordenar" value="grupo_dieta_data" checked><span>Grupo, dieta, data, clínica e leito</span></label>
+      <label><input type="radio" name="ordenar" value="clinica_enfermaria_dieta"><span>Clínica, enfermaria e dieta</span></label>
+      <label><input type="radio" name="ordenar" value="data_clinica_leito_dieta"><span>Data, clínica, leito e dieta</span></label>
+      <label><input type="radio" name="ordenar" value="clinica_enfermaria_leito"><span>Clínica, enfermaria e leito</span></label>
+    </div>
+  </section>
+
+  <section class="eti-card">
+    <header class="eti-card-head">
+      <h2>Modelo etiqueta</h2>
+      <span>Folha Pimaco ou rolo, na mesma tela</span>
+    </header>
+    <div class="eti-modelos">
+      {% for m in modelos.modelos %}
+      <label class="eti-modelo">
+        <input type="radio" name="modelo" value="{{ m.id }}" {% if m.id == 'pimaco_6080' %}checked{% endif %}>
+        <span class="eti-modelo-shape" style="width: {{ m.preview_w }}px; height: {{ m.preview_h }}px;" aria-hidden="true"></span>
+        <span class="eti-modelo-txt">
+          <strong>{{ m.nome }}</strong>
+          <small>{{ m.detalhe }}</small>
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+  </section>
 
   <div class="eti-actions">
-    <button type="button" class="btn btn-primary" onclick="abrirModelo()">
-      <i class="fas fa-print"></i> Imprimir
+    <button type="button" class="btn btn-primary" onclick="gerarEtiquetas()">
+      <i class="fas fa-print"></i> Gerar etiquetas
     </button>
     <button type="button" class="btn btn-ghost" onclick="location.href='{{ url_for('nutricao.dashboard') }}'">
-      <i class="fas fa-times"></i> Fechar
+      Fechar
     </button>
   </div>
-</div>
-
-<!-- Modal seleção de modelo -->
-<div class="eti-modal-backdrop" id="modalModelo" hidden>
-  <div class="eti-modal" role="dialog" aria-labelledby="modalModeloTitulo">
-    <div class="eti-modal-head">
-      <h2 id="modalModeloTitulo">Seleção do modelo de etiqueta</h2>
-      <button type="button" class="eti-modal-x" onclick="fecharModelo()" aria-label="Fechar">&times;</button>
-    </div>
-    <fieldset class="eti-box eti-box-first">
-      <legend>Modelos pré-configurados</legend>
-      <div class="eti-pre">
-        {% for m in modelos.preconfigurados %}
-        <label>
-          <input type="radio" name="modeloPre" value="{{ m.id }}" {% if m.id == '6080' %}checked{% endif %} onchange="onPreModelo()">
-          {{ m.nome }}
-        </label>
-        {% endfor %}
-      </div>
-    </fieldset>
-    <fieldset class="eti-box">
-      <legend>Modelos personalizados</legend>
-      <div class="eti-custom-list" id="listaCustom">
-        <div class="eti-custom-head">Nome</div>
-        {% for m in modelos.personalizados %}
-        <label class="eti-custom-item {% if loop.first %}selected{% endif %}">
-          <input type="radio" name="modeloCustom" value="{{ m.id }}" {% if loop.first %}checked{% endif %} onchange="onCustomModelo()">
-          <span>{{ m.nome }}</span>
-        </label>
-        {% endfor %}
-      </div>
-      <p class="eti-hint">Selecione um pré-configurado <em>ou</em> um personalizado. O personalizado prevalece se marcado.</p>
-    </fieldset>
-    <div class="eti-modal-actions">
-      <button type="button" class="btn btn-primary" onclick="confirmarModelo()">
-        <i class="fas fa-check"></i> OK
-      </button>
-      <button type="button" class="btn btn-ghost" onclick="fecharModelo()">
-        <i class="fas fa-times"></i> Cancelar
-      </button>
-    </div>
-  </div>
-</div>
 </div>
 
 <style>
-.eti-impressao .page-header { margin-bottom: 1rem; }
-.eti-impressao .page-header h1 { font-size: clamp(1.12rem, 2vw, 1.52rem); }
-.eti-impressao .page-header p { font-size: 0.76rem; margin-top: 0.2rem; }
-.eti-impressao .btn { gap: 0.32rem; padding: 0.56rem 1rem; font-size: 0.76rem; border-radius: 0.3rem; }
-.eti-impressao .btn-ghost { padding: 0.28rem 0.4rem; }
-.eti-impressao .form-label { font-size: 0.72rem; margin-bottom: 0.32rem; }
-.eti-impressao .form-control {
-  padding: 0.6rem;
+.eti-gen { max-width: 920px; }
+.eti-gen .page-header { margin-bottom: 1rem; }
+.eti-gen .page-header h1 { font-size: clamp(1.25rem, 2vw, 1.6rem); letter-spacing: -0.02em; }
+.eti-gen .page-header p { font-size: 0.86rem; margin-top: 0.25rem; }
+.eti-card {
+  background: #fff;
+  border: 1px solid #e4ebf5;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(13, 43, 92, 0.05);
+  padding: 1rem 1.1rem 1.15rem;
+  margin-bottom: 0.85rem;
+}
+.eti-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+.eti-card-head h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #0d2b5c;
+}
+.eti-card-head span { font-size: 0.75rem; color: #64748b; }
+.eti-field { display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
+.eti-field-last { margin-top: 0.85rem; }
+.eti-label { font-size: 0.72rem; font-weight: 700; color: #475569; letter-spacing: 0.02em; }
+.eti-grid {
+  display: grid;
+  grid-template-columns: minmax(160px, 200px) minmax(220px, 1.2fr) minmax(180px, 0.8fr) minmax(180px, 1fr);
+  gap: 0.85rem 1rem;
+  margin-top: 0.95rem;
+  align-items: start;
+}
+.eti-gen .form-control { min-height: 38px; }
+.eti-pills, .eti-sort, .eti-modelos { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+.eti-pills label, .eti-sort label, .eti-modelo {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  border: 1px solid #d7e1ee;
+  background: #f8fafc;
+  color: #1e293b;
+  border-radius: 999px;
+  padding: 0.42rem 0.75rem;
   font-size: 0.8rem;
-  border-radius: 0.3rem;
-  min-height: 0;
-  height: auto;
-  line-height: 1.25;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, color .15s, box-shadow .15s;
 }
-.eti-impressao .form-control:focus { box-shadow: 0 0 0 2px rgba(27, 79, 156, 0.15); }
-.eti-impressao input[type="radio"],
-.eti-impressao input[type="checkbox"] { width: 0.72rem; height: 0.72rem; margin: 0; flex-shrink: 0; }
-.eti-impressao .eti-panel { padding: 0.88rem 1rem 1.12rem; max-width: 576px; }
-.eti-impressao .eti-box {
-  border:1px solid #dbe3ee; border-radius:6px; padding:0.6rem 0.72rem 0.76rem;
-  margin:0.6rem 0; background:#f8fafc;
+.eti-pills input, .eti-sort input, .eti-modelo input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
 }
-.eti-impressao .eti-box legend { font-size:0.66rem; font-weight:700; color:#334155; padding:0 0.28rem; }
-.eti-impressao .eti-box.eti-muted { opacity:0.85; }
-.eti-impressao .eti-horas {
-  display:grid; grid-template-columns:repeat(3, 1fr); gap:0.28rem 0.8rem;
+.eti-pills label:has(input:checked),
+.eti-sort label:has(input:checked),
+.eti-modelo:has(input:checked) {
+  background: #1b4f9c;
+  border-color: #1b4f9c;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(27, 79, 156, 0.22);
 }
-.eti-impressao .eti-horas label,
-.eti-impressao .eti-radios label,
-.eti-impressao .eti-modo label,
-.eti-impressao .eti-ordenar label,
-.eti-impressao .eti-checks label,
-.eti-impressao .eti-pre label {
-  display:flex; align-items:center; gap:0.32rem;
-  font-size:0.72rem; color:#334155; margin:0.18rem 0;
+.eti-pills label.is-off { opacity: 0.55; cursor: not-allowed; }
+.eti-sort { display: grid; grid-template-columns: 1fr 1fr; }
+.eti-sort label { border-radius: 10px; justify-content: flex-start; }
+.eti-link { font-size: 0.75rem; margin-top: 0.15rem; color: #1b4f9c; }
+.eti-toggles { display: flex; flex-direction: column; gap: 0.45rem; margin-top: 0.95rem; }
+.eti-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: #334155;
+  margin: 0;
 }
-.eti-impressao .eti-radios { display:flex; flex-wrap:wrap; gap:0.36rem 1rem; }
-.eti-impressao .eti-modo { display:flex; flex-wrap:wrap; align-items:center; gap:0.36rem 0.8rem; margin-bottom:0.68rem; }
-.eti-impressao .eti-inline-label { font-size:0.68rem; font-weight:600; color:#475569; }
-.eti-impressao .eti-lbl-por { margin-bottom:0.28rem; }
-.eti-impressao .eti-radios-por { margin-bottom:0.52rem; }
-.eti-impressao .eti-campo-data { max-width:176px; margin-bottom:0.68rem; }
-.eti-impressao .eti-campo-filtro { margin:0; max-width:336px; }
-.eti-impressao .eti-ordenar { display:flex; flex-direction:column; gap:0.12rem; }
-.eti-impressao .eti-checks { display:flex; flex-direction:column; gap:0.36rem; margin:0.4rem 0 0.68rem; }
-.eti-impressao .eti-alt-hora { display:flex; align-items:center; gap:0.44rem; margin:0.12rem 0 0.28rem 1.2rem; max-width:224px; }
-.eti-impressao .eti-alt-hora .form-label { margin:0; white-space:nowrap; }
-.eti-impressao label.disabled { color:#94a3b8; }
-.eti-impressao .eti-actions { display:flex; gap:0.44rem; flex-wrap:wrap; margin-top:0.28rem; }
-
-.eti-impressao .eti-modal-backdrop {
-  position:fixed; inset:0; background:rgba(15,23,42,.45);
-  display:flex; align-items:center; justify-content:center;
-  z-index:1200; padding:0.8rem;
+.eti-toggle input { width: 0.95rem; height: 0.95rem; margin: 0; }
+.eti-alt { display: flex; align-items: center; gap: 0.5rem; margin-left: 1.45rem; max-width: 240px; }
+.eti-alt[hidden] { display: none !important; }
+.eti-alt .eti-label { margin: 0; white-space: nowrap; }
+.eti-modelos { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.eti-modelo {
+  border-radius: 12px;
+  align-items: center;
+  min-height: 74px;
+  padding: 0.65rem 0.75rem;
 }
-.eti-impressao .eti-modal-backdrop[hidden] { display:none !important; }
-.eti-impressao .eti-modal {
-  background:#fff; border-radius:8px; width:min(448px,100%);
-  box-shadow:0 14px 40px rgba(15,23,42,.25); padding:0.8rem 0.92rem 0.92rem;
-  max-height:90vh; overflow:auto;
+.eti-modelo-shape {
+  flex: 0 0 auto;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+  background:
+    linear-gradient(currentColor, currentColor) 12% 28% / 62% 7% no-repeat,
+    linear-gradient(currentColor, currentColor) 12% 48% / 78% 7% no-repeat,
+    linear-gradient(currentColor, currentColor) 12% 68% / 48% 7% no-repeat,
+    transparent;
+  opacity: 0.85;
 }
-.eti-impressao .eti-modal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:0.52rem; }
-.eti-impressao .eti-modal-head h2 { margin:0; font-size:0.84rem; color:#0f2a5c; }
-.eti-impressao .eti-modal-x {
-  border:0; background:transparent; font-size:1.2rem; line-height:1;
-  cursor:pointer; color:#64748b; padding:0 0.2rem;
+.eti-modelo-txt { display: flex; flex-direction: column; gap: 0.12rem; min-width: 0; }
+.eti-modelo-txt strong { font-size: 0.84rem; font-weight: 700; }
+.eti-modelo-txt small { font-size: 0.7rem; font-weight: 500; opacity: 0.82; line-height: 1.3; }
+.eti-actions { display: flex; gap: 0.6rem; align-items: center; margin: 0.2rem 0 1.2rem; }
+.eti-gen .btn-ghost { background: transparent; color: #475569; border: 1px solid #d7e1ee; }
+@media (max-width: 980px) {
+  .eti-grid { grid-template-columns: 1fr 1fr; }
 }
-.eti-impressao .eti-box-first { margin-top:0; }
-.eti-impressao .eti-pre { display:grid; grid-template-columns:1fr 1fr; gap:0.2rem 0.8rem; }
-.eti-impressao .eti-custom-list {
-  border:1px solid #cbd5e1; border-radius:5px; background:#fff;
-  max-height:144px; overflow:auto;
-}
-.eti-impressao .eti-custom-head {
-  font-size:0.62rem; font-weight:700; color:#64748b; padding:0.28rem 0.48rem;
-  border-bottom:1px solid #e2e8f0; background:#f1f5f9;
-}
-.eti-impressao .eti-custom-item {
-  display:flex; align-items:center; gap:0.36rem;
-  padding:0.32rem 0.48rem; margin:0; cursor:pointer;
-  border-bottom:1px solid #f1f5f9; font-size:0.7rem;
-}
-.eti-impressao .eti-custom-item input { display:none; }
-.eti-impressao .eti-custom-item.selected { background:#2563eb; color:#fff; }
-.eti-impressao .eti-hint { font-size:0.62rem; color:#64748b; margin:0.36rem 0 0; }
-.eti-impressao .eti-modal-actions { display:flex; gap:0.4rem; margin-top:0.68rem; justify-content:flex-end; }
-
-@media (max-width:700px){
-  .eti-impressao .eti-horas, .eti-impressao .eti-pre { grid-template-columns:1fr 1fr; }
+@media (max-width: 640px) {
+  .eti-grid, .eti-sort, .eti-modelos { grid-template-columns: 1fr; }
+  .eti-card-head { flex-direction: column; gap: 0.15rem; }
 }
 </style>
 
 <script>
 const CLINICAS = {{ clinicas|tojson }};
-const GRUPOS_CLINICA = {{ grupos_clinica|default([])|tojson }};
 const ENFERMARIAS = {{ enfermarias|tojson }};
-let usarCustom = true;
 
 function esc(s){
-  return String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 }
 
 function atualizarFiltro(){
@@ -239,13 +248,13 @@ function atualizarFiltro(){
   const lbl = document.getElementById('lblFiltro');
   const sel = document.getElementById('fFiltro');
   if (por === 'enfermaria'){
-    lbl.textContent = 'Enfermaria:';
+    lbl.textContent = 'Enfermaria';
     sel.innerHTML = '<option value="">Todas</option>' + ENFERMARIAS.map(e =>
       `<option value="${e.id}" data-nome="${esc(e.nome)}">${esc(e.nome)}</option>`
     ).join('');
   } else {
-    lbl.textContent = 'Clínica:';
-    sel.innerHTML = '<option value="">Todos</option>' + CLINICAS.map(c =>
+    lbl.textContent = 'Clínica';
+    sel.innerHTML = '<option value="">Todas</option>' + CLINICAS.map(c =>
       `<option value="${c.id}" data-nome="${esc(c.nome)}">${esc(c.nome)}</option>`
     ).join('');
   }
@@ -253,48 +262,6 @@ function atualizarFiltro(){
 
 function toggleAltHora(){
   document.getElementById('boxAltHora').hidden = !document.getElementById('fSomenteAlt').checked;
-}
-
-function onPreModelo(){
-  usarCustom = false;
-  document.querySelectorAll('.eti-custom-item').forEach(el => el.classList.remove('selected'));
-  document.querySelectorAll('input[name="modeloCustom"]').forEach(r => { r.checked = false; });
-}
-
-function onCustomModelo(){
-  usarCustom = true;
-  document.querySelectorAll('input[name="modeloPre"]').forEach(r => { r.checked = false; });
-  document.querySelectorAll('.eti-custom-item').forEach(el => {
-    const inp = el.querySelector('input');
-    el.classList.toggle('selected', !!inp?.checked);
-  });
-}
-
-function abrirModelo(){
-  if (!document.getElementById('fData').value){
-    showToast('Informe a data','error');
-    return;
-  }
-  document.getElementById('modalModelo').hidden = false;
-  // padrão: primeiro personalizado (estilo legado)
-  const first = document.querySelector('input[name="modeloCustom"]');
-  if (first){
-    first.checked = true;
-    onCustomModelo();
-  }
-}
-
-function fecharModelo(){
-  document.getElementById('modalModelo').hidden = true;
-}
-
-function modeloSelecionado(){
-  if (usarCustom){
-    const c = document.querySelector('input[name="modeloCustom"]:checked');
-    if (c) return c.value;
-  }
-  const p = document.querySelector('input[name="modeloPre"]:checked');
-  return p ? p.value : '6080';
 }
 
 function coletar(){
@@ -312,13 +279,16 @@ function coletar(){
     incluir_enfermaria: document.getElementById('fIncluirEnf').checked,
     somente_alteradas: document.getElementById('fSomenteAlt').checked,
     alteradas_desde: document.getElementById('fAltHora').value || '',
-    modelo: modeloSelecionado()
+    modelo: document.querySelector('input[name="modelo"]:checked')?.value || 'pimaco_6080'
   };
 }
 
-function confirmarModelo(){
+function gerarEtiquetas(){
   const p = coletar();
-  if (!p.data){ showToast('Informe a data','error'); return; }
+  if (!p.data){
+    showToast('Informe a data', 'error');
+    return;
+  }
   const qs = new URLSearchParams({
     data: p.data,
     horario: p.horario,
@@ -332,16 +302,8 @@ function confirmarModelo(){
     modelo: p.modelo
   });
   if (p.filtro_id) qs.set('filtro_id', p.filtro_id);
-  fecharModelo();
   window.open('/nutricao/impressao-etiquetas/imprimir?' + qs.toString(), '_blank');
 }
-
-document.querySelectorAll('.eti-custom-item').forEach(el => {
-  el.addEventListener('click', () => {
-    const inp = el.querySelector('input');
-    if (inp){ inp.checked = true; onCustomModelo(); }
-  });
-});
 
 atualizarFiltro();
 toggleAltHora();

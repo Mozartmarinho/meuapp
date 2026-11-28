@@ -1465,4 +1465,6 @@ class NutConfigUma(db.Model):
     estoque_lve_id = db.Column(db.Integer, nullable=True)
     estoque_modulo_id = db.Column(db.Integer, nullable=True)
     validades = db.Column(db.Text, default='[]')
+    # Desenho da etiqueta por modelo Pimaco: campos, posição e fonte.
+    layout_etiquetas = db.Column(db.Text, default='{}')
     data_alteracao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

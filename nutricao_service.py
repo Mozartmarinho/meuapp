@@ -846,6 +846,8 @@ def _ensure_nutricao_columns(force=False):
         ('nut_uma_itens', 'composicao', 'ALTER TABLE nut_uma_itens ADD COLUMN composicao TEXT'),
         ('nut_uma_itens', 'componentes', "ALTER TABLE nut_uma_itens ADD COLUMN componentes TEXT"),
         ('nut_uma_itens', 'cobranca', "ALTER TABLE nut_uma_itens ADD COLUMN cobranca VARCHAR(20) DEFAULT ''"),
+        ('nut_config_uma', 'layout_etiquetas',
+         'ALTER TABLE nut_config_uma ADD COLUMN layout_etiquetas TEXT'),
     ):
         try:
             insp = inspect(db.engine)
@@ -3047,9 +3049,287 @@ def _hora_uma(valor):
     return f'{hora:02d}:{minuto:02d}'
 
 
+FONTES_ETIQUETA = (
+    {'id': '+Corpo', 'nome': '+Corpo', 'css': 'Arial, Helvetica, sans-serif'},
+    {'id': 'Aptos', 'nome': 'Aptos', 'css': 'Aptos, "Segoe UI", sans-serif'},
+    {'id': 'Arial', 'nome': 'Arial', 'css': 'Arial, Helvetica, sans-serif'},
+    {'id': 'Arial Narrow', 'nome': 'Arial Narrow', 'css': '"Arial Narrow", Arial, sans-serif'},
+    {'id': 'Calibri', 'nome': 'Calibri', 'css': 'Calibri, "Segoe UI", sans-serif'},
+    {'id': 'Cambria', 'nome': 'Cambria', 'css': 'Cambria, Georgia, serif'},
+    {'id': 'Candara', 'nome': 'Candara', 'css': 'Candara, "Segoe UI", sans-serif'},
+    {'id': 'Comic Sans MS', 'nome': 'Comic Sans MS', 'css': '"Comic Sans MS", cursive'},
+    {'id': 'Consolas', 'nome': 'Consolas', 'css': 'Consolas, "Courier New", monospace'},
+    {'id': 'Courier New', 'nome': 'Courier New', 'css': '"Courier New", Courier, monospace'},
+    {'id': 'Georgia', 'nome': 'Georgia', 'css': 'Georgia, serif'},
+    {'id': 'Segoe UI', 'nome': 'Segoe UI', 'css': '"Segoe UI", Tahoma, sans-serif'},
+    {'id': 'Tahoma', 'nome': 'Tahoma', 'css': 'Tahoma, sans-serif'},
+    {'id': 'Times New Roman', 'nome': 'Times New Roman', 'css': '"Times New Roman", Times, serif'},
+    {'id': 'Trebuchet MS', 'nome': 'Trebuchet MS', 'css': '"Trebuchet MS", sans-serif'},
+    {'id': 'Verdana', 'nome': 'Verdana', 'css': 'Verdana, Geneva, sans-serif'},
+)
+
+CAMPOS_ETIQUETA = (
+    {'id': 'clinica', 'rotulo': 'Clínica', 'exemplo': 'CTI'},
+    {'id': 'enfermaria', 'rotulo': 'Enfermaria', 'exemplo': 'Ala A'},
+    {'id': 'leito', 'rotulo': 'Leito', 'exemplo': '05'},
+    {'id': 'nome', 'rotulo': 'Paciente', 'exemplo': 'Maria Souza'},
+    {'id': 'prontuario', 'rotulo': 'Prontuário', 'exemplo': '123456'},
+    {'id': 'dieta', 'rotulo': 'Dieta', 'exemplo': 'Branda'},
+    {'id': 'dn', 'rotulo': 'DN ou idade', 'exemplo': '01/02/80'},
+    {'id': 'nascimento', 'rotulo': 'Nascimento', 'exemplo': '01/02/1980'},
+    {'id': 'idade', 'rotulo': 'Idade', 'exemplo': '46'},
+    {'id': 'sexo', 'rotulo': 'Sexo', 'exemplo': 'F'},
+    {'id': 'diagnostico', 'rotulo': 'Diagnóstico', 'exemplo': 'Pneumonia'},
+    {'id': 'observacoes', 'rotulo': 'Observações', 'exemplo': 'Jejum após 22h'},
+    {'id': 'obs_etiqueta', 'rotulo': 'Obs. da etiqueta', 'exemplo': 'Sem lactose'},
+    {'id': 'obs', 'rotulo': 'Obs. impressa', 'exemplo': 'Sem lactose'},
+    {'id': 'extras', 'rotulo': 'Extras', 'exemplo': 'Suco'},
+    {'id': 'suplementos', 'rotulo': 'Suplementos', 'exemplo': 'Ensure'},
+    {'id': 'enteral', 'rotulo': 'Enteral', 'exemplo': 'Nutrição enteral'},
+    {'id': 'formula_infantil', 'rotulo': 'Fórmula infantil', 'exemplo': 'Aptamil'},
+    {'id': 'lve', 'rotulo': 'LVE', 'exemplo': 'LVE 1'},
+    {'id': 'data_hora', 'rotulo': 'Data e hora da alteração', 'exemplo': '27/11/2026 14:30'},
+    {'id': 'data_refeicao', 'rotulo': 'Data da refeição', 'exemplo': '27/11/26'},
+    {'id': 'horario', 'rotulo': 'Horário', 'exemplo': 'Almoço'},
+    {'id': 'valido_ate', 'rotulo': 'Válido até', 'exemplo': '13:30'},
+    {'id': 'linha1_esq', 'rotulo': 'Horário e validade', 'exemplo': 'Almoço-Válido até 13:30'},
+    {'id': 'linha1_dir', 'rotulo': 'Data e número', 'exemplo': '27/11/26  n° 0001-1'},
+    {'id': 'seq', 'rotulo': 'Sequência', 'exemplo': '0001'},
+    {'id': 'admissao', 'rotulo': 'Admissão', 'exemplo': '01/11/2026'},
+    {'id': 'peso', 'rotulo': 'Peso', 'exemplo': '62 kg'},
+    {'id': 'altura', 'rotulo': 'Altura', 'exemplo': '165 cm'},
+    {'id': 'tipo_lancamento', 'rotulo': 'Tipo de lançamento', 'exemplo': 'Principal'},
+    {'id': 'texto', 'rotulo': 'Texto fixo', 'exemplo': ''},
+)
+
+_IDS_FONTE_ETIQUETA = {item['id'] for item in FONTES_ETIQUETA}
+_IDS_CAMPO_ETIQUETA = {item['id'] for item in CAMPOS_ETIQUETA}
+_ESTILOS_ETIQUETA = {'regular', 'italico', 'negrito', 'negrito_italico'}
+_SUBS_ETIQUETA = {'nenhum', 'simples', 'duplo', 'pontilhado', 'tracejado', 'ondulado'}
+_ALINHA_ETIQUETA = {'esquerda', 'centro', 'direita'}
+_TAMANHOS_FONTE_ETIQUETA = (6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 28, 36, 48, 72)
+_QUEBRA_ETIQUETA = {
+    'obs', 'diagnostico', 'observacoes', 'extras', 'suplementos',
+    'enteral', 'formula_infantil', 'lve', 'dieta', 'texto',
+}
+_FONTE_ETIQUETA_CSS = {item['id']: item['css'] for item in FONTES_ETIQUETA}
+
+
+def _num_layout(valor, padrao, minimo, maximo):
+    try:
+        num = float(valor)
+    except (TypeError, ValueError):
+        num = padrao
+    return round(max(minimo, min(maximo, num)), 1)
+
+
+def _bool_layout(valor):
+    if isinstance(valor, str):
+        return valor.strip().lower() in ('1', 'true', 'sim', 'on')
+    return bool(valor)
+
+
+def _cor_layout(valor):
+    texto = str(valor or '').strip()
+    if re.fullmatch(r'#[0-9A-Fa-f]{6}', texto):
+        return texto.lower()
+    return '#000000'
+
+
+def _tamanho_fonte_etiqueta(valor):
+    try:
+        num = int(round(float(valor)))
+    except (TypeError, ValueError):
+        num = 7
+    return min(_TAMANHOS_FONTE_ETIQUETA, key=lambda n: (abs(n - num), n))
+
+
+def _campo_etiqueta_limpo(bruto, indice, ids):
+    if not isinstance(bruto, dict):
+        return None
+    chave = str(bruto.get('campo') or '').strip()
+    if chave not in _IDS_CAMPO_ETIQUETA:
+        return None
+    alinhamento = bruto.get('alinhamento')
+    estilo = bruto.get('estilo')
+    sublinhado = bruto.get('sublinhado')
+    fonte = bruto.get('fonte')
+    item = {
+        'campo': chave,
+        'prefixo': str(bruto.get('prefixo') or '')[:80],
+        'x': _num_layout(bruto.get('x'), 2, 0, 100),
+        'y': _num_layout(bruto.get('y'), 2, 0, 100),
+        'w': _num_layout(bruto.get('w'), 40, 8, 100),
+        'alinhamento': alinhamento if alinhamento in _ALINHA_ETIQUETA else 'esquerda',
+        'fonte': fonte if fonte in _IDS_FONTE_ETIQUETA else 'Arial',
+        'estilo': estilo if estilo in _ESTILOS_ETIQUETA else 'regular',
+        'tamanho': _tamanho_fonte_etiqueta(bruto.get('tamanho')),
+        'cor': _cor_layout(bruto.get('cor')),
+        'sublinhado': sublinhado if sublinhado in _SUBS_ETIQUETA else 'nenhum',
+        'cor_sublinhado': _cor_layout(bruto.get('cor_sublinhado')),
+        'tachado': _bool_layout(bruto.get('tachado')),
+        'tachado_duplo': _bool_layout(bruto.get('tachado_duplo')),
+        'sobrescrito': _bool_layout(bruto.get('sobrescrito')),
+        'subscrito': _bool_layout(bruto.get('subscrito')),
+        'versalete': _bool_layout(bruto.get('versalete')),
+        'maiusculas': _bool_layout(bruto.get('maiusculas')),
+        'oculto': _bool_layout(bruto.get('oculto')),
+    }
+    if item['sobrescrito'] and item['subscrito']:
+        item['subscrito'] = False
+    ident = str(bruto.get('id') or '').strip()[:24]
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,24}', ident):
+        ident = ''
+    if not ident or ident in ids:
+        ident = f'c{indice}'
+    while ident in ids:
+        indice += 1
+        ident = f'c{indice}'
+    ids.add(ident)
+    item['id'] = ident
+    return item
+
+
+def _normalizar_campos_etiqueta(bruto):
+    if not isinstance(bruto, list):
+        return []
+    ids = set()
+    saida = []
+    for i, item in enumerate(bruto[:24], start=1):
+        limpo = _campo_etiqueta_limpo(item, i, ids)
+        if limpo:
+            saida.append(limpo)
+    return saida
+
+
+def _normalizar_layouts_etiqueta(bruto):
+    if isinstance(bruto, str):
+        try:
+            bruto = json.loads(bruto or '{}')
+        except (TypeError, ValueError):
+            return {}
+    if not isinstance(bruto, dict):
+        return {}
+    saida = {}
+    for chave, valor in list(bruto.items())[:40]:
+        mid = str(chave or '').strip()
+        if not re.fullmatch(r'[A-Za-z0-9_]{1,40}', mid):
+            continue
+        campos = valor.get('campos') if isinstance(valor, dict) else valor
+        saida[mid] = {'campos': _normalizar_campos_etiqueta(campos)}
+    return saida
+
+
+def layout_etiqueta_padrao():
+    """Desenho sugerido, parecido com a etiqueta que já sai na impressão."""
+    return _normalizar_campos_etiqueta([
+        {'campo': 'clinica', 'x': 2, 'y': 1, 'w': 58, 'estilo': 'negrito', 'tamanho': 8, 'maiusculas': True},
+        {'campo': 'linha1_dir', 'x': 58, 'y': 1, 'w': 40, 'tamanho': 6, 'alinhamento': 'direita'},
+        {'campo': 'linha1_esq', 'x': 2, 'y': 16, 'w': 56, 'tamanho': 6},
+        {'campo': 'data_hora', 'x': 56, 'y': 16, 'w': 42, 'tamanho': 6, 'alinhamento': 'direita'},
+        {'campo': 'dn', 'prefixo': 'DN: ', 'x': 56, 'y': 30, 'w': 42, 'tamanho': 6, 'alinhamento': 'direita'},
+        {'campo': 'prontuario', 'prefixo': 'Matr: ', 'x': 2, 'y': 46, 'w': 34, 'estilo': 'negrito', 'tamanho': 7},
+        {'campo': 'nome', 'prefixo': 'Paciente ', 'x': 28, 'y': 42, 'w': 70, 'estilo': 'negrito', 'tamanho': 11},
+        {'campo': 'leito', 'prefixo': 'Leito ', 'x': 68, 'y': 62, 'w': 30, 'estilo': 'negrito', 'tamanho': 8, 'alinhamento': 'direita'},
+        {'campo': 'dieta', 'prefixo': 'T= ', 'x': 2, 'y': 74, 'w': 96, 'estilo': 'negrito', 'tamanho': 8},
+        {'campo': 'obs', 'prefixo': 'Obs: ', 'x': 2, 'y': 88, 'w': 96, 'tamanho': 6},
+    ])
+
+
+def _css_campo_etiqueta(campo):
+    estilo = campo['estilo']
+    peso = 700 if estilo in ('negrito', 'negrito_italico') else 400
+    italico = 'italic' if estilo in ('italico', 'negrito_italico') else 'normal'
+    linhas = []
+    if campo['sublinhado'] != 'nenhum':
+        linhas.append('underline')
+    if campo['tachado'] or campo['tachado_duplo']:
+        linhas.append('line-through')
+    estilo_linha = 'solid'
+    if campo['tachado_duplo'] or campo['sublinhado'] == 'duplo':
+        estilo_linha = 'double'
+    elif campo['sublinhado'] == 'pontilhado':
+        estilo_linha = 'dotted'
+    elif campo['sublinhado'] == 'tracejado':
+        estilo_linha = 'dashed'
+    elif campo['sublinhado'] == 'ondulado':
+        estilo_linha = 'wavy'
+    align = {'esquerda': 'left', 'centro': 'center', 'direita': 'right'}[campo['alinhamento']]
+    tamanho = int(campo['tamanho'])
+    vertical = 'baseline'
+    if campo['sobrescrito']:
+        vertical = 'super'
+        tamanho = max(6, round(tamanho * 0.65))
+    elif campo['subscrito']:
+        vertical = 'sub'
+        tamanho = max(6, round(tamanho * 0.65))
+    partes = [
+        'position:absolute',
+        f"left:{campo['x']}%",
+        f"top:{campo['y']}%",
+        f"width:{campo['w']}%",
+        f"font-family:{_FONTE_ETIQUETA_CSS.get(campo['fonte'], 'Arial, sans-serif')}",
+        f'font-weight:{peso}',
+        f'font-style:{italico}',
+        f'font-size:{tamanho}pt',
+        f"color:{campo['cor']}",
+        f'text-align:{align}',
+        f"font-variant:{'small-caps' if campo['versalete'] else 'normal'}",
+        f"text-transform:{'uppercase' if campo['maiusculas'] else 'none'}",
+        f'vertical-align:{vertical}',
+        'line-height:1.05',
+        'overflow:hidden',
+        'white-space:normal' if campo['campo'] in _QUEBRA_ETIQUETA else 'white-space:nowrap',
+    ]
+    if linhas:
+        partes.append('text-decoration-line:' + ' '.join(linhas))
+        partes.append(f'text-decoration-style:{estilo_linha}')
+        partes.append(f"text-decoration-color:{campo['cor_sublinhado']}")
+    else:
+        partes.append('text-decoration:none')
+    return ';'.join(partes)
+
+
+def _ler_layouts_etiqueta(row):
+    bruto = getattr(row, 'layout_etiquetas', None) if row is not None else None
+    return _normalizar_layouts_etiqueta(bruto or {})
+
+
+def layout_etiqueta_impressao(modelo_id):
+    """Campos gravados do modelo. None mantém o desenho fixo da impressão."""
+    layouts = _ler_layouts_etiqueta(_config_uma_do_cliente())
+    mid = str(modelo_id or '').strip()
+    if mid not in layouts:
+        return None
+    campos = layouts[mid].get('campos') or []
+    if not campos:
+        return []
+    saida = []
+    for campo in campos:
+        if campo.get('oculto'):
+            continue
+        item = dict(campo)
+        item['estilo_css'] = _css_campo_etiqueta(campo)
+        saida.append(item)
+    return saida
+
+
 def _garantir_tabela_config_uma():
     try:
         NutConfigUma.__table__.create(db.engine, checkfirst=True)
+    except Exception:
+        db.session.rollback()
+    try:
+        from sqlalchemy import inspect, text
+        insp = inspect(db.engine)
+        if 'nut_config_uma' not in set(insp.get_table_names()):
+            return
+        cols = {c['name'] for c in insp.get_columns('nut_config_uma')}
+        if 'layout_etiquetas' not in cols:
+            db.session.execute(text(
+                'ALTER TABLE nut_config_uma ADD COLUMN layout_etiquetas TEXT'
+            ))
+            db.session.commit()
     except Exception:
         db.session.rollback()
 
@@ -3120,6 +3400,7 @@ def config_uma_dict(cliente_id=None):
         'estoque_lve_id': row.estoque_lve_id if row else None,
         'estoque_modulo_id': row.estoque_modulo_id if row else None,
         'validades': validades,
+        'layout_etiquetas': _ler_layouts_etiqueta(row),
     }
 
 
@@ -3188,6 +3469,11 @@ def salvar_config_uma(payload, cliente_id=None):
     if not validades:
         validades = [dict(item) for item in VALIDADES_UMA_PADRAO]
     row.validades = json.dumps(validades, ensure_ascii=False)
+    if 'layout_etiquetas' in d:
+        row.layout_etiquetas = json.dumps(
+            _normalizar_layouts_etiqueta(d.get('layout_etiquetas')),
+            ensure_ascii=False,
+        )
     db.session.commit()
     return config_uma_dict(cliente_id)
 
@@ -8314,7 +8600,8 @@ HORARIO_ETIQUETA = {
     'ceia': {'flag': 'fl_ceia', 'label': 'Ceia', 'valido_ate': '22:30'},
 }
 
-# Gabarito oficial Pimaco (cm → mm). 6080/6180: Carta 3×10, 66,7×25,4 mm.
+# Gabarito em mm. 6080/6180: Carta 3×10, 66,7×25,4 mm.
+# 50x40, 100x50 e 50x50 são rolo: uma etiqueta por página, no tamanho do adesivo.
 GEOMETRIA_ETIQUETA = {
     '6080': {
         'page': 'letter', 'page_w': 215.9, 'page_h': 279.4,
@@ -8340,72 +8627,180 @@ GEOMETRIA_ETIQUETA = {
         'label_w': 63.5, 'label_h': 25.4, 'gap_x': 2.6, 'gap_y': 0,
         'pad_t': 3.2, 'pad_x': 3.2, 'pad_b': 1.5,
     },
+    '50x40': {
+        'page': 'custom', 'page_w': 50.0, 'page_h': 40.0,
+        'm_top': 0, 'm_left': 0, 'm_right': 0, 'm_bottom': 0,
+        'label_w': 50.0, 'label_h': 40.0, 'gap_x': 0, 'gap_y': 0,
+        'pad_t': 1.4, 'pad_x': 1.6, 'pad_b': 0.8,
+    },
+    '100x50': {
+        'page': 'custom', 'page_w': 100.0, 'page_h': 50.0,
+        'm_top': 0, 'm_left': 0, 'm_right': 0, 'm_bottom': 0,
+        'label_w': 100.0, 'label_h': 50.0, 'gap_x': 0, 'gap_y': 0,
+        'pad_t': 1.8, 'pad_x': 2.2, 'pad_b': 1.0,
+    },
+    '50x50': {
+        'page': 'custom', 'page_w': 50.0, 'page_h': 50.0,
+        'm_top': 0, 'm_left': 0, 'm_right': 0, 'm_bottom': 0,
+        'label_w': 50.0, 'label_h': 50.0, 'gap_x': 0, 'gap_y': 0,
+        'pad_t': 1.6, 'pad_x': 1.6, 'pad_b': 1.0,
+    },
 }
 
-MODELOS_ETIQUETA_PRE = [
-    {'id': '6080', 'nome': '6080 (30 etiquetas)', 'cols': 3, 'rows': 10, 'fonte': 7},
-    {'id': '6082', 'nome': '6082 (14 etiquetas)', 'cols': 2, 'rows': 7, 'fonte': 8},
-    {'id': 'A4350', 'nome': 'A4350 (10 etiquetas)', 'cols': 2, 'rows': 5, 'fonte': 8},
-    {'id': 'A4356', 'nome': 'A4356 (33 etiquetas)', 'cols': 3, 'rows': 11, 'fonte': 6},
+# Catálogo único da geração. Pré-configurado e personalizado viram o mesmo filtro.
+# 6080 (folha, 6 pt e 7 pt) entra uma vez. Cozinha 50×40 vira o rolo homônimo.
+MODELOS_ETIQUETA = [
+    {
+        'id': 'pimaco_6080', 'nome': 'Pimaco 6080',
+        'detalhe': 'Folha carta · 30 etiquetas · 66,7 × 25,4 mm',
+        'papel': 'Carta', 'base': '6080', 'cols': 3, 'rows': 10, 'fonte': 7,
+        'largura_mm': 66.7, 'altura_mm': 25.4,
+    },
+    {
+        'id': 'pimaco_6180', 'nome': 'Pimaco 6180',
+        'detalhe': 'Folha carta · 30 etiquetas · 8 pt',
+        'papel': 'Carta', 'base': '6080', 'cols': 3, 'rows': 10, 'fonte': 8,
+        'largura_mm': 66.7, 'altura_mm': 25.4,
+    },
+    {
+        'id': 'pimaco_6082', 'nome': 'Pimaco 6082',
+        'detalhe': 'Folha carta · 14 etiquetas · 101,6 × 33,9 mm',
+        'papel': 'Carta', 'base': '6082', 'cols': 2, 'rows': 7, 'fonte': 8,
+        'largura_mm': 101.6, 'altura_mm': 33.9,
+    },
+    {
+        'id': 'pimaco_a4350', 'nome': 'Pimaco A4350',
+        'detalhe': 'Folha A4 · 10 etiquetas · 99 × 55,8 mm',
+        'papel': 'A4', 'base': 'A4350', 'cols': 2, 'rows': 5, 'fonte': 8,
+        'largura_mm': 99.0, 'altura_mm': 55.8,
+    },
+    {
+        'id': 'pimaco_a4356', 'nome': 'Pimaco A4356',
+        'detalhe': 'Folha A4 · 33 etiquetas · 63,5 × 25,4 mm',
+        'papel': 'A4', 'base': 'A4356', 'cols': 3, 'rows': 11, 'fonte': 6,
+        'largura_mm': 63.5, 'altura_mm': 25.4,
+    },
+    {
+        'id': 'eti_50x40', 'nome': 'Etiqueta 50 x 40',
+        'detalhe': 'Rolo · 1 etiqueta · 50 × 40 mm',
+        'papel': '50 × 40 mm', 'base': '50x40', 'cols': 1, 'rows': 1, 'fonte': 6,
+        'largura_mm': 50.0, 'altura_mm': 40.0,
+    },
+    {
+        'id': 'eti_100x50', 'nome': 'Etiqueta 100 x 50',
+        'detalhe': 'Rolo couche · 1 etiqueta · 100 × 50 mm',
+        'papel': '100 × 50 mm', 'base': '100x50', 'cols': 1, 'rows': 1, 'fonte': 8,
+        'largura_mm': 100.0, 'altura_mm': 50.0,
+    },
+    {
+        'id': 'eti_50x50', 'nome': 'Etiqueta 50 x 50',
+        'detalhe': 'Rolo · 1 etiqueta · 50 × 50 mm',
+        'papel': '50 × 50 mm', 'base': '50x50', 'cols': 1, 'rows': 1, 'fonte': 7,
+        'largura_mm': 50.0, 'altura_mm': 50.0,
+    },
 ]
 
-MODELOS_ETIQUETA_CUSTOM_FALLBACK = [
-    {'id': 'custom_6080_7pt', 'nome': '1 - PIMACO 6080 (7PT) - PADRÃO DIETAS', 'base': '6080', 'fonte': 7},
-    {'id': 'custom_6080', 'nome': '2 - PIMACO 6080 - PADRÃO DIETAS', 'base': '6080', 'fonte': 7},
-    {'id': 'custom_50x40', 'nome': '3 - ETIQUETADORA COZINHA (50X40) - DIETA', 'base': '6082', 'fonte': 8},
-    {'id': 'custom_6080_6pt', 'nome': 'PIMACO 6080 (6PT) - MODELO 6080 (6PT)', 'base': '6080', 'fonte': 6},
-]
+# Ids antigos (popup e cadastro) continuam abrindo o modelo certo.
+_ALIAS_MODELO_ETIQUETA = {
+    '6080': 'pimaco_6080',
+    'custom_6080': 'pimaco_6080',
+    'custom_6080_7pt': 'pimaco_6080',
+    'custom_6080_6pt': 'pimaco_6080',
+    '6180': 'pimaco_6180',
+    '6082': 'pimaco_6082',
+    'A4350': 'pimaco_a4350',
+    'A4356': 'pimaco_a4356',
+    'custom_50x40': 'eti_50x40',
+    '50x40': 'eti_50x40',
+    '100x50': 'eti_100x50',
+    '50x50': 'eti_50x50',
+}
+
+
+def _normalizar_nome_modelo(nome):
+    return (nome or '').upper().replace(' ', '').replace('×', 'X').replace('MM', '')
+
+
+def _classificar_modelo_etiqueta(nome):
+    """Agrupa variações do cadastro no modelo único da geração."""
+    n = _normalizar_nome_modelo(nome)
+    if '100X50' in n:
+        return 'eti_100x50'
+    if '50X50' in n:
+        return 'eti_50x50'
+    if '50X40' in n or 'COZINHA' in n or 'ETIQUETADORA' in n:
+        return 'eti_50x40'
+    if '6082' in n:
+        return 'pimaco_6082'
+    if 'A4350' in n:
+        return 'pimaco_a4350'
+    if 'A4356' in n:
+        return 'pimaco_a4356'
+    if '6180' in n:
+        return 'pimaco_6180'
+    if '6080' in n:
+        return 'pimaco_6080'
+    return None
+
+
+def _preview_modelo(m):
+    item = dict(m)
+    w = float(item.get('largura_mm') or 60)
+    h = float(item.get('altura_mm') or 30)
+    escala = 76 / max(w, h, 1)
+    item['preview_w'] = max(22, round(w * escala))
+    item['preview_h'] = max(16, round(h * escala))
+    item.pop('cadastro', None)
+    return item
+
+
+def _modelo_extra_cadastro(e):
+    """Etiqueta do cadastro que não cabe em nenhum modelo do catálogo."""
+    nome = (e.get('nome') or '').strip()
+    cols = int(e.get('num_colunas') or 1) or 1
+    alt = float(e.get('altura_etiqueta_mm') or 0) or 25.4
+    page_h = float(e.get('folha_altura_mm') or 0) or 279.4
+    m_top = float(e.get('margem_superior') or 0)
+    m_bot = float(e.get('margem_inferior') or 0)
+    util = max(page_h - m_top - m_bot, alt)
+    rows = max(1, min(20, int(round(util / alt)))) if alt else 10
+    folha = (e.get('tamanho_folha') or 'carta').strip().lower()
+    papel = 'A4' if folha == 'a4' else 'Carta'
+    largura_folha = float(e.get('folha_largura_mm') or 0)
+    gap = float(e.get('dist_colunas_mm') or 0)
+    margem_x = float(e.get('margem_esquerda') or 0) + float(e.get('margem_direita') or 0)
+    largura = alt
+    if largura_folha and cols:
+        largura = max(20.0, (largura_folha - margem_x - gap * max(cols - 1, 0)) / cols)
+    return {
+        'id': f"eti_{e['id']}",
+        'nome': nome,
+        'detalhe': 'Personalizada do cadastro',
+        'papel': papel,
+        'base': 'A4350' if folha == 'a4' else '6080',
+        'cols': cols,
+        'rows': rows,
+        'fonte': int(e.get('tamanho_fonte') or 7),
+        'largura_mm': round(largura, 1),
+        'altura_mm': alt,
+        'cadastro': e,
+    }
 
 
 def list_modelos_etiqueta_impressao():
-    """Modelos pré-configurados + personalizados (cadastro NutEtiqueta ou fallback)."""
-    customs = []
-    nomes_vistos = set()
+    """Um filtro só: catálogo fixo, sem repetir 6080 nem a cozinha 50×40."""
+    modelos = [_preview_modelo(m) for m in MODELOS_ETIQUETA]
+    ids = {m['id'] for m in modelos}
     for e in list_etiquetas(somente_ativas=True):
         nome = (e.get('nome') or '').strip()
-        if not nome:
+        if not nome or _classificar_modelo_etiqueta(nome):
             continue
-        nome_u = nome.upper()
-        if '6080' in nome_u:
-            base = '6080'
-        elif '6082' in nome_u or '50X40' in nome_u.replace(' ', ''):
-            base = '6082'
-        elif 'A4350' in nome_u:
-            base = 'A4350'
-        elif 'A4356' in nome_u:
-            base = 'A4356'
-        else:
-            base = '6080'
-        display = nome if ('PADRÃO' in nome_u or 'DIETA' in nome_u) else f"{nome} - PADRÃO DIETAS"
-        customs.append({
-            'id': f"eti_{e['id']}",
-            'nome': display,
-            'base': base,
-            'fonte': int(e.get('tamanho_fonte') or 7),
-            'num_colunas': int(e.get('num_colunas') or 0) or None,
-            'altura_etiqueta_mm': e.get('altura_etiqueta_mm') or 0,
-            'margem_superior': e.get('margem_superior') or 0,
-            'margem_esquerda': e.get('margem_esquerda') or 0,
-            'margem_direita': e.get('margem_direita') or 0,
-            'margem_inferior': e.get('margem_inferior') or 0,
-            'dist_colunas_mm': e.get('dist_colunas_mm') or 0,
-            'folha_largura_mm': e.get('folha_largura_mm') or 0,
-            'folha_altura_mm': e.get('folha_altura_mm') or 0,
-            'tamanho_folha': e.get('tamanho_folha') or '',
-        })
-        nomes_vistos.add(display.upper())
-        nomes_vistos.add(nome_u)
-    for fb in MODELOS_ETIQUETA_CUSTOM_FALLBACK:
-        if fb['nome'].upper() not in nomes_vistos and not any(
-            fb['nome'].split(' - ')[0].upper() in n for n in nomes_vistos
-        ):
-            customs.append(dict(fb))
-    if not customs:
-        customs = list(MODELOS_ETIQUETA_CUSTOM_FALLBACK)
-    return {
-        'preconfigurados': MODELOS_ETIQUETA_PRE,
-        'personalizados': customs,
-    }
+        extra = _modelo_extra_cadastro(e)
+        if extra['id'] in ids:
+            continue
+        modelos.append(_preview_modelo(extra))
+        ids.add(extra['id'])
+    return {'modelos': modelos}
 
 
 def _geometria_etiqueta(base_id, extra=None):
@@ -8462,53 +8857,68 @@ def _posicoes_etiquetas(geom, cols, rows):
     return posicoes
 
 
+def _pack_modelo_etiqueta(m):
+    fonte = int(m.get('fonte') or 7)
+    cols = int(m.get('cols') or 1)
+    rows = int(m.get('rows') or 1)
+    extra = dict(m.get('cadastro') or {})
+    extra['cols'] = cols
+    base = m.get('base') or '6080'
+    geom = _geometria_etiqueta(base, extra)
+    page = geom.get('page') or 'letter'
+    if page == 'custom':
+        def _mm(valor):
+            num = float(valor)
+            texto = str(int(num)) if num == int(num) else f'{num:g}'
+            return texto
+        page_css = f"{_mm(geom['page_w'])}mm {_mm(geom['page_h'])}mm"
+    elif page == 'A4':
+        page_css = 'A4'
+    else:
+        page_css = 'letter'
+    packed = {
+        'id': m['id'],
+        'nome': m['nome'],
+        'detalhe': m.get('detalhe') or '',
+        'cols': cols,
+        'rows': rows,
+        'fonte': fonte,
+        'fonte_obs': max(fonte - 1, 5),
+        'por_pagina': cols * rows,
+        'page_css': page_css,
+        'papel': m.get('papel') or ('A4' if page_css == 'A4' else 'Carta'),
+        'largura_mm': m.get('largura_mm') or geom['label_w'],
+        'altura_mm': m.get('altura_mm') or geom['label_h'],
+    }
+    packed.update(geom)
+    packed['posicoes'] = _posicoes_etiquetas(geom, cols, rows)
+    return packed
+
+
 def _resolver_modelo_etiqueta(modelo_id):
-    modelos = list_modelos_etiqueta_impressao()
-    mid = (modelo_id or '6080').strip()
+    mid = (modelo_id or '').strip() or 'pimaco_6080'
+    mid = _ALIAS_MODELO_ETIQUETA.get(mid, mid)
 
-    def _pack(m, extra=None):
-        fonte = int(m.get('fonte') or 7)
-        cols = int(m.get('cols') or 3)
-        rows = int(m.get('rows') or 10)
-        extra = dict(extra or {})
-        extra['cols'] = cols
-        geom = _geometria_etiqueta(m.get('base') or m.get('id') or '6080', extra)
-        packed = {
-            'id': m['id'],
-            'nome': m['nome'],
-            'cols': cols,
-            'rows': rows,
-            'fonte': fonte,
-            'fonte_obs': max(fonte - 1, 5),
-            'por_pagina': cols * rows,
-        }
-        packed.update(geom)
-        packed['posicoes'] = _posicoes_etiquetas(geom, cols, rows)
-        return packed
+    if mid.startswith('eti_') and mid[4:].isdigit():
+        etiqueta = next((e for e in list_etiquetas(somente_ativas=False) if str(e.get('id')) == mid[4:]), None)
+        if etiqueta:
+            canon = _classificar_modelo_etiqueta(etiqueta.get('nome'))
+            if canon:
+                mid = canon
+            else:
+                return _pack_modelo_etiqueta(_modelo_extra_cadastro(etiqueta))
 
-    for m in modelos['preconfigurados']:
+    modelo = next((m for m in MODELOS_ETIQUETA if m['id'] == mid), None)
+    if modelo:
+        return _pack_modelo_etiqueta(modelo)
+
+    for m in list_modelos_etiqueta_impressao()['modelos']:
         if m['id'] == mid:
-            return _pack(m, m)
-    for m in modelos['personalizados']:
-        if m['id'] == mid:
-            base = next((p for p in MODELOS_ETIQUETA_PRE if p['id'] == m.get('base')), MODELOS_ETIQUETA_PRE[0])
-            cols = m.get('num_colunas') or base['cols']
-            rows = base['rows']
-            if cols == 3 and base['id'] == '6080':
-                rows = 10
-            extra = dict(m)
-            extra['id'] = base['id']
-            extra['base'] = base['id']
-            extra['cols'] = cols
-            return _pack({
-                'id': m['id'],
-                'nome': m['nome'],
-                'cols': cols,
-                'rows': rows,
-                'fonte': int(m.get('fonte') or base['fonte']),
-                'base': base['id'],
-            }, extra)
-    return _pack(MODELOS_ETIQUETA_PRE[0], MODELOS_ETIQUETA_PRE[0])
+            bruto = next((e for e in list_etiquetas(somente_ativas=False) if f"eti_{e.get('id')}" == mid), None)
+            if bruto:
+                return _pack_modelo_etiqueta(_modelo_extra_cadastro(bruto))
+            return _pack_modelo_etiqueta(m)
+    return _pack_modelo_etiqueta(MODELOS_ETIQUETA[0])
 
 
 def _obs_linha_etiqueta(row):
@@ -8518,6 +8928,19 @@ def _obs_linha_etiqueta(row):
         if val and val not in parts:
             parts.append(val)
     return ' '.join(parts)
+
+
+def _texto_medida(valor, unidade):
+    if valor in (None, ''):
+        return ''
+    try:
+        num = float(valor)
+    except (TypeError, ValueError):
+        return ''
+    if num <= 0:
+        return ''
+    texto = f'{num:.1f}'.rstrip('0').rstrip('.')
+    return f'{texto} {unidade}'
 
 
 def _fmt_dn(pac, idade=None):
@@ -8563,7 +8986,7 @@ def gerar_impressao_etiquetas(
     incluir_enfermaria=False,
     somente_alteradas=False,
     alteradas_desde=None,
-    modelo_id='6080',
+    modelo_id='pimaco_6080',
     seq_inicio=1,
 ):
     """Gera etiquetas de dieta a partir do mapa de refeições do dia."""
@@ -8671,6 +9094,15 @@ def gerar_impressao_etiquetas(
         seq = 1
 
     data_label = data_ref.strftime('%d/%m/%y')
+    rotulos_tipo = {
+        'adicional': 'Adicional',
+        'substituicao': 'Substituição',
+        'lve': 'LVE',
+        'formula': 'Fórm. infantil',
+        'enteral': 'Enteral',
+        'suplemento': 'Suplemento',
+        'principal': 'Principal',
+    }
     etiquetas = []
     for l in linhas:
         pac = l.paciente
@@ -8682,19 +9114,39 @@ def gerar_impressao_etiquetas(
         linha1_dir = f"{data_label}  n° {seq:04d}-1"
         leito_fmt = _fmt_leito(l.leito)
         dn = _fmt_dn(pac, l.idade)
+        nasc = pac.nascimento.strftime('%d/%m/%Y') if pac and pac.nascimento else ''
         etiquetas.append({
-            'seq': seq,
+            'seq': f'{seq:04d}',
             'linha1_esq': linha1_esq,
             'linha1_dir': linha1_dir,
             'data_hora': _fmt_data_hora_etiqueta(l),
-            'setor': (setor or '').upper(),
+            'setor': setor or '',
             'leito': leito_fmt,
-            'nome': (l.nome or '').upper(),
+            'nome': l.nome or '',
             'dn': dn,
-            'dieta': (l.dieta or '').upper(),
+            'dieta': l.dieta or '',
             'obs': _obs_linha_etiqueta(l),
             'clinica': l.clinica or '',
             'enfermaria': l.enfermaria or '',
+            'prontuario': (l.prontuario or '').strip(),
+            'idade': '' if l.idade is None else str(l.idade),
+            'sexo': ((pac.sexo if pac else '') or ''),
+            'diagnostico': l.diagnostico or '',
+            'observacoes': l.observacoes or '',
+            'obs_etiqueta': l.obs_etiqueta or '',
+            'extras': l.extras or '',
+            'suplementos': l.suplementos or '',
+            'enteral': l.enteral or '',
+            'formula_infantil': l.formula_infantil or '',
+            'lve': l.lve or '',
+            'data_refeicao': data_label,
+            'horario': hinfo['label'],
+            'valido_ate': hinfo['valido_ate'],
+            'admissao': _fmt_data_br(l.adm) if l.adm else '',
+            'peso': _texto_medida(pac.peso_kg if pac else None, 'kg'),
+            'altura': _texto_medida(pac.altura_cm if pac else None, 'cm'),
+            'nascimento': nasc,
+            'tipo_lancamento': rotulos_tipo.get((l.tipo_lancamento or 'principal'), 'Principal'),
         })
         seq += 1
 
@@ -8722,6 +9174,7 @@ def gerar_impressao_etiquetas(
         'ordenar': ordenar,
         'incluir_enfermaria': bool(incluir_enfermaria),
         'modelo': modelo,
+        'layout': layout_etiqueta_impressao(modelo.get('id')),
         'etiquetas': etiquetas,
         'paginas': paginas,
         'total': len(etiquetas),

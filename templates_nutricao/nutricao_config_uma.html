@@ -25,6 +25,7 @@
       <button type="button" class="cfg-no ativo" data-painel="uma">U.M.A.</button>
       <button type="button" class="cfg-no cfg-filho" data-painel="estoques">Estoques</button>
       <button type="button" class="cfg-no cfg-filho" data-painel="validade">Validade das etiquetas</button>
+      <button type="button" class="cfg-no cfg-filho" data-painel="etiqueta">Configuração da etiqueta</button>
     </nav>
 
     <div class="cfg-painel" id="painel-uma">
@@ -141,6 +142,118 @@
         </button>
       </fieldset>
     </div>
+
+    <div class="cfg-painel" id="painel-etiqueta" hidden>
+      <fieldset class="cfg-box">
+        <legend>Configuração da etiqueta</legend>
+        <p class="cfg-ajuda">Escolha o modelo Pimaco, monte os campos com dados do mapa e do paciente e ajuste a letra. Arraste o campo dentro da etiqueta.</p>
+        <label class="cfg-modelo">Modelo
+          <select class="form-control" id="modeloEtiqueta" data-sg-no-search></select>
+        </label>
+        <p class="cfg-ajuda" id="modeloDetalhe"></p>
+        <p class="cfg-ajuda" id="avisoEtiqueta"></p>
+        <div class="cfg-eti">
+          <div>
+            <div class="cfg-canvas-wrap">
+              <div id="canvasEtiqueta" class="cfg-canvas"></div>
+            </div>
+            <p class="cfg-ajuda cfg-medida" id="medidaEtiqueta"></p>
+          </div>
+          <div>
+            <div class="cfg-eti-acoes">
+              <button type="button" class="btn btn-ghost btn-sm" id="btnCampoNovo"><i class="fas fa-plus"></i> Campo</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btnCampoPadrao">Restaurar padrão</button>
+            </div>
+            <div id="listaCampos" class="cfg-lista"></div>
+            <div id="inspEtiqueta" class="cfg-insp" hidden>
+              <label>Campo do banco
+                <select class="form-control" id="inspCampo" data-sg-no-search></select>
+              </label>
+              <label>Texto antes do valor
+                <input class="form-control" id="inspPrefixo" maxlength="80" placeholder="No texto fixo, este é o que aparece">
+              </label>
+              <div class="cfg-insp-nums">
+                <label>Esquerda %
+                  <input class="form-control" id="inspX" type="number" min="0" max="100" step="0.5">
+                </label>
+                <label>Topo %
+                  <input class="form-control" id="inspY" type="number" min="0" max="100" step="0.5">
+                </label>
+                <label>Largura %
+                  <input class="form-control" id="inspW" type="number" min="8" max="100" step="0.5">
+                </label>
+              </div>
+              <label>Alinhamento
+                <select class="form-control" id="inspAlinha" data-sg-no-search>
+                  <option value="esquerda">Esquerda</option>
+                  <option value="centro">Centro</option>
+                  <option value="direita">Direita</option>
+                </select>
+              </label>
+              <button type="button" class="btn btn-secondary btn-sm" id="btnFonteCampo">Fonte</button>
+            </div>
+          </div>
+        </div>
+      </fieldset>
+    </div>
+  </div>
+
+  <div id="dlgFonteFundo" class="cfg-fonte-fundo" hidden>
+    <div class="cfg-fonte" role="dialog" aria-modal="true" aria-labelledby="dlgFonteTitulo">
+      <h2 id="dlgFonteTitulo">Fonte</h2>
+      <div class="cfg-fonte-cols">
+        <label>Fonte
+          <select id="dlgFonte" size="8" data-sg-no-search></select>
+        </label>
+        <label>Estilo da fonte
+          <select id="dlgEstilo" size="8" data-sg-no-search>
+            <option value="regular">Regular</option>
+            <option value="italico">Itálico</option>
+            <option value="negrito">Negrito</option>
+            <option value="negrito_italico">Negrito Itálico</option>
+          </select>
+        </label>
+        <label>Tamanho
+          <select id="dlgTamanho" size="8" data-sg-no-search></select>
+        </label>
+      </div>
+      <div class="cfg-fonte-cores">
+        <label>Cor da fonte
+          <input type="color" id="dlgCor" value="#000000">
+        </label>
+        <label>Estilo de sublinhado
+          <select class="form-control" id="dlgSublinhado" data-sg-no-search>
+            <option value="nenhum">(nenhum)</option>
+            <option value="simples">Simples</option>
+            <option value="duplo">Duplo</option>
+            <option value="pontilhado">Pontilhado</option>
+            <option value="tracejado">Tracejado</option>
+            <option value="ondulado">Ondulado</option>
+          </select>
+        </label>
+        <label>Cor do sublinhado
+          <input type="color" id="dlgCorSub" value="#000000">
+        </label>
+      </div>
+      <p class="cfg-fonte-sec">Efeitos</p>
+      <div class="cfg-efeitos">
+        <label><input type="checkbox" id="dlgTachado"> Tachado</label>
+        <label><input type="checkbox" id="dlgVersalete"> Versalete</label>
+        <label><input type="checkbox" id="dlgTachadoDuplo"> Tachado duplo</label>
+        <label><input type="checkbox" id="dlgMaiusculas"> Todas em maiúsculas</label>
+        <label><input type="checkbox" id="dlgSobre"> Sobrescrito</label>
+        <label><input type="checkbox" id="dlgOculto"> Oculto</label>
+        <label><input type="checkbox" id="dlgSub"> Subscrito</label>
+      </div>
+      <p class="cfg-fonte-sec">Visualização</p>
+      <div id="dlgPrevia" class="cfg-fonte-preview">Aptos</div>
+      <div class="cfg-fonte-acoes">
+        <button type="button" class="btn btn-ghost btn-sm" id="btnFontePadrao">Definir como Padrão</button>
+        <span id="fontePadraoMsg"></span>
+        <button type="button" class="btn btn-success btn-sm" id="btnFonteOk">OK</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="btnFonteCancelar">Cancelar</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -163,19 +276,80 @@
 .cfg-horas input { width: 90px; }
 .cfg-uma .table { width: 100%; background: #fff; }
 .cfg-uma .table input { max-width: 140px; }
+.cfg-modelo { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem; color: #334155; font-weight: 600; max-width: 420px; }
+.cfg-eti { display: grid; grid-template-columns: minmax(280px, 1.15fr) minmax(240px, 0.85fr); gap: 0.9rem; align-items: start; }
+.cfg-canvas-wrap { background: #e8eef5; border-radius: 8px; padding: 0.9rem; display: flex; justify-content: center; overflow: auto; }
+.cfg-canvas { position: relative; background: #fff; border: 1px solid #94a3b8; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12); overflow: hidden; }
+.cfg-chip { position: absolute; cursor: grab; user-select: none; touch-action: none; }
+.cfg-chip.sel { outline: 1px solid #1b4f9c; background: rgba(27, 79, 156, 0.08); }
+.cfg-medida { text-align: center; margin-top: 0.35rem; }
+.cfg-eti-acoes { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.45rem; }
+.cfg-lista { display: flex; flex-direction: column; gap: 0.25rem; max-height: 180px; overflow: auto; margin-bottom: 0.55rem; }
+.cfg-item { display: flex; align-items: center; gap: 0.25rem; }
+.cfg-item .cfg-item-nome { flex: 1; text-align: left; border: 1px solid transparent; background: #f8fafc; border-radius: 6px; padding: 0.28rem 0.4rem; cursor: pointer; font-size: 0.75rem; }
+.cfg-item.sel .cfg-item-nome { border-color: #1b4f9c; background: #e8f0ff; }
+.cfg-item .cfg-item-fonte { display: block; color: #64748b; font-size: 0.68rem; font-weight: 500; }
+.cfg-insp { display: flex; flex-direction: column; gap: 0.45rem; }
+.cfg-insp label, .cfg-insp-nums label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.72rem; color: #334155; font-weight: 600; }
+.cfg-insp-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; }
+.cfg-fonte-fundo { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.35); z-index: 80; display: flex; align-items: flex-start; justify-content: center; padding: 1rem; overflow: auto; }
+.cfg-fonte-fundo[hidden] { display: none; }
+.cfg-fonte { width: min(640px, 100%); background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 16px 40px rgba(15, 23, 42, 0.2); padding: 0.9rem 1rem 0.85rem; }
+.cfg-fonte h2 { margin: 0 0 0.7rem; font-size: 1.05rem; }
+.cfg-fonte-cols { display: grid; grid-template-columns: 1.4fr 1fr 0.55fr; gap: 0.6rem; }
+.cfg-fonte-cols label, .cfg-fonte-cores label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem; font-weight: 600; color: #334155; }
+.cfg-fonte select[size] { width: 100%; height: 148px; font-size: 0.82rem; }
+.cfg-fonte-cores { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.6rem; margin-top: 0.7rem; }
+.cfg-fonte-sec { margin: 0.75rem 0 0.3rem; font-size: 0.75rem; font-weight: 700; color: #334155; }
+.cfg-efeitos { display: grid; grid-template-columns: 1fr 1fr; gap: 0.28rem 1rem; }
+.cfg-efeitos label { display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; margin: 0; }
+.cfg-fonte-preview { border: 1px solid #cbd5e1; min-height: 72px; display: flex; align-items: center; justify-content: center; background: #fff; overflow: hidden; padding: 0.4rem; }
+.cfg-fonte-acoes { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.85rem; }
+.cfg-fonte-acoes span { flex: 1; color: #64748b; font-size: 0.72rem; }
 @media (max-width: 800px) {
   .cfg-layout { grid-template-columns: 1fr; }
+  .cfg-eti, .cfg-fonte-cols, .cfg-fonte-cores { grid-template-columns: 1fr; }
 }
 </style>
 
 <script>
 (function () {
+  const MODELOS = {{ modelos_etiqueta|tojson }};
+  const CAMPOS_BANCO = {{ campos_etiqueta|tojson }};
+  const FONTES = {{ fontes_etiqueta|tojson }};
+  const LAYOUT_PADRAO = {{ layout_padrao|tojson }};
+  const TAMANHOS = [6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 28, 36, 48, 72];
+  const CHAVES_FONTE = ['fonte', 'estilo', 'tamanho', 'cor', 'sublinhado', 'cor_sublinhado', 'tachado', 'tachado_duplo', 'sobrescrito', 'subscrito', 'versalete', 'maiusculas', 'oculto'];
+  const subtitulos = {
+    uma: 'Unidade de Manipulação Asséptica (U.M.A.)',
+    estoques: 'Estoques',
+    validade: 'Validade das etiquetas',
+    etiqueta: 'Configuração da etiqueta'
+  };
+  let layouts = {{ cfg.layout_etiquetas|tojson }};
+  let modeloId = (MODELOS[0] && MODELOS[0].id) || '';
+  let campos = null;
+  let selecionado = '';
+  let etiquetaSuja = false;
+  let etiquetaPronta = false;
+  let fontePadrao = {
+    fonte: 'Arial', estilo: 'regular', tamanho: 8, cor: '#000000',
+    sublinhado: 'nenhum', cor_sublinhado: '#000000', tachado: false,
+    tachado_duplo: false, sobrescrito: false, subscrito: false,
+    versalete: false, maiusculas: false, oculto: false
+  };
+  let dlg = Object.assign({}, fontePadrao);
+
   const paineis = document.querySelectorAll('.cfg-painel');
   document.querySelectorAll('.cfg-no').forEach(function (btn) {
     btn.addEventListener('click', function () {
       document.querySelectorAll('.cfg-no').forEach(function (b) { b.classList.remove('ativo'); });
       btn.classList.add('ativo');
       paineis.forEach(function (p) { p.hidden = p.id !== 'painel-' + btn.dataset.painel; });
+      const sub = document.querySelector('.chamados-sub');
+      if (sub && subtitulos[btn.dataset.painel]) sub.textContent = subtitulos[btn.dataset.painel];
+      document.getElementById('dlgFonteFundo').hidden = true;
+      if (btn.dataset.painel === 'etiqueta') prepararEtiqueta();
     });
   });
 
@@ -203,7 +377,450 @@
     return el ? el.value : '';
   }
 
+  function catalogo(id) {
+    return CAMPOS_BANCO.find(function (c) { return c.id === id; }) || CAMPOS_BANCO[0];
+  }
+  function fonteCss(id) {
+    const f = FONTES.find(function (item) { return item.id === id; });
+    return (f && f.css) || 'Arial, Helvetica, sans-serif';
+  }
+  function campoSel() {
+    return (campos || []).find(function (c) { return c.id === selecionado; }) || null;
+  }
+  function modeloObj() {
+    return MODELOS.find(function (m) { return m.id === modeloId; }) || MODELOS[0] || { largura_mm: 66.7, altura_mm: 25.4, detalhe: '' };
+  }
+  function lerCampos(id) {
+    if (Object.prototype.hasOwnProperty.call(layouts, id)) {
+      return JSON.parse(JSON.stringify((layouts[id] && layouts[id].campos) || []));
+    }
+    return JSON.parse(JSON.stringify(LAYOUT_PADRAO));
+  }
+  function gravarModeloAtual() {
+    if (!campos || !etiquetaSuja) return;
+    layouts[modeloId] = { campos: JSON.parse(JSON.stringify(campos)) };
+    etiquetaSuja = false;
+  }
+  function textoCampo(c) {
+    const cat = catalogo(c.campo);
+    const valor = c.campo === 'texto' ? '' : (cat.exemplo || '');
+    const texto = (c.prefixo || '') + valor;
+    return texto.trim() ? texto : 'Aptos';
+  }
+  function escalaFonte() {
+    const canvas = document.getElementById('canvasEtiqueta');
+    const m = modeloObj();
+    const px = canvas.clientWidth || parseFloat(canvas.style.width) || 520;
+    return px / (m.largura_mm || 66.7) * (25.4 / 72);
+  }
+  function estiloCampo(c, modo) {
+    const peso = (c.estilo === 'negrito' || c.estilo === 'negrito_italico') ? 700 : 400;
+    const italico = (c.estilo === 'italico' || c.estilo === 'negrito_italico') ? 'italic' : 'normal';
+    const linhas = [];
+    if (c.sublinhado && c.sublinhado !== 'nenhum') linhas.push('underline');
+    if (c.tachado || c.tachado_duplo) linhas.push('line-through');
+    let deco = 'solid';
+    if (c.tachado_duplo || c.sublinhado === 'duplo') deco = 'double';
+    else if (c.sublinhado === 'pontilhado') deco = 'dotted';
+    else if (c.sublinhado === 'tracejado') deco = 'dashed';
+    else if (c.sublinhado === 'ondulado') deco = 'wavy';
+    const align = { esquerda: 'left', centro: 'center', direita: 'right' }[c.alinhamento] || 'left';
+    let tamanho = Number(c.tamanho) || 7;
+    let vertical = 'baseline';
+    if (c.sobrescrito) { vertical = 'super'; tamanho = Math.max(6, Math.round(tamanho * 0.65)); }
+    else if (c.subscrito) { vertical = 'sub'; tamanho = Math.max(6, Math.round(tamanho * 0.65)); }
+    const size = modo === 'preview' ? (tamanho * escalaFonte()).toFixed(2) + 'px' : tamanho + 'pt';
+    const quebra = ['obs', 'diagnostico', 'observacoes', 'extras', 'suplementos', 'enteral', 'formula_infantil', 'lve', 'dieta', 'texto'].indexOf(c.campo) >= 0;
+    let css = (modo === 'preview'
+      ? 'position:absolute;left:' + c.x + '%;top:' + c.y + '%;width:' + c.w + '%;'
+      : 'position:static;width:auto;text-align:center;') +
+      'font-family:' + fonteCss(c.fonte) + ';' +
+      'font-weight:' + peso + ';font-style:' + italico + ';font-size:' + size + ';' +
+      'color:' + (c.cor || '#000000') + ';' +
+      (modo === 'preview' ? 'text-align:' + align + ';' : '') +
+      'font-variant:' + (c.versalete ? 'small-caps' : 'normal') + ';' +
+      'text-transform:' + (c.maiusculas ? 'uppercase' : 'none') + ';' +
+      'vertical-align:' + vertical + ';line-height:1.05;overflow:hidden;' +
+      (quebra && modo === 'preview' ? 'white-space:normal;' : 'white-space:nowrap;');
+    if (linhas.length) {
+      css += 'text-decoration-line:' + linhas.join(' ') + ';text-decoration-style:' + deco + ';text-decoration-color:' + (c.cor_sublinhado || c.cor || '#000') + ';';
+    } else {
+      css += 'text-decoration:none;';
+    }
+    if (c.oculto && modo === 'preview') css += 'opacity:0.35;';
+    return css;
+  }
+  function resumoFonte(c) {
+    const est = { regular: 'Regular', italico: 'Itálico', negrito: 'Negrito', negrito_italico: 'Negrito itálico' }[c.estilo] || 'Regular';
+    return (c.fonte || 'Arial') + ', ' + c.tamanho + ', ' + est;
+  }
+  function avisoEtiqueta() {
+    const el = document.getElementById('avisoEtiqueta');
+    const salvo = Object.prototype.hasOwnProperty.call(layouts, modeloId);
+    if (!campos.length) {
+      el.textContent = salvo
+        ? 'Sem campos. Ao gravar, a etiqueta deste modelo sai em branco.'
+        : 'Nenhum campo neste modelo.';
+      return;
+    }
+    if (!salvo && !etiquetaSuja) {
+      el.textContent = 'Desenho sugerido, com os dados de exemplo. A impressão atual só muda depois que você alterar um campo e clicar em OK.';
+      return;
+    }
+    el.textContent = 'OK grava os campos, a fonte e a posição. A impressão deste modelo passa a usar este desenho.';
+  }
+  function medirCanvas() {
+    const canvas = document.getElementById('canvasEtiqueta');
+    const m = modeloObj();
+    const wrap = canvas.parentElement ? canvas.parentElement.clientWidth : 520;
+    const w = Math.min(520, Math.max(260, (wrap || 520) - 28));
+    canvas.style.width = w + 'px';
+    canvas.style.height = Math.max(96, Math.round(w * ((m.altura_mm || 25) / (m.largura_mm || 66)))) + 'px';
+    const largura = String(m.largura_mm || '').replace('.', ',');
+    const altura = String(m.altura_mm || '').replace('.', ',');
+    document.getElementById('medidaEtiqueta').textContent = largura && altura ? (largura + ' × ' + altura + ' mm') : '';
+    document.getElementById('modeloDetalhe').textContent = m.detalhe || '';
+  }
+  function renderCanvas() {
+    const canvas = document.getElementById('canvasEtiqueta');
+    canvas.innerHTML = '';
+    (campos || []).forEach(function (c) {
+      const chip = document.createElement('div');
+      chip.className = 'cfg-chip' + (c.id === selecionado ? ' sel' : '');
+      chip.dataset.id = c.id;
+      chip.textContent = textoCampo(c);
+      chip.style.cssText = estiloCampo(c, 'preview');
+      chip.addEventListener('pointerdown', function (ev) {
+        if (ev.button !== undefined && ev.button !== 0) return;
+        ev.preventDefault();
+        selecionar(c.id);
+        const rect = canvas.getBoundingClientRect();
+        const sx = ev.clientX;
+        const sy = ev.clientY;
+        const ox = Number(c.x) || 0;
+        const oy = Number(c.y) || 0;
+        function mover(e) {
+          c.x = Math.round(Math.max(0, Math.min(100, ox + (e.clientX - sx) / rect.width * 100)) * 10) / 10;
+          c.y = Math.round(Math.max(0, Math.min(96, oy + (e.clientY - sy) / rect.height * 100)) * 10) / 10;
+          chip.style.left = c.x + '%';
+          chip.style.top = c.y + '%';
+          if (c.id === selecionado) {
+            document.getElementById('inspX').value = c.x;
+            document.getElementById('inspY').value = c.y;
+          }
+        }
+        function soltar() {
+          window.removeEventListener('pointermove', mover);
+          window.removeEventListener('pointerup', soltar);
+          if (Math.abs(c.x - ox) > 0.2 || Math.abs(c.y - oy) > 0.2) {
+            etiquetaSuja = true;
+            avisoEtiqueta();
+          }
+        }
+        window.addEventListener('pointermove', mover);
+        window.addEventListener('pointerup', soltar);
+      });
+      canvas.appendChild(chip);
+    });
+  }
+  function renderLista() {
+    const lista = document.getElementById('listaCampos');
+    lista.innerHTML = '';
+    if (!campos.length) {
+      const vazio = document.createElement('p');
+      vazio.className = 'cfg-ajuda';
+      vazio.textContent = 'Nenhum campo. Use Campo para incluir um dado do banco.';
+      lista.appendChild(vazio);
+      return;
+    }
+    campos.forEach(function (c, i) {
+      const row = document.createElement('div');
+      row.className = 'cfg-item' + (c.id === selecionado ? ' sel' : '');
+      row.dataset.id = c.id;
+      const nome = document.createElement('button');
+      nome.type = 'button';
+      nome.className = 'cfg-item-nome';
+      const cat = catalogo(c.campo);
+      nome.innerHTML = escHtml(cat.rotulo || c.campo) + '<span class="cfg-item-fonte">' + escHtml(resumoFonte(c)) + (c.oculto ? ' · oculto' : '') + '</span>';
+      nome.addEventListener('click', function () { selecionar(c.id); });
+      row.appendChild(nome);
+      const subir = botaoOrdem('Subir', 'fa-arrow-up', i > 0, function () { selecionado = c.id; moverCampo(-1); });
+      const descer = botaoOrdem('Descer', 'fa-arrow-down', i < campos.length - 1, function () { selecionado = c.id; moverCampo(1); });
+      const remover = document.createElement('button');
+      remover.type = 'button';
+      remover.className = 'btn btn-sm btn-excluir';
+      remover.title = 'Remover';
+      remover.innerHTML = '<i class="fas fa-trash"></i>';
+      remover.addEventListener('click', function () { removerCampo(c.id); });
+      row.appendChild(subir);
+      row.appendChild(descer);
+      row.appendChild(remover);
+      lista.appendChild(row);
+    });
+  }
+  function botaoOrdem(titulo, icone, ligado, acao) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-ghost btn-sm';
+    btn.title = titulo;
+    btn.disabled = !ligado;
+    btn.innerHTML = '<i class="fas ' + icone + '"></i>';
+    btn.addEventListener('click', acao);
+    return btn;
+  }
+  function escHtml(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  }
+  function syncInspector() {
+    const box = document.getElementById('inspEtiqueta');
+    const c = campoSel();
+    if (!c) { box.hidden = true; return; }
+    box.hidden = false;
+    document.getElementById('inspCampo').value = c.campo;
+    document.getElementById('inspPrefixo').value = c.prefixo || '';
+    document.getElementById('inspX').value = c.x;
+    document.getElementById('inspY').value = c.y;
+    document.getElementById('inspW').value = c.w;
+    document.getElementById('inspAlinha').value = c.alinhamento || 'esquerda';
+    document.getElementById('btnFonteCampo').textContent = 'Fonte: ' + resumoFonte(c);
+  }
+  function renderEtiqueta() {
+    const sel = document.getElementById('modeloEtiqueta');
+    if (sel.value !== modeloId) sel.value = modeloId;
+    medirCanvas();
+    renderCanvas();
+    renderLista();
+    syncInspector();
+    avisoEtiqueta();
+  }
+  function selecionar(id) {
+    selecionado = id;
+    document.querySelectorAll('#canvasEtiqueta .cfg-chip').forEach(function (el) {
+      el.classList.toggle('sel', el.dataset.id === id);
+    });
+    renderLista();
+    syncInspector();
+  }
+  function atualizarChip(c) {
+    const chip = document.querySelector('#canvasEtiqueta [data-id="' + CSS.escape(c.id) + '"]');
+    if (!chip) { renderCanvas(); return; }
+    chip.textContent = textoCampo(c);
+    chip.style.cssText = estiloCampo(c, 'preview');
+    if (c.id === selecionado) chip.classList.add('sel');
+  }
+  function moverCampo(delta) {
+    const i = campos.findIndex(function (c) { return c.id === selecionado; });
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= campos.length) return;
+    const item = campos.splice(i, 1)[0];
+    campos.splice(j, 0, item);
+    etiquetaSuja = true;
+    renderEtiqueta();
+  }
+  function removerCampo(id) {
+    campos = campos.filter(function (c) { return c.id !== id; });
+    if (selecionado === id) selecionado = campos.length ? campos[campos.length - 1].id : '';
+    etiquetaSuja = true;
+    renderEtiqueta();
+  }
+  function adicionarCampo() {
+    const novo = Object.assign({
+      id: 'c' + Date.now(),
+      campo: 'nome',
+      prefixo: '',
+      x: 4,
+      y: Math.min(80, 8 + campos.length * 12),
+      w: 90,
+      alinhamento: 'esquerda'
+    }, fontePadrao);
+    campos.push(novo);
+    selecionado = novo.id;
+    etiquetaSuja = true;
+    renderEtiqueta();
+  }
+  function prepararEtiqueta() {
+    if (!etiquetaPronta) {
+      const sel = document.getElementById('modeloEtiqueta');
+      MODELOS.forEach(function (m) {
+        const op = document.createElement('option');
+        op.value = m.id;
+        op.textContent = m.nome;
+        sel.appendChild(op);
+      });
+      const campoSelEl = document.getElementById('inspCampo');
+      CAMPOS_BANCO.forEach(function (c) {
+        const op = document.createElement('option');
+        op.value = c.id;
+        op.textContent = c.rotulo;
+        campoSelEl.appendChild(op);
+      });
+      const dlgFonte = document.getElementById('dlgFonte');
+      FONTES.forEach(function (f) {
+        const op = document.createElement('option');
+        op.value = f.id;
+        op.textContent = f.nome;
+        dlgFonte.appendChild(op);
+      });
+      const dlgTam = document.getElementById('dlgTamanho');
+      TAMANHOS.forEach(function (n) {
+        const op = document.createElement('option');
+        op.value = String(n);
+        op.textContent = String(n);
+        dlgTam.appendChild(op);
+      });
+      sel.addEventListener('change', function () {
+        gravarModeloAtual();
+        modeloId = sel.value;
+        campos = lerCampos(modeloId);
+        selecionado = campos[0] ? campos[0].id : '';
+        etiquetaSuja = false;
+        renderEtiqueta();
+      });
+      document.getElementById('btnCampoNovo').addEventListener('click', adicionarCampo);
+      document.getElementById('btnCampoPadrao').addEventListener('click', function () {
+        if (!window.confirm('Voltar os campos deste modelo para o padrão? Ao gravar, a impressão passa a usar este desenho.')) return;
+        campos = JSON.parse(JSON.stringify(LAYOUT_PADRAO));
+        selecionado = campos[0] ? campos[0].id : '';
+        etiquetaSuja = true;
+        renderEtiqueta();
+      });
+      ligarInspector();
+      ligarDialogo();
+      etiquetaPronta = true;
+      if (layouts.pimaco_6080 || !modeloId) modeloId = layouts.pimaco_6080 ? 'pimaco_6080' : modeloId;
+      if (!MODELOS.some(function (m) { return m.id === modeloId; }) && MODELOS[0]) modeloId = MODELOS[0].id;
+      campos = lerCampos(modeloId);
+      selecionado = campos[0] ? campos[0].id : '';
+    }
+    renderEtiqueta();
+  }
+  function ligarInspector() {
+    document.getElementById('inspCampo').addEventListener('change', function () {
+      const c = campoSel(); if (!c) return;
+      c.campo = this.value;
+      etiquetaSuja = true;
+      atualizarChip(c);
+      renderLista();
+      avisoEtiqueta();
+      document.getElementById('btnFonteCampo').textContent = 'Fonte: ' + resumoFonte(c);
+    });
+    document.getElementById('inspPrefixo').addEventListener('input', function () {
+      const c = campoSel(); if (!c) return;
+      c.prefixo = this.value.slice(0, 80);
+      etiquetaSuja = true;
+      atualizarChip(c);
+      avisoEtiqueta();
+    });
+    function numero(id, chave, min, max) {
+      document.getElementById(id).addEventListener('input', function () {
+        const c = campoSel(); if (!c) return;
+        let n = parseFloat(this.value);
+        if (Number.isNaN(n)) return;
+        n = Math.max(min, Math.min(max, n));
+        c[chave] = Math.round(n * 10) / 10;
+        etiquetaSuja = true;
+        atualizarChip(c);
+        avisoEtiqueta();
+      });
+    }
+    numero('inspX', 'x', 0, 100);
+    numero('inspY', 'y', 0, 100);
+    numero('inspW', 'w', 8, 100);
+    document.getElementById('inspAlinha').addEventListener('change', function () {
+      const c = campoSel(); if (!c) return;
+      c.alinhamento = this.value;
+      etiquetaSuja = true;
+      atualizarChip(c);
+      avisoEtiqueta();
+    });
+    document.getElementById('btnFonteCampo').addEventListener('click', abrirFonte);
+  }
+  function lerDlg() {
+    dlg.fonte = document.getElementById('dlgFonte').value;
+    dlg.estilo = document.getElementById('dlgEstilo').value;
+    dlg.tamanho = parseInt(document.getElementById('dlgTamanho').value, 10) || 8;
+    dlg.cor = document.getElementById('dlgCor').value;
+    dlg.sublinhado = document.getElementById('dlgSublinhado').value;
+    dlg.cor_sublinhado = document.getElementById('dlgCorSub').value;
+    dlg.tachado = document.getElementById('dlgTachado').checked;
+    dlg.tachado_duplo = document.getElementById('dlgTachadoDuplo').checked;
+    dlg.sobrescrito = document.getElementById('dlgSobre').checked;
+    dlg.subscrito = document.getElementById('dlgSub').checked;
+    dlg.versalete = document.getElementById('dlgVersalete').checked;
+    dlg.maiusculas = document.getElementById('dlgMaiusculas').checked;
+    dlg.oculto = document.getElementById('dlgOculto').checked;
+  }
+  function pintarPrevia() {
+    lerDlg();
+    const c = campoSel();
+    const amostra = Object.assign({}, c || {}, dlg, { oculto: false });
+    const previa = document.getElementById('dlgPrevia');
+    previa.textContent = c ? textoCampo(Object.assign({}, c, { prefixo: c.prefixo })) : 'Aptos';
+    previa.style.cssText = estiloCampo(amostra, 'dialogo') + (dlg.oculto ? 'opacity:0.45;' : '');
+  }
+  function abrirFonte() {
+    const c = campoSel();
+    if (!c) { showToast('Selecione um campo da etiqueta', 'error'); return; }
+    dlg = {};
+    CHAVES_FONTE.forEach(function (k) { dlg[k] = c[k]; });
+    document.getElementById('dlgFonte').value = dlg.fonte;
+    document.getElementById('dlgEstilo').value = dlg.estilo;
+    document.getElementById('dlgTamanho').value = String(dlg.tamanho);
+    document.getElementById('dlgCor').value = dlg.cor || '#000000';
+    document.getElementById('dlgSublinhado').value = dlg.sublinhado || 'nenhum';
+    document.getElementById('dlgCorSub').value = dlg.cor_sublinhado || '#000000';
+    document.getElementById('dlgTachado').checked = !!dlg.tachado;
+    document.getElementById('dlgTachadoDuplo').checked = !!dlg.tachado_duplo;
+    document.getElementById('dlgSobre').checked = !!dlg.sobrescrito;
+    document.getElementById('dlgSub').checked = !!dlg.subscrito;
+    document.getElementById('dlgVersalete').checked = !!dlg.versalete;
+    document.getElementById('dlgMaiusculas').checked = !!dlg.maiusculas;
+    document.getElementById('dlgOculto').checked = !!dlg.oculto;
+    document.getElementById('fontePadraoMsg').textContent = '';
+    pintarPrevia();
+    document.getElementById('dlgFonteFundo').hidden = false;
+  }
+  function ligarDialogo() {
+    ['dlgFonte', 'dlgEstilo', 'dlgTamanho', 'dlgCor', 'dlgSublinhado', 'dlgCorSub'].forEach(function (id) {
+      document.getElementById(id).addEventListener('input', pintarPrevia);
+      document.getElementById(id).addEventListener('change', pintarPrevia);
+    });
+    document.getElementById('dlgSobre').addEventListener('change', function () {
+      if (this.checked) document.getElementById('dlgSub').checked = false;
+      pintarPrevia();
+    });
+    document.getElementById('dlgSub').addEventListener('change', function () {
+      if (this.checked) document.getElementById('dlgSobre').checked = false;
+      pintarPrevia();
+    });
+    ['dlgTachado', 'dlgTachadoDuplo', 'dlgVersalete', 'dlgMaiusculas', 'dlgOculto'].forEach(function (id) {
+      document.getElementById(id).addEventListener('change', pintarPrevia);
+    });
+    document.getElementById('btnFontePadrao').addEventListener('click', function () {
+      lerDlg();
+      CHAVES_FONTE.forEach(function (k) { fontePadrao[k] = dlg[k]; });
+      document.getElementById('fontePadraoMsg').textContent = 'Padrão dos novos campos definido.';
+    });
+    document.getElementById('btnFonteOk').addEventListener('click', function () {
+      const c = campoSel();
+      if (!c) { document.getElementById('dlgFonteFundo').hidden = true; return; }
+      lerDlg();
+      if (dlg.sobrescrito && dlg.subscrito) dlg.subscrito = false;
+      CHAVES_FONTE.forEach(function (k) { c[k] = dlg[k]; });
+      etiquetaSuja = true;
+      document.getElementById('dlgFonteFundo').hidden = true;
+      renderEtiqueta();
+    });
+    document.getElementById('btnFonteCancelar').addEventListener('click', function () {
+      document.getElementById('dlgFonteFundo').hidden = true;
+    });
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape') document.getElementById('dlgFonteFundo').hidden = true;
+    });
+  }
+
   function payload() {
+    gravarModeloAtual();
     const metodo = document.querySelector('input[name="gotejamento_metodo"]:checked');
     const validades = [];
     document.querySelectorAll('#tabelaValidade tbody tr').forEach(function (tr) {
@@ -227,7 +844,8 @@
       estoque_formula_id: valor('estoque_formula_id'),
       estoque_lve_id: valor('estoque_lve_id'),
       estoque_modulo_id: valor('estoque_modulo_id'),
-      validades: validades
+      validades: validades,
+      layout_etiquetas: layouts
     };
   }
 
@@ -245,7 +863,7 @@
         showToast((j && j.error) || 'Não foi possível gravar', 'error');
         return;
       }
-      showToast('Configuração da U.M.A. gravada');
+      showToast('Configurações gravadas');
     } catch (e) {
       showToast('Não foi possível gravar', 'error');
     } finally {
